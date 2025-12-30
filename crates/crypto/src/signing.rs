@@ -235,7 +235,7 @@ impl EventSigningService {
     ///
     /// # Examples
     /// ```
-    /// use fourmik_crypto::signing::{EventSigningService, CanonicalEvent};
+    /// use aethercore_crypto::signing::{EventSigningService, CanonicalEvent};
     /// use std::collections::HashMap;
     ///
     /// let mut service = EventSigningService::new();

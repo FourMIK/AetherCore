@@ -10,7 +10,7 @@ use crate::{
     signing::{EventSigner, KeyManager},
     trust::TrustScorer,
 };
-use fourmik_domain::CanonicalEvent;
+use aethercore_domain::CanonicalEvent;
 use serde::{Deserialize, Serialize};
 
 /// Trust mesh configuration

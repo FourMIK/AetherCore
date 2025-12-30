@@ -2,7 +2,7 @@
 //!
 //! Implements Merkle tree aggregation over event batches and signed checkpoint management.
 
-use fourmik_domain::{EventHash, PublicKey, Signature};
+use aethercore_domain::{EventHash, PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
