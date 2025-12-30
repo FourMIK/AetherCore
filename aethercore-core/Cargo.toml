@@ -1,0 +1,32 @@
+[package]
+name = "fourmik-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+default = ["full"]
+full = ["sqlite", "merkle", "ledger"]
+minimal = []
+sqlite = ["rusqlite"]
+merkle = []
+ledger = ["sqlite", "merkle"]
+field = ["minimal", "merkle"]  # Field deployment profile
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+blake3 = "1.5"
+hex = "0.4"
+
+# Optional dependencies
+rusqlite = { version = "0.31", features = ["bundled"], optional = true }
+toml = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+uuid = { version = "1.6", features = ["v4"] }
