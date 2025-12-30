@@ -1,0 +1,150 @@
+name: AetherCore MonoRepo CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  verify-structure:
+    name: Verify MonoRepo Structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run verification script
+        run: |
+          chmod +x verify-monorepo.sh
+          ./verify-monorepo.sh
+
+  rust-workspace:
+    name: Rust Workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Check Rust workspace
+        run: cargo check --workspace
+      
+      - name: Run Rust tests
+        run: cargo test --workspace
+      
+      - name: Run Clippy
+        run: cargo clippy --workspace -- -D warnings
+
+  typescript-workspace:
+    name: TypeScript Workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build all packages and services
+        run: npm run build --workspaces
+      
+      - name: Run tests
+        run: npm run test --workspaces
+
+  legacy-isolation:
+    name: Check Legacy Isolation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check for illegal legacy imports
+        run: |
+          echo "Checking for illegal imports from /legacy..."
+          
+          # Search for legacy imports in non-allowed locations
+          # Allowed: crates/h2-domain and packages/h2-glass
+          
+          VIOLATIONS=0
+          
+          # Check Rust files (excluding h2-domain)
+          for file in $(find crates -name "*.rs" | grep -v "h2-domain"); do
+            if grep -l "legacy" "$file" 2>/dev/null; then
+              echo "::error file=$file::Illegal reference to /legacy in $file"
+              VIOLATIONS=$((VIOLATIONS + 1))
+            fi
+          done
+          
+          # Check TypeScript files (excluding h2-glass)
+          for file in $(find services packages -name "*.ts" | grep -v "h2-glass"); do
+            if grep -l "legacy" "$file" 2>/dev/null; then
+              echo "::error file=$file::Illegal reference to /legacy in $file"
+              VIOLATIONS=$((VIOLATIONS + 1))
+            fi
+          done
+          
+          if [ $VIOLATIONS -gt 0 ]; then
+            echo "::error::Found $VIOLATIONS file(s) with illegal legacy references"
+            exit 1
+          else
+            echo "✓ No illegal legacy imports found"
+          fi
+
+  check-workspace-config:
+    name: Validate Workspace Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check Cargo.toml workspace members
+        run: |
+          echo "Verifying all crates are in Cargo.toml workspace..."
+          
+          MISSING=0
+          CRATES=("core" "crypto" "identity" "domain" "mesh" "stream" "edge" "isr" "rf" "radio" "trust_mesh" "h2-domain")
+          
+          for crate in "${CRATES[@]}"; do
+            if ! grep -q "\"crates/$crate\"" Cargo.toml; then
+              echo "::error::Crate crates/$crate not found in workspace members"
+              MISSING=$((MISSING + 1))
+            fi
+          done
+          
+          if [ $MISSING -gt 0 ]; then
+            exit 1
+          fi
+          
+          echo "✓ All crates are in workspace"
+      
+      - name: Check package.json workspace members
+        run: |
+          echo "Verifying all services and packages are in package.json workspace..."
+          
+          # This is a basic check - in production you'd parse JSON properly
+          if ! grep -q '"services/\*"' package.json; then
+            echo "::error::services/* not found in workspaces"
+            exit 1
+          fi
+          
+          if ! grep -q '"packages/\*"' package.json; then
+            echo "::error::packages/* not found in workspaces"
+            exit 1
+          fi
+          
+          echo "✓ Workspace configuration is valid"

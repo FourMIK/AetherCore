@@ -1,2 +1,156 @@
-# AetherCore
-The AetherCore Integrating H2OS/4MIK
+# AetherCore MonoRepo
+
+The AetherCore system integrating H2OS/4MIK - A comprehensive platform for distributed computing, mesh networking, and ISR capabilities.
+
+## Repository Structure
+
+This is a monorepo containing Rust and TypeScript/Node.js workspaces:
+
+### `/crates` — Rust Workspace
+
+Core system components written in Rust:
+
+- **core** — Core functionality and types
+- **crypto** — Cryptographic primitives
+- **identity** — Identity management
+- **domain** — Domain model and logic
+- **mesh** — Mesh networking
+- **stream** — Data streaming
+- **edge** — Edge computing
+- **isr** — Intelligence, Surveillance, Reconnaissance
+- **rf** — Radio frequency functionality
+- **radio** — Radio communication
+- **trust_mesh** — Trust and security mesh
+- **h2-domain** — H2OS domain integration _(may reference `/legacy`)_
+
+### `/services` — Node.js/TypeScript Services
+
+Backend services:
+
+- **gateway** — API Gateway service
+- **auth** — Authentication service
+- **fleet** — Fleet management service
+- **h2-ingest** — H2OS data ingest service
+- **operator** — Operator service
+
+### `/packages` — TypeScript Packages
+
+Shared TypeScript packages:
+
+- **dashboard** — Dashboard application
+- **h2-glass** — H2OS visualization _(may reference `/legacy`)_
+- **canonical-schema** — Canonical data schemas
+- **shared** — Shared utilities
+
+### `/legacy` — Read-Only H2OS Snapshot
+
+**Important**: This directory contains a read-only snapshot of the H2OS system for reference only.
+
+- ⚠️ **NO RUNTIME IMPORTS** from this directory
+- Only `/crates/h2-domain/` and `/packages/h2-glass/` may reference legacy code
+- All other modules must not import from `/legacy`
+
+## Getting Started
+
+### Prerequisites
+
+- **Rust** 1.70+ with `cargo`
+- **Node.js** 18+ with `npm` 9+
+
+### Building
+
+#### Rust Workspace
+
+```bash
+# Build all Rust crates
+cargo build --workspace
+
+# Build in release mode
+cargo build --workspace --release
+
+# Run tests
+cargo test --workspace
+```
+
+#### Node.js/TypeScript Workspace
+
+```bash
+# Install dependencies
+npm install
+
+# Build all packages and services
+npm run build
+
+# Run tests
+npm run test
+
+# Lint
+npm run lint
+```
+
+## Workspace Enforcement
+
+### Rust (`Cargo.toml`)
+
+The root `Cargo.toml` defines the Rust workspace with all crates. Dependencies are managed at the workspace level for consistency.
+
+### Node.js (`package.json`)
+
+The root `package.json` defines npm workspaces for all services and packages. This ensures:
+
+- Shared dependency management
+- Consistent versioning
+- Cross-package references
+
+## Development Guidelines
+
+### Dependency Rules
+
+1. **No runtime imports from `/legacy`** except:
+   - `/crates/h2-domain/`
+   - `/packages/h2-glass/`
+
+2. **Use workspace dependencies** defined in root configurations
+
+3. **Cross-workspace references** are allowed (e.g., services can use packages)
+
+### Adding New Crates/Packages
+
+#### New Rust Crate
+
+1. Create directory: `mkdir -p crates/my-crate/src`
+2. Add `Cargo.toml` referencing workspace config
+3. Add to workspace members in root `Cargo.toml`
+4. Create `src/lib.rs`
+
+#### New TypeScript Package/Service
+
+1. Create directory: `mkdir -p packages/my-package/src` or `services/my-service/src`
+2. Add `package.json` with workspace reference
+3. Add `tsconfig.json`
+4. Create `src/index.ts`
+
+## Architecture
+
+AetherCore provides a distributed computing platform with:
+
+- **Mesh networking** for resilient peer-to-peer communication
+- **Cryptographic identity** for secure authentication
+- **Edge computing** capabilities for distributed processing
+- **ISR functionality** for intelligence and reconnaissance
+- **RF/Radio** communication layers
+- **Trust mesh** for security guarantees
+- **H2OS integration** for legacy system compatibility
+
+## License
+
+MIT OR Apache-2.0
+
+## Contributing
+
+This is a monorepo project. Please ensure:
+
+- All Rust code passes `cargo clippy` and `cargo test`
+- All TypeScript code builds with `tsc`
+- Follow the dependency rules (especially regarding `/legacy`)
+- Update this README if adding new crates or packages

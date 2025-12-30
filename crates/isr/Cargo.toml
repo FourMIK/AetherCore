@@ -1,0 +1,12 @@
+[package]
+name = "aethercore-isr"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aethercore-core = { path = "../core" }
+serde = { workspace = true }
+anyhow = { workspace = true }

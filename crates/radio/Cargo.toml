@@ -1,0 +1,14 @@
+[package]
+name = "aethercore-radio"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aethercore-core = { path = "../core" }
+aethercore-rf = { path = "../rf" }
+tokio = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
