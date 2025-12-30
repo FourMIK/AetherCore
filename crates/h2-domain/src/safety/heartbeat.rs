@@ -80,6 +80,8 @@ impl Heartbeat {
         self.nozzle_connected = connected;
         if connected {
             self.nozzle_connected_timestamp_ns = timestamp_ns;
+        } else {
+            self.nozzle_connected_timestamp_ns = 0;
         }
     }
     

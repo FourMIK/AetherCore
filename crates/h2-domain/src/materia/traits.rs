@@ -2,8 +2,7 @@
 //! 
 //! Defines the core interface that all hardware-rooted sensor types must implement.
 
-use serde::{Deserialize, Serialize};
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// Merkle Vine Link - BLAKE3 hash chain link for integrity verification
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
