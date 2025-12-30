@@ -1,0 +1,13 @@
+[package]
+name = "aethercore-mesh"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aethercore-core = { path = "../core" }
+tokio = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }

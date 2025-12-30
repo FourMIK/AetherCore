@@ -1,0 +1,16 @@
+[package]
+name = "aethercore-h2-domain"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "H2OS domain integration - may reference legacy"
+
+[dependencies]
+aethercore-core = { path = "../core" }
+aethercore-domain = { path = "../domain" }
+serde = { workspace = true }
+anyhow = { workspace = true }
+
+# Note: This crate is allowed to reference /legacy according to monorepo rules

@@ -1,0 +1,15 @@
+[package]
+name = "aethercore-trust-mesh"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aethercore-core = { path = "../core" }
+aethercore-crypto = { path = "../crypto" }
+aethercore-mesh = { path = "../mesh" }
+tokio = { workspace = true }
+serde = { workspace = true }
+anyhow = { workspace = true }
