@@ -14,6 +14,8 @@ members = [
     "crates/radio",
     "crates/trust_mesh",
     "crates/h2-domain",
+    "crates/c2-router",
+    "crates/unit-status",
 ]
 
 [workspace.package]
