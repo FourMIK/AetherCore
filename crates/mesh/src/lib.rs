@@ -45,6 +45,7 @@ pub mod routing;
 pub mod spectral;
 pub mod bunker;
 pub mod tactical;
+pub mod security;
 
 // Re-export main types
 pub use tactical::{TacticalMesh, MeshStatus};
@@ -53,3 +54,4 @@ pub use gossip::{AethericWhisper, GossipMessage, GossipResult, ConsensusView};
 pub use routing::{RoutingTable, RouteEntry, LinkQuality, RouteUpdateResult};
 pub use spectral::{FrequencyHopper, HoppingPattern, HopResult, HopReason, generate_hopping_pattern};
 pub use bunker::{BunkerMode, BunkerState, StoredBlock, StoredEvent};
+pub use security::{MeshSecurity, SignedMessage};
