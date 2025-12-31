@@ -3,95 +3,80 @@
 //! Ported from H2OS VehicleCommunication.cs with attestation
 
 use serde::{Deserialize, Serialize};
+use crate::materia::TpmAttestation;
 
 /// Heartbeat status enumeration
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum HeartbeatStatus {
     /// Heartbeat is active and current
-    Active,
+    Alive,
+    /// Heartbeat has a warning (approaching timeout)
+    Warning,
     /// Heartbeat has expired (triggers safe state)
     Expired,
-    /// Heartbeat never established
-    NeverEstablished,
 }
 
 /// Cryptographic heartbeat monitor
 /// 
-/// Tracks vehicle communication status with timestamped attestations.
+/// Tracks node communication status with TPM attestations.
 /// When heartbeat expires, system enters safe state (all valves closed).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Heartbeat {
+    /// Node identifier
+    pub node_id: String,
     /// Timestamp of last attestation (nanoseconds since epoch)
     pub last_attestation_ns: u64,
     /// Timeout threshold (nanoseconds)
     pub timeout_ns: u64,
-    /// Nozzle connected state
-    pub nozzle_connected: bool,
-    /// Timestamp when nozzle was connected (nanoseconds since epoch)
-    pub nozzle_connected_timestamp_ns: u64,
-    /// Vehicle communication established flag
-    pub vehicle_comm_established: bool,
-    /// Timestamp when vehicle communication was established (nanoseconds since epoch)
-    pub vehicle_comm_timestamp_ns: Option<u64>,
+    /// Latest TPM attestation
+    pub attestation: TpmAttestation,
 }
 
 impl Heartbeat {
     /// Create a new heartbeat monitor
     /// 
     /// # Arguments
+    /// * `node_id` - Node identifier
     /// * `timeout_ns` - Timeout threshold in nanoseconds
-    pub fn new(timeout_ns: u64) -> Self {
+    /// * `attestation` - Initial TPM attestation
+    pub fn new(node_id: String, timeout_ns: u64, attestation: TpmAttestation) -> Self {
         Self {
-            last_attestation_ns: 0,
+            node_id,
+            last_attestation_ns: attestation.timestamp,
             timeout_ns,
-            nozzle_connected: false,
-            nozzle_connected_timestamp_ns: 0,
-            vehicle_comm_established: false,
-            vehicle_comm_timestamp_ns: None,
+            attestation,
         }
     }
     
     /// Update heartbeat with new attestation
     /// 
     /// # Arguments
+    /// * `attestation` - New TPM attestation
     /// * `timestamp_ns` - Current timestamp in nanoseconds since epoch
-    pub fn update(&mut self, timestamp_ns: u64) {
+    pub fn update(&mut self, attestation: TpmAttestation, timestamp_ns: u64) {
         self.last_attestation_ns = timestamp_ns;
+        self.attestation = attestation;
     }
     
     /// Check heartbeat status
     /// 
     /// # Arguments
     /// * `current_ns` - Current timestamp in nanoseconds since epoch
-    pub fn check_status(&self, current_ns: u64) -> HeartbeatStatus {
-        if self.last_attestation_ns == 0 {
-            return HeartbeatStatus::NeverEstablished;
-        }
+    /// 
+    /// Returns:
+    /// - `Alive` if within timeout
+    /// - `Warning` if within 80% of timeout (warning threshold)
+    /// - `Expired` if past timeout
+    pub fn check(&self, current_ns: u64) -> HeartbeatStatus {
+        let elapsed = current_ns.saturating_sub(self.last_attestation_ns);
         
-        if current_ns > self.last_attestation_ns + self.timeout_ns {
+        if elapsed >= self.timeout_ns {
             HeartbeatStatus::Expired
+        } else if elapsed >= (self.timeout_ns * 4 / 5) {
+            // Warning at 80% of timeout
+            HeartbeatStatus::Warning
         } else {
-            HeartbeatStatus::Active
-        }
-    }
-    
-    /// Set nozzle connection state
-    pub fn set_nozzle_connected(&mut self, connected: bool, timestamp_ns: u64) {
-        self.nozzle_connected = connected;
-        if connected {
-            self.nozzle_connected_timestamp_ns = timestamp_ns;
-        } else {
-            self.nozzle_connected_timestamp_ns = 0;
-        }
-    }
-    
-    /// Set vehicle communication state
-    pub fn set_vehicle_comm(&mut self, established: bool, timestamp_ns: u64) {
-        self.vehicle_comm_established = established;
-        if established {
-            self.vehicle_comm_timestamp_ns = Some(timestamp_ns);
-        } else {
-            self.vehicle_comm_timestamp_ns = None;
+            HeartbeatStatus::Alive
         }
     }
 }
@@ -100,27 +85,67 @@ impl Heartbeat {
 mod tests {
     use super::*;
     
-    #[test]
-    fn test_heartbeat_never_established() {
-        let heartbeat = Heartbeat::new(5_000_000_000); // 5 second timeout
-        assert_eq!(heartbeat.check_status(1000), HeartbeatStatus::NeverEstablished);
+    fn create_test_attestation(timestamp: u64) -> TpmAttestation {
+        TpmAttestation::new(
+            vec![0xAA; 64],
+            vec![0xFF; 32],
+            vec![0xBB; 128],
+            timestamp,
+        )
     }
     
     #[test]
-    fn test_heartbeat_active() {
-        let mut heartbeat = Heartbeat::new(5_000_000_000); // 5 second timeout
-        heartbeat.update(1_000_000_000); // 1 second
+    fn test_heartbeat_alive() {
+        let attestation = create_test_attestation(1_000_000_000);
+        let heartbeat = Heartbeat::new(
+            "node-001".to_string(),
+            5_000_000_000, // 5 second timeout
+            attestation,
+        );
         
         // Check at 2 seconds (within timeout)
-        assert_eq!(heartbeat.check_status(2_000_000_000), HeartbeatStatus::Active);
+        assert_eq!(heartbeat.check(2_000_000_000), HeartbeatStatus::Alive);
+    }
+    
+    #[test]
+    fn test_heartbeat_warning() {
+        let attestation = create_test_attestation(1_000_000_000);
+        let heartbeat = Heartbeat::new(
+            "node-001".to_string(),
+            5_000_000_000, // 5 second timeout
+            attestation,
+        );
+        
+        // Check at 5 seconds (80% of timeout = 4s, so 5s should be warning)
+        assert_eq!(heartbeat.check(5_000_000_000), HeartbeatStatus::Warning);
     }
     
     #[test]
     fn test_heartbeat_expired() {
-        let mut heartbeat = Heartbeat::new(5_000_000_000); // 5 second timeout
-        heartbeat.update(1_000_000_000); // 1 second
+        let attestation = create_test_attestation(1_000_000_000);
+        let heartbeat = Heartbeat::new(
+            "node-001".to_string(),
+            5_000_000_000, // 5 second timeout
+            attestation,
+        );
         
         // Check at 7 seconds (beyond timeout)
-        assert_eq!(heartbeat.check_status(7_000_000_000), HeartbeatStatus::Expired);
+        assert_eq!(heartbeat.check(7_000_000_000), HeartbeatStatus::Expired);
+    }
+    
+    #[test]
+    fn test_heartbeat_update() {
+        let attestation1 = create_test_attestation(1_000_000_000);
+        let mut heartbeat = Heartbeat::new(
+            "node-001".to_string(),
+            5_000_000_000,
+            attestation1,
+        );
+        
+        let attestation2 = create_test_attestation(3_000_000_000);
+        heartbeat.update(attestation2, 3_000_000_000);
+        
+        assert_eq!(heartbeat.last_attestation_ns, 3_000_000_000);
+        assert_eq!(heartbeat.check(4_000_000_000), HeartbeatStatus::Alive);
     }
 }

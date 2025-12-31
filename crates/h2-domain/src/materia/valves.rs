@@ -8,10 +8,12 @@ use super::traits::{MateriaSlot, MerkleVineLink, TpmAttestation};
 /// Valve state enumeration
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ValveState {
-    /// Valve is open
-    Open,
     /// Valve is closed
     Closed,
+    /// Valve is open
+    Open,
+    /// Valve is in fault state
+    Fault,
     /// Valve is in unknown/error state
     Unknown,
 }
@@ -19,7 +21,7 @@ pub enum ValveState {
 /// Base solenoid valve structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolenoidValve {
-    /// Unique slot identifier
+    /// Unique slot identifier (valve_id: SOV100=100, SOV101=101, etc.)
     pub slot_id: u16,
     /// Merkle Vine hash chain link
     pub vine: MerkleVineLink,
@@ -31,6 +33,8 @@ pub struct SolenoidValve {
     pub timestamp_ns: u64,
     /// Number of actuation cycles
     pub cycle_count: u32,
+    /// Hash of last command that actuated this valve
+    pub last_command_hash: [u8; 32],
 }
 
 impl MateriaSlot for SolenoidValve {
@@ -46,13 +50,14 @@ impl MateriaSlot for SolenoidValve {
         &self.attestation
     }
     
-    fn compute_hash(&self) -> blake3::Hash {
+    fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());
         hasher.update(&[self.state as u8]);
         hasher.update(&self.timestamp_ns.to_le_bytes());
         hasher.update(&self.cycle_count.to_le_bytes());
-        hasher.finalize()
+        hasher.update(&self.last_command_hash);
+        *hasher.finalize().as_bytes()
     }
 }
 

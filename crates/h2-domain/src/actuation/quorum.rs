@@ -36,42 +36,50 @@ pub enum QuorumError {
 /// Quorum proof containing threshold signatures
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuorumProof {
-    /// Message being signed (typically command hash)
-    pub message: Vec<u8>,
-    /// Required signature threshold (e.g., 3 for 3-of-5)
-    pub threshold: usize,
+    /// Command hash being signed (32 bytes)
+    pub command_hash: [u8; 32],
     /// Signatures from trusted nodes
     pub signatures: Vec<NodeSignature>,
+    /// Required signature threshold (e.g., 3 for 3-of-5)
+    pub threshold: u8,
+    /// Timestamp when proof was created (nanoseconds since epoch)
+    pub timestamp: u64,
 }
 
 /// Signature from a trusted node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeSignature {
     /// Node identifier
-    pub node_id: u16,
-    /// Ed25519 signature
+    pub node_id: String,
+    /// Ed25519 signature (64 bytes, stored as Vec for serde compatibility)
     pub signature: Vec<u8>,
-    /// Ed25519 public key
-    pub public_key: Vec<u8>,
+    /// Ed25519 public key (32 bytes)
+    pub public_key: [u8; 32],
 }
 
 impl QuorumProof {
     /// Create a new quorum proof
-    pub fn new(message: Vec<u8>, threshold: usize) -> Self {
+    pub fn new(command_hash: [u8; 32], threshold: u8, timestamp: u64) -> Self {
         Self {
-            message,
+            command_hash,
             threshold,
+            timestamp,
             signatures: Vec::new(),
         }
     }
     
     /// Add a signature to the proof
-    pub fn add_signature(&mut self, node_id: u16, signature: Vec<u8>, public_key: Vec<u8>) {
+    pub fn add_signature(&mut self, node_id: String, signature: Vec<u8>, public_key: [u8; 32]) {
         self.signatures.push(NodeSignature {
             node_id,
             signature,
             public_key,
         });
+    }
+    
+    /// Check if threshold is met
+    pub fn meets_threshold(&self) -> bool {
+        self.signatures.len() >= self.threshold as usize
     }
     
     /// Verify the quorum proof
@@ -82,57 +90,57 @@ impl QuorumProof {
     /// 3. No duplicate node IDs
     pub fn verify(&self) -> Result<(), QuorumError> {
         // Check threshold
-        if self.signatures.len() < self.threshold {
+        if !self.meets_threshold() {
             return Err(QuorumError::InsufficientSignatures {
                 got: self.signatures.len(),
-                required: self.threshold,
+                required: self.threshold as usize,
             });
         }
         
         // Check for duplicate nodes
         let mut seen_nodes = std::collections::HashSet::new();
         for sig in &self.signatures {
-            if !seen_nodes.insert(sig.node_id) {
+            if !seen_nodes.insert(&sig.node_id) {
+                // Convert string to u16 for error reporting (use hash of first bytes)
+                let node_id_hash = sig.node_id.as_bytes().get(0).copied().unwrap_or(0) as u16;
                 return Err(QuorumError::DuplicateNode {
-                    node_id: sig.node_id,
+                    node_id: node_id_hash,
                 });
             }
         }
         
         // Verify each signature
         for sig in &self.signatures {
-            // Parse public key
-            let public_key_bytes: [u8; 32] = sig.public_key
-                .as_slice()
-                .try_into()
-                .map_err(|_| QuorumError::InvalidSignature {
-                    node_id: sig.node_id,
-                    reason: "Invalid public key length".to_string(),
+            let verifying_key = VerifyingKey::from_bytes(&sig.public_key)
+                .map_err(|e| {
+                    let node_id_hash = sig.node_id.as_bytes().get(0).copied().unwrap_or(0) as u16;
+                    QuorumError::InvalidSignature {
+                        node_id: node_id_hash,
+                        reason: format!("Invalid public key: {}", e),
+                    }
                 })?;
             
-            let verifying_key = VerifyingKey::from_bytes(&public_key_bytes)
-                .map_err(|e| QuorumError::InvalidSignature {
-                    node_id: sig.node_id,
-                    reason: format!("Invalid public key: {}", e),
-                })?;
+            // Parse signature (must be exactly 64 bytes)
+            if sig.signature.len() != 64 {
+                let node_id_hash = sig.node_id.as_bytes().get(0).copied().unwrap_or(0) as u16;
+                return Err(QuorumError::InvalidSignature {
+                    node_id: node_id_hash,
+                    reason: format!("Invalid signature length: {} (expected 64)", sig.signature.len()),
+                });
+            }
             
-            // Parse signature
-            let signature_bytes: [u8; 64] = sig.signature
-                .as_slice()
-                .try_into()
-                .map_err(|_| QuorumError::InvalidSignature {
-                    node_id: sig.node_id,
-                    reason: "Invalid signature length".to_string(),
-                })?;
-            
+            let signature_bytes: [u8; 64] = sig.signature[..64].try_into().unwrap();
             let signature = Signature::from_bytes(&signature_bytes);
             
-            // Verify signature
+            // Verify signature over command hash
             verifying_key
-                .verify(&self.message, &signature)
-                .map_err(|e| QuorumError::InvalidSignature {
-                    node_id: sig.node_id,
-                    reason: format!("Signature verification failed: {}", e),
+                .verify(&self.command_hash, &signature)
+                .map_err(|e| {
+                    let node_id_hash = sig.node_id.as_bytes().get(0).copied().unwrap_or(0) as u16;
+                    QuorumError::InvalidSignature {
+                        node_id: node_id_hash,
+                        reason: format!("Signature verification failed: {}", e),
+                    }
                 })?;
         }
         
@@ -146,11 +154,23 @@ mod tests {
     
     #[test]
     fn test_quorum_proof_insufficient_signatures() {
-        let proof = QuorumProof::new(b"test message".to_vec(), 3);
+        let proof = QuorumProof::new([0u8; 32], 3, 1000);
         
         match proof.verify() {
             Err(QuorumError::InsufficientSignatures { got: 0, required: 3 }) => {},
             _ => panic!("Expected InsufficientSignatures error"),
         }
+    }
+    
+    #[test]
+    fn test_quorum_proof_meets_threshold() {
+        let mut proof = QuorumProof::new([0u8; 32], 2, 1000);
+        assert!(!proof.meets_threshold());
+        
+        proof.add_signature("node1".to_string(), vec![0u8; 64], [0u8; 32]);
+        assert!(!proof.meets_threshold());
+        
+        proof.add_signature("node2".to_string(), vec![0u8; 64], [0u8; 32]);
+        assert!(proof.meets_threshold());
     }
 }
