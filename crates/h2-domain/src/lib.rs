@@ -18,6 +18,7 @@ pub mod safety;
 pub mod alarms;
 pub mod bridge;
 pub mod fleet;
+pub mod mission;
 
 // Re-export key types for convenience
 pub use materia::{MateriaSlot, MerkleVineLink, TpmAttestation};
@@ -26,3 +27,4 @@ pub use safety::{Heartbeat, DeadManSwitch, SystemMode};
 pub use alarms::{AlarmCode, AttestedAlarm};
 pub use bridge::{EventMapper, H2OSTelemetryAdapter};
 pub use fleet::{FleetRegistry, MobileAsset, TowableAsset, FixedInstallation, SensorNode};
+pub use mission::{Dispatch, DispatchState, ScheduledMission, MissionCorrelator};
