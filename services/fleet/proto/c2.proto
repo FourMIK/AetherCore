@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package aethercore.c2;
+
+// C2 Router service for command dispatch
+service C2Router {
+  // Execute a command on a single unit
+  rpc ExecuteUnitCommand(UnitCommandRequest) returns (UnitCommandResponse);
+  
+  // Execute a command on multiple units (swarm)
+  rpc ExecuteSwarmCommand(SwarmCommandRequest) returns (SwarmCommandResponse);
+  
+  // Get the status of a command
+  rpc GetCommandStatus(CommandStatusRequest) returns (CommandStatusResponse);
+  
+  // Abort a swarm command
+  rpc AbortSwarmCommand(AbortRequest) returns (AbortResponse);
+}
+
+// Request to execute a unit command
+message UnitCommandRequest {
+  string unit_id = 1;
+  string command_json = 2;  // JSON-serialized UnitCommand
+  repeated string signatures = 3;  // Authority signatures
+  uint64 timestamp_ns = 4;
+}
+
+// Response from unit command execution
+message UnitCommandResponse {
+  bool success = 1;
+  string unit_id = 2;
+  string message = 3;
+  uint64 timestamp_ns = 4;
+}
+
+// Request to execute a swarm command
+message SwarmCommandRequest {
+  string swarm_command_id = 1;
+  repeated string target_unit_ids = 2;
+  string command_json = 3;  // JSON-serialized SwarmCommand
+  repeated string signatures = 4;  // Authority signatures
+  uint64 timestamp_ns = 5;
+}
+
+// Response from swarm command execution
+message SwarmCommandResponse {
+  string swarm_command_id = 1;
+  uint32 total_units = 2;
+  uint32 success_count = 3;
+  uint32 failure_count = 4;
+  uint32 timeout_count = 5;
+  float completion_percent = 6;
+  uint64 timestamp_ns = 7;
+}
+
+// Request to get command status
+message CommandStatusRequest {
+  string command_id = 1;
+}
+
+// Response with command status
+message CommandStatusResponse {
+  string command_id = 1;
+  string status = 2;  // "pending", "executing", "completed", "failed", "aborted"
+  string details_json = 3;  // JSON-serialized status details
+  uint64 timestamp_ns = 4;
+}
+
+// Request to abort a swarm command
+message AbortRequest {
+  string swarm_command_id = 1;
+  string reason = 2;
+}
+
+// Response to abort request
+message AbortResponse {
+  bool success = 1;
+  string message = 2;
+  uint64 timestamp_ns = 3;
+}
