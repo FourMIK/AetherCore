@@ -1,7 +1,7 @@
 {
-  "name": "@aethercore/shared",
+  "name": "@aethercore/collaboration",
   "version": "0.1.0",
-  "description": "AetherCore Shared Utilities",
+  "description": "AetherCore Mission Guardian Collaboration Service - Secure Console-to-Console Video/Voice/Chat",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -10,14 +10,18 @@
     "test": "echo \"No tests yet\"",
     "lint": "echo \"No linting configured yet\""
   },
-  "keywords": ["aethercore", "shared"],
+  "keywords": ["aethercore", "collaboration", "guardian", "webrtc", "signaling"],
   "author": "AetherCore Team",
   "license": "MIT",
   "dependencies": {
+    "@aethercore/shared": "^0.1.0",
+    "ws": "^8.16.0",
+    "nats": "^2.19.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
-    "@types/node": "^20.10.6"
+    "@types/node": "^20.10.6",
+    "@types/ws": "^8.5.10"
   }
 }
