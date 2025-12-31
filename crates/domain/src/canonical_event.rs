@@ -133,6 +133,50 @@ pub enum EventPayload {
         custom_type: String,
         data: BTreeMap<String, serde_json::Value>,
     },
+
+    /// Fleet asset position and state
+    Fleet {
+        asset_id: String,
+        asset_type: String,
+        latitude: f64,
+        longitude: f64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        altitude: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        speed: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        heading: Option<f64>,
+        state: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        metadata: Option<BTreeMap<String, serde_json::Value>>,
+    },
+
+    /// Mission dispatch and lifecycle events
+    Mission {
+        mission_id: String,
+        mission_type: String,
+        state: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        assigned_assets: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        waypoints: Option<Vec<BTreeMap<String, serde_json::Value>>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        metadata: Option<BTreeMap<String, serde_json::Value>>,
+    },
+
+    /// Operational alerts
+    Alert {
+        alert_id: String,
+        severity: String,
+        category: String,
+        message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        source_asset: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        acknowledged: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        metadata: Option<BTreeMap<String, serde_json::Value>>,
+    },
 }
 
 /// System event subtypes

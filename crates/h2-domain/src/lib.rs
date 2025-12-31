@@ -16,9 +16,11 @@ pub mod materia;
 pub mod actuation;
 pub mod safety;
 pub mod alarms;
+pub mod bridge;
 
 // Re-export key types for convenience
 pub use materia::{MateriaSlot, MerkleVineLink, TpmAttestation};
 pub use actuation::{QuorumProof, ValveCommand, SafetyReason};
 pub use safety::{Heartbeat, DeadManSwitch, SystemMode};
 pub use alarms::{AlarmCode, AttestedAlarm};
+pub use bridge::{EventMapper, H2OSTelemetryAdapter};
