@@ -179,6 +179,8 @@ impl H2OSTelemetryAdapter {
             serde_json::Value::Bool(detected),
         );
 
+        // Default to 1.0 PPM when H2 is detected but concentration not specified
+        // This indicates detection occurred but quantification was not available
         let value = if detected {
             concentration_ppm.unwrap_or(1.0)
         } else {

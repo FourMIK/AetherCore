@@ -143,6 +143,10 @@ impl FleetRegistry {
     }
 
     /// Geospatial query: find assets near a point (simple distance check)
+    ///
+    /// Note: Uses simple Euclidean distance for performance. For production
+    /// deployment with large geographic areas, consider using the Haversine
+    /// formula for accurate great-circle distance on Earth's surface.
     pub fn query_near(
         &self,
         center_lat: f64,
@@ -155,6 +159,7 @@ impl FleetRegistry {
                 let (lat, lon) = asset.position();
                 let dlat = lat - center_lat;
                 let dlon = lon - center_lon;
+                // Simple Euclidean distance approximation
                 let distance = (dlat * dlat + dlon * dlon).sqrt();
                 distance <= radius_degrees
             })
