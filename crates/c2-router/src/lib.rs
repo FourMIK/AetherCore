@@ -62,6 +62,7 @@
 pub mod authority;
 pub mod command_types;
 pub mod dispatcher;
+pub mod feeds;
 pub mod grpc;
 pub mod ledger;
 pub mod quorum;
@@ -75,6 +76,7 @@ pub use command_types::{
 pub use dispatcher::{
     CommandDispatcher, DispatchError, SwarmDispatchStatus, UnitDispatchResult,
 };
+pub use feeds::{AlertFeed, FleetFeed, MissionFeed};
 pub use grpc::{
     C2RouterService, SwarmCommandRequest, SwarmCommandResponse, UnitCommandRequest,
     UnitCommandResponse,
