@@ -1,94 +1,156 @@
 //! Dead man's switch - Safe state enforcement
 
 use serde::{Deserialize, Serialize};
-use crate::materia::ValveState;
+use crate::actuation::ValveCommand;
+use crate::materia::TpmAttestation;
+use super::heartbeat::{Heartbeat, HeartbeatStatus};
 
-/// Safe state mode
+/// System operating mode
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub enum SafeStateMode {
-    /// Normal operation
-    Normal,
-    /// FailVisible mode (requires manual attestation to resume)
+pub enum SystemMode {
+    /// Normal operation - valves can be actuated with quorum proof
+    Operational,
+    /// FailVisible mode - all valves locked closed, manual attestation required
     FailVisible,
+    /// Manual override mode - operator intervention active
+    ManualOverride,
 }
 
-/// Safe state enforcer
-/// 
-/// When triggered (e.g., by expired heartbeat), ensures all SOV valves
-/// are closed and system enters FailVisible mode.
+/// Safety error types
+#[derive(Debug, thiserror::Error)]
+pub enum SafetyError {
+    /// Already in operational mode
+    #[error("System already in operational mode")]
+    AlreadyOperational,
+    
+    /// Cannot resume while heartbeats are expired
+    #[error("Cannot resume: {0} heartbeat(s) expired")]
+    HeartbeatsExpired(usize),
+    
+    /// Invalid attestation
+    #[error("Invalid manual attestation: {0}")]
+    InvalidAttestation(String),
+}
+
+/// Dead man's switch - monitors heartbeats and enforces safe state
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SafeState {
-    /// Current mode
-    pub mode: SafeStateMode,
-    /// Timestamp when safe state was triggered (nanoseconds since epoch)
-    pub triggered_timestamp_ns: Option<u64>,
-    /// Reason for safe state trigger
-    pub trigger_reason: Option<String>,
+pub struct DeadManSwitch {
+    /// Tracked heartbeats from all nodes
+    pub heartbeats: Vec<Heartbeat>,
+    /// Current system mode
+    pub mode: SystemMode,
+    /// Timestamp of last check (nanoseconds since epoch)
+    pub last_check_ns: u64,
 }
 
-impl SafeState {
-    /// Create a new safe state enforcer in normal mode
+impl DeadManSwitch {
+    /// Create a new dead man's switch
     pub fn new() -> Self {
         Self {
-            mode: SafeStateMode::Normal,
-            triggered_timestamp_ns: None,
-            trigger_reason: None,
+            heartbeats: Vec::new(),
+            mode: SystemMode::Operational,
+            last_check_ns: 0,
         }
     }
     
-    /// Trigger safe state
+    /// Add a heartbeat to monitor
+    pub fn add_heartbeat(&mut self, heartbeat: Heartbeat) {
+        self.heartbeats.push(heartbeat);
+    }
+    
+    /// Evaluate all heartbeats and determine system mode
     /// 
     /// # Arguments
-    /// * `reason` - Reason for triggering safe state
-    /// * `timestamp_ns` - Current timestamp in nanoseconds since epoch
-    pub fn trigger(&mut self, reason: String, timestamp_ns: u64) {
-        self.mode = SafeStateMode::FailVisible;
-        self.triggered_timestamp_ns = Some(timestamp_ns);
-        self.trigger_reason = Some(reason);
+    /// * `current_ns` - Current timestamp in nanoseconds since epoch
+    /// 
+    /// Returns the current system mode after evaluation
+    pub fn evaluate(&mut self, current_ns: u64) -> SystemMode {
+        self.last_check_ns = current_ns;
+        
+        // Check all heartbeats
+        let mut expired_count = 0;
+        for heartbeat in &self.heartbeats {
+            match heartbeat.check(current_ns) {
+                HeartbeatStatus::Expired => expired_count += 1,
+                HeartbeatStatus::Warning => {
+                    tracing::warn!(
+                        node_id = %heartbeat.node_id,
+                        "Heartbeat warning: approaching timeout"
+                    );
+                }
+                HeartbeatStatus::Alive => {}
+            }
+        }
+        
+        // If any heartbeat expired, trigger safe state
+        if expired_count > 0 && self.mode == SystemMode::Operational {
+            tracing::error!(
+                expired_count = expired_count,
+                "Heartbeat(s) expired, triggering FailVisible mode"
+            );
+            self.mode = SystemMode::FailVisible;
+        }
+        
+        self.mode
     }
     
-    /// Get required valve state based on safe state mode
+    /// Trigger safe state immediately
     /// 
-    /// In FailVisible mode, all valves must be closed.
-    pub fn required_valve_state(&self) -> ValveState {
-        match self.mode {
-            SafeStateMode::Normal => ValveState::Unknown,
-            SafeStateMode::FailVisible => ValveState::Closed,
-        }
+    /// Returns commands to close all valves (SOV100-103, SOV110)
+    pub fn trigger_safe_state(&mut self) -> Vec<ValveCommand> {
+        self.mode = SystemMode::FailVisible;
+        
+        // Generate close commands for all known SOV valves
+        vec![
+            ValveCommand::close(100), // SOV100
+            ValveCommand::close(101), // SOV101
+            ValveCommand::close(102), // SOV102
+            ValveCommand::close(103), // SOV103
+            ValveCommand::close(110), // SOV110
+        ]
     }
     
     /// Attempt to resume normal operation
     /// 
-    /// Requires manual attestation (simulated by operator_id parameter).
-    /// In production, this would verify cryptographic attestation.
+    /// Requires:
+    /// - Manual TPM attestation from authorized operator
+    /// - All heartbeats must be alive (not expired)
     /// 
     /// # Arguments
-    /// * `operator_id` - Operator identifier (attestation placeholder)
-    pub fn resume(&mut self, operator_id: String) -> Result<(), String> {
-        if self.mode == SafeStateMode::Normal {
-            return Err("Already in normal mode".to_string());
+    /// * `manual_attestation` - TPM attestation from operator
+    pub fn resume(&mut self, manual_attestation: TpmAttestation) -> Result<(), SafetyError> {
+        if self.mode == SystemMode::Operational {
+            return Err(SafetyError::AlreadyOperational);
         }
         
-        // In production, verify cryptographic attestation here
-        // For now, we accept any non-empty operator ID
-        if operator_id.is_empty() {
-            return Err("Invalid operator ID".to_string());
+        // Verify attestation timestamp is present
+        if manual_attestation.timestamp == 0 {
+            return Err(SafetyError::InvalidAttestation(
+                "Attestation timestamp is zero".to_string()
+            ));
         }
         
-        self.mode = SafeStateMode::Normal;
-        self.triggered_timestamp_ns = None;
-        self.trigger_reason = None;
+        // Check that all heartbeats are alive
+        let current_ns = manual_attestation.timestamp;
+        let expired: Vec<_> = self.heartbeats
+            .iter()
+            .filter(|h| h.check(current_ns) == HeartbeatStatus::Expired)
+            .map(|h| h.node_id.as_str())
+            .collect();
+        
+        if !expired.is_empty() {
+            return Err(SafetyError::HeartbeatsExpired(expired.len()));
+        }
+        
+        // Resume operational mode
+        self.mode = SystemMode::Operational;
+        tracing::info!("System resumed to operational mode with manual attestation");
         
         Ok(())
     }
-    
-    /// Check if system is in safe state
-    pub fn is_safe_state(&self) -> bool {
-        self.mode == SafeStateMode::FailVisible
-    }
 }
 
-impl Default for SafeState {
+impl Default for DeadManSwitch {
     fn default() -> Self {
         Self::new()
     }
@@ -98,25 +160,96 @@ impl Default for SafeState {
 mod tests {
     use super::*;
     
-    #[test]
-    fn test_safe_state_trigger() {
-        let mut safe_state = SafeState::new();
-        assert_eq!(safe_state.mode, SafeStateMode::Normal);
-        
-        safe_state.trigger("Heartbeat expired".to_string(), 1_000_000_000);
-        
-        assert_eq!(safe_state.mode, SafeStateMode::FailVisible);
-        assert_eq!(safe_state.required_valve_state(), ValveState::Closed);
-        assert!(safe_state.is_safe_state());
+    fn create_test_attestation(timestamp: u64) -> TpmAttestation {
+        TpmAttestation::new(
+            vec![0xAA; 64],
+            vec![0xFF; 32],
+            vec![0xBB; 128],
+            timestamp,
+        )
     }
     
     #[test]
-    fn test_safe_state_resume() {
-        let mut safe_state = SafeState::new();
-        safe_state.trigger("Test trigger".to_string(), 1_000_000_000);
+    fn test_dead_man_switch_operational() {
+        let mut dms = DeadManSwitch::new();
+        assert_eq!(dms.mode, SystemMode::Operational);
         
-        assert!(safe_state.resume("operator123".to_string()).is_ok());
-        assert_eq!(safe_state.mode, SafeStateMode::Normal);
-        assert!(!safe_state.is_safe_state());
+        // Add a healthy heartbeat
+        let heartbeat = Heartbeat::new(
+            "node-001".to_string(),
+            5_000_000_000,
+            create_test_attestation(1_000_000_000),
+        );
+        dms.add_heartbeat(heartbeat);
+        
+        // Evaluate at 2 seconds (heartbeat still alive)
+        let mode = dms.evaluate(2_000_000_000);
+        assert_eq!(mode, SystemMode::Operational);
+    }
+    
+    #[test]
+    fn test_dead_man_switch_fail_visible() {
+        let mut dms = DeadManSwitch::new();
+        
+        // Add an expired heartbeat
+        let heartbeat = Heartbeat::new(
+            "node-001".to_string(),
+            5_000_000_000,
+            create_test_attestation(1_000_000_000),
+        );
+        dms.add_heartbeat(heartbeat);
+        
+        // Evaluate at 7 seconds (heartbeat expired)
+        let mode = dms.evaluate(7_000_000_000);
+        assert_eq!(mode, SystemMode::FailVisible);
+    }
+    
+    #[test]
+    fn test_trigger_safe_state() {
+        let mut dms = DeadManSwitch::new();
+        let commands = dms.trigger_safe_state();
+        
+        assert_eq!(dms.mode, SystemMode::FailVisible);
+        assert_eq!(commands.len(), 5);
+    }
+    
+    #[test]
+    fn test_resume_success() {
+        let mut dms = DeadManSwitch::new();
+        dms.mode = SystemMode::FailVisible;
+        
+        // Add a healthy heartbeat
+        let heartbeat = Heartbeat::new(
+            "node-001".to_string(),
+            5_000_000_000,
+            create_test_attestation(1_000_000_000),
+        );
+        dms.add_heartbeat(heartbeat);
+        
+        // Resume at 2 seconds (heartbeat alive)
+        let attestation = create_test_attestation(2_000_000_000);
+        assert!(dms.resume(attestation).is_ok());
+        assert_eq!(dms.mode, SystemMode::Operational);
+    }
+    
+    #[test]
+    fn test_resume_fail_expired_heartbeat() {
+        let mut dms = DeadManSwitch::new();
+        dms.mode = SystemMode::FailVisible;
+        
+        // Add an expired heartbeat
+        let heartbeat = Heartbeat::new(
+            "node-001".to_string(),
+            5_000_000_000,
+            create_test_attestation(1_000_000_000),
+        );
+        dms.add_heartbeat(heartbeat);
+        
+        // Try to resume at 7 seconds (heartbeat expired)
+        let attestation = create_test_attestation(7_000_000_000);
+        let result = dms.resume(attestation);
+        
+        assert!(result.is_err());
+        assert_eq!(dms.mode, SystemMode::FailVisible);
     }
 }

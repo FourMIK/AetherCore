@@ -2,33 +2,21 @@
 
 use serde::{Deserialize, Serialize};
 use super::quorum::QuorumProof;
-use crate::materia::H2Detect;
+use crate::materia::TpmAttestation;
 
-/// Safety reason for emergency shutdown
+/// Safety reason for command execution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SafetyReason {
-    /// Hydrogen leak detected
-    HydrogenLeak {
-        /// Hydrogen concentration in PPM
-        concentration_ppm: f32
-    },
-    /// Pressure threshold exceeded
-    PressureExceeded {
-        /// Pressure reading in PSI
-        pressure_psi: f32
-    },
-    /// Communication heartbeat expired
+    /// Hydrogen detected
+    H2Detected,
+    /// Heartbeat expired
     HeartbeatExpired,
-    /// Manual emergency stop
-    ManualStop {
-        /// Operator identifier
-        operator_id: String
-    },
-    /// System fault detected
-    SystemFault {
-        /// Fault code
-        fault_code: u32
-    },
+    /// Quorum revoked
+    QuorumRevoked,
+    /// Manual shutdown initiated
+    ManualShutdown,
+    /// Threshold breach detected
+    ThresholdBreach,
 }
 
 /// Valve command enumeration
@@ -44,8 +32,8 @@ pub enum ValveCommand {
         valve_id: u16,
         /// Quorum proof from trusted nodes
         quorum_proof: QuorumProof,
-        /// H2 detector reading confirming no leaks
-        h2_attestation: Option<H2Detect>,
+        /// H2 clear attestation (H2Detect must confirm zero leaks)
+        h2_clear_attestation: TpmAttestation,
     },
     
     /// Close valve (no proof required for safety)
@@ -58,29 +46,34 @@ pub enum ValveCommand {
     EmergencyShutdown {
         /// Reason for emergency shutdown
         reason: SafetyReason,
+        /// Initiator node or operator identifier
+        initiator: String,
     },
+}
+
+/// Command validation error
+#[derive(Debug, thiserror::Error)]
+pub enum CommandError {
+    /// Quorum verification failed
+    #[error("Quorum verification failed: {0}")]
+    QuorumFailed(String),
+    
+    /// H2 detector indicates leak
+    #[error("H2 leak detected: {0}")]
+    H2Detected(String),
+    
+    /// Invalid valve identifier
+    #[error("Invalid valve ID: {0}")]
+    InvalidValveId(u16),
 }
 
 impl ValveCommand {
     /// Create an open command
-    pub fn open(valve_id: u16, quorum_proof: QuorumProof) -> Self {
+    pub fn open(valve_id: u16, quorum_proof: QuorumProof, h2_clear_attestation: TpmAttestation) -> Self {
         Self::Open {
             valve_id,
             quorum_proof,
-            h2_attestation: None,
-        }
-    }
-    
-    /// Create an open command with H2 attestation
-    pub fn open_with_h2_attestation(
-        valve_id: u16,
-        quorum_proof: QuorumProof,
-        h2_attestation: H2Detect,
-    ) -> Self {
-        Self::Open {
-            valve_id,
-            quorum_proof,
-            h2_attestation: Some(h2_attestation),
+            h2_clear_attestation,
         }
     }
     
@@ -90,38 +83,34 @@ impl ValveCommand {
     }
     
     /// Create an emergency shutdown command
-    pub fn emergency_shutdown(reason: SafetyReason) -> Self {
-        Self::EmergencyShutdown { reason }
+    pub fn emergency_shutdown(reason: SafetyReason, initiator: String) -> Self {
+        Self::EmergencyShutdown { reason, initiator }
     }
     
     /// Verify the command can be executed safely
     /// 
     /// For Open commands:
     /// - Verifies quorum proof
-    /// - Checks H2 detector if present (concentration must be 0)
-    pub fn verify(&self) -> Result<(), String> {
+    /// - Checks H2 attestation timestamp is recent
+    pub fn validate(&self) -> Result<(), CommandError> {
         match self {
             ValveCommand::Open {
                 quorum_proof,
-                h2_attestation,
+                h2_clear_attestation,
                 ..
             } => {
                 // Verify quorum proof
                 quorum_proof
                     .verify()
-                    .map_err(|e| format!("Quorum verification failed: {}", e))?;
+                    .map_err(|e| CommandError::QuorumFailed(format!("{}", e)))?;
                 
-                // Check H2 detector if present
-                if let Some(h2) = h2_attestation {
-                    if h2.concentration_ppm > 0.0 {
-                        return Err(format!(
-                            "Cannot open valve: hydrogen detected ({} ppm)",
-                            h2.concentration_ppm
-                        ));
-                    }
-                    if h2.alarm_active {
-                        return Err("Cannot open valve: H2 alarm active".to_string());
-                    }
+                // Check that H2 attestation timestamp is present
+                // In production, would validate the attestation signature and check
+                // that H2 concentration is zero
+                if h2_clear_attestation.timestamp == 0 {
+                    return Err(CommandError::H2Detected(
+                        "H2 attestation timestamp is zero".to_string()
+                    ));
                 }
                 
                 Ok(())

@@ -35,13 +35,13 @@ impl MateriaSlot for PT100 {
         &self.attestation
     }
     
-    fn compute_hash(&self) -> blake3::Hash {
+    fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());
         hasher.update(&self.pressure_psi.to_le_bytes());
         hasher.update(&self.timestamp_ns.to_le_bytes());
         hasher.update(&[self.status]);
-        hasher.finalize()
+        *hasher.finalize().as_bytes()
     }
 }
 
@@ -75,13 +75,13 @@ impl MateriaSlot for PT110 {
         &self.attestation
     }
     
-    fn compute_hash(&self) -> blake3::Hash {
+    fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());
         hasher.update(&self.pressure_psi.to_le_bytes());
         hasher.update(&self.timestamp_ns.to_le_bytes());
         hasher.update(&[self.status]);
-        hasher.finalize()
+        *hasher.finalize().as_bytes()
     }
 }
 
@@ -115,13 +115,13 @@ impl MateriaSlot for PS110 {
         &self.attestation
     }
     
-    fn compute_hash(&self) -> blake3::Hash {
+    fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());
         hasher.update(&[self.activated as u8]);
         hasher.update(&self.threshold_psi.to_le_bytes());
         hasher.update(&self.timestamp_ns.to_le_bytes());
-        hasher.finalize()
+        *hasher.finalize().as_bytes()
     }
 }
 
@@ -155,13 +155,13 @@ impl MateriaSlot for H2Detect {
         &self.attestation
     }
     
-    fn compute_hash(&self) -> blake3::Hash {
+    fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());
         hasher.update(&self.concentration_ppm.to_le_bytes());
         hasher.update(&[self.alarm_active as u8]);
         hasher.update(&self.timestamp_ns.to_le_bytes());
-        hasher.finalize()
+        *hasher.finalize().as_bytes()
     }
 }
 
@@ -195,12 +195,12 @@ impl MateriaSlot for CGFLT {
         &self.attestation
     }
     
-    fn compute_hash(&self) -> blake3::Hash {
+    fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());
         hasher.update(&[self.fault_active as u8]);
         hasher.update(&self.pressure_diff_psi.to_le_bytes());
         hasher.update(&self.timestamp_ns.to_le_bytes());
-        hasher.finalize()
+        *hasher.finalize().as_bytes()
     }
 }

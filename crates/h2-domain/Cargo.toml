@@ -10,12 +10,14 @@ description = "H2OS domain integration - may reference legacy"
 [dependencies]
 aethercore-core = { path = "../core" }
 aethercore-crypto = { path = "../crypto" }
+aethercore-identity = { path = "../identity" }
 aethercore-domain = { path = "../domain" }
 serde = { workspace = true }
 serde_json = { workspace = true }
-anyhow = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 blake3 = { workspace = true }
 ed25519-dalek = { workspace = true }
 
-# Note: This crate is allowed to reference /legacy according to monorepo rules
+[dev-dependencies]
+tokio = { workspace = true }

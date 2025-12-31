@@ -8,7 +8,7 @@ pub mod sensors;
 pub mod valves;
 pub mod configuration;
 
-pub use traits::MateriaSlot;
+pub use traits::{MateriaSlot, MerkleVineLink, TpmAttestation};
 pub use sensors::*;
 pub use valves::*;
 pub use configuration::*;
