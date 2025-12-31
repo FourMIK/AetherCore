@@ -31,10 +31,20 @@ impl MeshSecurity {
     }
 
     /// Sign a routing update
+    ///
+    /// # Security Note
+    /// **STUB IMPLEMENTATION**: This currently returns a placeholder signature.
+    /// In production, this MUST be replaced with actual TPM-based signing.
     pub fn sign_routing_update(&self, _update: &[u8]) -> Result<Vec<u8>, String> {
         if let Some(_service) = &self.signing_service {
-            // In production, this would use the actual signing service
-            // For now, return a placeholder signature
+            // TODO: Implement actual Ed25519 signing via TPM
+            // Production implementation should:
+            // 1. Hash the update with BLAKE3
+            // 2. Sign the hash with TPM-backed Ed25519 key
+            // 3. Return the signature
+            #[cfg(debug_assertions)]
+            eprintln!("WARNING: Using stub signature implementation. DO NOT USE IN PRODUCTION!");
+            
             Ok(vec![0u8; 64]) // Ed25519 signature size
         } else {
             Err("No signing service configured".to_string())
@@ -42,30 +52,48 @@ impl MeshSecurity {
     }
 
     /// Verify a routing update signature
+    ///
+    /// # Security Note
+    /// **STUB IMPLEMENTATION**: This currently accepts all signatures.
+    /// In production, this MUST be replaced with actual Ed25519 verification.
     pub fn verify_routing_update(&self, _update: &[u8], signature: &[u8], _public_key: &[u8]) -> Result<bool, String> {
         if signature.len() != 64 {
             return Err("Invalid signature length".to_string());
         }
         
-        // In production, use Ed25519 verification
-        // For now, accept all signatures for testing
+        // TODO: Implement actual Ed25519 verification
+        // Production implementation should:
+        // 1. Hash the update with BLAKE3
+        // 2. Verify signature against public key
+        // 3. Return verification result
+        #[cfg(debug_assertions)]
+        eprintln!("WARNING: Accepting all signatures. DO NOT USE IN PRODUCTION!");
+        
         Ok(true)
     }
 
     /// Verify TPM attestation for a peer
+    ///
+    /// # Security Note
+    /// **STUB IMPLEMENTATION**: Returns hardcoded trust scores without verification.
+    /// In production, this MUST perform actual TPM attestation verification.
     pub fn verify_attestation(&self, attestation: &Attestation) -> Result<f64, String> {
         match attestation {
             Attestation::Tpm { quote: _, pcrs: _, ak_cert: _ } => {
-                // In production:
-                // 1. Verify AK certificate chain
-                // 2. Verify TPM quote signature
-                // 3. Check PCR values against policy
+                // TODO: Implement actual TPM attestation verification
+                // Production implementation should:
+                // 1. Verify AK certificate chain against trusted roots
+                // 2. Verify TPM quote signature using AK
+                // 3. Check PCR values against security policy
+                // 4. Return trust score based on verification results
+                #[cfg(debug_assertions)]
+                eprintln!("WARNING: Skipping TPM attestation verification. DO NOT USE IN PRODUCTION!");
                 
-                // For now, return high trust score
                 Ok(1.0)
             }
             Attestation::Software { certificate: _ } => {
                 // Software attestation has lower trust
+                // TODO: Verify software certificate
                 Ok(0.7)
             }
             Attestation::None => {

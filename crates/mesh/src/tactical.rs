@@ -52,11 +52,12 @@ impl TacticalMesh {
         self.peer_table.upsert_peer(peer.clone())?;
 
         // Update routing table with direct link
+        // TODO: Replace hardcoded values with actual link quality measurements
         let link_quality = LinkQuality {
-            snr_db: 20.0, // Default, should be measured
+            snr_db: 20.0, // Placeholder - should be measured from radio layer
             trust_score: peer.trust_score,
             latency_ms: peer.latency_ms,
-            packet_error_rate: 0.01, // Default low PER
+            packet_error_rate: 0.01, // Placeholder - should be measured from radio layer
             last_measured: peer.last_seen,
         };
 

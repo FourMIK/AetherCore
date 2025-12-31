@@ -165,6 +165,9 @@ pub enum HopReason {
 }
 
 /// Generate a pseudo-random hopping pattern from a seed
+///
+/// Uses BLAKE3 to expand short seeds to full 32-byte entropy before
+/// initializing the PRNG for deterministic pattern generation.
 pub fn generate_hopping_pattern(
     seed: Vec<u8>,
     num_channels: usize,
@@ -174,12 +177,11 @@ pub fn generate_hopping_pattern(
     use rand::{Rng, SeedableRng};
     use rand::rngs::StdRng;
 
-    // Create deterministic RNG from seed
-    let mut seed_array = [0u8; 32];
-    for (i, &byte) in seed.iter().take(32).enumerate() {
-        seed_array[i] = byte;
-    }
-    let mut rng = StdRng::from_seed(seed_array);
+    // Use BLAKE3 to properly expand seed to 32 bytes
+    let seed_hash = blake3::hash(&seed);
+    let seed_array = seed_hash.as_bytes();
+    
+    let mut rng = StdRng::from_seed(*seed_array);
 
     // Generate random channel sequence
     let channels: Vec<ChannelId> = (0..num_channels)
