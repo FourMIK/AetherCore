@@ -29,7 +29,10 @@
 
 pub mod attestation;
 pub mod device;
+pub mod enrollment;
+pub mod enrollment_state;
 pub mod federation;
+pub mod genesis_bundle;
 pub mod materia_slot;
 pub mod pki;
 pub mod tpm;
@@ -39,7 +42,17 @@ pub use attestation::{
     AttestationResult, HandshakeState, PROTOCOL_VERSION,
 };
 pub use device::{Attestation, IdentityManager, IdentityVerification, PlatformIdentity};
+pub use enrollment::{
+    EnrollmentContext, EnrollmentRequest, PlatformType, CHALLENGE_WINDOW_MS, REQUIRED_PCRS,
+};
+pub use enrollment_state::{
+    EnrollmentError, EnrollmentState, EnrollmentStateMachine, StateTransition,
+};
 pub use federation::{FederatedIdentity, FederationRegistry, TrustLevel};
+pub use genesis_bundle::{
+    install_genesis_bundle, BootstrapNode, GenesisBundle, GenesisBundleGenerator,
+    GENESIS_BUNDLE_PATH,
+};
 pub use materia_slot::{FederatedMateriaSlot, Materia, MateriaSlot};
 pub use pki::{Certificate, CertificateAuthority, CertificateRequest, TrustChainValidator};
 pub use tpm::{AttestationKey, PcrValue, TpmManager, TpmQuote};
