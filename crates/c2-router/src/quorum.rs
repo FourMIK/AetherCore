@@ -210,12 +210,6 @@ mod tests {
     use super::*;
     use crate::command_types::Coordinate;
     use ed25519_dalek::{Signer, SigningKey};
-    
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::command_types::Coordinate;
-    use ed25519_dalek::{Signer, SigningKey};
     use rand::RngCore;
     
     fn create_test_signature(signing_key: &SigningKey, command_hash: &[u8; 32], authority_id: &str) -> AuthoritySignature {
@@ -311,5 +305,4 @@ mod tests {
         let gate = QuorumGate::new(verifier);
         assert!(gate.verify_unit_command(&command, &command_hash, &signatures).is_ok());
     }
-}
 }

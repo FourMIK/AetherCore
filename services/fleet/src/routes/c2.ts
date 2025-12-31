@@ -8,7 +8,7 @@
 
 export interface UnitCommandRequest {
   unitId: string;
-  command: any;  // UnitCommand (JSON)
+  command: Record<string, unknown>;  // UnitCommand (JSON)
   signatures: string[];
   timestampNs: number;
 }
@@ -23,7 +23,7 @@ export interface UnitCommandResponse {
 export interface SwarmCommandRequest {
   swarmCommandId: string;
   targetUnitIds: string[];
-  command: any;  // SwarmCommand (JSON)
+  command: Record<string, unknown>;  // SwarmCommand (JSON)
   signatures: string[];
   timestampNs: number;
 }
@@ -41,7 +41,7 @@ export interface SwarmCommandResponse {
 export interface CommandStatusResponse {
   commandId: string;
   status: 'pending' | 'executing' | 'completed' | 'failed' | 'aborted';
-  details: any;
+  details: Record<string, unknown>;
   timestampNs: number;
 }
 
@@ -63,7 +63,7 @@ export class C2Routes {
    * 
    * Execute a command on a single unit
    */
-  static async executeUnitCommand(req: any): Promise<UnitCommandResponse> {
+  static async executeUnitCommand(req: UnitCommandRequest): Promise<UnitCommandResponse> {
     // Placeholder: In production, this would:
     // 1. Validate request body
     // 2. Call C2RouterService via gRPC
