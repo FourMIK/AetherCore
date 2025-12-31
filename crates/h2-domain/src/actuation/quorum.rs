@@ -82,6 +82,12 @@ impl QuorumProof {
         self.signatures.len() >= self.threshold as usize
     }
     
+    /// Helper to convert node_id string to u16 for error reporting
+    fn node_id_to_u16(node_id: &str) -> u16 {
+        // Use first byte of node_id as hash for error reporting
+        node_id.as_bytes().get(0).copied().unwrap_or(0) as u16
+    }
+    
     /// Verify the quorum proof
     /// 
     /// Checks that:
@@ -101,10 +107,8 @@ impl QuorumProof {
         let mut seen_nodes = std::collections::HashSet::new();
         for sig in &self.signatures {
             if !seen_nodes.insert(&sig.node_id) {
-                // Convert string to u16 for error reporting (use hash of first bytes)
-                let node_id_hash = sig.node_id.as_bytes().get(0).copied().unwrap_or(0) as u16;
                 return Err(QuorumError::DuplicateNode {
-                    node_id: node_id_hash,
+                    node_id: Self::node_id_to_u16(&sig.node_id),
                 });
             }
         }
@@ -112,19 +116,15 @@ impl QuorumProof {
         // Verify each signature
         for sig in &self.signatures {
             let verifying_key = VerifyingKey::from_bytes(&sig.public_key)
-                .map_err(|e| {
-                    let node_id_hash = sig.node_id.as_bytes().get(0).copied().unwrap_or(0) as u16;
-                    QuorumError::InvalidSignature {
-                        node_id: node_id_hash,
-                        reason: format!("Invalid public key: {}", e),
-                    }
+                .map_err(|e| QuorumError::InvalidSignature {
+                    node_id: Self::node_id_to_u16(&sig.node_id),
+                    reason: format!("Invalid public key: {}", e),
                 })?;
             
             // Parse signature (must be exactly 64 bytes)
             if sig.signature.len() != 64 {
-                let node_id_hash = sig.node_id.as_bytes().get(0).copied().unwrap_or(0) as u16;
                 return Err(QuorumError::InvalidSignature {
-                    node_id: node_id_hash,
+                    node_id: Self::node_id_to_u16(&sig.node_id),
                     reason: format!("Invalid signature length: {} (expected 64)", sig.signature.len()),
                 });
             }
@@ -135,12 +135,9 @@ impl QuorumProof {
             // Verify signature over command hash
             verifying_key
                 .verify(&self.command_hash, &signature)
-                .map_err(|e| {
-                    let node_id_hash = sig.node_id.as_bytes().get(0).copied().unwrap_or(0) as u16;
-                    QuorumError::InvalidSignature {
-                        node_id: node_id_hash,
-                        reason: format!("Signature verification failed: {}", e),
-                    }
+                .map_err(|e| QuorumError::InvalidSignature {
+                    node_id: Self::node_id_to_u16(&sig.node_id),
+                    reason: format!("Signature verification failed: {}", e),
                 })?;
         }
         

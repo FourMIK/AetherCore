@@ -74,8 +74,8 @@ impl DeadManSwitch {
                 HeartbeatStatus::Expired => expired_count += 1,
                 HeartbeatStatus::Warning => {
                     tracing::warn!(
-                        "Heartbeat warning for node {}: approaching timeout",
-                        heartbeat.node_id
+                        node_id = %heartbeat.node_id,
+                        "Heartbeat warning: approaching timeout"
                     );
                 }
                 HeartbeatStatus::Alive => {}
@@ -85,8 +85,8 @@ impl DeadManSwitch {
         // If any heartbeat expired, trigger safe state
         if expired_count > 0 && self.mode == SystemMode::Operational {
             tracing::error!(
-                "{} heartbeat(s) expired, triggering FailVisible mode",
-                expired_count
+                expired_count = expired_count,
+                "Heartbeat(s) expired, triggering FailVisible mode"
             );
             self.mode = SystemMode::FailVisible;
         }
