@@ -3,7 +3,7 @@
 //! Manages node-local event chains with append-only semantics and signature verification.
 
 use crate::signing::{EventSigner, KeyManager, SigningError};
-use fourmik_domain::{CanonicalEvent, ChainBuilder, ChainLink, ChainRoot, EventHash};
+use aethercore_domain::{CanonicalEvent, ChainBuilder, ChainLink, ChainRoot, EventHash};
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -23,7 +23,7 @@ pub enum ChainError {
     SignatureError(#[from] SigningError),
 
     #[error("Domain error: {0}")]
-    DomainError(#[from] fourmik_domain::DomainError),
+    DomainError(#[from] aethercore_domain::DomainError),
 }
 
 pub type Result<T> = std::result::Result<T, ChainError>;
@@ -236,7 +236,7 @@ impl<K: KeyManager> ChainManager<K> {
 mod tests {
     use super::*;
     use crate::signing::InMemoryKeyManager;
-    use fourmik_domain::canonical_event::{EventPayload, EventType};
+    use aethercore_domain::canonical_event::{EventPayload, EventType};
 
     fn create_test_event(event_id: &str, device_id: &str, node_id: &str) -> CanonicalEvent {
         CanonicalEvent {

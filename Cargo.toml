@@ -41,6 +41,7 @@ zeroize = { version = "1.7", features = ["derive"] }
 getrandom = "0.2"
 hex = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
+toml = "0.8"
 
 [profile.release]
 opt-level = 3

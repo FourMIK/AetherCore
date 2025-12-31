@@ -3,7 +3,7 @@
 //! Command-line interface for building Merkle trees, generating proofs,
 //! and verifying proofs independently of the backend service.
 
-use fourmik_core::{preprocess_leaves, MerkleProof, MerkleTree};
+use aethercore_core::{preprocess_leaves, MerkleProof, MerkleTree};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, BufRead};

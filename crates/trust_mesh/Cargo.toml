@@ -9,7 +9,15 @@ repository.workspace = true
 [dependencies]
 aethercore-core = { path = "../core" }
 aethercore-crypto = { path = "../crypto" }
-aethercore-mesh = { path = "../mesh" }
-tokio = { workspace = true }
+aethercore-domain = { path = "../domain" }
 serde = { workspace = true }
-anyhow = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+blake3 = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

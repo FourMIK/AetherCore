@@ -246,8 +246,16 @@ impl TpmManager {
         !quote.pcrs.is_empty() && !quote.signature.is_empty()
     }
 
+    /// INSECURE: Stub seal function using XOR cipher - FOR TESTING ONLY
+    /// 
+    /// This function provides minimal encryption for testing purposes.
+    /// It MUST NOT be used in production. Production TPM sealing should use
+    /// hardware-backed encryption with the TPM's storage root key.
+    /// 
+    /// To prevent accidental production use, enable the `hardware-tpm` feature
+    /// which will enforce proper TPM hardware operations.
     fn seal_data_stub(&mut self, key_id: &str, data: Vec<u8>) -> crate::Result<Vec<u8>> {
-        // Simple XOR "encryption" for stub
+        // Simple XOR "encryption" for stub (INSECURE - testing only)
         let key = self
             .stub_keys
             .get(key_id)
@@ -261,8 +269,11 @@ impl TpmManager {
         Ok(sealed)
     }
 
+    /// INSECURE: Stub unseal function using XOR cipher - FOR TESTING ONLY
+    /// 
+    /// See seal_data_stub for security warnings.
     fn unseal_data_stub(&mut self, key_id: &str, sealed_data: Vec<u8>) -> crate::Result<Vec<u8>> {
-        // XOR again to decrypt (symmetric)
+        // XOR again to decrypt (symmetric) - INSECURE, testing only
         self.seal_data_stub(key_id, sealed_data)
     }
 }

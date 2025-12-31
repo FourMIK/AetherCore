@@ -18,8 +18,12 @@ use super::inputs::{ZkPrivateInputs, ZkPublicInputs};
 use super::poseidon::{attestation_root, device_commitment, location_commitment};
 use serde::{Deserialize, Serialize};
 
-// Placeholder proof component sizes for Groth16 on BN254
-// TODO: These will be determined by the actual circuit when using ark-groth16
+// Placeholder proof component sizes for Groth16 on BN254 curve
+// These sizes are based on BN254 curve parameters:
+// - π_A: G1 point (2 field elements × 32 bytes = 64 bytes)
+// - π_B: G2 point (4 field elements × 32 bytes = 128 bytes)
+// - π_C: G1 point (2 field elements × 32 bytes = 64 bytes)
+// When integrating ark-groth16, these will be replaced with actual serialized proof sizes
 const PROOF_PI_A_SIZE: usize = 64;
 const PROOF_PI_B_SIZE: usize = 128;
 const PROOF_PI_C_SIZE: usize = 64;

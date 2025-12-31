@@ -4,7 +4,7 @@
 //! Implements key management with pluggable backends.
 
 use ed25519_dalek::{Signature as Ed25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use fourmik_domain::{CanonicalEvent, PublicKey};
+use aethercore_domain::{CanonicalEvent, PublicKey};
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -227,7 +227,7 @@ impl<K: KeyManager> EventSigner<K> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fourmik_domain::canonical_event::{EventPayload, EventType};
+    use aethercore_domain::canonical_event::{EventPayload, EventType};
 
     fn create_test_event() -> CanonicalEvent {
         let mut event = CanonicalEvent {

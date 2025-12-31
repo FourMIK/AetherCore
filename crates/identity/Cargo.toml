@@ -6,8 +6,18 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+hardware-tpm = []
+
 [dependencies]
 aethercore-core = { path = "../core" }
 aethercore-crypto = { path = "../crypto" }
 serde = { workspace = true }
+serde_json = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
