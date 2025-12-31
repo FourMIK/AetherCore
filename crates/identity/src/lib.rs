@@ -29,6 +29,8 @@
 
 pub mod attestation;
 pub mod device;
+pub mod federation;
+pub mod materia_slot;
 pub mod pki;
 pub mod tpm;
 
@@ -37,6 +39,8 @@ pub use attestation::{
     AttestationResult, HandshakeState, PROTOCOL_VERSION,
 };
 pub use device::{Attestation, IdentityManager, IdentityVerification, PlatformIdentity};
+pub use federation::{FederatedIdentity, FederationRegistry, TrustLevel};
+pub use materia_slot::{FederatedMateriaSlot, Materia, MateriaSlot};
 pub use pki::{Certificate, CertificateAuthority, CertificateRequest, TrustChainValidator};
 pub use tpm::{AttestationKey, PcrValue, TpmManager, TpmQuote};
 
