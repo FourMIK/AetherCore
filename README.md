@@ -30,7 +30,6 @@ Backend services:
 - **gateway** — API Gateway service
 - **auth** — Authentication service
 - **fleet** — Fleet management service
-- **h2-ingest** — H2OS data ingest service
 - **operator** — Operator service
 
 ### `/packages` — TypeScript Packages
@@ -38,7 +37,6 @@ Backend services:
 Shared TypeScript packages:
 
 - **dashboard** — Dashboard application
-- **h2-glass** — H2OS visualization _(may reference `/legacy`)_
 - **canonical-schema** — Canonical data schemas
 - **shared** — Shared utilities
 
