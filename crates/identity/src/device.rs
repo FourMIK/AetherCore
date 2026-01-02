@@ -150,6 +150,11 @@ impl IdentityManager {
         self.revoked.contains(id)
     }
 
+    /// Check if an identity is enrolled (registered and not revoked).
+    pub fn is_enrolled(&self, id: &str) -> bool {
+        self.identities.contains_key(id) && !self.revoked.contains(id)
+    }
+
     /// List all registered identities.
     pub fn list(&self) -> Vec<&PlatformIdentity> {
         self.identities.values().collect()

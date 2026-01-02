@@ -37,6 +37,9 @@ pub mod materia_slot;
 pub mod pki;
 pub mod tpm;
 
+#[cfg(feature = "grpc-server")]
+pub mod grpc_server;
+
 pub use attestation::{
     AttestationFinalize, AttestationManager, AttestationRequest, AttestationResponse,
     AttestationResult, HandshakeState, PROTOCOL_VERSION,
@@ -56,6 +59,9 @@ pub use genesis_bundle::{
 pub use materia_slot::{FederatedMateriaSlot, Materia, MateriaSlot};
 pub use pki::{Certificate, CertificateAuthority, CertificateRequest, TrustChainValidator};
 pub use tpm::{AttestationKey, PcrValue, TpmManager, TpmQuote};
+
+#[cfg(feature = "grpc-server")]
+pub use grpc_server::{start_grpc_server, IdentityRegistryService};
 
 // Re-export core types for convenience
 pub use aethercore_core::{Error, Result};

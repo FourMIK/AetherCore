@@ -9,6 +9,7 @@ repository.workspace = true
 [features]
 default = []
 hardware-tpm = []
+grpc-server = ["tonic", "tonic-build", "prost"]
 
 [dependencies]
 aethercore-core = { path = "../core" }
@@ -19,6 +20,15 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 blake3 = { workspace = true }
+tokio = { workspace = true }
+# gRPC dependencies
+tonic = { version = "0.10", optional = true }
+prost = { version = "0.12", optional = true }
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+
+[build-dependencies]
+tonic-build = { version = "0.10", optional = true }
