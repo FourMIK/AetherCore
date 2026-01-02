@@ -41,6 +41,9 @@ pub mod session;
 pub mod signing;
 pub mod zk;
 
+#[cfg(feature = "grpc-server")]
+pub mod grpc_server;
+
 #[cfg(test)]
 mod bench;
 
@@ -70,6 +73,9 @@ pub use zk::{
     ZkError, ZkPrivateInputs, ZkProof, ZkProofParams, ZkProver, ZkProverTrait, ZkPublicInputs,
     ZkVerificationKey,
 };
+
+#[cfg(feature = "grpc-server")]
+pub use grpc_server::{start_grpc_server as start_signing_grpc_server, SigningServiceImpl};
 
 #[cfg(test)]
 mod tests {

@@ -6,6 +6,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+grpc-server = ["tonic", "tonic-build", "prost", "tokio"]
+
 [dependencies]
 aethercore-core = { path = "../core" }
 serde = { workspace = true }
@@ -21,6 +25,13 @@ rand = { workspace = true }
 zeroize = { workspace = true }
 getrandom = { workspace = true }
 hex = { workspace = true }
+# gRPC dependencies (optional)
+tonic = { version = "0.10", optional = true }
+prost = { version = "0.12", optional = true }
+tokio = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+
+[build-dependencies]
+tonic-build = { version = "0.10", optional = true }
