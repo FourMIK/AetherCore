@@ -184,18 +184,18 @@ export class StreamMonitor {
   /**
    * Compute BLAKE3 hash of frame data
    * 
-   * NOTE: This uses SHA-256 as a placeholder.
-   * In production, this would use actual BLAKE3 implementation
-   * (e.g., via npm package 'blake3' or crates/crypto FFI)
+   * Uses the BLAKE3 npm package for production-quality hashing.
+   * BLAKE3 is significantly faster than SHA-256 and is the standard
+   * for the 4MIK Trust Fabric.
    */
   private async computeBlake3Hash(data: Uint8Array): Promise<string> {
     try {
-      // BLAKE3 implementation would go here
-      // For now, use SHA-256 as placeholder
-      const hash = crypto.createHash('sha256').update(data).digest('hex');
+      // Use BLAKE3 for production hashing
+      const blake3 = require('blake3');
+      const hash = blake3.hash(data).toString('hex');
       return hash;
     } catch (error) {
-      console.error('[StreamMonitor] Error computing hash:', error);
+      console.error('[StreamMonitor] Error computing BLAKE3 hash:', error);
       throw error;
     }
   }
