@@ -78,18 +78,7 @@ export function startCollaborationServiceV2(
   return server;
 }
 
-// Auto-start if run directly
-if (require.main === module) {
-  const port = parseInt(process.env.PORT || '8080', 10);
-  const identityRegistryAddress =
-    process.env.IDENTITY_REGISTRY_ADDRESS || 'localhost:50051';
-  const useProduction = process.env.USE_PRODUCTION === 'true';
-
-  if (useProduction) {
-    console.log('[CollaborationService] Starting in PRODUCTION mode...');
-    startCollaborationServiceV2(port, identityRegistryAddress);
-  } else {
-    console.log('[CollaborationService] Starting in MOCK mode (development only)...');
-    startCollaborationService(port);
-  }
-}
+// Note: Auto-start functionality removed to avoid module system conflicts
+// To start the service, import and call the appropriate function:
+// - startCollaborationService(port) for MOCK mode (development)
+// - startCollaborationServiceV2(port, identityRegistryAddress) for PRODUCTION mode

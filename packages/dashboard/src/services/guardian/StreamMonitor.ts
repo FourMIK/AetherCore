@@ -191,9 +191,10 @@ export class StreamMonitor {
   private async computeBlake3Hash(data: Uint8Array): Promise<string> {
     try {
       // Use BLAKE3 for production hashing
-      const blake3 = require('blake3');
-      const hash = blake3.hash(data).toString('hex');
-      return hash;
+      // Note: Dynamic import used for compatibility with build system
+      const { hash } = await import('blake3');
+      const hashResult = hash(data).toString('hex');
+      return hashResult;
     } catch (error) {
       console.error('[StreamMonitor] Error computing BLAKE3 hash:', error);
       throw error;

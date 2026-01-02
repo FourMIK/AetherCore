@@ -61,8 +61,13 @@ export class IdentityRegistryClient {
       ...config,
     };
 
-    // Create gRPC client with insecure credentials (for now)
-    // In production, use TLS credentials
+    // Create gRPC client
+    // TODO: In production, use TLS credentials:
+    // const credentials = grpc.credentials.createSsl(
+    //   fs.readFileSync('ca.pem'),
+    //   fs.readFileSync('key.pem'),
+    //   fs.readFileSync('cert.pem')
+    // );
     this.client = new identityProto.IdentityRegistry(
       this.config.serverAddress,
       grpc.credentials.createInsecure(),
