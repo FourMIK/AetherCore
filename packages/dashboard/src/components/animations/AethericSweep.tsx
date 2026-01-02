@@ -12,6 +12,12 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 
+// Animation constants
+const PULSE_ANIMATION_PERIOD_MS = 200;
+const PURGE_ANIMATION_DURATION_MS = 5000;
+const SWEEP_CIRCLE_COUNT = 3;
+const SWEEP_CIRCLE_DELAY = 0.3;
+
 /**
  * Revocation reason enumeration (matches Rust backend)
  */
@@ -216,14 +222,14 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
       return newAnimations;
     });
 
-    // Remove animation after 5 seconds
+    // Remove animation after completion
     setTimeout(() => {
       setPurgeAnimations((prev) => {
         const newAnimations = new Map(prev);
         newAnimations.delete(cert.node_id);
         return newAnimations;
       });
-    }, 5000);
+    }, PURGE_ANIMATION_DURATION_MS);
   }, []);
 
   /**
@@ -321,7 +327,7 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
 
     // Pulsing effect for purged nodes
     if (node.beingPurged) {
-      const pulse = Math.sin(Date.now() / 200) * 0.3 + 0.7;
+      const pulse = Math.sin(Date.now() / PULSE_ANIMATION_PERIOD_MS) * 0.3 + 0.7;
       ctx.globalAlpha = pulse;
       ctx.strokeStyle = '#ff0044';
       ctx.lineWidth = 3;
@@ -341,12 +347,11 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
     startTime: number
   ) => {
     const elapsed = Date.now() - startTime;
-    const duration = 5000; // 5 seconds
-    const progress = Math.min(elapsed / duration, 1.0);
+    const progress = Math.min(elapsed / PURGE_ANIMATION_DURATION_MS, 1.0);
 
     // Draw 3 expanding circles
-    for (let i = 0; i < 3; i++) {
-      const delay = i * 0.3;
+    for (let i = 0; i < SWEEP_CIRCLE_COUNT; i++) {
+      const delay = i * SWEEP_CIRCLE_DELAY;
       const circleProgress = Math.max(0, Math.min((progress - delay) / (1 - delay), 1.0));
       const radius = circleProgress * 200;
       const opacity = (1 - circleProgress) * 0.6;

@@ -102,6 +102,11 @@ impl GospelLedger {
     }
     
     /// Add revocation certificate to ledger
+    ///
+    /// # Security
+    /// This function MUST verify the Ed25519 signature before accepting the certificate.
+    /// Current implementation has signature verification disabled for development/testing.
+    /// **DO NOT deploy to production without implementing proper signature verification.**
     pub async fn add_revocation(
         &self,
         cert: RevocationCertificate,
@@ -113,8 +118,17 @@ impl GospelLedger {
             return Err(GospelError::NodeAlreadyRevoked(cert.node_id.clone()));
         }
         
-        // TODO: Verify signature with Federation Root Certificate
-        // For now, we trust the signature is valid
+        // SECURITY WARNING: Ed25519 signature verification NOT YET IMPLEMENTED
+        // TODO: Verify signature with Federation Root Certificate before accepting
+        // Required steps:
+        // 1. Load Federation Root public key from secure storage
+        // 2. Decode hex signature from cert.signature
+        // 3. Construct message to verify (node_id + reason + timestamp)
+        // 4. Verify signature using ed25519-dalek::Verifier
+        // 5. Return InvalidSignature error if verification fails
+        //
+        // Until this is implemented, this ledger MUST NOT be used in production
+        // as it accepts any certificate without cryptographic verification.
         
         // Validate timestamp (allow ±5 seconds clock skew)
         let current_time = Self::current_timestamp_ns();

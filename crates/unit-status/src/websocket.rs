@@ -15,8 +15,7 @@ use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{error, info, warn};
 
-use crate::types::{UnitStatus};
-use crate::trust::TrustLevel;
+use crate::types::UnitStatus;
 
 /// WebSocket message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,15 +183,16 @@ impl WsServer {
         }
         
         // Broadcast health update
+        // TODO: Integrate with trust_mesh NodeHealthComputer to get real metrics
         let health_msg = WsMessage::MeshHealth(MeshHealthMessage {
             node_id: status.platform_id.id.clone(),
             status: format!("{:?}", Self::map_trust_to_health(status.trust_score)),
             trust_score: status.trust_score,
             last_seen_ns: status.last_seen_ns,
             metrics: HealthMetrics {
-                root_agreement_ratio: 0.95, // TODO: Get from trust_mesh
-                chain_break_count: 0,
-                signature_failure_count: 0,
+                root_agreement_ratio: 0.95, // TODO: Get from trust_mesh::NodeHealthComputer
+                chain_break_count: 0,        // TODO: Get from trust_mesh::NodeHealthComputer
+                signature_failure_count: 0,  // TODO: Get from trust_mesh::NodeHealthComputer
             },
         });
         
