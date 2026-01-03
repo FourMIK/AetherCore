@@ -4,7 +4,7 @@
 
 terraform {
   required_version = ">= 1.5.0"
-  
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -349,9 +349,9 @@ resource "aws_ecr_repository" "rust_base" {
 ###################
 
 resource "aws_kms_key" "signing" {
-  description             = "AetherCore Ed25519 signing key (software fallback)"
-  deletion_window_in_days = 30
-  key_usage               = "SIGN_VERIFY"
+  description              = "AetherCore Ed25519 signing key (software fallback)"
+  deletion_window_in_days  = 30
+  key_usage                = "SIGN_VERIFY"
   customer_master_key_spec = "ECC_NIST_P256"
 
   tags = {
@@ -468,8 +468,8 @@ resource "aws_elasticache_cluster" "redis" {
   parameter_group_name = "default.redis7"
   port                 = 6379
 
-  subnet_group_name    = aws_elasticache_subnet_group.main.name
-  security_group_ids   = [aws_security_group.elasticache.id]
+  subnet_group_name  = aws_elasticache_subnet_group.main.name
+  security_group_ids = [aws_security_group.elasticache.id]
 
   tags = {
     Name = "${var.project_name}-${var.environment}-redis"
@@ -761,7 +761,7 @@ resource "aws_secretsmanager_secret" "database_url" {
 }
 
 resource "aws_secretsmanager_secret_version" "database_url" {
-  secret_id = aws_secretsmanager_secret.database_url.id
+  secret_id     = aws_secretsmanager_secret.database_url.id
   secret_string = "postgresql://${var.db_username}:${var.db_password}@${aws_db_instance.postgres.endpoint}/${var.db_name}"
 }
 
