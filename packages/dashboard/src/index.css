@@ -53,35 +53,51 @@ code, pre {
   font-family: 'JetBrains Mono', monospace;
 }
 
-/* Glass Panel Styles */
+/* Enhanced Glass Panel Styles - Tactical Glass */
 .glass-panel {
   background: rgba(10, 11, 14, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
   border: 1px solid rgba(225, 226, 230, 0.1);
   border-radius: 8px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.05);
 }
 
 .glass-panel-heavy {
-  background: rgba(10, 11, 14, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(225, 226, 230, 0.15);
+  background: rgba(10, 11, 14, 0.88);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 2px solid rgba(225, 226, 230, 0.15);
   border-radius: 8px;
+  box-shadow: 
+    inset 0 0 0 1px rgba(0, 212, 255, 0.1),
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    0 0 20px rgba(0, 212, 255, 0.05);
 }
 
 .glass-panel-light {
   background: rgba(10, 11, 14, 0.5);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px) saturate(180%);
+  -webkit-backdrop-filter: blur(8px) saturate(180%);
   border: 1px solid rgba(225, 226, 230, 0.08);
   border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(0, 212, 255, 0.02);
 }
 
 .glass-panel:hover {
-  border-color: rgba(0, 212, 255, 0.3);
-  box-shadow: 0 0 20px rgba(0, 212, 255, 0.15);
+  border-color: rgba(0, 212, 255, 0.4);
+  box-shadow: 
+    inset 0 0 0 1px rgba(0, 212, 255, 0.05),
+    0 0 20px rgba(0, 212, 255, 0.2);
+}
+
+.glass-panel-heavy:hover {
+  border-color: rgba(0, 212, 255, 0.5);
+  box-shadow: 
+    inset 0 0 0 1px rgba(0, 212, 255, 0.2),
+    0 8px 40px rgba(0, 212, 255, 0.15),
+    0 0 30px rgba(0, 212, 255, 0.1);
 }
 
 /* Chamfered Corners */
@@ -95,140 +111,176 @@ code, pre {
   );
 }
 
-/* Button Styles */
+/* Button Styles - Tactical */
 .btn-primary {
   background: linear-gradient(135deg, #00D4FF, #0088CC);
-  color: #FFFFFF;
+  color: #0A0B0E;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: none;
-  font-weight: 600;
+  border-radius: 4px;
+  border: 2px solid #00D4FF;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: 0.875rem;
+  letter-spacing: 1px;
+  font-size: 0.75rem;
+  font-family: 'Rajdhani', sans-serif;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.4), inset 0 0 10px rgba(0, 212, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s ease;
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, #00B8E6, #0077BB);
-  box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #00E6FF, #00AADD);
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.6), inset 0 0 15px rgba(0, 212, 255, 0.2);
+  transform: translateY(-2px);
+  border-color: #00E6FF;
+}
+
+.btn-primary:hover::before {
+  left: 100%;
 }
 
 .btn-primary:active {
   transform: translateY(0);
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.4), inset 0 0 15px rgba(0, 212, 255, 0.3);
 }
 
 .btn-secondary {
   background: transparent;
-  color: var(--color-overmatch);
+  color: #00D4FF;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: 1px solid var(--color-overmatch);
-  font-weight: 600;
+  border-radius: 4px;
+  border: 2px solid #00D4FF;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: 0.875rem;
+  letter-spacing: 1px;
+  font-size: 0.75rem;
+  font-family: 'Rajdhani', sans-serif;
+  box-shadow: inset 0 0 10px rgba(0, 212, 255, 0.1);
 }
 
 .btn-secondary:hover {
-  background: rgba(0, 212, 255, 0.1);
-  box-shadow: 0 0 12px rgba(0, 212, 255, 0.2);
+  background: rgba(0, 212, 255, 0.15);
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.3), inset 0 0 10px rgba(0, 212, 255, 0.2);
+  transform: translateY(-1px);
 }
 
 .btn-danger {
   background: linear-gradient(135deg, #FF2A2A, #CC0000);
   color: #FFFFFF;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: none;
-  font-weight: 600;
+  border-radius: 4px;
+  border: 2px solid #FF2A2A;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: 0.875rem;
+  letter-spacing: 1px;
+  font-size: 0.75rem;
+  font-family: 'Rajdhani', sans-serif;
+  box-shadow: 0 0 10px rgba(255, 42, 42, 0.4), inset 0 0 10px rgba(255, 42, 42, 0.1);
 }
 
 .btn-danger:hover {
-  background: linear-gradient(135deg, #E62424, #BB0000);
-  box-shadow: 0 4px 12px rgba(255, 42, 42, 0.3);
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #FF4545, #DD1111);
+  box-shadow: 0 0 20px rgba(255, 42, 42, 0.6), inset 0 0 15px rgba(255, 42, 42, 0.2);
+  transform: translateY(-2px);
 }
 
 .btn-success {
   background: linear-gradient(135deg, #39FF14, #2ECC11);
   color: #0A0B0E;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: none;
-  font-weight: 600;
+  border-radius: 4px;
+  border: 2px solid #39FF14;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  font-size: 0.875rem;
+  letter-spacing: 1px;
+  font-size: 0.75rem;
+  font-family: 'Rajdhani', sans-serif;
+  box-shadow: 0 0 10px rgba(57, 255, 20, 0.4), inset 0 0 10px rgba(57, 255, 20, 0.1);
 }
 
 .btn-success:hover {
-  background: linear-gradient(135deg, #33E612, #29BB0F);
-  box-shadow: 0 4px 12px rgba(57, 255, 20, 0.3);
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #4DFF28, #3DDC1F);
+  box-shadow: 0 0 20px rgba(57, 255, 20, 0.6), inset 0 0 15px rgba(57, 255, 20, 0.2);
+  transform: translateY(-2px);
 }
 
-/* Badge Styles */
+/* Badge Styles - Tactical */
 .badge-success {
-  background: rgba(57, 255, 20, 0.2);
-  color: var(--color-verified-green);
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  border: 1px solid var(--color-verified-green);
-  font-size: 0.75rem;
-  font-weight: 600;
+  background: rgba(57, 255, 20, 0.15);
+  color: #39FF14;
+  padding: 0.35rem 0.85rem;
+  border-radius: 4px;
+  border: 1px solid #39FF14;
+  font-size: 0.7rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  font-family: 'Rajdhani', sans-serif;
+  box-shadow: 0 0 8px rgba(57, 255, 20, 0.3);
 }
 
 .badge-warning {
-  background: rgba(255, 174, 0, 0.2);
-  color: var(--color-ghost);
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  border: 1px solid var(--color-ghost);
-  font-size: 0.75rem;
-  font-weight: 600;
+  background: rgba(255, 174, 0, 0.15);
+  color: #FFAE00;
+  padding: 0.35rem 0.85rem;
+  border-radius: 4px;
+  border: 1px solid #FFAE00;
+  font-size: 0.7rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  font-family: 'Rajdhani', sans-serif;
+  box-shadow: 0 0 8px rgba(255, 174, 0, 0.3);
 }
 
 .badge-danger {
-  background: rgba(255, 42, 42, 0.2);
-  color: var(--color-jamming);
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  border: 1px solid var(--color-jamming);
-  font-size: 0.75rem;
-  font-weight: 600;
+  background: rgba(255, 42, 42, 0.15);
+  color: #FF2A2A;
+  padding: 0.35rem 0.85rem;
+  border-radius: 4px;
+  border: 1px solid #FF2A2A;
+  font-size: 0.7rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  font-family: 'Rajdhani', sans-serif;
+  box-shadow: 0 0 8px rgba(255, 42, 42, 0.3);
 }
 
 .badge-info {
-  background: rgba(0, 212, 255, 0.2);
-  color: var(--color-overmatch);
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  border: 1px solid var(--color-overmatch);
-  font-size: 0.75rem;
-  font-weight: 600;
+  background: rgba(0, 212, 255, 0.15);
+  color: #00D4FF;
+  padding: 0.35rem 0.85rem;
+  border-radius: 4px;
+  border: 1px solid #00D4FF;
+  font-size: 0.7rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  font-family: 'Rajdhani', sans-serif;
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.3);
 }
 
-/* Scanline Overlay Effect */
+/* Enhanced Scanline Overlay Effect - CRT/Tactical Glass */
 .scanline-overlay {
   position: fixed;
   top: 0;
@@ -236,27 +288,59 @@ code, pre {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 9999;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(0, 0, 0, 0.02) 0px,
-    transparent 1px,
-    transparent 2px,
-    rgba(0, 0, 0, 0.02) 3px
-  );
-  animation: scanline 8s linear infinite;
+  z-index: 9998;
+  background: 
+    repeating-linear-gradient(
+      90deg,
+      rgba(0, 212, 255, 0.01) 0px,
+      transparent 1px,
+      transparent 2px,
+      rgba(0, 212, 255, 0.01) 3px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.03) 0px,
+      transparent 1px,
+      transparent 2px,
+      rgba(0, 0, 0, 0.03) 3px
+    );
+  animation: scanlineShift 8s linear infinite;
 }
 
-@keyframes scanline {
+@keyframes scanlineShift {
   0% {
-    background-position: 0 0;
+    background-position: 0 0, 0 0;
   }
   100% {
-    background-position: 0 100px;
+    background-position: 0 0, 0 100px;
   }
 }
 
-/* Custom Animations */
+/* Vintage Monitor Glow */
+.monitor-glow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9997;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 212, 255, 0.02) 0%,
+    rgba(0, 0, 0, 0.05) 100%
+  );
+}
+
+/* Tactical Grid Background */
+.tactical-grid {
+  background-image: 
+    linear-gradient(0deg, transparent 24%, rgba(0, 212, 255, 0.03) 25%, rgba(0, 212, 255, 0.03) 26%, transparent 27%, transparent 74%, rgba(0, 212, 255, 0.03) 75%, rgba(0, 212, 255, 0.03) 76%, transparent 77%, transparent),
+    linear-gradient(90deg, transparent 24%, rgba(0, 212, 255, 0.03) 25%, rgba(0, 212, 255, 0.03) 26%, transparent 27%, transparent 74%, rgba(0, 212, 255, 0.03) 75%, rgba(0, 212, 255, 0.03) 76%, transparent 77%, transparent);
+  background-size: 40px 40px;
+}
+
+/* Custom Animations - Tactical */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -288,6 +372,44 @@ code, pre {
   }
 }
 
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(0, 212, 255, 0.4);
+    border-color: rgba(0, 212, 255, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.8);
+    border-color: rgba(0, 212, 255, 0.8);
+  }
+}
+
+@keyframes radar-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes status-blink {
+  0%, 49%, 100% {
+    opacity: 1;
+  }
+  50%, 99% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes data-stream {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 100%;
+  }
+}
+
 .animate-fadeIn {
   animation: fadeIn 0.3s ease-in;
 }
@@ -298,6 +420,27 @@ code, pre {
 
 .animate-slideInUp {
   animation: slideInUp 0.3s ease-out;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-radar {
+  animation: radar-sweep 10s linear infinite;
+}
+
+.animate-blink {
+  animation: status-blink 1s ease-in-out infinite;
+}
+
+/* Target Lock Animation */
+.target-lock {
+  border: 2px solid #00D4FF;
+  box-shadow: 
+    0 0 10px rgba(0, 212, 255, 0.5),
+    inset 0 0 10px rgba(0, 212, 255, 0.2);
+  animation: pulse-glow 1.5s ease-in-out infinite;
 }
 
 /* Trust Score Gauge Styles */

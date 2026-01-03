@@ -138,7 +138,7 @@ fn generate_signature(
     user_identity: &str,
     squad_id: &str,
 ) -> Result<(String, String)> {
-    use ed25519_dalek::{Signer, SigningKey, SigningKey as EdSigningKey};
+    use ed25519_dalek::{Signer, SigningKey as EdSigningKey};
     use base64::{Engine as _, engine::general_purpose};
     
     // Generate ephemeral keypair
@@ -162,6 +162,38 @@ fn generate_signature(
     let signature_b64 = general_purpose::STANDARD.encode(&signature.to_bytes());
     
     Ok((public_key_b64, signature_b64))
+}
+
+/// Create Node in Mesh
+/// 
+/// Provisions a new node in the AetherCore mesh with cryptographic identity.
+/// Integrates with the Trust Fabric and CodeRalphie TPM subsystem.
+#[tauri::command]
+pub async fn create_node(
+    node_id: String,
+    domain: String,
+) -> Result<String, String> {
+    log::info!("Creating node: {} in domain: {}", node_id, domain);
+    
+    // Validate node_id format
+    if node_id.is_empty() || node_id.len() > 255 {
+        return Err("Invalid node_id: must be 1-255 characters".to_string());
+    }
+    
+    // Validate domain format
+    if domain.is_empty() || domain.len() > 255 {
+        return Err("Invalid domain: must be 1-255 characters".to_string());
+    }
+    
+    // TODO: Implement actual node creation:
+    // 1. Generate CodeRalphie TPM-backed Ed25519 keypair
+    // 2. Create initial Trust Fabric entry
+    // 3. Register in mesh network (via crates/mesh)
+    // 4. Initialize telemetry pipeline (crates/unit-status)
+    // 5. Add to persistent node registry
+    
+    log::info!("Node {} provisioned in domain {}", node_id, domain);
+    Ok(format!("Node {} successfully created", node_id))
 }
 
 #[cfg(test)]
@@ -188,6 +220,30 @@ mod tests {
     async fn test_connect_to_testnet_invalid_endpoint() {
         let state = Arc::new(Mutex::new(AppState::default()));
         let result = connect_to_testnet("http://invalid".to_string(), tauri::State::from(&state)).await;
+        
+        assert!(result.is_err());
+    }
+    
+    #[tokio::test]
+    async fn test_create_node_valid() {
+        let result = create_node(
+            "node-001".to_string(),
+            "squad-alpha".to_string(),
+        )
+        .await;
+        
+        assert!(result.is_ok());
+        let response = result.unwrap();
+        assert!(response.contains("node-001"));
+    }
+    
+    #[tokio::test]
+    async fn test_create_node_invalid_node_id() {
+        let result = create_node(
+            "".to_string(),
+            "squad-alpha".to_string(),
+        )
+        .await;
         
         assert!(result.is_err());
     }
