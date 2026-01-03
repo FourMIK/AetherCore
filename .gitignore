@@ -45,6 +45,7 @@ out/
 .env
 .env.local
 .env.*.local
+.env.bunker
 
 # Testing
 coverage/
@@ -62,3 +63,10 @@ temp/
 **/terraform.tfstate.backup
 **/*.tfplan
 **/*.tfvars.backup
+
+# Bunker Mode Secrets (NEVER COMMIT)
+infra/deploy/bunker/.env.bunker
+infra/k8s/overlays/bunker/secrets.env
+**/tactical-glass.key
+**/tactical-glass.crt
+**/dhparam.pem
