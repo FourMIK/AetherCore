@@ -138,11 +138,13 @@ fn generate_signature(
     user_identity: &str,
     squad_id: &str,
 ) -> Result<(String, String)> {
-    use ed25519_dalek::{Signer, SigningKey};
+    use ed25519_dalek::{Signer, SigningKey, SigningKey as EdSigningKey};
+    use base64::{Engine as _, engine::general_purpose};
     
     // Generate ephemeral keypair
     // TODO: Replace with TPM-backed key generation in production (CodeRalphie)
-    let signing_key = SigningKey::generate(&mut rand::thread_rng());
+    let mut csprng = rand::thread_rng();
+    let signing_key = EdSigningKey::from_bytes(&rand::Rng::gen(&mut csprng));
     
     // Create message to sign using BLAKE3
     let message = format!("{}:{}", user_identity, squad_id);
@@ -156,8 +158,8 @@ fn generate_signature(
     let signature = signing_key.sign(message_hash.as_bytes());
     
     // Encode to base64 for transport
-    let public_key_b64 = base64::encode(&public_key_bytes);
-    let signature_b64 = base64::encode(&signature.to_bytes());
+    let public_key_b64 = general_purpose::STANDARD.encode(&public_key_bytes);
+    let signature_b64 = general_purpose::STANDARD.encode(&signature.to_bytes());
     
     Ok((public_key_b64, signature_b64))
 }

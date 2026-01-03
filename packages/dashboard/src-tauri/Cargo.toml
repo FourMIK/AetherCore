@@ -15,7 +15,7 @@ name = "tactical_glass_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.5.3" }
+tauri-build = { version = "2.5.3", features = [] }
 
 [dependencies]
 # AetherCore crates
@@ -24,7 +24,7 @@ aethercore-identity = { path = "../../../crates/identity" }
 aethercore-crypto = { path = "../../../crates/crypto" }
 
 # Tauri
-tauri = { version = "2.9.5" }
+tauri = { version = "2.9.5", features = [] }
 tauri-plugin-log = "2"
 
 # Common dependencies
