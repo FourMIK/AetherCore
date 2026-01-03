@@ -120,17 +120,6 @@ The root `package.json` defines npm workspaces for all services and packages. Th
 3. Add `tsconfig.json`
 4. Create `src/index.ts`
 
-## Architecture
-
-AetherCore provides a distributed computing platform with:
-
-- **Mesh networking** for resilient peer-to-peer communication
-- **Cryptographic identity** for secure authentication
-- **Edge computing** capabilities for distributed processing
-- **ISR functionality** for intelligence and reconnaissance
-- **RF/Radio** communication layers
-- **Trust mesh** for security guarantees
-- **H2OS integration** for legacy system compatibility
 
 ## License
 
