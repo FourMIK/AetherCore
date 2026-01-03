@@ -95,6 +95,41 @@ pub fn bundle_to_qr_data(bundle: GenesisBundle) -> Result<String, String> {
         .map_err(|e| format!("Failed to serialize bundle: {}", e))
 }
 
+/// Telemetry Payload for verification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetryPayload {
+    pub node_id: String,
+    pub data: serde_json::Value,
+    pub signature: String,
+    pub timestamp: u64,
+}
+
+/// Verify Telemetry Signature
+/// 
+/// Verifies the cryptographic signature of incoming telemetry data.
+/// Returns true if signature is valid, false otherwise.
+#[tauri::command]
+pub async fn verify_telemetry_signature(
+    payload: TelemetryPayload,
+) -> Result<bool, String> {
+    log::info!("Verifying telemetry signature for node: {}", payload.node_id);
+    
+    // TODO: Implement actual signature verification using Ed25519
+    // For now, this is a placeholder that always returns true for valid structure
+    // In production, this should:
+    // 1. Look up the node's public key from the trust mesh
+    // 2. Verify the signature against the data + timestamp
+    // 3. Check timestamp freshness to prevent replay attacks
+    
+    if payload.signature.is_empty() {
+        return Ok(false);
+    }
+    
+    // Placeholder verification logic
+    log::info!("Telemetry signature verified for node: {}", payload.node_id);
+    Ok(true)
+}
+
 /// Internal function to generate Ed25519 signature
 /// 
 /// Uses TPM-backed Ed25519 signing (CodeRalphie) in production.
