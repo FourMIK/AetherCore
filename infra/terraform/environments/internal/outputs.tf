@@ -117,3 +117,13 @@ output "jwt_secret_arn" {
   description = "Secrets Manager ARN for JWT secret"
   value       = aws_secretsmanager_secret.jwt_secret.arn
 }
+
+output "kms_key_secret_arn" {
+  description = "Secrets Manager ARN for KMS key ARN"
+  value       = aws_secretsmanager_secret.kms_key_arn.arn
+}
+
+output "merkle_bucket_secret_arn" {
+  description = "Secrets Manager ARN for Merkle bucket name"
+  value       = aws_secretsmanager_secret.merkle_bucket.arn
+}

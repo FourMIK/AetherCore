@@ -345,11 +345,11 @@ resource "aws_ecr_repository" "rust_base" {
 }
 
 ###################
-# KMS Key for Ed25519 Signing
+# KMS Key for Signing
 ###################
 
 resource "aws_kms_key" "signing" {
-  description              = "AetherCore Ed25519 signing key (software fallback)"
+  description              = "AetherCore signing key (ECC P-256, software fallback - Ed25519 via application layer)"
   deletion_window_in_days  = 30
   key_usage                = "SIGN_VERIFY"
   customer_master_key_spec = "ECC_NIST_P256"
@@ -793,6 +793,36 @@ resource "aws_secretsmanager_secret_version" "jwt_secret" {
   secret_string = var.jwt_secret
 }
 
+# Store KMS key ARN in Secrets Manager for secure reference
+resource "aws_secretsmanager_secret" "kms_key_arn" {
+  name                    = "${var.project_name}/${var.environment}/kms-key-arn"
+  recovery_window_in_days = 7
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-kms-key-arn"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "kms_key_arn" {
+  secret_id     = aws_secretsmanager_secret.kms_key_arn.id
+  secret_string = aws_kms_key.signing.arn
+}
+
+# Store S3 bucket name in Secrets Manager for secure reference
+resource "aws_secretsmanager_secret" "merkle_bucket" {
+  name                    = "${var.project_name}/${var.environment}/merkle-bucket"
+  recovery_window_in_days = 7
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-merkle-bucket"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "merkle_bucket" {
+  secret_id     = aws_secretsmanager_secret.merkle_bucket.id
+  secret_string = aws_s3_bucket.merkle_proofs.id
+}
+
 # Grant ECS task execution role permission to read secrets
 resource "aws_iam_role_policy" "ecs_secrets" {
   name = "${var.project_name}-${var.environment}-ecs-secrets-policy"
@@ -809,7 +839,9 @@ resource "aws_iam_role_policy" "ecs_secrets" {
         Resource = [
           aws_secretsmanager_secret.database_url.arn,
           aws_secretsmanager_secret.redis_url.arn,
-          aws_secretsmanager_secret.jwt_secret.arn
+          aws_secretsmanager_secret.jwt_secret.arn,
+          aws_secretsmanager_secret.kms_key_arn.arn,
+          aws_secretsmanager_secret.merkle_bucket.arn
         ]
       }
     ]
@@ -853,8 +885,8 @@ module "gateway_service" {
   secrets = {
     DATABASE_URL  = aws_secretsmanager_secret.database_url.arn
     REDIS_URL     = aws_secretsmanager_secret.redis_url.arn
-    KMS_KEY_ARN   = aws_kms_key.signing.arn
-    MERKLE_BUCKET = aws_s3_bucket.merkle_proofs.id
+    KMS_KEY_ARN   = aws_secretsmanager_secret.kms_key_arn.arn
+    MERKLE_BUCKET = aws_secretsmanager_secret.merkle_bucket.arn
   }
 }
 
@@ -928,7 +960,7 @@ module "collaboration_service" {
   secrets = {
     DATABASE_URL  = aws_secretsmanager_secret.database_url.arn
     REDIS_URL     = aws_secretsmanager_secret.redis_url.arn
-    KMS_KEY_ARN   = aws_kms_key.signing.arn
-    MERKLE_BUCKET = aws_s3_bucket.merkle_proofs.id
+    KMS_KEY_ARN   = aws_secretsmanager_secret.kms_key_arn.arn
+    MERKLE_BUCKET = aws_secretsmanager_secret.merkle_bucket.arn
   }
 }

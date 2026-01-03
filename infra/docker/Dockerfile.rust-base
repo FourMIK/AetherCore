@@ -40,20 +40,20 @@ RUN mkdir -p crates/core/src crates/crypto/src crates/identity/src crates/domain
     crates/mesh/src crates/stream/src crates/edge/src crates/isr/src crates/rf/src \
     crates/radio/src crates/trust_mesh/src crates/h2-domain/src crates/c2-router/src \
     crates/unit-status/src && \
-    echo "fn main() {}" > crates/core/src/lib.rs && \
-    echo "fn main() {}" > crates/crypto/src/lib.rs && \
-    echo "fn main() {}" > crates/identity/src/lib.rs && \
-    echo "fn main() {}" > crates/domain/src/lib.rs && \
-    echo "fn main() {}" > crates/mesh/src/lib.rs && \
-    echo "fn main() {}" > crates/stream/src/lib.rs && \
-    echo "fn main() {}" > crates/edge/src/lib.rs && \
-    echo "fn main() {}" > crates/isr/src/lib.rs && \
-    echo "fn main() {}" > crates/rf/src/lib.rs && \
-    echo "fn main() {}" > crates/radio/src/lib.rs && \
-    echo "fn main() {}" > crates/trust_mesh/src/lib.rs && \
-    echo "fn main() {}" > crates/h2-domain/src/lib.rs && \
-    echo "fn main() {}" > crates/c2-router/src/lib.rs && \
-    echo "fn main() {}" > crates/unit-status/src/lib.rs
+    echo "// dummy lib" > crates/core/src/lib.rs && \
+    echo "// dummy lib" > crates/crypto/src/lib.rs && \
+    echo "// dummy lib" > crates/identity/src/lib.rs && \
+    echo "// dummy lib" > crates/domain/src/lib.rs && \
+    echo "// dummy lib" > crates/mesh/src/lib.rs && \
+    echo "// dummy lib" > crates/stream/src/lib.rs && \
+    echo "// dummy lib" > crates/edge/src/lib.rs && \
+    echo "// dummy lib" > crates/isr/src/lib.rs && \
+    echo "// dummy lib" > crates/rf/src/lib.rs && \
+    echo "// dummy lib" > crates/radio/src/lib.rs && \
+    echo "// dummy lib" > crates/trust_mesh/src/lib.rs && \
+    echo "// dummy lib" > crates/h2-domain/src/lib.rs && \
+    echo "// dummy lib" > crates/c2-router/src/lib.rs && \
+    echo "// dummy lib" > crates/unit-status/src/lib.rs
 
 # Build dependencies (cached layer)
 RUN cargo build --workspace --release || true
