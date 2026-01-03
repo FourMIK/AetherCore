@@ -198,7 +198,9 @@ export const useTacticalStore = create<TacticalStore>()(
       // Tauri Bridge Actions
       connectToTestnet: async () => {
         try {
-          return await invoke<{ success: boolean; nodeId: string }>('connect_to_testnet');
+          const endpoint = 'ws://localhost:8080';
+          const result = await invoke<string>('connect_to_testnet', { endpoint });
+          return { success: true, nodeId: result };
         } catch (error) {
           console.error('Failed to connect to testnet:', error);
           return { success: false, nodeId: '' };
@@ -207,9 +209,11 @@ export const useTacticalStore = create<TacticalStore>()(
 
       generateGenesisBundle: async () => {
         try {
-          return await invoke<{ bundleHash: string; timestamp: number }>(
-            'generate_genesis_bundle'
-          );
+          const result = await invoke<any>('generate_genesis_bundle', {
+            userIdentity: 'operator',
+            squadId: 'alpha',
+          });
+          return { bundleHash: result.signature, timestamp: result.timestamp };
         } catch (error) {
           console.error('Failed to generate genesis bundle:', error);
           return { bundleHash: '', timestamp: 0 };
