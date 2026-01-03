@@ -1,0 +1,275 @@
+# AetherCore Infrastructure
+
+This directory contains production-ready AWS infrastructure-as-code for deploying AetherCore as an internal application.
+
+## Directory Structure
+
+```
+infra/
+├── docker/              # Docker build files
+│   ├── Dockerfile.gateway
+│   ├── Dockerfile.auth
+│   ├── Dockerfile.collaboration
+│   ├── Dockerfile.rust-base
+│   └── docker-compose.yml
+├── terraform/           # Terraform configurations
+│   ├── environments/
+│   │   └── internal/    # Internal environment
+│   └── modules/
+│       └── ecs-service/ # Reusable ECS service module
+├── k8s/                 # Kubernetes manifests (optional)
+│   └── base/
+└── scripts/             # Utility scripts
+    ├── bootstrap-aws.sh
+    └── build-push.sh
+```
+
+## Prerequisites
+
+- **AWS CLI** configured with appropriate credentials
+- **Docker** for building container images
+- **Terraform** >= 1.5.0
+- **Node.js** >= 18 and **npm** >= 9 (for building TypeScript services)
+- **Rust** >= 1.70 (for building Rust crates)
+
+## Quick Start
+
+### 1. Bootstrap AWS Infrastructure
+
+Create the S3 bucket and DynamoDB table for Terraform state:
+
+```bash
+cd infra/scripts
+./bootstrap-aws.sh us-east-1 aethercore
+```
+
+### 2. Set Required Environment Variables
+
+```bash
+export TF_VAR_db_password='your-secure-password-here'
+export TF_VAR_jwt_secret='your-jwt-secret-here'
+```
+
+### 3. Initialize Terraform
+
+```bash
+cd ../terraform/environments/internal
+terraform init -backend-config=backend.hcl
+```
+
+### 4. Review and Apply Infrastructure
+
+```bash
+terraform plan
+terraform apply
+```
+
+This will create:
+- VPC with public/private/database subnets
+- ECS Cluster with Fargate Spot
+- RDS PostgreSQL (db.t4g.micro)
+- ElastiCache Redis (cache.t4g.micro)
+- Application Load Balancer
+- ECR repositories for each service
+- KMS key for Ed25519 signing
+- S3 bucket for Merkle proofs
+- IAM roles and security groups
+- Secrets Manager secrets
+
+### 5. Build and Push Docker Images
+
+```bash
+cd ../../scripts
+./build-push.sh us-east-1 aethercore v1.0.0
+```
+
+### 6. Deploy Services
+
+After images are pushed to ECR:
+
+```bash
+cd ../terraform/environments/internal
+terraform apply -var='image_tag=v1.0.0'
+```
+
+## Local Development
+
+Use Docker Compose for local development:
+
+```bash
+cd infra/docker
+docker-compose up
+```
+
+This starts:
+- PostgreSQL 16 on port 5432
+- Redis 7 on port 6379
+- Gateway service on port 3000
+- Auth service on port 3001
+- Collaboration service on port 8080
+
+## Service Endpoints
+
+After deployment, access services through the ALB:
+
+- **Gateway**: `http://<alb-dns>/api/*`
+- **Auth**: `http://<alb-dns>/auth/*`
+- **Collaboration**: `http://<alb-dns>/ws/*`
+
+Get the ALB DNS name:
+
+```bash
+terraform output alb_dns_name
+```
+
+## Cost Optimization
+
+The internal environment is optimized for < $200/month:
+
+| Resource | Type | Estimated Cost |
+|----------|------|----------------|
+| RDS PostgreSQL | db.t4g.micro | ~$15/mo |
+| ElastiCache Redis | cache.t4g.micro | ~$12/mo |
+| ECS Fargate Spot | 3 services @ 0.25 vCPU | ~$40/mo |
+| Application Load Balancer | 1 ALB | ~$20/mo |
+| NAT Gateway | 1 NAT | ~$35/mo |
+| S3 + Data Transfer | Storage + bandwidth | ~$5/mo |
+| **Total** | | **~$127/mo** |
+
+## Security Features
+
+- All data encrypted at rest (KMS)
+- VPC with microsegmented security groups
+- No public database access
+- Task IAM roles with least privilege
+- S3 bucket public access blocked
+- Secrets stored in AWS Secrets Manager
+- ECR image scanning enabled
+
+## Monitoring
+
+View logs in CloudWatch:
+
+```bash
+# Gateway logs
+aws logs tail /ecs/aethercore-internal/gateway --follow
+
+# Auth logs
+aws logs tail /ecs/aethercore-internal/auth --follow
+
+# Collaboration logs
+aws logs tail /ecs/aethercore-internal/collaboration --follow
+```
+
+## Updating Services
+
+To deploy new versions:
+
+1. Build and push new images:
+   ```bash
+   cd infra/scripts
+   ./build-push.sh us-east-1 aethercore v1.1.0
+   ```
+
+2. Update ECS services:
+   ```bash
+   cd ../terraform/environments/internal
+   terraform apply -var='image_tag=v1.1.0'
+   ```
+
+ECS will perform a rolling deployment with circuit breaker enabled.
+
+## Cleanup
+
+To destroy all infrastructure:
+
+```bash
+cd infra/terraform/environments/internal
+terraform destroy
+```
+
+**Warning**: This will delete all resources including databases. Ensure you have backups!
+
+## Troubleshooting
+
+### Services not passing health checks
+
+Check ECS service status:
+```bash
+aws ecs describe-services --cluster aethercore-internal-cluster --services aethercore-internal-gateway
+```
+
+View container logs:
+```bash
+aws logs tail /ecs/aethercore-internal/gateway --since 10m
+```
+
+### Cannot connect to database
+
+Verify security groups allow traffic from ECS to RDS:
+```bash
+terraform state show aws_security_group.rds
+terraform state show aws_security_group.ecs_services
+```
+
+### Terraform state locked
+
+If Terraform state is locked after a failed apply:
+```bash
+terraform force-unlock <lock-id>
+```
+
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                          Internet                            │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+              ┌──────────────────────┐
+              │ Application Load     │
+              │ Balancer             │
+              │ (Public Subnets)     │
+              └──────────┬───────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+    ┌────────┐     ┌────────┐     ┌─────────────┐
+    │Gateway │     │  Auth  │     │Collaboration│
+    │Service │     │Service │     │  Service    │
+    │(ECS)   │     │(ECS)   │     │  (ECS)      │
+    └───┬────┘     └───┬────┘     └──────┬──────┘
+        │              │                  │
+        │              │                  │
+        └──────────────┼──────────────────┘
+                       │
+         ┌─────────────┼─────────────┐
+         ▼             ▼             ▼
+    ┌────────┐    ┌────────┐   ┌────────┐
+    │  RDS   │    │ Redis  │   │  KMS   │
+    │Postgres│    │Cache   │   │Signing │
+    └────────┘    └────────┘   └───┬────┘
+                                    │
+                                    ▼
+                              ┌─────────┐
+                              │   S3    │
+                              │ Merkle  │
+                              │ Proofs  │
+                              └─────────┘
+```
+
+## Future Enhancements
+
+- [ ] HTTPS with ACM certificates
+- [ ] CloudHSM integration for hardware-backed signing
+- [ ] Multi-AZ RDS for high availability
+- [ ] CloudFront CDN for static assets
+- [ ] WAF for additional security
+- [ ] Auto-scaling based on metrics
+- [ ] Blue-green deployments
+- [ ] Integration with CI/CD pipeline
+
+## Support
+
+For issues or questions, please open an issue in the repository or contact the AetherCore team.

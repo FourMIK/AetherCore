@@ -1,0 +1,85 @@
+# Base image for AetherCore Rust crates with crypto dependencies
+FROM rust:1.75-alpine AS builder
+
+# Install build dependencies for crypto
+RUN apk add --no-cache \
+    musl-dev \
+    openssl-dev \
+    pkgconfig \
+    gcc \
+    g++ \
+    make \
+    cmake
+
+# Set environment for static linking
+ENV RUSTFLAGS="-C target-feature=-crt-static"
+
+WORKDIR /app
+
+# Copy workspace files
+COPY Cargo.toml Cargo.lock ./
+
+# Copy all crate manifests
+COPY crates/core/Cargo.toml ./crates/core/
+COPY crates/crypto/Cargo.toml ./crates/crypto/
+COPY crates/identity/Cargo.toml ./crates/identity/
+COPY crates/domain/Cargo.toml ./crates/domain/
+COPY crates/mesh/Cargo.toml ./crates/mesh/
+COPY crates/stream/Cargo.toml ./crates/stream/
+COPY crates/edge/Cargo.toml ./crates/edge/
+COPY crates/isr/Cargo.toml ./crates/isr/
+COPY crates/rf/Cargo.toml ./crates/rf/
+COPY crates/radio/Cargo.toml ./crates/radio/
+COPY crates/trust_mesh/Cargo.toml ./crates/trust_mesh/
+COPY crates/h2-domain/Cargo.toml ./crates/h2-domain/
+COPY crates/c2-router/Cargo.toml ./crates/c2-router/
+COPY crates/unit-status/Cargo.toml ./crates/unit-status/
+
+# Create dummy src files to cache dependencies
+RUN mkdir -p crates/core/src crates/crypto/src crates/identity/src crates/domain/src \
+    crates/mesh/src crates/stream/src crates/edge/src crates/isr/src crates/rf/src \
+    crates/radio/src crates/trust_mesh/src crates/h2-domain/src crates/c2-router/src \
+    crates/unit-status/src && \
+    echo "fn main() {}" > crates/core/src/lib.rs && \
+    echo "fn main() {}" > crates/crypto/src/lib.rs && \
+    echo "fn main() {}" > crates/identity/src/lib.rs && \
+    echo "fn main() {}" > crates/domain/src/lib.rs && \
+    echo "fn main() {}" > crates/mesh/src/lib.rs && \
+    echo "fn main() {}" > crates/stream/src/lib.rs && \
+    echo "fn main() {}" > crates/edge/src/lib.rs && \
+    echo "fn main() {}" > crates/isr/src/lib.rs && \
+    echo "fn main() {}" > crates/rf/src/lib.rs && \
+    echo "fn main() {}" > crates/radio/src/lib.rs && \
+    echo "fn main() {}" > crates/trust_mesh/src/lib.rs && \
+    echo "fn main() {}" > crates/h2-domain/src/lib.rs && \
+    echo "fn main() {}" > crates/c2-router/src/lib.rs && \
+    echo "fn main() {}" > crates/unit-status/src/lib.rs
+
+# Build dependencies (cached layer)
+RUN cargo build --workspace --release || true
+
+# Copy actual source code
+COPY crates ./crates
+
+# Build the workspace
+RUN cargo build --workspace --release
+
+# Runtime stage
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    libgcc \
+    libssl3 \
+    ca-certificates
+
+WORKDIR /app
+
+# Copy built binaries from builder
+COPY --from=builder /app/target/release /app/bin
+
+# Set library path
+ENV LD_LIBRARY_PATH=/usr/lib
+
+# Default command (override in specific service images)
+CMD ["/bin/sh"]

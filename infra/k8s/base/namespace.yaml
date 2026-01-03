@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aethercore
+  labels:
+    name: aethercore
+    project: AetherCore
+    environment: internal
