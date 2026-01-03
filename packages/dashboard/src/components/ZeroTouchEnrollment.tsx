@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import QRCode from 'qrcode.react';
+import { QRCodeSVG } from 'qrcode.react';
 
 /**
  * Genesis Bundle structure for Zero-Touch Enrollment
@@ -146,7 +146,7 @@ export const ZeroTouchEnrollment: React.FC = () => {
               borderRadius: '8px',
             }}
           >
-            <QRCode value={qrData} size={256} level="H" />
+            <QRCodeSVG value={qrData} size={256} level="H" />
           </div>
           <p style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
             User: {userIdentity} | Squad: {squadId}
