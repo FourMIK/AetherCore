@@ -72,10 +72,15 @@ export const DashboardLayout: React.FC = () => {
 
       {/* Security Animations */}
       {byzantineAlert && (
-        <AethericSweep
-          websocketUrl={`ws://localhost:8080/mesh-health`}
-          onComplete={clearByzantineAlert}
-        />
+        <div className="fixed inset-0 z-50">
+          <AethericSweep websocketUrl={`ws://localhost:8080/mesh-health`} />
+          <button
+            onClick={clearByzantineAlert}
+            className="absolute top-4 right-4 btn-secondary"
+          >
+            Close
+          </button>
+        </div>
       )}
 
       {verificationFailure && (

@@ -30,7 +30,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           three: ['three'],
-          cesium: ['cesium'],
         },
       },
     },
