@@ -64,6 +64,7 @@ export class StreamMonitor {
     this.config = config;
     this.status = {
       isValid: true,
+      verificationStatus: 'VERIFIED', // Initial status - will update based on integrity checks
       totalFrames: 0,
       validFrames: 0,
       invalidFrames: 0,
@@ -153,12 +154,15 @@ export class StreamMonitor {
       // Compare hashes
       if (computedHash === expectedHash) {
         this.status.validFrames++;
+        this.status.verificationStatus = 'VERIFIED';
         console.log(
           `[StreamMonitor] Frame ${frame.sequence} integrity verified ✓`,
         );
       } else {
+        // Fail-Visible Design: Mark as SPOOFED on integrity violation
         this.status.invalidFrames++;
         this.status.isValid = false;
+        this.status.verificationStatus = 'SPOOFED';
         this.status.showAlert = true;
 
         console.error(
@@ -166,6 +170,7 @@ export class StreamMonitor {
         );
         console.error(`  Expected: ${expectedHash}`);
         console.error(`  Computed: ${computedHash}`);
+        console.error('  STATUS: SPOOFED - Byzantine behavior detected');
 
         this.config.onIntegrityViolation?.();
       }
