@@ -255,6 +255,7 @@ export class StreamMonitor {
   resetStatus(): void {
     this.status = {
       isValid: true,
+      verificationStatus: 'VERIFIED' as VerificationStatus,
       totalFrames: 0,
       validFrames: 0,
       invalidFrames: 0,

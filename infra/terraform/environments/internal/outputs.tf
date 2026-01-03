@@ -50,6 +50,21 @@ output "ecr_repository_rust_base_url" {
   value       = aws_ecr_repository.rust_base.repository_url
 }
 
+output "ecr_repository_h2_ingest_url" {
+  description = "ECR repository URL for h2-ingest service"
+  value       = aws_ecr_repository.h2_ingest.repository_url
+}
+
+output "ecr_repository_prometheus_url" {
+  description = "ECR repository URL for prometheus service"
+  value       = aws_ecr_repository.prometheus.repository_url
+}
+
+output "ecr_repository_grafana_url" {
+  description = "ECR repository URL for grafana service"
+  value       = aws_ecr_repository.grafana.repository_url
+}
+
 output "rds_endpoint" {
   description = "RDS PostgreSQL endpoint"
   value       = aws_db_instance.postgres.endpoint
@@ -64,7 +79,7 @@ output "rds_address" {
 
 output "redis_endpoint" {
   description = "ElastiCache Redis endpoint"
-  value       = "${aws_elasticache_cluster.redis.cache_nodes.0.address}:${aws_elasticache_cluster.redis.cache_nodes.0.port}"
+  value       = "${aws_elasticache_replication_group.redis.primary_endpoint_address}:${aws_elasticache_replication_group.redis.port}"
   sensitive   = true
 }
 
@@ -103,6 +118,21 @@ output "collaboration_service_name" {
   value       = module.collaboration_service.service_name
 }
 
+output "h2_ingest_service_name" {
+  description = "H2-Ingest ECS service name"
+  value       = module.h2_ingest_service.service_name
+}
+
+output "prometheus_service_name" {
+  description = "Prometheus ECS service name"
+  value       = module.prometheus_service.service_name
+}
+
+output "grafana_service_name" {
+  description = "Grafana ECS service name"
+  value       = module.grafana_service.service_name
+}
+
 output "database_secret_arn" {
   description = "Secrets Manager ARN for database URL"
   value       = aws_secretsmanager_secret.database_url.arn
@@ -126,4 +156,19 @@ output "kms_key_secret_arn" {
 output "merkle_bucket_secret_arn" {
   description = "Secrets Manager ARN for Merkle bucket name"
   value       = aws_secretsmanager_secret.merkle_bucket.arn
+}
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution ID for dashboard"
+  value       = aws_cloudfront_distribution.dashboard.id
+}
+
+output "cloudfront_domain_name" {
+  description = "CloudFront distribution domain name"
+  value       = aws_cloudfront_distribution.dashboard.domain_name
+}
+
+output "dashboard_s3_bucket" {
+  description = "S3 bucket name for dashboard static assets"
+  value       = aws_s3_bucket.dashboard.id
 }

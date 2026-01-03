@@ -1,0 +1,21 @@
+# Multi-stage Prometheus build
+FROM prom/prometheus:v2.48.0 as prometheus-base
+
+# Copy custom configuration
+COPY prometheus.yml /etc/prometheus/prometheus.yml
+COPY aethercore_rules.yml /etc/prometheus/aethercore_rules.yml
+
+# Set proper permissions
+USER root
+RUN chown -R prometheus:prometheus /etc/prometheus/
+USER prometheus
+
+EXPOSE 9090
+
+CMD ["--config.file=/etc/prometheus/prometheus.yml", \
+     "--storage.tsdb.path=/prometheus", \
+     "--web.console.libraries=/etc/prometheus/console_libraries", \
+     "--web.console.templates=/etc/prometheus/consoles", \
+     "--storage.tsdb.retention.time=15d", \
+     "--web.enable-lifecycle", \
+     "--web.route-prefix=/prometheus/"]

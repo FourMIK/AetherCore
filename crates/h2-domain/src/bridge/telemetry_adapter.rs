@@ -42,25 +42,34 @@ pub struct TransformedTelemetry {
 /// GPS position data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GPSData {
+    /// Latitude in decimal degrees
     pub latitude: f64,
+    /// Longitude in decimal degrees
     pub longitude: f64,
+    /// Altitude in meters (if available)
     pub altitude: Option<f64>,
+    /// Speed over ground in meters/second (if available)
     pub speed: Option<f64>,
+    /// Heading in degrees (if available)
     pub heading: Option<f64>,
 }
 
 /// Telemetry transformation errors
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum TelemetryError {
+    /// Sensor reading failed validation
     #[error("Invalid sensor reading: {0}")]
     InvalidReading(String),
     
+    /// Required telemetry field is missing
     #[error("Missing required field: {0}")]
     MissingField(String),
     
+    /// Hash chain validation failed, possible replay
     #[error("Replay attack detected: hash chain validation failed")]
     ReplayAttack,
     
+    /// Timestamp was invalid or outside allowed window
     #[error("Invalid timestamp: {0}")]
     InvalidTimestamp(String),
 }

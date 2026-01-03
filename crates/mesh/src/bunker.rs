@@ -245,6 +245,7 @@ impl BunkerMode {
 }
 
 /// Get current timestamp in milliseconds
+#[allow(dead_code)]
 fn current_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

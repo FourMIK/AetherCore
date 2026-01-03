@@ -16,6 +16,7 @@ members = [
     "crates/h2-domain",
     "crates/c2-router",
     "crates/unit-status",
+    "services/h2-ingest",
 ]
 
 [workspace.package]

@@ -1,0 +1,60 @@
+# Prometheus Configuration for AetherCore
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "aethercore_rules.yml"
+
+scrape_configs:
+  # ECS Service Discovery
+  - job_name: 'ecs-services'
+    ec2_sd_configs:
+      - region: us-east-1
+        port: 9090
+        filters:
+          - name: tag:aws:ecs:cluster-name
+            values: ['aethercore-internal-cluster']
+    relabel_configs:
+      - source_labels: [__meta_ec2_tag_Name]
+        target_label: service_name
+      - source_labels: [__meta_ec2_private_ip]
+        target_label: __address__
+        replacement: '${1}:9090'
+
+  # Gateway Service Metrics
+  - job_name: 'gateway'
+    static_configs:
+      - targets: ['gateway:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Auth Service Metrics  
+  - job_name: 'auth'
+    static_configs:
+      - targets: ['auth:3001']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # H2-Ingest High-Velocity Metrics
+  - job_name: 'h2-ingest'
+    static_configs:
+      - targets: ['h2-ingest:8090']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Redis Metrics
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    metrics_path: '/metrics'
+
+  # Prometheus Self-Monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []

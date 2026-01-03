@@ -55,9 +55,32 @@ variable "database_subnet_2_cidr" {
 }
 
 variable "allowed_cidr_blocks" {
-  description = "CIDR blocks allowed to access ALB"
+  description = "CIDR blocks allowed to access ALB (SECURITY: Restrict from 0.0.0.0/0 in production)"
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+}
+
+variable "ssl_certificate_arn" {
+  description = "SSL certificate ARN for HTTPS ALB listener (required for TLS 1.3)"
+  type        = string
+}
+
+variable "enable_multi_az" {
+  description = "Enable Multi-AZ for production resilience"
+  type        = bool
+  default     = false
+}
+
+variable "backup_retention_days" {
+  description = "Database backup retention period"
+  type        = number
+  default     = 7
+}
+
+variable "budget_limit_usd" {
+  description = "Monthly budget limit in USD"
+  type        = number
+  default     = 200
 }
 
 variable "rds_instance_class" {

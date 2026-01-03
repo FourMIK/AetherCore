@@ -18,7 +18,17 @@ database_subnet_2_cidr = "10.0.5.0/24"
 
 # Restrict access to your organization's IP ranges for production
 # For internal testing, you can use ["0.0.0.0/0"]
-allowed_cidr_blocks = ["0.0.0.0/0"]
+# SECURITY WARNING: 0.0.0.0/0 violates Prime Directive - restrict in production
+allowed_cidr_blocks = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+
+# SSL Certificate ARN (required for HTTPS ALB with TLS 1.3)
+# Create via: aws acm request-certificate --domain-name your-domain.com
+ssl_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERTIFICATE_ID"
+
+# Hardening Configuration
+enable_multi_az        = false  # Set to true for production resilience testing
+backup_retention_days  = 7      # 30 for production
+budget_limit_usd      = 200     # Monthly cost limit
 
 # Cost-optimized instance types for internal environment
 rds_instance_class = "db.t4g.micro"

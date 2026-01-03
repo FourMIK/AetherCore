@@ -4,7 +4,7 @@
 //! workflow management for operational alerts.
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::alarms::{AlertCategory, AlertSeverity, AttestedAlert};
 

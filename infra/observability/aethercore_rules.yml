@@ -1,0 +1,51 @@
+groups:
+  - name: aethercore.rules
+    rules:
+      # High-Velocity Ingest Alerts
+      - alert: H2IngestHighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="h2-ingest"}[5m])) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "H2-Ingest service high latency"
+          description: "95th percentile latency is {{ $value }}s"
+
+      - alert: H2IngestHighErrorRate
+        expr: rate(http_requests_total{job="h2-ingest",status=~"5.."}[5m]) / rate(http_requests_total{job="h2-ingest"}[5m]) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "H2-Ingest high error rate"
+          description: "Error rate is {{ $value | humanizePercentage }}"
+
+      # Service Availability
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Service has been down for more than 1 minute"
+
+      # Redis Connection Issues
+      - alert: RedisConnectionFailure
+        expr: redis_connected_clients < 1
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis connection issues"
+          description: "Redis has {{ $value }} connected clients"
+
+      # Memory Usage
+      - alert: HighMemoryUsage
+        expr: (container_memory_usage_bytes / container_spec_memory_limit_bytes) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.container_name }}"
+          description: "Memory usage is {{ $value | humanizePercentage }}"

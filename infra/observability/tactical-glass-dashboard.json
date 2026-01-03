@@ -1,0 +1,75 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "AetherCore - Tactical Glass",
+    "tags": ["aethercore", "tactical"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "H2-Ingest Throughput",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{job=\"h2-ingest\"}[5m])",
+            "legendFormat": "Requests/sec"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Binary Stream Volume",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(increase(http_requests_total{job=\"h2-ingest\",endpoint=\"/ingest/binary\"}[1h]))",
+            "legendFormat": "Streams/hour"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Service Health",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "up",
+            "legendFormat": "{{job}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Redis Pub/Sub Activity",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "redis_pubsub_channels",
+            "legendFormat": "Active Channels"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 5,
+        "title": "S3 Merkle Proof Storage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "aws_s3_bucket_size_bytes{bucket=\"aethercore-internal-merkle-proofs\"}",
+            "legendFormat": "Storage Used"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}

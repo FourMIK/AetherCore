@@ -3,7 +3,6 @@
 //! The single source of truth for revoked nodes in the AetherCore mesh.
 //! Implements the Aetheric Sweep protocol for Byzantine node purging.
 
-use blake3::Hash;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -74,15 +73,19 @@ impl Default for GospelState {
 /// Gospel ledger errors
 #[derive(Debug, Error)]
 pub enum GospelError {
+    /// Node already present in ledger
     #[error("Node already revoked: {0}")]
     NodeAlreadyRevoked(String),
     
+    /// Signature failed verification
     #[error("Invalid signature")]
     InvalidSignature,
     
+    /// Merkle root does not match computed state
     #[error("Merkle root mismatch")]
     MerkleRootMismatch,
     
+    /// Certificate timestamp is outside allowed skew
     #[error("Timestamp invalid (clock skew)")]
     InvalidTimestamp,
 }

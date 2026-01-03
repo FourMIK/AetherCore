@@ -31,44 +31,65 @@ pub enum WsMessage {
     
     /// Connection acknowledgment
     #[serde(rename = "ack")]
-    Ack { message: String },
+    Ack {
+        /// Human-readable status message
+        message: String,
+    },
 }
 
 /// Mesh health message format
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeshHealthMessage {
+    /// Node identifier
     pub node_id: String,
-    pub status: String, // "HEALTHY", "DEGRADED", "COMPROMISED", "UNKNOWN"
+    /// Mesh health state (HEALTHY, DEGRADED, COMPROMISED, UNKNOWN)
+    pub status: String,
+    /// Trust score emitted by trust mesh
     pub trust_score: f32,
+    /// Last time the node was seen (ns)
     pub last_seen_ns: u64,
+    /// Health metrics bundle
     pub metrics: HealthMetrics,
 }
 
 /// Health metrics from trust_mesh
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthMetrics {
+    /// Ratio of root hash agreement across nodes
     pub root_agreement_ratio: f64,
+    /// Count of detected chain breaks
     pub chain_break_count: u64,
+    /// Count of signature failures
     pub signature_failure_count: u64,
 }
 
 /// Revocation certificate (matches docs/trust-mesh-design.md)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RevocationCertificate {
+    /// Node being revoked
     pub node_id: String,
+    /// Reason for revocation
     pub revocation_reason: RevocationReason,
+    /// Authority issuing revocation
     pub issuer_id: String,
+    /// Timestamp in nanoseconds
     pub timestamp_ns: u64,
-    pub signature: String, // Hex-encoded Ed25519 signature
-    pub merkle_root: String, // Hex-encoded BLAKE3 root
+    /// Hex-encoded Ed25519 signature
+    pub signature: String,
+    /// Hex-encoded BLAKE3 Merkle root
+    pub merkle_root: String,
 }
 
 /// Revocation reasons
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RevocationReason {
+    /// TPM attestation failed
     AttestationFailure,
+    /// Byzantine detection triggered
     ByzantineDetection,
+    /// Operator initiated override
     OperatorOverride,
+    /// Duplicate or conflicting identity observed
     IdentityCollapse,
 }
 

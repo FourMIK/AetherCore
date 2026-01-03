@@ -219,26 +219,76 @@ resource "aws_security_group" "alb" {
   }
 }
 
-# ECS Service Security Group
+# ECS Service Security Group - MICRO-SEGMENTED
 resource "aws_security_group" "ecs_services" {
   name        = "${var.project_name}-${var.environment}-ecs-services-sg"
-  description = "Security group for ECS services"
+  description = "Security group for ECS services - micro-segmented"
   vpc_id      = aws_vpc.main.id
 
+  # Explicit ingress from ALB only
   ingress {
-    from_port       = 0
-    to_port         = 65535
+    from_port       = 3000
+    to_port         = 3000
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
-    description     = "Traffic from ALB"
+    description     = "Gateway from ALB"
+  }
+
+  ingress {
+    from_port       = 3001
+    to_port         = 3001
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+    description     = "Auth from ALB"
+  }
+
+  ingress {
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+    description     = "Collaboration from ALB"
+  }
+
+  ingress {
+    from_port       = 8090
+    to_port         = 8090
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+    description     = "H2-Ingest from ALB"
+  }
+
+  ingress {
+    from_port       = 9090
+    to_port         = 9090
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+    description     = "Prometheus from ALB"
+  }
+
+  # Restricted egress
+  egress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS for AWS APIs/ECR"
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.rds.id]
+    description     = "PostgreSQL to RDS"
+  }
+
+  egress {
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.elasticache.id]
+    description     = "Redis to ElastiCache"
   }
 
   tags = {
@@ -360,8 +410,62 @@ resource "aws_ecr_repository" "rust_base" {
   }
 }
 
+resource "aws_ecr_repository" "h2_ingest" {
+  name                 = "${var.project_name}-h2-ingest"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  tags = {
+    Name    = "${var.project_name}-h2-ingest-ecr"
+    Service = "h2-ingest"
+  }
+}
+
+resource "aws_ecr_repository" "prometheus" {
+  name                 = "${var.project_name}-prometheus"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  tags = {
+    Name    = "${var.project_name}-prometheus-ecr"
+    Service = "prometheus"
+  }
+}
+
+resource "aws_ecr_repository" "grafana" {
+  name                 = "${var.project_name}-grafana"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+
+  tags = {
+    Name    = "${var.project_name}-grafana-ecr"
+    Service = "grafana"
+  }
+}
+
 ###################
-# KMS Key for Signing
+# KMS Key for Signing - HARDENED
 ###################
 
 resource "aws_kms_key" "signing" {
@@ -369,6 +473,35 @@ resource "aws_kms_key" "signing" {
   deletion_window_in_days  = 30
   key_usage                = "SIGN_VERIFY"
   customer_master_key_spec = "ECC_NIST_P256"
+  enable_key_rotation      = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable Root Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow ECS Task Role Limited Access"
+        Effect = "Allow"
+        Principal = {
+          AWS = aws_iam_role.ecs_task.arn
+        }
+        Action = [
+          "kms:Sign",
+          "kms:Verify",
+          "kms:GetPublicKey"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 
   tags = {
     Name = "${var.project_name}-${var.environment}-signing-key"
@@ -420,7 +553,7 @@ resource "aws_s3_bucket_public_access_block" "merkle_proofs" {
 }
 
 ###################
-# RDS PostgreSQL
+# RDS PostgreSQL - HARDENED
 ###################
 
 resource "aws_db_subnet_group" "main" {
@@ -450,9 +583,19 @@ resource "aws_db_instance" "postgres" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
 
-  backup_retention_period = 7
+  # Conditional Multi-AZ for production
+  multi_az = var.environment == "production" ? true : var.enable_multi_az
+
+  # IAM database authentication
+  iam_database_authentication_enabled = true
+
+  # Enhanced backup and logging
+  backup_retention_period = var.environment == "production" ? 30 : var.backup_retention_days
   backup_window           = "03:00-04:00"
   maintenance_window      = "sun:04:00-sun:05:00"
+
+  # CloudWatch logs export
+  enabled_cloudwatch_logs_exports = ["postgresql"]
 
   skip_final_snapshot       = var.environment != "production"
   final_snapshot_identifier = var.environment == "production" ? "${var.project_name}-${var.environment}-final-snapshot" : null
@@ -463,7 +606,7 @@ resource "aws_db_instance" "postgres" {
 }
 
 ###################
-# ElastiCache Redis
+# ElastiCache Redis - REPLICATION GROUP (RESILIENT)
 ###################
 
 resource "aws_elasticache_subnet_group" "main" {
@@ -475,17 +618,28 @@ resource "aws_elasticache_subnet_group" "main" {
   }
 }
 
-resource "aws_elasticache_cluster" "redis" {
-  cluster_id           = "${var.project_name}-${var.environment}-redis"
+# 🔴 DESTRUCTIVE CHANGE: Replacing cluster with replication group
+resource "aws_elasticache_replication_group" "redis" {
+  replication_group_id         = "${var.project_name}-${var.environment}-redis"
+  description                  = "AetherCore Redis replication group"
+  
   engine               = "redis"
   engine_version       = "7.1"
   node_type            = var.redis_node_type
-  num_cache_nodes      = 1
-  parameter_group_name = "default.redis7"
   port                 = 6379
+  parameter_group_name = "default.redis7"
+
+  num_cache_clusters = var.environment == "production" ? 2 : 1
+  
+  # Conditional resilience features
+  automatic_failover_enabled = var.environment == "production" ? true : false
+  multi_az_enabled          = var.environment == "production" ? true : false
 
   subnet_group_name  = aws_elasticache_subnet_group.main.name
   security_group_ids = [aws_security_group.elasticache.id]
+
+  at_rest_encryption_enabled = true
+  transit_encryption_enabled = true
 
   tags = {
     Name = "${var.project_name}-${var.environment}-redis"
@@ -493,8 +647,97 @@ resource "aws_elasticache_cluster" "redis" {
 }
 
 ###################
-# Application Load Balancer
+# Application Load Balancer - HARDENED WITH WAF
 ###################
+
+# S3 Bucket for ALB Access Logs
+resource "aws_s3_bucket" "alb_logs" {
+  bucket = "${var.project_name}-${var.environment}-alb-logs"
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-alb-logs"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# ALB Access Logs Policy
+resource "aws_s3_bucket_policy" "alb_logs" {
+  bucket = aws_s3_bucket.alb_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::127311923021:root"  # ELB service account for us-east-1
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.alb_logs.arn}/*"
+      }
+    ]
+  })
+}
+
+# WAF Web ACL
+resource "aws_wafv2_web_acl" "main" {
+  name  = "${var.project_name}-${var.environment}-waf"
+  scope = "REGIONAL"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "AWSManagedRulesCommonRuleSet"
+    priority = 1
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                 = "CommonRuleSetMetric"
+      sampled_requests_enabled    = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                 = "AetherCoreWAF"
+    sampled_requests_enabled    = true
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-waf"
+  }
+}
 
 resource "aws_lb" "main" {
   name               = "${var.project_name}-${var.environment}-alb"
@@ -505,12 +748,25 @@ resource "aws_lb" "main" {
 
   enable_deletion_protection = var.environment == "production"
 
+  # Enable access logging
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs.id
+    prefix  = "alb"
+    enabled = true
+  }
+
   tags = {
     Name = "${var.project_name}-${var.environment}-alb"
   }
 }
 
-# Target Groups
+# Associate WAF with ALB
+resource "aws_wafv2_web_acl_association" "main" {
+  resource_arn = aws_lb.main.arn
+  web_acl_arn  = aws_wafv2_web_acl.main.arn
+}
+
+# Target Groups - HARDENED HEALTH CHECKS
 resource "aws_lb_target_group" "gateway" {
   name        = "${var.project_name}-${var.environment}-gateway-tg"
   port        = 3000
@@ -521,9 +777,9 @@ resource "aws_lb_target_group" "gateway" {
   health_check {
     enabled             = true
     healthy_threshold   = 2
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
+    unhealthy_threshold = 2
+    timeout             = 3
+    interval            = 10
     path                = "/health"
     matcher             = "200"
   }
@@ -545,9 +801,9 @@ resource "aws_lb_target_group" "auth" {
   health_check {
     enabled             = true
     healthy_threshold   = 2
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
+    unhealthy_threshold = 2
+    timeout             = 3
+    interval            = 10
     path                = "/health"
     matcher             = "200"
   }
@@ -569,9 +825,9 @@ resource "aws_lb_target_group" "collaboration" {
   health_check {
     enabled             = true
     healthy_threshold   = 2
-    unhealthy_threshold = 3
-    timeout             = 5
-    interval            = 30
+    unhealthy_threshold = 2
+    timeout             = 3
+    interval            = 10
     path                = "/health"
     matcher             = "200"
   }
@@ -583,11 +839,89 @@ resource "aws_lb_target_group" "collaboration" {
   }
 }
 
-# ALB Listener
-resource "aws_lb_listener" "http" {
+# High-throughput target group for h2-ingest binary streams
+resource "aws_lb_target_group" "h2_ingest" {
+  name        = "${var.project_name}-${var.environment}-h2-ingest-tg"
+  port        = 8090
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 3
+    interval            = 10
+    path                = "/health"
+    matcher             = "200"
+  }
+
+  # Optimized for high-velocity binary streams
+  deregistration_delay = 10
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-h2-ingest-tg"
+  }
+}
+
+# Prometheus metrics collection
+resource "aws_lb_target_group" "prometheus" {
+  name        = "${var.project_name}-${var.environment}-prometheus-tg"
+  port        = 9090
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 3
+    interval            = 10
+    path                = "/-/healthy"
+    matcher             = "200"
+  }
+
+  deregistration_delay = 30
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-prometheus-tg"
+  }
+}
+
+# Grafana dashboards
+resource "aws_lb_target_group" "grafana" {
+  name        = "${var.project_name}-${var.environment}-grafana-tg"
+  port        = 3000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 3
+    interval            = 10
+    path                = "/api/health"
+    matcher             = "200"
+  }
+
+  deregistration_delay = 30
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-grafana-tg"
+  }
+}
+
+# ALB Listener - HTTPS with TLS 1.3 enforcement
+resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main.arn
-  port              = "80"
-  protocol          = "HTTP"
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.ssl_certificate_arn
 
   default_action {
     type = "fixed-response"
@@ -599,9 +933,25 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# Listener Rules
+# ALB Listener - HTTP redirect to HTTPS
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+# Listener Rules for HTTPS
 resource "aws_lb_listener_rule" "gateway" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = aws_lb_listener.https.arn
   priority     = 100
 
   action {
@@ -617,7 +967,7 @@ resource "aws_lb_listener_rule" "gateway" {
 }
 
 resource "aws_lb_listener_rule" "auth" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = aws_lb_listener.https.arn
   priority     = 200
 
   action {
@@ -633,7 +983,7 @@ resource "aws_lb_listener_rule" "auth" {
 }
 
 resource "aws_lb_listener_rule" "collaboration" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = aws_lb_listener.https.arn
   priority     = 300
 
   action {
@@ -644,6 +994,57 @@ resource "aws_lb_listener_rule" "collaboration" {
   condition {
     path_pattern {
       values = ["/ws/*"]
+    }
+  }
+}
+
+# High-velocity binary stream ingestion
+resource "aws_lb_listener_rule" "h2_ingest" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 150
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.h2_ingest.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/ingest/*"]
+    }
+  }
+}
+
+# Prometheus metrics (internal access only)
+resource "aws_lb_listener_rule" "prometheus" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 400
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.prometheus.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/prometheus/*"]
+    }
+  }
+}
+
+# Grafana dashboards
+resource "aws_lb_listener_rule" "grafana" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 500
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.grafana.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/grafana/*"]
     }
   }
 }
@@ -790,12 +1191,84 @@ resource "aws_secretsmanager_secret" "redis_url" {
   }
 }
 
-resource "aws_secretsmanager_secret_version" "redis_url" {
-  secret_id     = aws_secretsmanager_secret.redis_url.id
-  secret_string = "redis://${aws_elasticache_cluster.redis.cache_nodes.0.address}:${aws_elasticache_cluster.redis.cache_nodes.0.port}"
+###################
+# EFS for Persistent Prometheus Storage
+###################
+
+resource "aws_efs_file_system" "prometheus" {
+  creation_token = "${var.project_name}-${var.environment}-prometheus-efs"
+  encrypted      = true
+
+  performance_mode = "generalPurpose"
+  throughput_mode  = "provisioned"
+  provisioned_throughput_in_mibps = 10
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-prometheus-efs"
+  }
 }
 
-resource "aws_secretsmanager_secret" "jwt_secret" {
+resource "aws_efs_mount_target" "prometheus" {
+  file_system_id  = aws_efs_file_system.prometheus.id
+  subnet_id       = aws_subnet.private.id
+  security_groups = [aws_security_group.efs.id]
+}
+
+# EFS Security Group
+resource "aws_security_group" "efs" {
+  name        = "${var.project_name}-${var.environment}-efs-sg"
+  description = "Security group for EFS"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_services.id]
+    description     = "NFS from ECS services"
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-efs-sg"
+  }
+}
+
+###################
+# Budget Watchdog
+###################
+
+resource "aws_budgets_budget" "main" {
+  name         = "${var.project_name}-${var.environment}-budget"
+  budget_type  = "COST"
+  limit_amount = var.budget_limit_usd
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  cost_filters = {
+    Tag = ["Project:AetherCore"]
+  }
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                 = 80
+    threshold_type            = "PERCENTAGE"
+    notification_type         = "ACTUAL"
+    subscriber_email_addresses = ["ops@aethercore.com"]
+  }
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                 = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "FORECASTED"
+    subscriber_email_addresses = ["ops@aethercore.com"]
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "redis_url" {
+  secret_id     = aws_secretsmanager_secret.redis_url.id
+  secret_string = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:${aws_elasticache_replication_group.redis.port}"
+}
   name                    = "${var.project_name}/${var.environment}/jwt-secret"
   recovery_window_in_days = 7
 
@@ -837,6 +1310,161 @@ resource "aws_secretsmanager_secret" "merkle_bucket" {
 resource "aws_secretsmanager_secret_version" "merkle_bucket" {
   secret_id     = aws_secretsmanager_secret.merkle_bucket.id
   secret_string = aws_s3_bucket.merkle_proofs.id
+}
+
+###################
+# S3 + CloudFront for Dashboard (Deployment Target #1)
+###################
+
+# S3 Bucket for Dashboard Static Assets
+resource "aws_s3_bucket" "dashboard" {
+  bucket = "${var.project_name}-${var.environment}-dashboard"
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-dashboard"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "dashboard" {
+  bucket = aws_s3_bucket.dashboard.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "dashboard" {
+  bucket = aws_s3_bucket.dashboard.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "dashboard" {
+  bucket = aws_s3_bucket.dashboard.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# CloudFront Origin Access Control
+resource "aws_cloudfront_origin_access_control" "dashboard" {
+  name                              = "${var.project_name}-${var.environment}-dashboard-oac"
+  description                       = "OAC for AetherCore Dashboard"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+# CloudFront Distribution
+resource "aws_cloudfront_distribution" "dashboard" {
+  origin {
+    domain_name              = aws_s3_bucket.dashboard.bucket_regional_domain_name
+    origin_access_control_id = aws_cloudfront_origin_access_control.dashboard.id
+    origin_id                = "S3-${aws_s3_bucket.dashboard.id}"
+  }
+
+  enabled             = true
+  is_ipv6_enabled     = true
+  default_root_object = "index.html"
+
+  default_cache_behavior {
+    allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "S3-${aws_s3_bucket.dashboard.id}"
+    compress               = true
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    min_ttl     = 0
+    default_ttl = 3600
+    max_ttl     = 86400
+  }
+
+  # Cache behavior for static assets
+  ordered_cache_behavior {
+    path_pattern           = "/static/*"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD", "OPTIONS"]
+    target_origin_id       = "S3-${aws_s3_bucket.dashboard.id}"
+    compress               = true
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = false
+      headers      = ["Origin"]
+      cookies {
+        forward = "none"
+      }
+    }
+
+    min_ttl     = 0
+    default_ttl = 86400
+    max_ttl     = 31536000
+  }
+
+  # SPA routing - redirect 404s to index.html
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  custom_error_response {
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-dashboard-cdn"
+  }
+}
+
+# S3 Bucket Policy for CloudFront OAC
+resource "aws_s3_bucket_policy" "dashboard" {
+  bucket = aws_s3_bucket.dashboard.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowCloudFrontServicePrincipal"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudfront.amazonaws.com"
+        }
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.dashboard.arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = aws_cloudfront_distribution.dashboard.arn
+          }
+        }
+      }
+    ]
+  })
 }
 
 # Grant ECS task execution role permission to read secrets
@@ -979,4 +1607,128 @@ module "collaboration_service" {
     KMS_KEY_ARN   = aws_secretsmanager_secret.kms_key_arn.arn
     MERKLE_BUCKET = aws_secretsmanager_secret.merkle_bucket.arn
   }
+}
+
+# H2-Ingest Service - High-velocity binary stream processing
+module "h2_ingest_service" {
+  source = "../../modules/ecs-service"
+
+  project_name = var.project_name
+  environment  = var.environment
+  service_name = "h2-ingest"
+
+  cluster_id        = aws_ecs_cluster.main.id
+  vpc_id            = aws_vpc.main.id
+  private_subnet_id = aws_subnet.private.id
+  security_group_id = aws_security_group.ecs_services.id
+
+  ecr_repository_url = aws_ecr_repository.h2_ingest.repository_url
+  image_tag          = var.image_tag
+
+  container_port = 8090
+  cpu            = 512
+  memory         = 1024
+
+  target_group_arn = aws_lb_target_group.h2_ingest.arn
+
+  task_execution_role_arn = aws_iam_role.ecs_task_execution.arn
+  task_role_arn           = aws_iam_role.ecs_task.arn
+
+  environment_variables = {
+    PORT        = "8090"
+    RUST_LOG    = "info"
+    BUFFER_SIZE = "65536"
+  }
+
+  secrets = {
+    REDIS_URL     = aws_secretsmanager_secret.redis_url.arn
+    KMS_KEY_ARN   = aws_secretsmanager_secret.kms_key_arn.arn
+    MERKLE_BUCKET = aws_secretsmanager_secret.merkle_bucket.arn
+  }
+
+  # Rust binary health check
+  health_check_command = [
+    "CMD-SHELL",
+    "curl -f http://localhost:8090/health || exit 1"
+  ]
+}
+
+# Prometheus Service - Metrics collection and storage
+module "prometheus_service" {
+  source = "../../modules/ecs-service"
+
+  project_name = var.project_name
+  environment  = var.environment
+  service_name = "prometheus"
+
+  cluster_id        = aws_ecs_cluster.main.id
+  vpc_id            = aws_vpc.main.id
+  private_subnet_id = aws_subnet.private.id
+  security_group_id = aws_security_group.ecs_services.id
+
+  ecr_repository_url = aws_ecr_repository.prometheus.repository_url
+  image_tag          = var.image_tag
+
+  container_port = 9090
+  cpu            = 256
+  memory         = 512
+
+  target_group_arn = aws_lb_target_group.prometheus.arn
+
+  task_execution_role_arn = aws_iam_role.ecs_task_execution.arn
+  task_role_arn           = aws_iam_role.ecs_task.arn
+
+  environment_variables = {
+    PROMETHEUS_RETENTION_TIME = "15d"
+    PROMETHEUS_STORAGE_PATH   = "/prometheus"
+  }
+
+  secrets = {}
+
+  # Prometheus health check
+  health_check_command = [
+    "CMD-SHELL",
+    "wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1"
+  ]
+}
+
+# Grafana Service - Visualization dashboards
+module "grafana_service" {
+  source = "../../modules/ecs-service"
+
+  project_name = var.project_name
+  environment  = var.environment
+  service_name = "grafana"
+
+  cluster_id        = aws_ecs_cluster.main.id
+  vpc_id            = aws_vpc.main.id
+  private_subnet_id = aws_subnet.private.id
+  security_group_id = aws_security_group.ecs_services.id
+
+  ecr_repository_url = aws_ecr_repository.grafana.repository_url
+  image_tag          = var.image_tag
+
+  container_port = 3000
+  cpu            = 256
+  memory         = 512
+
+  target_group_arn = aws_lb_target_group.grafana.arn
+
+  task_execution_role_arn = aws_iam_role.ecs_task_execution.arn
+  task_role_arn           = aws_iam_role.ecs_task.arn
+
+  environment_variables = {
+    GF_SERVER_ROOT_URL               = "https://alb-domain/grafana/"
+    GF_SERVER_SERVE_FROM_SUB_PATH    = "true"
+    GF_SECURITY_ADMIN_PASSWORD       = "admin"
+    GF_INSTALL_PLUGINS               = "redis-datasource"
+  }
+
+  secrets = {}
+
+  # Grafana health check
+  health_check_command = [
+    "CMD-SHELL",
+    "curl -f http://localhost:3000/api/health || exit 1"
+  ]
 }

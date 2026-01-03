@@ -11,31 +11,78 @@ use thiserror::Error;
 pub enum ThresholdDriftError {
     /// Customer pressure hi-hi threshold drifted
     #[error("Customer pressure hi-hi drifted by {delta} PSI (old: {old}, new: {new})")]
-    CustomerPressureHiHi { old: f32, new: f32, delta: f32 },
+    CustomerPressureHiHi {
+        /// Previous threshold value
+        old: f32,
+        /// New threshold value
+        new: f32,
+        /// Absolute drift amount
+        delta: f32,
+    },
     
     /// Customer pressure lo-lo threshold drifted
     #[error("Customer pressure lo-lo drifted by {delta} PSI (old: {old}, new: {new})")]
-    CustomerPressureLoLo { old: f32, new: f32, delta: f32 },
+    CustomerPressureLoLo {
+        /// Previous threshold value
+        old: f32,
+        /// New threshold value
+        new: f32,
+        /// Absolute drift amount
+        delta: f32,
+    },
     
     /// Customer pressure fill threshold drifted
     #[error("Customer pressure fill drifted by {delta} PSI (old: {old}, new: {new})")]
-    CustomerPressureFill { old: f32, new: f32, delta: f32 },
+    CustomerPressureFill {
+        /// Previous threshold value
+        old: f32,
+        /// New threshold value
+        new: f32,
+        /// Absolute drift amount
+        delta: f32,
+    },
     
     /// Customer volume drifted
     #[error("Customer volume drifted by {delta} cubic feet (old: {old}, new: {new})")]
-    CustomerVolume { old: f32, new: f32, delta: f32 },
+    CustomerVolume {
+        /// Previous threshold value
+        old: f32,
+        /// New threshold value
+        new: f32,
+        /// Absolute drift amount
+        delta: f32,
+    },
     
     /// Pressure drop setpoint 1 drifted
     #[error("Pressure drop SP1 drifted by {delta} PSI (old: {old}, new: {new})")]
-    PressureDropSp1 { old: f32, new: f32, delta: f32 },
+    PressureDropSp1 {
+        /// Previous setpoint value
+        old: f32,
+        /// New setpoint value
+        new: f32,
+        /// Absolute drift amount
+        delta: f32,
+    },
     
     /// Pressure drop setpoint 2 drifted
     #[error("Pressure drop SP2 drifted by {delta} PSI (old: {old}, new: {new})")]
-    PressureDropSp2 { old: f32, new: f32, delta: f32 },
+    PressureDropSp2 {
+        /// Previous setpoint value
+        old: f32,
+        /// New setpoint value
+        new: f32,
+        /// Absolute drift amount
+        delta: f32,
+    },
     
     /// N2 purge flag changed
     #[error("N2 purge requirement changed (old: {old}, new: {new})")]
-    N2PurgeChanged { old: bool, new: bool },
+    N2PurgeChanged {
+        /// Previous purge requirement
+        old: bool,
+        /// New purge requirement
+        new: bool,
+    },
 }
 
 /// Attested device configuration
