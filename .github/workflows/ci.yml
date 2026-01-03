@@ -2,9 +2,9 @@ name: AetherCore MonoRepo CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, internal ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, internal ]
 
 jobs:
   verify-structure:
@@ -35,8 +35,11 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            target/release
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+            ${{ runner.os }}-cargo-
       
       - name: Check Rust workspace
         run: cargo check --workspace
@@ -58,6 +61,18 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
+      
+      - name: Cache node_modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            node_modules
+            */*/node_modules
+            packages/*/node_modules
+            services/*/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
       
       - name: Install dependencies
         run: npm ci
@@ -148,3 +163,76 @@ jobs:
           fi
           
           echo "✓ Workspace configuration is valid"
+
+  build-and-push-internal:
+    name: Build and Push Docker Images (Internal)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/internal'
+    needs: [rust-workspace, typescript-workspace]
+    permissions:
+      contents: read
+      id-token: write  # For OIDC authentication with AWS
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Build and push h2-ingest
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./services/h2-ingest/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/aethercore-h2-ingest:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/aethercore-h2-ingest:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push gateway
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./infra/docker/Dockerfile.gateway
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/aethercore-gateway:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/aethercore-gateway:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push auth
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./infra/docker/Dockerfile.auth
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/aethercore-auth:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/aethercore-auth:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push collaboration
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./infra/docker/Dockerfile.collaboration
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/aethercore-collaboration:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/aethercore-collaboration:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
