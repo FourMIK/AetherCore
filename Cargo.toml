@@ -17,6 +17,7 @@ members = [
     "crates/c2-router",
     "crates/unit-status",
     "services/h2-ingest",
+    "packages/dashboard/src-tauri",
 ]
 
 [workspace.package]
