@@ -1,0 +1,74 @@
+{
+"name": "AetherCore - Rust + TypeScript Monorepo",
+"image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+
+"features": {
+"ghcr.io/devcontainers/features/rust:1": {
+"version": "latest",
+"profile": "minimal"
+},
+"ghcr.io/devcontainers/features/docker-in-docker:2": {},
+"ghcr.io/devcontainers/features/aws-cli:1": {},
+"ghcr.io/devcontainers/features/github-cli:1": {}
+},
+
+"customizations": {
+"vscode": {
+"extensions": [
+"rust-lang.rust-analyzer",
+"dbaeumer.vscode-eslint",
+"esbenp.prettier-vscode",
+"ms-azuretools.vscode-docker",
+"GitHub.copilot"
+],
+"settings": {
+"terminal.integrated.defaultProfile.linux": "bash",
+"editor.formatOnSave": true,
+"[rust]": {
+"editor.defaultFormatter": "rust-lang.rust-analyzer"
+},
+"[typescript]": {
+"editor.defaultFormatter": "esbenp.prettier-vscode"
+},
+"[javascript]": {
+"editor.defaultFormatter": "esbenp.prettier-vscode"
+}
+}
+}
+},
+
+"postCreateCommand": "npm install && cargo build --workspace",
+
+"forwardPorts": [
+3000,
+3001,
+5432,
+6379,
+8090
+],
+
+"portsAttributes": {
+"3000": {
+"label": "Gateway",
+"onAutoForward": "notify"
+},
+"3001": {
+"label": "Auth",
+"onAutoForward": "notify"
+},
+"5432": {
+"label": "PostgreSQL",
+"onAutoForward": "silent"
+},
+"6379": {
+"label": "Redis",
+"onAutoForward": "silent"
+},
+"8090": {
+"label": "H2-Ingest",
+"onAutoForward": "notify"
+}
+},
+
+"remoteUser": "node"
+}
