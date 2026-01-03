@@ -110,11 +110,7 @@ fn bench_authority_verification(c: &mut Criterion) {
     verifier.register_authority("operator-1".to_string(), public_key);
     
     let mut command_hash = [0u8; 32];
-    blake3::hash(b"test command payload for verification")
-        .as_bytes()
-        .iter()
-        .zip(command_hash.iter_mut())
-        .for_each(|(src, dst)| *dst = *src);
+    command_hash.copy_from_slice(blake3::hash(b"test command payload for verification").as_bytes());
     
     let signature = create_test_signature("operator-1", &command_hash, &signing_key, public_key);
     
@@ -139,11 +135,7 @@ fn bench_authority_verification_quorum(c: &mut Criterion) {
     }
     
     let mut command_hash = [0u8; 32];
-    blake3::hash(b"test command payload requiring quorum")
-        .as_bytes()
-        .iter()
-        .zip(command_hash.iter_mut())
-        .for_each(|(src, dst)| *dst = *src);
+    command_hash.copy_from_slice(blake3::hash(b"test command payload requiring quorum").as_bytes());
     
     let signatures: Vec<AuthoritySignature> = authorities
         .iter()
