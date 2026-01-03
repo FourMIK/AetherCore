@@ -4,16 +4,13 @@
 //! - Command dispatch to single units
 //! - Swarm command fan-out to multiple units
 //! - Authority signature verification with Ed25519
-//! - Quorum gate validation
-//! - Truth-Chain ledger recording
+//! - Command serialization overhead
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use aethercore_c2_router::{
-    dispatcher::{CommandDispatcher, UnitDispatchResult},
-    command_types::{UnitCommand, SwarmCommand, Coordinate, FormationType, ScanParameters, ScanType},
+    dispatcher::CommandDispatcher,
+    command_types::{UnitCommand, SwarmCommand, Coordinate, FormationType, ScanType},
     authority::{AuthorityVerifier, AuthoritySignature},
-    quorum::{QuorumGate, QuorumProof, CommandScope},
-    ledger::TruthChainRecorder,
 };
 use ed25519_dalek::{SigningKey, Signer};
 use rand::RngCore;
@@ -31,7 +28,7 @@ fn generate_test_keypair() -> (SigningKey, [u8; 32]) {
 /// Create a test authority signature
 fn create_test_signature(
     authority_id: &str,
-    message: &[u8],
+    message: &[u8; 32],
     signing_key: &SigningKey,
     public_key: [u8; 32],
 ) -> AuthoritySignature {
@@ -74,9 +71,8 @@ fn bench_swarm_command_fanout(c: &mut Criterion) {
     let dispatcher = CommandDispatcher::new();
     let command = SwarmCommand::FormationMove {
         formation: FormationType::Line,
-        target_center: Coordinate { lat: 45.0, lon: -122.0, alt: Some(100.0) },
-        spacing_meters: 50.0,
-        speed: Some(10.0),
+        destination: Coordinate { lat: 45.0, lon: -122.0, alt: Some(100.0) },
+        speed: 10.0,
     };
     
     let unit_counts = vec![5, 10, 25, 50, 100];
@@ -113,12 +109,18 @@ fn bench_authority_verification(c: &mut Criterion) {
     let (signing_key, public_key) = generate_test_keypair();
     verifier.register_authority("operator-1".to_string(), public_key);
     
-    let message = b"test command payload for verification";
-    let signature = create_test_signature("operator-1", message, &signing_key, public_key);
+    let mut command_hash = [0u8; 32];
+    blake3::hash(b"test command payload for verification")
+        .as_bytes()
+        .iter()
+        .zip(command_hash.iter_mut())
+        .for_each(|(src, dst)| *dst = *src);
+    
+    let signature = create_test_signature("operator-1", &command_hash, &signing_key, public_key);
     
     c.bench_function("authority_verification_single", |b| {
         b.iter(|| {
-            black_box(verifier.verify_signature(&signature, message).unwrap())
+            black_box(verifier.verify(&command_hash, &signature).unwrap())
         })
     });
 }
@@ -136,102 +138,34 @@ fn bench_authority_verification_quorum(c: &mut Criterion) {
         authorities.push((authority_id, signing_key, public_key));
     }
     
-    let message = b"test command payload requiring quorum";
+    let mut command_hash = [0u8; 32];
+    blake3::hash(b"test command payload requiring quorum")
+        .as_bytes()
+        .iter()
+        .zip(command_hash.iter_mut())
+        .for_each(|(src, dst)| *dst = *src);
+    
+    let signatures: Vec<AuthoritySignature> = authorities
+        .iter()
+        .map(|(authority_id, signing_key, public_key)| {
+            create_test_signature(authority_id, &command_hash, signing_key, *public_key)
+        })
+        .collect();
     
     c.bench_function("authority_verification_quorum_3", |b| {
         b.iter(|| {
-            // Verify all 3 signatures
-            for (authority_id, signing_key, public_key) in &authorities {
-                let signature = create_test_signature(authority_id, message, signing_key, *public_key);
-                black_box(verifier.verify_signature(&signature, message).unwrap());
-            }
+            black_box(verifier.verify_multiple(&command_hash, &signatures).unwrap());
         })
     });
 }
 
-/// Benchmark: Quorum gate validation
-fn bench_quorum_gate_validation(c: &mut Criterion) {
-    let verifier = AuthorityVerifier::new();
-    let gate = QuorumGate::new(verifier);
+/// Benchmark: BLAKE3 hash computation for command signing
+fn bench_command_hashing(c: &mut Criterion) {
+    let command_data = b"Navigate {lat: 45.0, lon: -122.0, alt: 100.0, speed: 10.0}";
     
-    // Create test proofs
-    let operator_proof = QuorumProof {
-        operator_signature: Some(create_test_signature(
-            "operator-1",
-            b"test",
-            &generate_test_keypair().0,
-            generate_test_keypair().1,
-        )),
-        coalition_signatures: vec![],
-    };
-    
-    c.bench_function("quorum_gate_single_unit", |b| {
+    c.bench_function("command_hash_blake3", |b| {
         b.iter(|| {
-            black_box(gate.validate_quorum(&CommandScope::SingleUnit, &operator_proof).unwrap())
-        })
-    });
-    
-    // Multi-unit quorum
-    let multi_unit_proof = QuorumProof {
-        operator_signature: Some(create_test_signature(
-            "operator-1",
-            b"test",
-            &generate_test_keypair().0,
-            generate_test_keypair().1,
-        )),
-        coalition_signatures: vec![
-            create_test_signature(
-                "coalition-1",
-                b"test",
-                &generate_test_keypair().0,
-                generate_test_keypair().1,
-            ),
-        ],
-    };
-    
-    c.bench_function("quorum_gate_swarm_small", |b| {
-        b.iter(|| {
-            black_box(gate.validate_quorum(&CommandScope::SwarmSmall, &multi_unit_proof).unwrap())
-        })
-    });
-}
-
-/// Benchmark: Truth-Chain ledger recording
-fn bench_truthchain_recording(c: &mut Criterion) {
-    let recorder = TruthChainRecorder::new("node-1".to_string());
-    
-    c.bench_function("truthchain_record_unit_command", |b| {
-        let mut seq = 0u64;
-        b.iter(|| {
-            seq += 1;
-            let timestamp_ns = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos() as u64;
-            black_box(recorder.record_unit_command(
-                format!("unit-cmd-{}", seq),
-                "unit-1".to_string(),
-                "Navigate".to_string(),
-                timestamp_ns,
-            ))
-        })
-    });
-    
-    c.bench_function("truthchain_record_swarm_command", |b| {
-        let mut seq = 0u64;
-        b.iter(|| {
-            seq += 1;
-            let timestamp_ns = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos() as u64;
-            let unit_ids = vec!["unit-1".to_string(), "unit-2".to_string(), "unit-3".to_string()];
-            black_box(recorder.record_swarm_command(
-                format!("swarm-cmd-{}", seq),
-                unit_ids,
-                "FormationMove".to_string(),
-                timestamp_ns,
-            ))
+            black_box(blake3::hash(command_data))
         })
     });
 }
@@ -250,18 +184,18 @@ fn bench_command_serialization(c: &mut Criterion) {
         })
     });
     
+    use aethercore_c2_router::command_types::GeoBoundary;
     let swarm_command = SwarmCommand::AreaScan {
-        scan_params: ScanParameters {
-            scan_type: ScanType::Visual,
-            resolution: 1.0,
-            overlap: 0.3,
+        boundary: GeoBoundary {
+            vertices: vec![
+                Coordinate { lat: 45.0, lon: -122.0, alt: Some(100.0) },
+                Coordinate { lat: 45.1, lon: -122.0, alt: Some(100.0) },
+                Coordinate { lat: 45.1, lon: -122.1, alt: Some(100.0) },
+                Coordinate { lat: 45.0, lon: -122.1, alt: Some(100.0) },
+            ],
         },
-        boundary: vec![
-            Coordinate { lat: 45.0, lon: -122.0, alt: Some(100.0) },
-            Coordinate { lat: 45.1, lon: -122.0, alt: Some(100.0) },
-            Coordinate { lat: 45.1, lon: -122.1, alt: Some(100.0) },
-            Coordinate { lat: 45.0, lon: -122.1, alt: Some(100.0) },
-        ],
+        scan_type: ScanType::Visual,
+        overlap_percent: 30,
     };
     
     c.bench_function("command_serialize_swarm", |b| {
@@ -277,9 +211,9 @@ criterion_group!(
     bench_swarm_command_fanout,
     bench_authority_verification,
     bench_authority_verification_quorum,
-    bench_quorum_gate_validation,
-    bench_truthchain_recording,
+    bench_command_hashing,
     bench_command_serialization,
 );
 
 criterion_main!(benches);
+
