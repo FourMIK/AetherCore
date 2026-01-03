@@ -6,6 +6,8 @@
 //! - Telemetry data structures (pressure, temperature, GPS, battery, connectivity)
 //! - Trust scoring for telemetry (stale detection, attestation verification)
 //! - CosmosDB change feed subscription (placeholder)
+//! - WebSocket server for real-time mesh health telemetry (Tactical Glass)
+//! - Great Gospel revocation ledger (Aetheric Sweep protocol)
 //!
 //! # Exclusions
 //!
@@ -54,10 +56,21 @@
 pub mod feed;
 pub mod trust;
 pub mod types;
+pub mod websocket;
+pub mod gospel;
 
 // Re-export commonly used types
 pub use feed::{ChangeFeedEvent, CosmosDbFeedSubscriber, FeedError};
 pub use trust::{TelemetryTrustScorer, TrustLevel};
 pub use types::{
     ConnectivityState, Coordinate, OperationalState, PlatformType, UnitStatus, UnitTelemetry,
+};
+pub use websocket::{
+    WsServer, WsMessage, MeshHealthMessage, HealthMetrics,
+    RevocationCertificate as WsRevocationCertificate,
+    RevocationReason as WsRevocationReason,
+};
+pub use gospel::{
+    GospelLedger, GospelState, GospelError,
+    RevocationCertificate, RevocationReason,
 };
