@@ -12,13 +12,38 @@ reclaimPolicy: Retain
 parameters:
   nodePath: /mnt/nvme/aethercore/k8s-volumes
 ---
-# Fast storage class for high-IOPS workloads (PostgreSQL, Redis)
+# Local storage class for high-IOPS workloads (PostgreSQL, Redis)
+# Note: Requires manual PersistentVolume creation before PVC binding
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: local-nvme
   annotations:
-    storageclass.kubernetes.io/description: "NVMe-backed local storage for databases"
+    storageclass.kubernetes.io/description: "NVMe-backed local storage for databases - requires manual PV creation"
 provisioner: kubernetes.io/no-provisioner
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Retain
+---
+# Example PersistentVolume for local-nvme (create one per node)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-nvme-pv-node1
+spec:
+  capacity:
+    storage: 500Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-nvme
+  local:
+    path: /mnt/nvme/aethercore/k8s-volumes
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - node1  # Replace with actual node name

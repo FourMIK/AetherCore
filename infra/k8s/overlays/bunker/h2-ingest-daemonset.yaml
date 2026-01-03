@@ -21,11 +21,11 @@ spec:
       - name: h2-ingest
         image: aethercore/h2-ingest:latest
         securityContext:
-          privileged: true
           capabilities:
             add:
             - NET_ADMIN
             - NET_RAW
+            - SYS_PTRACE
         ports:
         - containerPort: 8090
           protocol: UDP

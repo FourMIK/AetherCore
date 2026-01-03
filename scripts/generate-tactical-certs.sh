@@ -78,9 +78,7 @@ DNS.1 = tactical-glass.local
 DNS.2 = localhost
 DNS.3 = *.tactical-glass.local
 IP.1 = 127.0.0.1
-IP.2 = 10.0.0.0/8
-IP.3 = 172.16.0.0/12
-IP.4 = 192.168.0.0/16
+IP.2 = 10.0.0.1
 EOF
 
 echo "Generating RSA 4096-bit private key..."

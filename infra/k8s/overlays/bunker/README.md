@@ -119,7 +119,10 @@ EOF
 chmod 600 secrets.env
 
 # Enable secret generation in kustomization.yaml
-# Uncomment the secretGenerator section
+sed -i 's/^# secretGenerator:/secretGenerator:/' kustomization.yaml
+sed -i 's/^#   - name: bunker-secrets/  - name: bunker-secrets/' kustomization.yaml
+sed -i 's/^#     envs:/    envs:/' kustomization.yaml
+sed -i 's|^#       - secrets.env|      - secrets.env|' kustomization.yaml
 ```
 
 ### 2. Generate TLS Certificates
@@ -179,10 +182,10 @@ kubectl get nodes --show-labels | grep telemetry
 ```bash
 cd infra/k8s/overlays/bunker
 
-# Verify manifests
-kustomize build . | less
+# Run pre-deployment validation
+./validate-bunker-deploy.sh
 
-# Deploy to cluster
+# If validation passes, deploy
 kustomize build . | kubectl apply -f -
 
 # Watch deployment

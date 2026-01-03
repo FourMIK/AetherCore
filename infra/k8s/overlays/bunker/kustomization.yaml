@@ -102,8 +102,17 @@ configMapGenerator:
       - HASH_ALGORITHM=BLAKE3
       - SIGNING_ALGORITHM=Ed25519
 
-# Secret generator (placeholder - replace with sealed-secrets in production)
-# Uncomment and create secrets.env file before deploying:
+# Secret generator - REQUIRED for deployment
+# 
+# BEFORE DEPLOYING:
+#   1. Copy secrets.env.example to secrets.env
+#   2. Fill in secure values: openssl rand -base64 32
+#   3. Uncomment the lines below
+#   4. Ensure secrets.env is in .gitignore
+#
+# WARNING: Deployment will FAIL without proper secrets configuration.
+# The postgres, auth, minio, and grafana pods will not start.
+#
 # secretGenerator:
 #   - name: bunker-secrets
 #     envs:
