@@ -85,7 +85,7 @@ export class VerificationService {
           envelope,
         });
         return {
-          status: 'STATUS_UNVERIFIED',
+          status: 'STATUS_UNVERIFIED' as VerificationStatus,
           payload: null,
           reason: 'Node not enrolled in identity registry',
         };
@@ -100,7 +100,7 @@ export class VerificationService {
           envelope,
         });
         return {
-          status: 'STATUS_UNVERIFIED',
+          status: 'STATUS_UNVERIFIED' as VerificationStatus,
           payload: null,
           reason: 'Public key not found for enrolled node',
         };
@@ -115,7 +115,7 @@ export class VerificationService {
           timeDiff,
         });
         return {
-          status: 'SPOOFED',
+          status: 'SPOOFED' as VerificationStatus,
           payload: null,
           reason: `Replay attack detected: timestamp outside 5min window (${timeDiff}ms)`,
         };
@@ -133,7 +133,7 @@ export class VerificationService {
           envelope,
         });
         return {
-          status: 'SPOOFED',
+          status: 'SPOOFED' as VerificationStatus,
           payload: null,
           reason: 'Invalid Ed25519 signature - Byzantine node detected',
         };
@@ -143,7 +143,7 @@ export class VerificationService {
       try {
         const payload = JSON.parse(validated.payload);
         return {
-          status: 'VERIFIED',
+          status: 'VERIFIED' as VerificationStatus,
           payload,
         };
       } catch (error) {
@@ -152,7 +152,7 @@ export class VerificationService {
           error: 'Invalid JSON payload',
         });
         return {
-          status: 'SPOOFED',
+          status: 'SPOOFED' as VerificationStatus,
           payload: null,
           reason: 'Invalid JSON payload in signed envelope',
         };
@@ -162,7 +162,7 @@ export class VerificationService {
         error: error instanceof Error ? error.message : String(error),
       });
       return {
-        status: 'STATUS_UNVERIFIED',
+        status: 'STATUS_UNVERIFIED' as VerificationStatus,
         payload: null,
         reason: `Schema validation failed: ${error instanceof Error ? error.message : String(error)}`,
       };
