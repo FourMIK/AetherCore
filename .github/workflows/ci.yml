@@ -236,3 +236,117 @@ jobs:
             ${{ steps.login-ecr.outputs.registry }}/aethercore-collaboration:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release-desktop:
+    name: Build Desktop App (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    needs: [rust-workspace, typescript-workspace]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'ubuntu-latest'
+            os: ubuntu-latest
+            artifact: 'aethercore-tactical-glass_*_amd64.AppImage'
+          - platform: 'macos-latest'
+            os: macos-latest
+            artifact: 'aethercore-tactical-glass_*.dmg'
+          - platform: 'windows-latest'
+            os: windows-latest
+            artifact: 'aethercore-tactical-glass_*.msi'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev
+      
+      - name: Install dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          # macOS dependencies are typically pre-installed
+          echo "macOS dependencies check..."
+      
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-desktop-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Install npm dependencies
+        run: npm ci
+      
+      - name: Install Tauri CLI
+        run: |
+          cd packages/dashboard
+          npm install --save-dev @tauri-apps/cli
+      
+      - name: Build Dashboard TypeScript
+        run: |
+          cd packages/dashboard
+          npm run build
+      
+      - name: Build Tauri App
+        run: |
+          cd packages/dashboard
+          npx tauri build
+      
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tactical-glass-${{ matrix.platform }}
+          path: |
+            packages/dashboard/src-tauri/target/release/bundle/*/*.AppImage
+            packages/dashboard/src-tauri/target/release/bundle/*/*.dmg
+            packages/dashboard/src-tauri/target/release/bundle/*/*.msi
+
+  build-arm-edge:
+    name: Build ARM64 Edge Library
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    needs: [rust-workspace]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+      
+      - name: Build ARM64 Edge Library
+        run: |
+          chmod +x scripts/build_arm.sh
+          ./scripts/build_arm.sh
+      
+      - name: Upload ARM64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aethercore-edge-arm64
+          path: target/aarch64-unknown-linux-gnu/release/libaethercore_edge.rlib

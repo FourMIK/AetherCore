@@ -1,29 +1,37 @@
 {
   "name": "@aethercore/dashboard",
   "version": "0.1.0",
-  "description": "AetherCore Dashboard",
+  "description": "AetherCore Tactical Glass Dashboard",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
     "test": "echo \"No tests yet\"",
-    "lint": "echo \"No linting configured yet\""
+    "lint": "echo \"No linting configured yet\"",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "keywords": [
     "aethercore",
-    "dashboard"
+    "dashboard",
+    "tauri",
+    "tactical-glass"
   ],
   "author": "AetherCore Team",
   "license": "MIT",
   "dependencies": {
     "@aethercore/shared": "^0.1.0",
+    "@tauri-apps/api": "^2.9.3",
     "blake3": "^2.1.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "qrcode.react": "^4.1.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.9.6",
     "@types/node": "^20.10.6",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",
