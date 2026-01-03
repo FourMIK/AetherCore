@@ -169,6 +169,9 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/internal'
     needs: [rust-workspace, typescript-workspace]
+    permissions:
+      contents: read
+      id-token: write  # For OIDC authentication with AWS
     steps:
       - uses: actions/checkout@v4
       
