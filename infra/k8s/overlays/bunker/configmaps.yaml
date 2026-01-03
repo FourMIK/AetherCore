@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  labels:
+    app: nginx
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+
+    events {
+        worker_connections 4096;
+        use epoll;
+        multi_accept on;
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for"';
+
+        access_log /var/log/nginx/access.log main;
+
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+        server_tokens off;
+
+        gzip on;
+        gzip_vary on;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_types text/plain text/css text/xml text/javascript 
+                   application/json application/javascript application/xml+rss;
+
+        server {
+            listen 80 default_server;
+            listen [::]:80 default_server;
+            server_name _;
+
+            location /health {
+                access_log off;
+                return 200 "OK\n";
+                add_header Content-Type text/plain;
+            }
+
+            location / {
+                root /usr/share/nginx/html;
+                index index.html;
+                try_files $uri $uri/ /index.html;
+            }
+        }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  labels:
+    app: prometheus
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'bunker'
+        environment: 'tactical'
+
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      
+      - job_name: 'gateway'
+        static_configs:
+          - targets: ['gateway:3000']
+      
+      - job_name: 'auth'
+        static_configs:
+          - targets: ['auth:3001']
+      
+      - job_name: 'collaboration'
+        static_configs:
+          - targets: ['collaboration:8080']
+      
+      - job_name: 'fleet'
+        static_configs:
+          - targets: ['fleet:3002']
+      
+      - job_name: 'minio'
+        metrics_path: /minio/v2/metrics/cluster
+        static_configs:
+          - targets: ['minio:9000']

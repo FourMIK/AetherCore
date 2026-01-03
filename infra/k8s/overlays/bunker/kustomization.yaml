@@ -1,0 +1,110 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: aethercore
+
+# Base resources
+bases:
+  - ../../base
+
+# Bunker-specific labels
+commonLabels:
+  project: AetherCore
+  managed-by: kustomize
+  deployment: bunker
+  environment: tactical
+
+commonAnnotations:
+  description: "AetherCore Bunker Mode - Air-Gapped Tactical Deployment"
+
+# Resources specific to bunker deployment
+resources:
+  - storage-class.yaml
+  - postgres-statefulset.yaml
+  - redis-statefulset.yaml
+  - minio-statefulset.yaml
+  - gateway-deployment.yaml
+  - auth-deployment.yaml
+  - collaboration-deployment.yaml
+  - fleet-deployment.yaml
+  - h2-ingest-daemonset.yaml
+  - nginx-deployment.yaml
+  - prometheus-statefulset.yaml
+  - grafana-deployment.yaml
+  - services.yaml
+  - ingress.yaml
+  - configmaps.yaml
+
+# Patches for bunker-specific configurations
+patches:
+  # Use local-path storage instead of EBS
+  - path: storage-patch.yaml
+    target:
+      kind: PersistentVolumeClaim
+  
+  # Use NodePort ingress instead of LoadBalancer
+  - path: ingress-patch.yaml
+    target:
+      kind: Ingress
+  
+  # Resource constraints for tactical hardware (64GB/16vCPU)
+  - path: resources-patch.yaml
+    target:
+      kind: Deployment
+  - path: resources-patch.yaml
+    target:
+      kind: StatefulSet
+
+# Configuration for local registry
+images:
+  - name: postgres
+    newName: localhost:5000/postgres
+    newTag: "16-alpine"
+  - name: redis
+    newName: localhost:5000/redis
+    newTag: "7-alpine"
+  - name: nginx
+    newName: localhost:5000/nginx
+    newTag: "1.25-alpine"
+  - name: minio/minio
+    newName: localhost:5000/minio
+    newTag: latest
+  - name: prom/prometheus
+    newName: localhost:5000/prometheus
+    newTag: latest
+  - name: grafana/grafana
+    newName: localhost:5000/grafana
+    newTag: latest
+  - name: aethercore/gateway
+    newName: localhost:5000/aethercore/gateway
+    newTag: latest
+  - name: aethercore/auth
+    newName: localhost:5000/aethercore/auth
+    newTag: latest
+  - name: aethercore/collaboration
+    newName: localhost:5000/aethercore/collaboration
+    newTag: latest
+  - name: aethercore/fleet
+    newName: localhost:5000/aethercore/fleet
+    newTag: latest
+  - name: aethercore/h2-ingest
+    newName: localhost:5000/aethercore/h2-ingest
+    newTag: latest
+
+# ConfigMap generators
+configMapGenerator:
+  - name: bunker-config
+    literals:
+      - DEPLOYMENT_MODE=bunker
+      - ENVIRONMENT=tactical
+      - TPM_ENABLED=true
+      - MERKLE_VINE_ENABLED=true
+      - HASH_ALGORITHM=BLAKE3
+      - SIGNING_ALGORITHM=Ed25519
+
+# Secret generator (placeholder - replace with sealed-secrets in production)
+# Uncomment and create secrets.env file before deploying:
+# secretGenerator:
+#   - name: bunker-secrets
+#     envs:
+#       - secrets.env

@@ -1,0 +1,24 @@
+# Local-path StorageClass for bare-metal deployments
+# Replaces EBS/cloud storage with hostPath
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-path
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: rancher.io/local-path
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+parameters:
+  nodePath: /mnt/nvme/aethercore/k8s-volumes
+---
+# Fast storage class for high-IOPS workloads (PostgreSQL, Redis)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-nvme
+  annotations:
+    storageclass.kubernetes.io/description: "NVMe-backed local storage for databases"
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
