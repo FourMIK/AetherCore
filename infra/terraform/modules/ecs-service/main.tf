@@ -153,8 +153,14 @@ resource "aws_ecs_task_definition" "service" {
         }
       }
 
+      # Container health check - verify service responds on port
+      # Uses Node.js http module which is always available
+      # ALB performs more thorough health checks at /health endpoint
       healthCheck = {
-        command     = ["CMD-SHELL", "exit 0"]
+        command = [
+          "CMD-SHELL",
+          "node -e \"require('http').get('http://localhost:${var.container_port}/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""
+        ]
         interval    = 30
         timeout     = 5
         retries     = 3
