@@ -40,14 +40,6 @@ Shared TypeScript packages:
 - **canonical-schema** — Canonical data schemas
 - **shared** — Shared utilities
 
-### `/legacy` — Read-Only H2OS Snapshot
-
-**Important**: This directory contains a read-only snapshot of the H2OS system for reference only.
-
-- ⚠️ **NO RUNTIME IMPORTS** from this directory
-- Only `/crates/h2-domain/` and `/packages/h2-glass/` may reference legacy code
-- All other modules must not import from `/legacy`
-
 ## Getting Started
 
 ### Prerequisites
