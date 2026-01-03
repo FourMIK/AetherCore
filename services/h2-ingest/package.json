@@ -1,19 +1,17 @@
 {
   "name": "@aethercore/h2-ingest",
   "version": "0.1.0",
-  "description": "AetherCore H2 Ingest Service",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "description": "AetherCore H2 Ingest Service - RUST-BASED (High-Velocity)",
+  "private": true,
   "scripts": {
-    "build": "tsc",
-    "clean": "rm -rf dist",
-    "test": "echo \"No tests yet\"",
-    "lint": "echo \"No linting configured yet\""
+    "build": "echo 'This service is Rust-based. Use: cargo build --release --bin h2-ingest'",
+    "clean": "echo 'Use: cargo clean'",
+    "test": "echo 'Use: cargo test'",
+    "lint": "echo 'Use: cargo clippy'"
   },
-  "keywords": ["aethercore", "h2", "ingest"],
+  "keywords": ["aethercore", "h2", "ingest", "rust"],
   "author": "AetherCore Team",
   "license": "MIT",
-  "dependencies": {},
   "devDependencies": {
     "typescript": "^5.3.3",
     "@types/node": "^20.10.6"
