@@ -35,10 +35,10 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-            crates/*/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            target/release
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-release-
             ${{ runner.os }}-cargo-
       
       - name: Check Rust workspace

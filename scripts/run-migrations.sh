@@ -69,10 +69,17 @@ DATABASE_URL=$(aws secretsmanager get-secret-value \
     --secret-id "${SECRET_ARN}" \
     --region "${AWS_REGION}" \
     --query 'SecretString' \
-    --output text 2>/dev/null)
+    --output text 2>/dev/null | tr -d '\n' | tr -d '\r')
 
 if [ -z "${DATABASE_URL}" ]; then
     echo "ERROR: Failed to retrieve DATABASE_URL from Secrets Manager."
+    exit 1
+fi
+
+# Validate DATABASE_URL format (basic check)
+if ! echo "${DATABASE_URL}" | grep -qE '^postgres(ql)?://'; then
+    echo "ERROR: DATABASE_URL does not appear to be a valid PostgreSQL connection string."
+    echo "Expected format: postgresql://user:password@host:port/database"
     exit 1
 fi
 
@@ -114,8 +121,12 @@ if [ -d "packages/db" ] || [ -d "services/auth/migrations" ] || [ -d "services/f
     # Try db:migrate script in packages/db if it exists
     if [ -d "packages/db" ] && [ -f "packages/db/package.json" ]; then
         cd "packages/db"
-        if grep -q "db:migrate" package.json; then
+        if grep -q "\"db:migrate\"" package.json; then
             npm run db:migrate
+            echo "✓ packages/db migrations completed"
+            MIGRATION_EXECUTED=true
+        elif grep -q "\"migrate\"" package.json; then
+            npm run migrate
             echo "✓ packages/db migrations completed"
             MIGRATION_EXECUTED=true
         fi
@@ -127,8 +138,12 @@ if [ -d "packages/db" ] || [ -d "services/auth/migrations" ] || [ -d "services/f
         SERVICE_DIR="services/${service}"
         if [ -d "${SERVICE_DIR}" ] && [ -f "${SERVICE_DIR}/package.json" ]; then
             cd "${SERVICE_DIR}"
-            if grep -q "db:migrate\|migrate" package.json; then
-                npm run db:migrate || npm run migrate
+            if grep -q "\"db:migrate\"" package.json; then
+                npm run db:migrate
+                echo "✓ ${service} service migrations completed"
+                MIGRATION_EXECUTED=true
+            elif grep -q "\"migrate\"" package.json; then
+                npm run migrate
                 echo "✓ ${service} service migrations completed"
                 MIGRATION_EXECUTED=true
             fi
