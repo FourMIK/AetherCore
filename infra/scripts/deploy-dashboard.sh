@@ -31,6 +31,20 @@ echo "S3 Bucket:     ${S3_BUCKET}"
 echo "CloudFront ID: ${CLOUDFRONT_ID}"
 echo ""
 
+# Get API endpoint from Terraform output
+echo "Retrieving API endpoint from Terraform..."
+API_ENDPOINT=$(terraform output -raw alb_dns_name 2>/dev/null)
+
+if [ -z "${API_ENDPOINT}" ]; then
+    echo "ERROR: ALB DNS name is empty. Terraform output 'alb_dns_name' not found."
+    echo "Run 'terraform apply' first to create the infrastructure."
+    exit 1
+fi
+
+API_URL="https://${API_ENDPOINT}"
+echo "API URL:       ${API_URL}"
+echo ""
+
 # Build dashboard
 echo "Building dashboard..."
 cd "$(dirname "$0")/../../packages/dashboard"
@@ -41,6 +55,12 @@ if [ ! -f "package.json" ]; then
 fi
 
 npm install
+
+# Inject API URL as environment variable for build
+echo "Injecting API URL: ${API_URL}"
+export VITE_API_URL="${API_URL}"
+export REACT_APP_API_URL="${API_URL}"
+
 npm run build
 
 if [ ! -d "dist" ]; then
