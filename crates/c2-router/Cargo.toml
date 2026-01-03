@@ -18,3 +18,8 @@ ed25519-dalek = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true }
 rand = { workspace = true }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "c2_router_bench"
+harness = false
