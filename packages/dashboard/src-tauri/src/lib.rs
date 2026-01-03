@@ -26,6 +26,7 @@ pub fn run() {
       commands::generate_genesis_bundle,
       commands::bundle_to_qr_data,
       commands::verify_telemetry_signature,
+      commands::create_node,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
