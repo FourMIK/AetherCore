@@ -24,13 +24,32 @@ This guide covers deployment of the AetherCore Tactical Glass desktop applicatio
 
 ### Desktop Minimum Requirements
 
+**Based on Performance Benchmarks** (see [docs/PERFORMANCE_BENCHMARKS.md](docs/PERFORMANCE_BENCHMARKS.md) for details)
+
 - **Operating System**: 
   - Linux: Ubuntu 20.04+, Debian 11+, or equivalent
   - macOS: 11.0 (Big Sur) or later
   - Windows: 10 (1809+) or later
-- **RAM**: 4GB minimum, 8GB recommended
+- **Processor**: 
+  - **Minimum**: 2-core x86_64 CPU @ 2.0 GHz (Intel Core i3, AMD Ryzen 3)
+  - **Recommended**: 4-core x86_64 CPU @ 2.5 GHz+ (Intel Core i5, AMD Ryzen 5)
+  - Reasoning: Ed25519 signature verification requires ~41 µs per signature; multi-core enables parallel swarm operations
+- **RAM**: 
+  - **Minimum**: 4GB (sufficient for <10 nodes in trust mesh)
+  - **Recommended**: 8GB (supports 50-100 node mesh with comfort)
+  - **Large deployments (>100 nodes)**: 16GB
 - **Storage**: 500MB free space
-- **Network**: Internet connection for testnet access
+- **Network**: Internet connection for testnet access; low-latency LAN for C2 operations
+
+### Expected Performance
+
+| Fleet Size | Hardware | Command Latency | Trust Mesh Update |
+|------------|----------|-----------------|-------------------|
+| <10 units | 2-core, 4GB | <100 ms | <1% CPU, 60s intervals |
+| 10-50 units | 4-core, 8GB | <120 ms | <0.5% CPU, 60s intervals |
+| 50-100 units | 6-core, 16GB | <150 ms | <1% CPU, 90s intervals |
+
+*Command latency includes authority verification and network transmission. See benchmark docs for breakdown.*
 
 ### IoT Edge Devices
 
@@ -291,6 +310,40 @@ For issues, please file a GitHub issue with:
 - Error messages or logs
 - Steps to reproduce
 - Expected vs actual behavior
+
+## Performance Considerations
+
+### Latency Expectations
+
+**C2 Command Dispatch** (end-to-end, local network):
+- Single unit command: <100 ms
+- Swarm command (10 units): <120 ms  
+- Swarm command (50 units): <150 ms
+- Swarm command (100 units): <200 ms
+
+Breakdown:
+- Desktop processing (authority verification + routing): <200 µs
+- Network transmission (LAN): 1-5 ms  
+- Unit execution + acknowledgment: 10-100 ms
+
+**Trust Mesh Updates**:
+- Event signing: ~23 µs per event
+- Merkle checkpoint (100 events): ~63 µs
+- Mesh-wide convergence: <50 ms (3-hop network)
+
+**Bottlenecks**:
+- Network latency dominates end-to-end time (not desktop CPU)
+- TPM-backed signing (CodeRalphie) adds 5-15ms per operation (async)
+- Unit execution time varies by command type (navigate vs reboot)
+
+### Optimization Tips
+
+1. **Batch Operations**: Sign events in batches of 100 for optimal throughput
+2. **Checkpoint Tuning**: Use 100-event windows for Merkle aggregation
+3. **Swarm Sizing**: Keep swarms ≤50 units for sub-150ms dispatch
+4. **Network Quality**: Low-latency LAN (<5ms RTT) recommended for C2
+
+For detailed performance analysis, see [docs/PERFORMANCE_BENCHMARKS.md](docs/PERFORMANCE_BENCHMARKS.md).
 
 ## License
 
