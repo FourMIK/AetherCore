@@ -7,6 +7,7 @@ import React, { useEffect } from 'react';
 import { MapProvider } from './map-engine/MapContext';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { useTacticalStore } from './store/useTacticalStore';
+import { initializeComms } from './store/initComms';
 import './index.css';
 
 export const App: React.FC = () => {
@@ -23,6 +24,9 @@ export const App: React.FC = () => {
     connectToTestnet().catch((err) => {
       console.error('Failed to connect to testnet:', err);
     });
+
+    // Initialize communications
+    initializeComms();
   }, [connectToTestnet]);
 
   return (

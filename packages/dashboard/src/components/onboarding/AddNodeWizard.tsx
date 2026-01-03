@@ -34,23 +34,25 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
     }
 
     if (stage === 'qr-enrollment') {
-      // Generate QR code for Zero-Touch Enrollment
-      setIsLoading(true);
-      try {
-        const bundle = await invoke<any>('generate_genesis_bundle', {
-          userIdentity: nodeId,
-          squadId: domain,
-        });
-        const qrData = await invoke<string>('bundle_to_qr_data', { bundle });
-        setQrCode(qrData);
-        setError('');
-      } catch (err) {
-        setError(`Failed to generate QR code: ${err}`);
-        setStage('error');
+      // Only generate QR if not already skipped or generated
+      if (!qrCode) {
+        setIsLoading(true);
+        try {
+          const bundle = await invoke<any>('generate_genesis_bundle', {
+            userIdentity: nodeId,
+            squadId: domain,
+          });
+          const qrData = await invoke<string>('bundle_to_qr_data', { bundle });
+          setQrCode(qrData);
+          setError('');
+        } catch (err) {
+          // If QR generation fails, allow manual skip
+          console.warn('QR generation failed:', err);
+          setError('QR generation unavailable - proceeding with manual configuration');
+          setQrCode('skipped');
+        }
         setIsLoading(false);
-        return;
       }
-      setIsLoading(false);
     }
 
     if (currentIndex < stages.length - 1) {
@@ -98,10 +100,10 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-carbon/80 backdrop-blur-sm">
-      <GlassPanel variant="heavy" className="w-full max-w-2xl mx-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-carbon/80 backdrop-blur-sm p-4">
+      <GlassPanel variant="heavy" className="w-full max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b border-tungsten/10">
+        <div className="p-6 border-b border-tungsten/10 flex-shrink-0">
           <h2 className="font-display text-2xl font-semibold text-tungsten">
             Add Node
           </h2>
@@ -109,18 +111,17 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
             {['identity', 'qr-enrollment', 'attestation', 'provisioning', 'complete'].map((s, i) => (
               <div
                 key={s}
-                className={`flex-1 h-2 rounded-full ${
-                  ['identity', 'qr-enrollment', 'attestation', 'provisioning', 'complete'].indexOf(stage) >= i
+                className={`flex-1 h-2 rounded-full transition-all ${['identity', 'qr-enrollment', 'attestation', 'provisioning', 'complete'].indexOf(stage) >= i
                     ? 'bg-overmatch'
                     : 'bg-tungsten/20'
-                }`}
+                  }`}
               />
             ))}
           </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6 min-h-[400px]">
+        {/* Content - Scrollable */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
           {/* Error State */}
           {stage === 'error' && (
             <div className="space-y-4 text-center">
@@ -167,21 +168,58 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
                   <p className="text-tungsten/70">Generating QR code...</p>
                 </>
               ) : qrCode ? (
-                <>
-                  <p className="text-tungsten/70 mb-4">
-                    Scan this QR code with the node hardware to enroll automatically
-                  </p>
-                  <div className="bg-white p-4 rounded-lg inline-block">
-                    {/* In production, use qrcode.react to render QR code */}
-                    <div className="w-48 h-48 bg-carbon flex items-center justify-center text-tungsten/50 text-sm">
-                      [QR Code: {qrCode.substring(0, 30)}...]
+                qrCode === 'skipped' ? (
+                  <div className="text-center py-8">
+                    <div className="text-verified-green mb-3">
+                      <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
                     </div>
+                    <h4 className="font-display text-lg text-tungsten mb-2">Manual Configuration Mode</h4>
+                    <p className="text-tungsten/70 text-sm">
+                      Proceeding without zero-touch enrollment.
+                      <br />
+                      CodeRalphie will be provisioned manually.
+                    </p>
                   </div>
-                  <p className="text-xs text-tungsten/50 mt-4">
-                    QR Code ready for scanning
-                  </p>
-                </>
+                ) : (
+                  <>
+                    <p className="text-tungsten/70 mb-4">
+                      Scan this QR code with the node hardware to enroll automatically
+                    </p>
+                    <div className="bg-white p-4 rounded-lg inline-block">
+                      {/* In production, use qrcode.react to render QR code */}
+                      <div className="w-48 h-48 bg-carbon flex items-center justify-center text-tungsten/50 text-sm">
+                        [QR Code: {qrCode.substring(0, 30)}...]
+                      </div>
+                    </div>
+                    <p className="text-xs text-tungsten/50 mt-4">
+                      QR Code ready for scanning
+                    </p>
+                  </>
+                )
               ) : null}
+              <div className="pt-4 mt-4 border-t border-tungsten/10">
+                {!qrCode && (
+                  <>
+                    <p className="text-sm text-tungsten/50 mb-3">
+                      Node without imaging capabilities?
+                    </p>
+                    <button
+                      onClick={() => {
+                        setQrCode('skipped');
+                        setError('');
+                      }}
+                      className="px-4 py-2 bg-tungsten/10 hover:bg-tungsten/20 text-tungsten rounded-lg transition-colors text-sm"
+                    >
+                      Skip Zero-Touch – Manual Configuration
+                    </button>
+                    <p className="text-xs text-tungsten/40 mt-2">
+                      CodeRalphie will be provisioned without QR enrollment
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -243,7 +281,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-tungsten/10 flex justify-between">
+        <div className="p-6 border-t border-tungsten/10 flex justify-between flex-shrink-0">
           <button
             onClick={stage === 'identity' ? onClose : handleBack}
             className="px-4 py-2 bg-tungsten/10 hover:bg-tungsten/20 text-tungsten rounded-lg transition-colors disabled:opacity-50"

@@ -5,13 +5,22 @@
 
 import React, { useState } from 'react';
 import { TopBar } from '../hud/TopBar';
+import { NavigationMenu, WorkspaceView } from '../hud/NavigationMenu';
 import { TacticalMap } from '../map/TacticalMap';
 import { NodeListPanel } from '../panels/NodeListPanel';
 import { NodeDetailPanel } from '../panels/NodeDetailPanel';
 import { AddNodeWizard } from '../onboarding/AddNodeWizard';
 import { AethericSweep } from '../animations/AethericSweep';
 import { PurgeAnimation } from '../animations/PurgeAnimation';
+import { FleetCommandView } from '../workspaces/FleetCommandView';
+import { ISRConsoleView } from '../workspaces/ISRConsoleView';
+import { CommView } from '../workspaces/CommView';
+import { TrustGuardianView } from '../workspaces/TrustGuardianView';
+import { MeshNetworkView } from '../workspaces/MeshNetworkView';
+import { SystemAdminView } from '../workspaces/SystemAdminView';
+import { VideoCallPanel } from '../comms/VideoCallPanel';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useCommStore } from '../../store/useCommStore';
 import { Plus } from 'lucide-react';
 
 export const DashboardLayout: React.FC = () => {
@@ -20,55 +29,106 @@ export const DashboardLayout: React.FC = () => {
   const verificationFailure = useTacticalStore((s) => s.verificationFailure);
   const clearByzantineAlert = useTacticalStore((s) => s.clearByzantineAlert);
   const clearVerificationFailure = useTacticalStore((s) => s.clearVerificationFailure);
+  const activeCall = useCommStore((s) => s.activeCall);
 
   const [showWizard, setShowWizard] = useState(false);
+  const [currentView, setCurrentView] = useState<WorkspaceView>('tactical');
 
   const verifiedCount = Array.from(nodes.values()).filter((n) => n.verified).length;
   const totalCount = nodes.size;
+
+  const renderWorkspaceContent = () => {
+    switch (currentView) {
+      case 'tactical':
+        return (
+          <div className="h-full flex overflow-hidden">
+            {/* Left Sidebar - Node List */}
+            <div className="w-80 flex-shrink-0 p-4 pr-2">
+              <div className="h-full flex flex-col">
+                <button
+                  onClick={() => setShowWizard(true)}
+                  className="btn-primary w-full mb-3 flex items-center justify-center gap-2 flex-shrink-0"
+                >
+                  <Plus size={16} />
+                  Add Node
+                </button>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <NodeListPanel />
+                </div>
+              </div>
+            </div>
+
+            {/* Center - Map */}
+            <div className="flex-1 min-w-0 p-4 py-2">
+              <TacticalMap />
+            </div>
+
+            {/* Right Sidebar - Node Details */}
+            <div className="w-96 flex-shrink-0 p-4 pl-2">
+              <NodeDetailPanel />
+            </div>
+          </div>
+        );
+      case 'fleet':
+        return <FleetCommandView />;
+      case 'isr':
+        return <ISRConsoleView />;
+      case 'comms':
+        return <CommView />;
+      case 'guardian':
+        return <TrustGuardianView />;
+      case 'mesh':
+        return <MeshNetworkView />;
+      case 'admin':
+        return <SystemAdminView />;
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="w-screen h-screen flex flex-col bg-carbon overflow-hidden">
       {/* Scanline Overlay */}
       <div className="scanline-overlay" />
 
-      {/* TopBar */}
-      <TopBar
-        systemStatus="operational"
-        verifiedNodes={verifiedCount}
-        totalNodes={totalCount}
-      />
-
-      {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - Node List */}
-        <div className="w-80 p-4">
-          <div className="h-full flex flex-col">
-            <button
-              onClick={() => setShowWizard(true)}
-              className="btn-primary w-full mb-4 flex items-center justify-center gap-2"
-            >
-              <Plus size={16} />
-              Add Node
-            </button>
-            <div className="flex-1 min-h-0">
-              <NodeListPanel />
-            </div>
-          </div>
-        </div>
-
-        {/* Center - Map */}
-        <div className="flex-1 p-4">
-          <TacticalMap />
-        </div>
-
-        {/* Right Sidebar - Node Details */}
-        <div className="w-96 p-4">
-          <NodeDetailPanel />
+      {/* TopBar - Fixed Height */}
+      <div className="flex items-center gap-4 p-4 pb-2 flex-shrink-0">
+        <NavigationMenu
+          currentView={currentView}
+          onViewChange={setCurrentView}
+        />
+        <div className="flex-1 min-w-0">
+          <TopBar
+            systemStatus="operational"
+            verifiedNodes={verifiedCount}
+            totalNodes={totalCount}
+          />
         </div>
       </div>
 
+      {/* Main Content - Dynamic Workspace with proper flex */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {renderWorkspaceContent()}
+      </div>
+
+      {/* Floating Add Node Button (for non-tactical views) */}
+      {currentView !== 'tactical' && (
+        <button
+          onClick={() => setShowWizard(true)}
+          className="fixed bottom-6 right-6 btn-primary px-6 py-3 flex items-center gap-2 shadow-lg z-30"
+        >
+          <Plus size={20} />
+          Add Node
+        </button>
+      )}
+
       {/* Modals and Overlays */}
       {showWizard && <AddNodeWizard onClose={() => setShowWizard(false)} />}
+
+      {/* Video Call Panel */}
+      {activeCall && activeCall.status !== 'ended' && (
+        <VideoCallPanel call={activeCall} />
+      )}
 
       {/* Security Animations */}
       {byzantineAlert && (
