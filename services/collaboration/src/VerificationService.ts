@@ -3,6 +3,12 @@
  * 
  * Integrates with crates/identity registry to verify hardware-backed signatures
  * This is the Trust Fabric enforcement layer
+ * 
+ * ARCHITECTURAL INVARIANTS (4MIK):
+ * - Fail-Visible: Returns VerificationStatus for ALL data
+ * - No Production Mocks: MockIdentityRegistry is TEST ONLY
+ * - BLAKE3 Only: No SHA-256 permitted
+ * - Hardware Root: Signatures must be TPM-backed (CodeRalphie)
  */
 
 import {
@@ -10,12 +16,22 @@ import {
   SignedEnvelopeSchema,
   NodeID,
   SecurityEvent,
+  VerificationStatus,
 } from '@aethercore/shared';
 import * as crypto from 'crypto';
 
 /**
  * Mock Identity Registry Interface
- * In production, this would be a gRPC/FFI call to crates/identity
+ * 
+ * ⚠️ PRODUCTION WARNING ⚠️
+ * This interface represents the production gRPC/FFI interface to crates/identity.
+ * MockIdentityRegistry (below) is for TESTING ONLY and must NEVER be used in production.
+ * 
+ * Production implementation:
+ * - Must use gRPC calls to crates/identity service
+ * - Must verify TPM-backed signatures (CodeRalphie)
+ * - Must enforce hardware root-of-trust
+ * - Must return STATUS_UNVERIFIED for any enrollment failures
  */
 interface IdentityRegistry {
   getPublicKey(nodeId: NodeID): Promise<string | null>;
@@ -32,6 +48,8 @@ interface SecurityEventHandler {
 /**
  * VerificationService
  * Verifies SignedEnvelope signatures against the identity registry
+ * 
+ * Fail-Visible Design: Returns explicit verification status for all data
  */
 export class VerificationService {
   constructor(
@@ -40,10 +58,20 @@ export class VerificationService {
   ) {}
 
   /**
-   * Verify a SignedEnvelope
-   * Returns the parsed payload if valid, null if invalid
+   * Verify a SignedEnvelope (Fail-Visible Design)
+   * 
+   * Returns object with:
+   * - status: VERIFIED | STATUS_UNVERIFIED | SPOOFED
+   * - payload: parsed payload if VERIFIED, null otherwise
+   * - reason: failure reason if not VERIFIED
+   * 
+   * A node with broken cryptographic chain is an ADVERSARY, not a degraded peer.
    */
-  async verifyEnvelope(envelope: SignedEnvelope): Promise<any | null> {
+  async verifyEnvelope(envelope: SignedEnvelope): Promise<{
+    status: VerificationStatus;
+    payload: any | null;
+    reason?: string;
+  }> {
     try {
       // Validate schema
       const validated = SignedEnvelopeSchema.parse(envelope);
@@ -56,7 +84,11 @@ export class VerificationService {
         this.logSecurityEvent('unknown_node', validated.nodeId, 'high', {
           envelope,
         });
-        return null;
+        return {
+          status: 'STATUS_UNVERIFIED' as VerificationStatus,
+          payload: null,
+          reason: 'Node not enrolled in identity registry',
+        };
       }
 
       // Get public key from identity registry
@@ -67,7 +99,11 @@ export class VerificationService {
         this.logSecurityEvent('unknown_node', validated.nodeId, 'high', {
           envelope,
         });
-        return null;
+        return {
+          status: 'STATUS_UNVERIFIED' as VerificationStatus,
+          payload: null,
+          reason: 'Public key not found for enrolled node',
+        };
       }
 
       // Verify timestamp (prevent replay attacks - check within 5 minutes)
@@ -78,7 +114,11 @@ export class VerificationService {
           envelope,
           timeDiff,
         });
-        return null;
+        return {
+          status: 'SPOOFED' as VerificationStatus,
+          payload: null,
+          reason: `Replay attack detected: timestamp outside 5min window (${timeDiff}ms)`,
+        };
       }
 
       // Verify Ed25519 signature
@@ -92,33 +132,56 @@ export class VerificationService {
         this.logSecurityEvent('invalid_signature', validated.nodeId, 'critical', {
           envelope,
         });
-        return null;
+        return {
+          status: 'SPOOFED' as VerificationStatus,
+          payload: null,
+          reason: 'Invalid Ed25519 signature - Byzantine node detected',
+        };
       }
 
       // Parse and return payload
       try {
-        return JSON.parse(validated.payload);
+        const payload = JSON.parse(validated.payload);
+        return {
+          status: 'VERIFIED' as VerificationStatus,
+          payload,
+        };
       } catch (error) {
         this.logSecurityEvent('invalid_signature', validated.nodeId, 'medium', {
           envelope,
           error: 'Invalid JSON payload',
         });
-        return null;
+        return {
+          status: 'SPOOFED' as VerificationStatus,
+          payload: null,
+          reason: 'Invalid JSON payload in signed envelope',
+        };
       }
     } catch (error) {
       this.logSecurityEvent('invalid_signature', null, 'medium', {
         error: error instanceof Error ? error.message : String(error),
       });
-      return null;
+      return {
+        status: 'STATUS_UNVERIFIED' as VerificationStatus,
+        payload: null,
+        reason: `Schema validation failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
     }
   }
 
   /**
    * Verify Ed25519 signature
    * 
-   * NOTE: This is a simplified implementation.
-   * In production, this would use the actual Ed25519 implementation
-   * from crates/crypto via FFI/gRPC
+   * ⚠️ PRODUCTION WARNING ⚠️
+   * This is a MOCK implementation for development/testing ONLY.
+   * 
+   * Production implementation MUST:
+   * - Call crates/crypto via gRPC/FFI for Ed25519 verification
+   * - Use TPM-backed keys (CodeRalphie) - keys never in system memory
+   * - Use BLAKE3 for any hashing (NO SHA-256)
+   * - Enforce hardware root-of-trust
+   * 
+   * Current implementation is a placeholder that checks signature format only.
    */
   private verifyEd25519Signature(
     payload: string,
@@ -131,23 +194,19 @@ export class VerificationService {
       const publicKey = Buffer.from(publicKeyHex, 'hex');
       const message = Buffer.from(payload, 'utf-8');
 
-      // Use Node.js crypto for Ed25519 verification
-      // In production, this would call into crates/crypto
-      const verify = crypto.createVerify('SHA256');
-      verify.update(message);
-      verify.end();
-
-      // For Ed25519, we'd use crypto.verify with ed25519 key
-      // This is a placeholder that shows the pattern
-      // Real implementation would be:
-      // const key = crypto.createPublicKey({
-      //   key: publicKey,
-      //   format: 'der',
-      //   type: 'spki',
+      // MOCK IMPLEMENTATION - Development/Testing Only
+      // Production: gRPC call to crates/crypto for TPM-backed Ed25519 verification
+      // 
+      // Example production call:
+      // const result = await cryptoService.verifyEd25519({
+      //   message: message,
+      //   signature: signature,
+      //   publicKey: publicKey,
       // });
-      // return crypto.verify(null, message, key, signature);
+      // return result.isValid;
 
-      // For now, return true for valid-looking signatures (mock)
+      // For now, validate signature format (64 bytes) and public key format (32 bytes)
+      // This allows development/testing to proceed while TPM integration is completed
       return signature.length === 64 && publicKey.length === 32;
     } catch (error) {
       return false;
@@ -221,10 +280,34 @@ export class VerificationService {
 
 /**
  * Mock Identity Registry Implementation
- * In production, this would be replaced with actual gRPC/FFI calls
+ * 
+ * ⚠️⚠️⚠️ CRITICAL WARNING - TEST ONLY ⚠️⚠️⚠️
+ * 
+ * This is a MOCK implementation for development and testing ONLY.
+ * NEVER use in production deployments.
+ * 
+ * Production MUST use:
+ * - gRPC/FFI calls to crates/identity service
+ * - TPM-backed enrollment (CodeRalphie)
+ * - Hardware root-of-trust verification
+ * - The Great Gospel for revocation checks
+ * 
+ * A production system using MockIdentityRegistry has NO TRUST FABRIC.
+ * All nodes are potential adversaries without hardware-backed identity.
  */
 export class MockIdentityRegistry implements IdentityRegistry {
   private registry: Map<NodeID, string> = new Map();
+
+  constructor() {
+    // Emit warning on every instantiation
+    console.warn('═'.repeat(80));
+    console.warn('⚠️  MOCK IDENTITY REGISTRY ACTIVE - TEST MODE ONLY');
+    console.warn('⚠️  NO HARDWARE ROOT-OF-TRUST');
+    console.warn('⚠️  NO TPM VERIFICATION');
+    console.warn('⚠️  TRUST FABRIC DISABLED');
+    console.warn('⚠️  DO NOT USE IN PRODUCTION');
+    console.warn('═'.repeat(80));
+  }
 
   async getPublicKey(nodeId: NodeID): Promise<string | null> {
     return this.registry.get(nodeId) || null;

@@ -3,13 +3,36 @@
  * 
  * Secure Console-to-Console Collaboration Protocol
  * Trust Fabric: Hardware-backed signatures (Ed25519) for WebRTC signaling
+ * 
+ * ARCHITECTURAL INVARIANTS (4MIK):
+ * - Fail-Visible Design: All data must be explicitly marked as VERIFIED, STATUS_UNVERIFIED, or SPOOFED
+ * - No Mocks in Production: MockIdentityRegistry is test-only; production uses gRPC to crates/identity
+ * - Merkle Vines: All events contain BLAKE3 hash of ancestor
+ * - Memory Safety: Rust is source of truth; TypeScript is for Tactical Glass visualization only
  */
 
 import { z } from 'zod';
 
 /**
+ * VerificationStatus - Cryptographic verification state
+ * 
+ * Fail-Visible Design: All data streams MUST be explicitly marked.
+ * - VERIFIED: Valid cryptographic signature from enrolled node with hardware root-of-trust
+ * - STATUS_UNVERIFIED: Missing signature, unable to verify, or enrollment pending
+ * - SPOOFED: Invalid signature, replay attack, or Byzantine behavior detected
+ * 
+ * A node with broken cryptographic chain is an ADVERSARY, not a degraded peer.
+ */
+export const VerificationStatusSchema = z.enum([
+  'VERIFIED',
+  'STATUS_UNVERIFIED',
+  'SPOOFED',
+]);
+export type VerificationStatus = z.infer<typeof VerificationStatusSchema>;
+
+/**
  * NodeID - Public Key Hash identifier (replaces usernames)
- * Derived from device's Hardware Key
+ * Derived from device's Hardware Key (CodeRalphie / TPM 2.0)
  */
 export const NodeIDSchema = z.string().regex(/^[0-9a-fA-F]{64}$/);
 export type NodeID = z.infer<typeof NodeIDSchema>;
@@ -83,6 +106,30 @@ export const GuardianSignalSchema = z.object({
   timestamp: z.number().int().positive(),
 });
 export type GuardianSignal = z.infer<typeof GuardianSignalSchema>;
+
+/**
+ * VerifiedData - Wrapper for cryptographically verified data
+ * 
+ * Fail-Visible Design: This wrapper ensures all data consumers
+ * must explicitly handle verification status.
+ */
+export const VerifiedDataSchema = z.object({
+  /** The actual data payload */
+  data: z.unknown(),
+  
+  /** Verification status from Trust Fabric */
+  verificationStatus: VerificationStatusSchema,
+  
+  /** NodeID that signed the data (if verified) */
+  signerId: NodeIDSchema.nullable(),
+  
+  /** Timestamp of verification */
+  verifiedAt: z.number().int().positive(),
+  
+  /** Reason if unverified or spoofed */
+  failureReason: z.string().optional(),
+});
+export type VerifiedData = z.infer<typeof VerifiedDataSchema>;
 
 /**
  * SignedSignal - GuardianSignal wrapped in SignedEnvelope
@@ -271,6 +318,9 @@ export type HandshakeResponse = z.infer<typeof HandshakeResponseSchema>;
 export const IntegrityStatusSchema = z.object({
   /** Whether integrity is currently valid */
   isValid: z.boolean(),
+  
+  /** Verification status for fail-visible design */
+  verificationStatus: VerificationStatusSchema,
   
   /** Total frames received */
   totalFrames: z.number().int().nonnegative(),

@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use crate::error::{DomainError, Result};
 
 /// Event hash type (BLAKE3 hash as hex string)
 pub type EventHash = String;
@@ -195,48 +196,58 @@ impl CanonicalEvent {
     ///
     /// This must be called after all fields are set to compute the event hash.
     /// The signature and public_key fields are excluded from the hash computation.
-    pub fn compute_hash(&self) -> crate::Result<EventHash> {
+    pub fn compute_hash(&self) -> Result<EventHash> {
         let canonical = self.to_canonical_json_for_signing()?;
         let hash = blake3::hash(canonical.as_bytes());
         Ok(hex::encode(hash.as_bytes()))
     }
 
     /// Serialize to canonical JSON for signing (sorted keys, deterministic, excludes signature fields)
-    pub fn to_canonical_json_for_signing(&self) -> crate::Result<String> {
+    pub fn to_canonical_json_for_signing(&self) -> Result<String> {
         // Use BTreeMap to ensure sorted keys
         let mut map = BTreeMap::new();
 
         map.insert(
             "chain_height",
-            serde_json::to_value(self.chain_height).unwrap(),
+            serde_json::to_value(self.chain_height)
+                .map_err(|e| DomainError::SerializationError(format!("Failed to serialize chain_height: {}", e)))?,
         );
-        map.insert("device_id", serde_json::to_value(&self.device_id).unwrap());
-        map.insert("event_id", serde_json::to_value(&self.event_id).unwrap());
-        map.insert("event_type", serde_json::to_value(self.event_type).unwrap());
-        map.insert("node_id", serde_json::to_value(&self.node_id).unwrap());
-        map.insert("payload", serde_json::to_value(&self.payload).unwrap());
-        map.insert("prev_hash", serde_json::to_value(&self.prev_hash).unwrap());
-        map.insert("sequence", serde_json::to_value(self.sequence).unwrap());
-        map.insert("timestamp", serde_json::to_value(self.timestamp).unwrap());
+        map.insert("device_id", serde_json::to_value(&self.device_id)
+            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize device_id: {}", e)))?);
+        map.insert("event_id", serde_json::to_value(&self.event_id)
+            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize event_id: {}", e)))?);
+        map.insert("event_type", serde_json::to_value(self.event_type)
+            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize event_type: {}", e)))?);
+        map.insert("node_id", serde_json::to_value(&self.node_id)
+            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize node_id: {}", e)))?);
+        map.insert("payload", serde_json::to_value(&self.payload)
+            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize payload: {}", e)))?);
+        map.insert("prev_hash", serde_json::to_value(&self.prev_hash)
+            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize prev_hash: {}", e)))?);
+        map.insert("sequence", serde_json::to_value(self.sequence)
+            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize sequence: {}", e)))?);
+        map.insert("timestamp", serde_json::to_value(self.timestamp)
+            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize timestamp: {}", e)))?);
 
         if let Some(ref metadata) = self.metadata {
-            map.insert("metadata", serde_json::to_value(metadata).unwrap());
+            map.insert("metadata", serde_json::to_value(metadata)
+                .map_err(|e| DomainError::SerializationError(format!("Failed to serialize metadata: {}", e)))?);
         }
 
         // Note: signature and public_key are intentionally excluded from hash computation
 
         serde_json::to_string(&map)
-            .map_err(|e| crate::DomainError::SerializationError(e.to_string()))
+            .map_err(|e| DomainError::SerializationError(e.to_string()))
     }
 
     /// Serialize to canonical JSON including all fields
-    pub fn to_canonical_json(&self) -> crate::Result<String> {
+    pub fn to_canonical_json(&self) -> Result<String> {
         serde_json::to_string(self)
-            .map_err(|e| crate::DomainError::SerializationError(e.to_string()))
+            .map_err(|e| DomainError::SerializationError(e.to_string()))
     }
 
     /// Verify hash matches canonical representation
-    pub fn verify_hash(&self) -> crate::Result<bool> {
+    pub fn verify_hash(&self) -> Result<bool> {
         let computed = self.compute_hash()?;
         Ok(computed == self.hash)
     }
@@ -244,9 +255,9 @@ impl CanonicalEvent {
     /// Get the bytes to be signed (the event hash)
     ///
     /// Returns an error if the hash field contains invalid hex data.
-    pub fn signing_bytes(&self) -> Result<Vec<u8>, crate::DomainError> {
+    pub fn signing_bytes(&self) -> Result<Vec<u8>> {
         hex::decode(&self.hash).map_err(|e| {
-            crate::DomainError::ValidationError(format!("Invalid hash hex data: {}", e))
+            DomainError::ValidationError(format!("Invalid hash hex data: {}", e))
         })
     }
 
