@@ -48,6 +48,12 @@ variable "database_subnet_cidr" {
   default     = "10.0.3.0/24"
 }
 
+variable "database_subnet_2_cidr" {
+  description = "CIDR block for second database subnet (AWS RDS multi-AZ requirement)"
+  type        = string
+  default     = "10.0.5.0/24"
+}
+
 variable "allowed_cidr_blocks" {
   description = "CIDR blocks allowed to access ALB"
   type        = list(string)

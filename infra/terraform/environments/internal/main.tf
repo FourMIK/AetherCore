@@ -86,7 +86,18 @@ resource "aws_subnet" "database" {
   availability_zone = data.aws_availability_zones.available.names[0]
 
   tags = {
-    Name = "${var.project_name}-${var.environment}-database-subnet"
+    Name = "${var.project_name}-${var.environment}-database-subnet-1"
+  }
+}
+
+# Second database subnet in different AZ (AWS RDS requirement)
+resource "aws_subnet" "database_2" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.database_subnet_2_cidr
+  availability_zone = data.aws_availability_zones.available.names[1]
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-database-subnet-2"
   }
 }
 
@@ -161,6 +172,11 @@ resource "aws_route_table_association" "private" {
 
 resource "aws_route_table_association" "database" {
   subnet_id      = aws_subnet.database.id
+  route_table_id = aws_route_table.private.id
+}
+
+resource "aws_route_table_association" "database_2" {
+  subnet_id      = aws_subnet.database_2.id
   route_table_id = aws_route_table.private.id
 }
 
@@ -409,7 +425,7 @@ resource "aws_s3_bucket_public_access_block" "merkle_proofs" {
 
 resource "aws_db_subnet_group" "main" {
   name       = "${var.project_name}-${var.environment}-db-subnet-group"
-  subnet_ids = [aws_subnet.database.id, aws_subnet.private.id]
+  subnet_ids = [aws_subnet.database.id, aws_subnet.database_2.id]
 
   tags = {
     Name = "${var.project_name}-${var.environment}-db-subnet-group"
@@ -776,7 +792,7 @@ resource "aws_secretsmanager_secret" "redis_url" {
 
 resource "aws_secretsmanager_secret_version" "redis_url" {
   secret_id     = aws_secretsmanager_secret.redis_url.id
-  secret_string = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:${aws_elasticache_cluster.redis.cache_nodes[0].port}"
+  secret_string = "redis://${aws_elasticache_cluster.redis.cache_nodes.0.address}:${aws_elasticache_cluster.redis.cache_nodes.0.port}"
 }
 
 resource "aws_secretsmanager_secret" "jwt_secret" {
