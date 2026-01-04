@@ -125,6 +125,41 @@ The root `package.json` defines npm workspaces for all services and packages. Th
 
 MIT OR Apache-2.0
 
+## Security & Supply Chain
+
+AetherCore implements comprehensive supply chain security measures for all releases:
+
+- **Software Bill of Materials (SBOM)**: CycloneDX-compliant SBOMs for all dependencies
+- **Vulnerability Scanning**: Automated audits against RUSTSEC and npm advisory databases
+- **Dependency Pinning**: All dependencies locked via `Cargo.lock` and `package-lock.json`
+- **License Integrity**: BLAKE3 cryptographic hashing of all dependency licenses
+
+### Generate SBOM Locally
+
+```bash
+./scripts/generate-sbom.sh
+```
+
+Output artifacts are generated in `sbom-artifacts/`:
+- `tauri-sbom.json` - Rust/Tauri dependencies
+- `frontend-sbom.json` - Frontend dependencies
+- `LICENSE_MANIFEST.txt` - License integrity hashes
+- `SUPPLY_CHAIN_MANIFEST.md` - Human-readable summary
+
+For detailed information, see [Supply Chain Security Documentation](docs/SUPPLY_CHAIN_SECURITY.md).
+
+## Documentation
+
+Comprehensive documentation for deployment, installation, security, and supply chain:
+
+- **[INSTALLATION.md](INSTALLATION.md)** - Complete installation guide for all platforms
+- **[DEPLOYMENT_DESKTOP.md](DEPLOYMENT_DESKTOP.md)** - Desktop application deployment procedures
+- **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices
+- **[PROVENANCE.md](PROVENANCE.md)** - Software provenance and supply chain security
+- **[docs/SUPPLY_CHAIN_SECURITY.md](docs/SUPPLY_CHAIN_SECURITY.md)** - Detailed supply chain procedures
+- **[docs/PERFORMANCE_BENCHMARKS.md](docs/PERFORMANCE_BENCHMARKS.md)** - Performance benchmarks and expectations
+- **[docs/production-deployment-playbook.md](docs/production-deployment-playbook.md)** - Production deployment playbook
+
 ## Contributing
 
 This is a monorepo project. Please ensure:
