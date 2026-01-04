@@ -265,13 +265,12 @@ impl IdentityRegistry for IdentityRegistryService {
         let timestamp_ms = Self::current_timestamp_ms();
 
         // Decode public key
-        let public_key = hex::decode(&req.public_key_hex).map_err(|e| {
+        let public_key = hex::decode(&req.public_key_hex).map_err(|_| {
             tracing::warn!(
-                "Registration failed for node {}: Invalid public key hex: {}",
+                "Registration failed for node {}: Invalid public key format",
                 req.node_id,
-                e
             );
-            Status::invalid_argument(format!("Invalid public key hex: {}", e))
+            Status::invalid_argument("Invalid public key format")
         })?;
 
         if public_key.len() != 32 {
@@ -317,12 +316,24 @@ impl IdentityRegistry for IdentityRegistryService {
 
             // Parse PCRs from the request
             // For stub implementation, we accept simple PCR format
+            // In production, PCRs should be properly structured with indices
             let pcr_values = if !req.pcrs.is_empty() {
-                // Create a simple PCR value for validation
-                vec![crate::PcrValue {
-                    index: 0,
-                    value: req.pcrs.clone(),
-                }]
+                // Each PCR is typically 32 bytes (SHA256)
+                // For now, treat the entire PCR blob as a single PCR value
+                // Production should parse structured PCR data
+                let chunk_size = 32;
+                let num_pcrs = (req.pcrs.len() + chunk_size - 1) / chunk_size;
+                
+                (0..num_pcrs.min(24)) // TPM 2.0 supports PCRs 0-23
+                    .map(|i| {
+                        let start = i * chunk_size;
+                        let end = (start + chunk_size).min(req.pcrs.len());
+                        crate::PcrValue {
+                            index: i as u8,
+                            value: req.pcrs[start..end].to_vec(),
+                        }
+                    })
+                    .collect()
             } else {
                 vec![]
             };
@@ -349,11 +360,11 @@ impl IdentityRegistry for IdentityRegistryService {
             // Verify TPM quote
             if !tpm_manager.verify_quote(&tpm_quote, &ak) {
                 tracing::error!(
-                    "Registration DENIED for node {}: Invalid TPM attestation - Hardware root of trust verification failed",
+                    "Registration DENIED for node {}: TPM attestation validation failed",
                     req.node_id
                 );
                 return Err(Status::permission_denied(
-                    "Invalid TPM attestation: Hardware signature verification failed. Node is considered Byzantine.",
+                    "TPM attestation validation failed. Hardware root of trust required.",
                 ));
             }
 

@@ -289,8 +289,6 @@ mod grpc_tests {
 
         // Signature should fail verification (dummy signature)
         assert!(!response.is_valid);
-        // Debug: print the actual failure reason
-        println!("Failure reason: {}", response.failure_reason);
         assert!(
             response.failure_reason.contains("verification")
                 || response.failure_reason.contains("Ed25519")
