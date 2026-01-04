@@ -5,7 +5,7 @@
 
 use crate::{
     merkle::{CheckpointWindow, MerkleAggregator},
-    node_health::{IntegrityMetrics, NodeHealth, NodeHealthComputer, NodeHealthStatus},
+    node_health::NodeHealthComputer,
     signing::{EventSigner, InMemoryKeyManager, KeyManager},
     trust::TrustScorer,
 };
