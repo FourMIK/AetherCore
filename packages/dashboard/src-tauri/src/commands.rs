@@ -164,11 +164,19 @@ pub async fn verify_telemetry_signature(
     
     let identity = identity.unwrap();
     
+    // Validate public key length for Ed25519 (must be exactly 32 bytes)
+    if identity.public_key.len() != 32 {
+        log::error!("Invalid public key length for node {}: expected 32 bytes, got {}", 
+            payload.node_id, identity.public_key.len());
+        return Ok(false);
+    }
+    
     // Parse public key from identity
-    let verifying_key = match VerifyingKey::from_bytes(
-        identity.public_key.as_slice().try_into()
-            .map_err(|_| "Invalid public key length".to_string())?
-    ) {
+    let public_key_bytes: [u8; 32] = identity.public_key.as_slice()
+        .try_into()
+        .expect("Length already validated as 32 bytes");
+    
+    let verifying_key = match VerifyingKey::from_bytes(&public_key_bytes) {
         Ok(key) => key,
         Err(e) => {
             log::error!("Failed to parse public key for node {}: {}", payload.node_id, e);
@@ -229,7 +237,7 @@ fn generate_signature(
     // Generate ephemeral keypair
     // TODO: Replace with TPM-backed key generation in production (CodeRalphie)
     let mut csprng = rand::thread_rng();
-    let signing_key = EdSigningKey::from_bytes(&rand::Rng::gen(&mut csprng));
+    let signing_key = EdSigningKey::from_bytes(&rand::Rng::gen::<[u8; 32]>(&mut csprng));
     
     // Create message to sign using BLAKE3
     let message = format!("{}:{}", user_identity, squad_id);
@@ -281,7 +289,7 @@ pub async fn create_node(
     // In production, replace with TPM-backed key generation (CodeRalphie)
     let mut csprng = rand::thread_rng();
     let signing_key = ed25519_dalek::SigningKey::from_bytes(
-        &rand::Rng::gen(&mut csprng)
+        &rand::Rng::gen::<[u8; 32]>(&mut csprng)
     );
     let verifying_key = signing_key.verifying_key();
     let public_key_bytes = verifying_key.to_bytes();

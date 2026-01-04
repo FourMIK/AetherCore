@@ -8,6 +8,7 @@ on:
 jobs:
   release:
     name: Build Desktop App (${{ matrix.platform }})
+    timeout-minutes: 15
     permissions:
       contents: write
     strategy:
@@ -159,10 +160,8 @@ jobs:
       
       - name: Performance Budget Check
         run: |
-          echo "Build completed in ${{ job.duration }} seconds"
-          # Fail if build takes more than 15 minutes (900 seconds)
-          if [ "${{ job.duration }}" -gt "900" ]; then
-            echo "::error::Build exceeded 15 minute performance budget"
-            exit 1
-          fi
+          SECONDS=0
+          echo "Build process monitoring enabled"
+          # Note: Actual build time is tracked by GitHub Actions automatically
+          # To enforce 15-minute budget, set job timeout at job level
         shell: bash
