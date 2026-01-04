@@ -10,6 +10,7 @@ repository.workspace = true
 aethercore-core = { path = "../core" }
 aethercore-identity = { path = "../identity" }
 aethercore-trust-mesh = { path = "../trust_mesh" }
+aethercore-stream = { path = "../stream" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

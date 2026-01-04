@@ -32,6 +32,15 @@ pub enum DispatchError {
         /// Maximum allowed batch size
         limit: usize,
     },
+    
+    /// Data integrity compromised - chain discontinuity detected
+    #[error("Identity Collapse: Chain Discontinuity Detected for unit {unit_id}: {reason}")]
+    DataLoss {
+        /// Unit identifier
+        unit_id: String,
+        /// Reason for data loss
+        reason: String,
+    },
 }
 
 /// Command dispatch result for a single unit
@@ -135,37 +144,77 @@ impl SwarmDispatchStatus {
 pub struct CommandDispatcher {
     /// Maximum batch size for swarm commands
     max_batch_size: usize,
+    /// Integrity status tracker (optional - if None, integrity checks are disabled)
+    integrity_tracker: Option<std::sync::Arc<std::sync::Mutex<aethercore_stream::StreamIntegrityTracker>>>,
 }
 
 impl CommandDispatcher {
     /// Maximum allowed batch size (from spec: ≤ 100 units per batch)
     pub const DEFAULT_MAX_BATCH_SIZE: usize = 100;
     
-    /// Create a new command dispatcher
+    /// Create a new command dispatcher without integrity checking
     pub fn new() -> Self {
         Self {
             max_batch_size: Self::DEFAULT_MAX_BATCH_SIZE,
+            integrity_tracker: None,
         }
     }
     
     /// Create a dispatcher with custom max batch size
     pub fn with_max_batch_size(max_batch_size: usize) -> Self {
-        Self { max_batch_size }
+        Self { 
+            max_batch_size,
+            integrity_tracker: None,
+        }
+    }
+    
+    /// Create a dispatcher with integrity checking enabled
+    pub fn with_integrity_tracker(
+        tracker: std::sync::Arc<std::sync::Mutex<aethercore_stream::StreamIntegrityTracker>>,
+    ) -> Self {
+        Self {
+            max_batch_size: Self::DEFAULT_MAX_BATCH_SIZE,
+            integrity_tracker: Some(tracker),
+        }
+    }
+    
+    /// Check if a unit's integrity is compromised
+    fn check_integrity(&self, unit_id: &str) -> Result<(), DispatchError> {
+        if let Some(tracker) = &self.integrity_tracker {
+            let tracker_lock = tracker.lock().unwrap();
+            if tracker_lock.is_stream_compromised(unit_id) {
+                let reason = tracker_lock
+                    .get(unit_id)
+                    .and_then(|s| s.get_compromise_reason())
+                    .unwrap_or("Unknown integrity violation")
+                    .to_string();
+                
+                return Err(DispatchError::DataLoss {
+                    unit_id: unit_id.to_string(),
+                    reason,
+                });
+            }
+        }
+        Ok(())
     }
     
     /// Dispatch a command to a single unit
     ///
     /// This is a placeholder that returns a mock result. In production, this would:
-    /// 1. Validate unit_id
-    /// 2. Send command via gRPC/message queue
-    /// 3. Wait for acknowledgment
-    /// 4. Return result
+    /// 1. Check integrity status
+    /// 2. Validate unit_id
+    /// 3. Send command via gRPC/message queue
+    /// 4. Wait for acknowledgment
+    /// 5. Return result
     pub fn dispatch_unit_command(
         &self,
         unit_id: &str,
         _command: &UnitCommand,
         timestamp_ns: u64,
     ) -> Result<UnitDispatchResult, DispatchError> {
+        // Check integrity first - block compromised nodes
+        self.check_integrity(unit_id)?;
+        
         // Placeholder: In production, this would dispatch to the actual unit
         // For now, simulate success
         Ok(UnitDispatchResult::Success {
@@ -200,14 +249,34 @@ impl CommandDispatcher {
         }
         
         // Convert swarm command to unit commands and dispatch
+        // Check integrity for each unit
         let unit_results: Vec<UnitDispatchResult> = target_unit_ids
             .iter()
             .map(|unit_id| {
-                // In production, this would convert the swarm command to appropriate unit command
-                // and dispatch it. For now, simulate success.
-                UnitDispatchResult::Success {
-                    unit_id: unit_id.clone(),
-                    timestamp_ns,
+                // Check integrity - if compromised, return failure
+                match self.check_integrity(unit_id) {
+                    Ok(_) => {
+                        // In production, this would convert the swarm command to appropriate unit command
+                        // and dispatch it. For now, simulate success.
+                        UnitDispatchResult::Success {
+                            unit_id: unit_id.clone(),
+                            timestamp_ns,
+                        }
+                    }
+                    Err(DispatchError::DataLoss { unit_id, reason }) => {
+                        UnitDispatchResult::Failed {
+                            unit_id,
+                            reason,
+                            timestamp_ns,
+                        }
+                    }
+                    Err(e) => {
+                        UnitDispatchResult::Failed {
+                            unit_id: unit_id.clone(),
+                            reason: e.to_string(),
+                            timestamp_ns,
+                        }
+                    }
                 }
             })
             .collect();
@@ -302,4 +371,92 @@ mod tests {
         assert!(result.is_ok());
         assert!(result.unwrap().is_success());
     }
+    
+    #[test]
+    fn test_dispatch_unit_command_integrity_check() {
+        use aethercore_stream::StreamIntegrityTracker;
+        use std::sync::{Arc, Mutex};
+        
+        // Create tracker and mark a unit as compromised
+        let mut tracker = StreamIntegrityTracker::new();
+        tracker.get_or_create("unit-compromised")
+            .record_broken_event("Test integrity violation".to_string());
+        
+        let tracker_arc = Arc::new(Mutex::new(tracker));
+        let dispatcher = CommandDispatcher::with_integrity_tracker(tracker_arc);
+        
+        let command = UnitCommand::Navigate {
+            waypoint: Coordinate { lat: 0.0, lon: 0.0, alt: Some(100.0) },
+            speed: Some(10.0),
+            altitude: None,
+        };
+        
+        // Compromised unit should fail
+        let result = dispatcher.dispatch_unit_command("unit-compromised", &command, 1000);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(DispatchError::DataLoss { .. })));
+        
+        // Non-compromised unit should succeed
+        let result = dispatcher.dispatch_unit_command("unit-ok", &command, 1000);
+        assert!(result.is_ok());
+    }
+    
+    #[test]
+    fn test_dispatch_swarm_command_integrity_check() {
+        use aethercore_stream::StreamIntegrityTracker;
+        use std::sync::{Arc, Mutex};
+        
+        // Create tracker and mark one unit as compromised
+        let mut tracker = StreamIntegrityTracker::new();
+        tracker.get_or_create("unit-2")
+            .record_broken_event("Chain discontinuity".to_string());
+        
+        let tracker_arc = Arc::new(Mutex::new(tracker));
+        let dispatcher = CommandDispatcher::with_integrity_tracker(tracker_arc);
+        
+        let command = SwarmCommand::RecallAll {
+            base_id: "BASE-1".to_string(),
+        };
+        
+        let target_units = vec![
+            "unit-1".to_string(),
+            "unit-2".to_string(),  // Compromised
+            "unit-3".to_string(),
+        ];
+        
+        let status = dispatcher.dispatch_swarm_command(
+            "swarm-1".to_string(),
+            &command,
+            &target_units,
+            1000,
+        ).unwrap();
+        
+        // Should have 2 successes and 1 failure
+        assert_eq!(status.total_units, 3);
+        assert_eq!(status.success_count, 2);
+        assert_eq!(status.failure_count, 1);
+        
+        // Find the failed unit
+        let failed = status.unit_results.iter()
+            .find(|r| matches!(r, UnitDispatchResult::Failed { .. }))
+            .unwrap();
+        
+        assert_eq!(failed.unit_id(), "unit-2");
+    }
+    
+    #[test]
+    fn test_dispatch_without_integrity_tracker() {
+        // Dispatcher without integrity tracker should not block anything
+        let dispatcher = CommandDispatcher::new();
+        
+        let command = UnitCommand::Navigate {
+            waypoint: Coordinate { lat: 0.0, lon: 0.0, alt: Some(100.0) },
+            speed: Some(10.0),
+            altitude: None,
+        };
+        
+        let result = dispatcher.dispatch_unit_command("any-unit", &command, 1000);
+        assert!(result.is_ok());
+    }
 }
+

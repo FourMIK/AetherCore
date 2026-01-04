@@ -381,6 +381,72 @@ impl Default for ChainManager {
     }
 }
 
+/// Chain proof for cross-node verification
+///
+/// Contains a cryptographic proof of the chain state that can be
+/// exchanged with other nodes for integrity verification.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ChainProof {
+    /// Node/stream identifier
+    pub chain_id: String,
+    /// Current chain head hash
+    pub head_hash: Blake3Hash,
+    /// Chain length
+    pub chain_length: usize,
+    /// Timestamp of proof generation (nanoseconds)
+    pub timestamp_ns: u64,
+    /// Optional signature of the proof (for authenticated exchange)
+    pub signature: Option<Vec<u8>>,
+}
+
+impl ChainProof {
+    /// Create a new chain proof
+    pub fn new(chain_id: String, head_hash: Blake3Hash, chain_length: usize) -> Self {
+        Self {
+            chain_id,
+            head_hash,
+            chain_length,
+            timestamp_ns: current_timestamp_ns(),
+            signature: None,
+        }
+    }
+    
+    /// Create a proof with signature
+    pub fn with_signature(mut self, signature: Vec<u8>) -> Self {
+        self.signature = Some(signature);
+        self
+    }
+    
+    /// Verify this proof matches another proof (for consensus)
+    pub fn matches(&self, other: &ChainProof) -> bool {
+        self.chain_id == other.chain_id
+            && self.head_hash == other.head_hash
+            && self.chain_length == other.chain_length
+    }
+}
+
+impl ChainManager {
+    /// Generate a proof of the current chain state
+    pub fn generate_proof(&self, chain_id: String) -> ChainProof {
+        ChainProof::new(chain_id, self.get_chain_head(), self.len())
+    }
+    
+    /// Verify a chain proof against local state
+    ///
+    /// Returns true if the proof matches the local chain head and length.
+    pub fn verify_proof(&self, proof: &ChainProof) -> bool {
+        proof.head_hash == self.get_chain_head() && proof.chain_length == self.len()
+    }
+}
+
+/// Get current timestamp in nanoseconds since UNIX epoch
+fn current_timestamp_ns() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_nanos() as u64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -633,5 +699,62 @@ mod tests {
 
         // Out of bounds
         assert!(manager.get_event(10).is_none());
+    }
+
+    #[test]
+    fn test_chain_proof_creation() {
+        let mut manager = ChainManager::new();
+        
+        for i in 0..5 {
+            let event = create_test_event("test.event", i);
+            manager.append_to_chain(event).unwrap();
+        }
+        
+        let proof = manager.generate_proof("test-chain".to_string());
+        
+        assert_eq!(proof.chain_id, "test-chain");
+        assert_eq!(proof.chain_length, 5);
+        assert_eq!(proof.head_hash, manager.get_chain_head());
+    }
+
+    #[test]
+    fn test_chain_proof_verification() {
+        let mut manager = ChainManager::new();
+        
+        for i in 0..3 {
+            let event = create_test_event("test.event", i);
+            manager.append_to_chain(event).unwrap();
+        }
+        
+        let proof = manager.generate_proof("test-chain".to_string());
+        
+        // Proof should verify against current state
+        assert!(manager.verify_proof(&proof));
+        
+        // Add another event
+        let event = create_test_event("test.event", 3);
+        manager.append_to_chain(event).unwrap();
+        
+        // Old proof should no longer verify
+        assert!(!manager.verify_proof(&proof));
+    }
+
+    #[test]
+    fn test_chain_proof_matching() {
+        let proof1 = ChainProof::new("chain-1".to_string(), [1u8; 32], 10);
+        let proof2 = ChainProof::new("chain-1".to_string(), [1u8; 32], 10);
+        let proof3 = ChainProof::new("chain-1".to_string(), [2u8; 32], 10);
+        
+        assert!(proof1.matches(&proof2));
+        assert!(!proof1.matches(&proof3));
+    }
+
+    #[test]
+    fn test_chain_proof_with_signature() {
+        let signature = vec![0x42u8; 64];
+        let proof = ChainProof::new("chain-1".to_string(), [1u8; 32], 5)
+            .with_signature(signature.clone());
+        
+        assert_eq!(proof.signature, Some(signature));
     }
 }
