@@ -8,13 +8,12 @@
 //! - Descriptive error messages for TS clients
 
 use crate::test_utils::*;
-use aethercore_c2_router::grpc::c2_proto::c2_router_client::C2RouterClient;
-use aethercore_c2_router::grpc::c2_proto::UnitCommandRequest;
+use aethercore_c2_router::grpc::c2_proto;
 use aethercore_identity::IdentityManager;
 use aethercore_trust_mesh::{TrustLevel, TrustScorer};
-use std::sync::{Arc, RwLock};
-use tonic::metadata::MetadataValue;
-use tonic::Request;
+use std::str::FromStr;
+
+
 
 #[tokio::test]
 async fn test_valid_tpm_signed_payload_accepted() {
@@ -24,17 +23,14 @@ async fn test_valid_tpm_signed_payload_accepted() {
     device.register(&mut identity_manager);
 
     // Setup trust scorer with healthy trust level
-    let mut trust_scorer = create_test_trust_scorer();
-    set_node_trust(&mut trust_scorer, &device.node_id, 0.95, TrustLevel::Healthy);
-
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(trust_scorer));
+    let trust_scorer = create_test_trust_scorer();
+    set_node_trust(&trust_scorer, &device.node_id, 0.95, TrustLevel::Healthy);
 
     // Start C2 server
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
     // Create gRPC client
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -54,7 +50,7 @@ async fn test_valid_tpm_signed_payload_accepted() {
     let signature_b64 = base64::encode(&signature);
 
     // Create request with metadata
-    let mut request = Request::new(UnitCommandRequest {
+    let mut request = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json: command_json.clone(),
         signatures: vec![hex::encode(&signature)],
@@ -64,10 +60,10 @@ async fn test_valid_tpm_signed_payload_accepted() {
     // Add authentication metadata
     request
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+        .insert("x-signature", tonic::metadata::tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     // Execute command
     let response = client.execute_unit_command(request).await;
@@ -89,15 +85,12 @@ async fn test_malformed_signature_rejected_with_descriptive_error() {
     let mut identity_manager = IdentityManager::new();
     device.register(&mut identity_manager);
 
-    let mut trust_scorer = create_test_trust_scorer();
-    set_node_trust(&mut trust_scorer, &device.node_id, 0.95, TrustLevel::Healthy);
+    let trust_scorer = create_test_trust_scorer();
+    set_node_trust(&trust_scorer, &device.node_id, 0.95, TrustLevel::Healthy);
 
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(trust_scorer));
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
-
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -111,7 +104,7 @@ async fn test_malformed_signature_rejected_with_descriptive_error() {
     .to_string();
 
     // Create request with malformed signature (empty)
-    let mut request = Request::new(UnitCommandRequest {
+    let mut request = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json,
         signatures: vec!["malformed_signature".to_string()],
@@ -120,10 +113,10 @@ async fn test_malformed_signature_rejected_with_descriptive_error() {
 
     request
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str("").unwrap()); // Empty signature
+        .insert("x-signature", tonic::metadata::MetadataValue::from_str("").unwrap()); // Empty signature
 
     // Execute command
     let response = client.execute_unit_command(request).await;
@@ -143,19 +136,19 @@ async fn test_malformed_signature_rejected_with_descriptive_error() {
 #[tokio::test]
 async fn test_missing_device_id_rejected() {
     // Setup minimal infrastructure
-    let identity_mgr = Arc::new(RwLock::new(IdentityManager::new()));
-    let trust_mgr = Arc::new(RwLock::new(create_test_trust_scorer()));
+    let identity_manager = IdentityManager::new();
+    let trust_scorer = create_test_trust_scorer();
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
     let command_json = serde_json::json!({"Navigate": {}}).to_string();
 
     // Create request WITHOUT x-device-id metadata
-    let request = Request::new(UnitCommandRequest {
+    let request = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json,
         signatures: vec!["dummy_sig".to_string()],
@@ -188,7 +181,7 @@ async fn test_quarantined_node_rejected_with_trust_level() {
     device.register(&mut identity_manager);
 
     // Set trust level to Quarantined
-    let mut trust_scorer = create_test_trust_scorer();
+    let trust_scorer = create_test_trust_scorer();
     set_node_trust(
         &mut trust_scorer,
         &device.node_id,
@@ -196,12 +189,10 @@ async fn test_quarantined_node_rejected_with_trust_level() {
         TrustLevel::Quarantined,
     );
 
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(trust_scorer));
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -216,7 +207,7 @@ async fn test_quarantined_node_rejected_with_trust_level() {
     let signature = device.sign(command_hash.as_bytes());
     let signature_b64 = base64::encode(&signature);
 
-    let mut request = Request::new(UnitCommandRequest {
+    let mut request = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json,
         signatures: vec![hex::encode(&signature)],
@@ -225,10 +216,10 @@ async fn test_quarantined_node_rejected_with_trust_level() {
 
     request
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+        .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     // Execute command
     let response = client.execute_unit_command(request).await;
@@ -260,15 +251,13 @@ async fn test_suspect_node_below_threshold_rejected() {
     device.register(&mut identity_manager);
 
     // Set trust level to Suspect (0.7 < 0.8 threshold)
-    let mut trust_scorer = create_test_trust_scorer();
+    let trust_scorer = create_test_trust_scorer();
     set_node_trust(&mut trust_scorer, &device.node_id, 0.7, TrustLevel::Suspect);
 
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(trust_scorer));
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -277,7 +266,7 @@ async fn test_suspect_node_below_threshold_rejected() {
     let signature = device.sign(command_hash.as_bytes());
     let signature_b64 = base64::encode(&signature);
 
-    let mut request = Request::new(UnitCommandRequest {
+    let mut request = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json,
         signatures: vec![hex::encode(&signature)],
@@ -286,10 +275,10 @@ async fn test_suspect_node_below_threshold_rejected() {
 
     request
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+        .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     // Execute command
     let response = client.execute_unit_command(request).await;
@@ -315,12 +304,11 @@ async fn test_unregistered_device_rejected() {
     let device = TestDevice::new();
     let identity_manager = IdentityManager::new(); // Empty registry
 
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(create_test_trust_scorer()));
+    let trust_scorer = create_test_trust_scorer();
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -329,7 +317,7 @@ async fn test_unregistered_device_rejected() {
     let signature = device.sign(command_hash.as_bytes());
     let signature_b64 = base64::encode(&signature);
 
-    let mut request = Request::new(UnitCommandRequest {
+    let mut request = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json,
         signatures: vec![hex::encode(&signature)],
@@ -338,10 +326,10 @@ async fn test_unregistered_device_rejected() {
 
     request
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+        .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     // Execute command
     let response = client.execute_unit_command(request).await;

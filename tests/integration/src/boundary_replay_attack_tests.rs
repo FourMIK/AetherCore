@@ -4,13 +4,14 @@
 //! with proper Merkle Vine continuity checks.
 
 use crate::test_utils::*;
-use aethercore_c2_router::grpc::c2_proto::c2_router_client::C2RouterClient;
-use aethercore_c2_router::grpc::c2_proto::UnitCommandRequest;
+use aethercore_c2_router::grpc::c2_proto;
+
 use aethercore_identity::IdentityManager;
 use aethercore_trust_mesh::TrustLevel;
+use std::str::FromStr;
 use std::sync::{Arc, RwLock};
-use tonic::metadata::MetadataValue;
-use tonic::Request;
+
+
 
 #[tokio::test]
 async fn test_replay_attack_same_signature_rejected() {
@@ -19,15 +20,13 @@ async fn test_replay_attack_same_signature_rejected() {
     let mut identity_manager = IdentityManager::new();
     device.register(&mut identity_manager);
 
-    let mut trust_scorer = create_test_trust_scorer();
-    set_node_trust(&mut trust_scorer, &device.node_id, 0.95, TrustLevel::Healthy);
+    let trust_scorer = create_test_trust_scorer();
+    set_node_trust(&trust_scorer, &device.node_id, 0.95, TrustLevel::Healthy);
 
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(trust_scorer));
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -48,7 +47,7 @@ async fn test_replay_attack_same_signature_rejected() {
 
     // Helper to create request
     let create_request = || {
-        let mut request = Request::new(UnitCommandRequest {
+        let mut request = tonic::Request::new(c2_proto::UnitCommandRequest {
             unit_id: "unit-001".to_string(),
             command_json: command_json.clone(),
             signatures: vec![hex::encode(&signature)],
@@ -57,10 +56,10 @@ async fn test_replay_attack_same_signature_rejected() {
 
         request
             .metadata_mut()
-            .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+            .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
         request
             .metadata_mut()
-            .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+            .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
         request
     };
@@ -99,15 +98,13 @@ async fn test_replay_attack_with_different_timestamp_requires_new_signature() {
     let mut identity_manager = IdentityManager::new();
     device.register(&mut identity_manager);
 
-    let mut trust_scorer = create_test_trust_scorer();
-    set_node_trust(&mut trust_scorer, &device.node_id, 0.95, TrustLevel::Healthy);
+    let trust_scorer = create_test_trust_scorer();
+    set_node_trust(&trust_scorer, &device.node_id, 0.95, TrustLevel::Healthy);
 
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(trust_scorer));
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -124,7 +121,7 @@ async fn test_replay_attack_with_different_timestamp_requires_new_signature() {
 
     // First request with timestamp T1
     let timestamp_1 = current_timestamp_ns();
-    let mut request1 = Request::new(UnitCommandRequest {
+    let mut request1 = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json: command_json.clone(),
         signatures: vec![hex::encode(&signature)],
@@ -133,10 +130,10 @@ async fn test_replay_attack_with_different_timestamp_requires_new_signature() {
 
     request1
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request1
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+        .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     let response1 = client.execute_unit_command(request1).await;
     assert!(response1.is_ok(), "First command should succeed");
@@ -146,7 +143,7 @@ async fn test_replay_attack_with_different_timestamp_requires_new_signature() {
 
     // Second request with timestamp T2 but SAME signature
     let timestamp_2 = current_timestamp_ns();
-    let mut request2 = Request::new(UnitCommandRequest {
+    let mut request2 = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json: command_json.clone(),
         signatures: vec![hex::encode(&signature)], // Same signature!
@@ -155,10 +152,10 @@ async fn test_replay_attack_with_different_timestamp_requires_new_signature() {
 
     request2
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request2
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+        .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     let response2 = client.execute_unit_command(request2).await;
 
@@ -180,15 +177,13 @@ async fn test_stale_timestamp_rejected() {
     let mut identity_manager = IdentityManager::new();
     device.register(&mut identity_manager);
 
-    let mut trust_scorer = create_test_trust_scorer();
-    set_node_trust(&mut trust_scorer, &device.node_id, 0.95, TrustLevel::Healthy);
+    let trust_scorer = create_test_trust_scorer();
+    set_node_trust(&trust_scorer, &device.node_id, 0.95, TrustLevel::Healthy);
 
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(trust_scorer));
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -200,7 +195,7 @@ async fn test_stale_timestamp_rejected() {
     // Use a very old timestamp (1 hour ago in nanoseconds)
     let old_timestamp = current_timestamp_ns() - (3600 * 1_000_000_000);
 
-    let mut request = Request::new(UnitCommandRequest {
+    let mut request = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json,
         signatures: vec![hex::encode(&signature)],
@@ -209,10 +204,10 @@ async fn test_stale_timestamp_rejected() {
 
     request
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+        .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     let response = client.execute_unit_command(request).await;
 

@@ -3,13 +3,14 @@
 //! Tests trust scoring behavior at the gRPC boundary
 
 use crate::test_utils::*;
-use aethercore_c2_router::grpc::c2_proto::c2_router_client::C2RouterClient;
-use aethercore_c2_router::grpc::c2_proto::UnitCommandRequest;
+use aethercore_c2_router::grpc::c2_proto;
+
 use aethercore_identity::IdentityManager;
 use aethercore_trust_mesh::TrustLevel;
+use std::str::FromStr;
 use std::sync::{Arc, RwLock};
-use tonic::metadata::MetadataValue;
-use tonic::Request;
+
+
 
 #[tokio::test]
 async fn test_no_trust_score_defaults_to_deny() {
@@ -21,12 +22,10 @@ async fn test_no_trust_score_defaults_to_deny() {
     // Create empty trust scorer (no scores set)
     let trust_scorer = create_test_trust_scorer();
 
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(trust_scorer));
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -35,7 +34,7 @@ async fn test_no_trust_score_defaults_to_deny() {
     let signature = device.sign(command_hash.as_bytes());
     let signature_b64 = base64::encode(&signature);
 
-    let mut request = Request::new(UnitCommandRequest {
+    let mut request = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json,
         signatures: vec![hex::encode(&signature)],
@@ -44,10 +43,10 @@ async fn test_no_trust_score_defaults_to_deny() {
 
     request
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+        .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     let response = client.execute_unit_command(request).await;
 
@@ -73,16 +72,14 @@ async fn test_healthy_node_at_threshold_boundary() {
     let mut identity_manager = IdentityManager::new();
     device.register(&mut identity_manager);
 
-    let mut trust_scorer = create_test_trust_scorer();
+    let trust_scorer = create_test_trust_scorer();
     // Set score exactly at threshold
-    set_node_trust(&mut trust_scorer, &device.node_id, 0.8, TrustLevel::Healthy);
+    set_node_trust(&trust_scorer, &device.node_id, 0.8, TrustLevel::Healthy);
 
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(trust_scorer));
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -91,7 +88,7 @@ async fn test_healthy_node_at_threshold_boundary() {
     let signature = device.sign(command_hash.as_bytes());
     let signature_b64 = base64::encode(&signature);
 
-    let mut request = Request::new(UnitCommandRequest {
+    let mut request = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json,
         signatures: vec![hex::encode(&signature)],
@@ -100,10 +97,10 @@ async fn test_healthy_node_at_threshold_boundary() {
 
     request
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+        .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     let response = client.execute_unit_command(request).await;
 
@@ -122,16 +119,14 @@ async fn test_just_below_threshold_rejected() {
     let mut identity_manager = IdentityManager::new();
     device.register(&mut identity_manager);
 
-    let mut trust_scorer = create_test_trust_scorer();
+    let trust_scorer = create_test_trust_scorer();
     // Set score just below threshold
-    set_node_trust(&mut trust_scorer, &device.node_id, 0.79, TrustLevel::Suspect);
+    set_node_trust(&trust_scorer, &device.node_id, 0.79, TrustLevel::Suspect);
 
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(trust_scorer));
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -140,7 +135,7 @@ async fn test_just_below_threshold_rejected() {
     let signature = device.sign(command_hash.as_bytes());
     let signature_b64 = base64::encode(&signature);
 
-    let mut request = Request::new(UnitCommandRequest {
+    let mut request = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json,
         signatures: vec![hex::encode(&signature)],
@@ -149,10 +144,10 @@ async fn test_just_below_threshold_rejected() {
 
     request
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+        .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     let response = client.execute_unit_command(request).await;
 
@@ -174,16 +169,14 @@ async fn test_trust_level_overrides_score() {
     let mut identity_manager = IdentityManager::new();
     device.register(&mut identity_manager);
 
-    let mut trust_scorer = create_test_trust_scorer();
+    let trust_scorer = create_test_trust_scorer();
     // Set HIGH score but QUARANTINED level (conflict scenario)
-    set_node_trust(&mut trust_scorer, &device.node_id, 0.95, TrustLevel::Quarantined);
+    set_node_trust(&trust_scorer, &device.node_id, 0.95, TrustLevel::Quarantined);
 
-    let identity_mgr = Arc::new(RwLock::new(identity_manager));
-    let trust_mgr = Arc::new(RwLock::new(trust_scorer));
 
-    let server_url = start_c2_server(identity_mgr, trust_mgr).await;
+    let server_url = start_c2_server(identity_manager, trust_scorer).await;
 
-    let mut client = C2RouterClient::connect(server_url)
+    let mut client = c2_proto::c2_router_client::C2RouterClient::connect(server_url)
         .await
         .expect("Failed to connect to C2 server");
 
@@ -192,7 +185,7 @@ async fn test_trust_level_overrides_score() {
     let signature = device.sign(command_hash.as_bytes());
     let signature_b64 = base64::encode(&signature);
 
-    let mut request = Request::new(UnitCommandRequest {
+    let mut request = tonic::Request::new(c2_proto::UnitCommandRequest {
         unit_id: "unit-001".to_string(),
         command_json,
         signatures: vec![hex::encode(&signature)],
@@ -201,10 +194,10 @@ async fn test_trust_level_overrides_score() {
 
     request
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(&device.node_id).unwrap());
+        .insert("x-device-id", tonic::metadata::MetadataValue::from_str(&device.node_id).unwrap());
     request
         .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&signature_b64).unwrap());
+        .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     let response = client.execute_unit_command(request).await;
 

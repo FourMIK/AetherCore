@@ -113,29 +113,14 @@ pub async fn start_identity_server(
 }
 
 /// Start a test C2 Router gRPC server
-/// 
-/// Note: This creates new instances of Identity Manager and Trust Scorer for the server.
-/// Test setup should register devices and set trust scores BEFORE calling this function.
-pub async fn start_c2_server_with_state(
-    devices: Vec<&TestDevice>,
-    trust_levels: Vec<(String, f64, TrustLevel)>,
+pub async fn start_c2_server(
+    identity_manager: IdentityManager,
+    trust_scorer: TrustScorer,
 ) -> String {
     let addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     let local_addr = listener.local_addr().unwrap();
     let server_url = format!("http://{}", local_addr);
-
-    // Create new identity manager and register devices
-    let mut identity_manager = IdentityManager::new();
-    for device in devices {
-        device.register(&mut identity_manager);
-    }
-
-    // Create new trust scorer and set trust levels
-    let trust_scorer = TrustScorer::new();
-    for (node_id, score, _level) in trust_levels {
-        set_node_trust(&trust_scorer, &node_id, score, _level);
-    }
 
     let dispatcher = CommandDispatcher::new();
     let authority_verifier = AuthorityVerifier::new();
@@ -162,6 +147,29 @@ pub async fn start_c2_server_with_state(
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     server_url
+}
+
+/// Start a test C2 Router gRPC server with state
+/// 
+/// Note: This creates new instances of Identity Manager and Trust Scorer for the server.
+/// Test setup should register devices and set trust scores BEFORE calling this function.
+pub async fn start_c2_server_with_state(
+    devices: Vec<&TestDevice>,
+    trust_levels: Vec<(String, f64, TrustLevel)>,
+) -> String {
+    // Create new identity manager and register devices
+    let mut identity_manager = IdentityManager::new();
+    for device in devices {
+        device.register(&mut identity_manager);
+    }
+
+    // Create new trust scorer and set trust levels
+    let trust_scorer = TrustScorer::new();
+    for (node_id, score, _level) in trust_levels {
+        set_node_trust(&trust_scorer, &node_id, score, _level);
+    }
+
+    start_c2_server(identity_manager, trust_scorer).await
 }
 
 /// Create a test trust scorer with predefined trust levels
