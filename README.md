@@ -148,6 +148,18 @@ Output artifacts are generated in `sbom-artifacts/`:
 
 For detailed information, see [Supply Chain Security Documentation](docs/SUPPLY_CHAIN_SECURITY.md).
 
+## Documentation
+
+Comprehensive documentation for deployment, installation, security, and supply chain:
+
+- **[INSTALLATION.md](INSTALLATION.md)** - Complete installation guide for all platforms
+- **[DEPLOYMENT_DESKTOP.md](DEPLOYMENT_DESKTOP.md)** - Desktop application deployment procedures
+- **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices
+- **[PROVENANCE.md](PROVENANCE.md)** - Software provenance and supply chain security
+- **[docs/SUPPLY_CHAIN_SECURITY.md](docs/SUPPLY_CHAIN_SECURITY.md)** - Detailed supply chain procedures
+- **[docs/PERFORMANCE_BENCHMARKS.md](docs/PERFORMANCE_BENCHMARKS.md)** - Performance benchmarks and expectations
+- **[docs/production-deployment-playbook.md](docs/production-deployment-playbook.md)** - Production deployment playbook
+
 ## Contributing
 
 This is a monorepo project. Please ensure:

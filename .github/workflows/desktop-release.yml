@@ -28,6 +28,24 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
       
+      - name: "📚 Verify Documentation Completeness"
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📚 Documentation Completeness Check"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          chmod +x ./scripts/verify-docs.sh
+          ./scripts/verify-docs.sh
+          
+          if [ $? -ne 0 ]; then
+            echo ""
+            echo "❌ RELEASE BLOCKED: Documentation incomplete"
+            echo "Required documentation must be complete before release."
+            echo "See output above for missing or incomplete files."
+            exit 1
+          fi
+        shell: bash
+      
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
