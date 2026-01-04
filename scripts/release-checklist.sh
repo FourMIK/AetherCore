@@ -201,13 +201,43 @@ cd "$REPO_ROOT"
 echo ""
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Phase 5: Supply Chain Verification
+# Phase 5: Supply Chain Verification & License Compliance
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🛡️  [Phase 5] Supply Chain Verification"
+echo "🛡️  [Phase 5] Supply Chain Verification & License Compliance"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
+
+# Check for deny.toml configuration
+if [ -f "deny.toml" ]; then
+    check_status "License compliance configuration (deny.toml)" "PASS"
+else
+    check_status "License compliance configuration (deny.toml)" "FAIL" "deny.toml not found"
+fi
+
+# Run cargo-deny if available
+if command -v cargo-deny &> /dev/null; then
+    echo "🛡️  Running Operation Legal Shield license checks..."
+    
+    if cargo deny check licenses > /tmp/cargo-deny-licenses.log 2>&1; then
+        check_status "License compliance (cargo-deny)" "PASS"
+    else
+        check_status "License compliance (cargo-deny)" "FAIL" "Non-compliant licenses detected - see /tmp/cargo-deny-licenses.log"
+        echo ""
+        echo "License violations:"
+        tail -20 /tmp/cargo-deny-licenses.log
+        echo ""
+    fi
+    
+    if cargo deny check advisories > /tmp/cargo-deny-advisories.log 2>&1; then
+        check_status "Security advisories check" "PASS"
+    else
+        check_status "Security advisories check" "WARN" "Security advisories found - see /tmp/cargo-deny-advisories.log"
+    fi
+else
+    check_status "License compliance (cargo-deny)" "WARN" "cargo-deny not installed, skipping license check"
+fi
 
 if [ -f "./scripts/generate-sbom.sh" ]; then
     if bash ./scripts/generate-sbom.sh > /tmp/sbom-output.log 2>&1; then

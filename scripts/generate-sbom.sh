@@ -75,6 +75,59 @@ else
     echo ""
 fi
 
+# Check if cargo-deny is available
+if ! command -v cargo-deny &> /dev/null; then
+    echo "⚠️  cargo-deny not found."
+    echo "   Installing cargo-deny for license compliance..."
+    cargo install cargo-deny --locked || {
+        echo "⚠️  Failed to install cargo-deny. Skipping license compliance check."
+        echo "   Note: cargo-deny will be installed in CI environment."
+        SKIP_LICENSE_CHECK=true
+    }
+fi
+
+echo ""
+echo "🛡️  Operation Legal Shield: License Compliance Check"
+echo "   Policy: DENY copyleft licenses (GPL, AGPL, LGPL)"
+echo "   Whitelist: MIT, Apache-2.0, BSD-3-Clause, ISC"
+echo ""
+
+# Run cargo-deny license check
+if [ "${SKIP_LICENSE_CHECK}" != "true" ]; then
+    cd "$REPO_ROOT"
+    
+    echo "📋 Checking license compliance..."
+    if ! cargo deny check licenses; then
+        echo ""
+        echo "❌ OPERATION LEGAL SHIELD: LICENSE VIOLATION"
+        echo "   Non-compliant licenses detected in dependencies."
+        echo "   Directive: Only permissive licenses are authorized."
+        echo "   Action Required: Replace copyleft dependencies or obtain CTO approval."
+        echo ""
+        exit 1
+    fi
+    
+    echo ""
+    echo "✅ License compliance verified - all dependencies approved"
+    echo ""
+    
+    echo "🔍 Checking for banned dependencies..."
+    if ! cargo deny check bans; then
+        echo ""
+        echo "⚠️  Warning: Banned dependencies or duplicates detected"
+        echo "   Review deny.toml configuration"
+        echo ""
+    fi
+    
+    echo ""
+    echo "✅ Dependency bans check completed"
+    echo ""
+else
+    echo "⚠️  License compliance check skipped (cargo-deny not available)"
+    echo "   This check will run in CI environment."
+    echo ""
+fi
+
 echo "📋 Generating Rust SBOM (CycloneDX format)..."
 echo "   Target: Tauri Desktop Application"
 echo ""

@@ -29,6 +29,8 @@ pub fn run() {
       commands::create_node,
       commands::check_stream_integrity,
       commands::get_compromised_streams,
+      commands::get_license_inventory,
+      commands::record_license_compliance,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

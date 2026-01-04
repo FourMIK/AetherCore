@@ -61,6 +61,39 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace -- -D warnings
 
+  license-compliance:
+    name: "Operation Legal Shield: License Compliance"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+      
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+      
+      - name: Run cargo-deny license check
+        run: |
+          echo "🛡️  Operation Legal Shield: Enforcing license compliance"
+          cargo deny check licenses
+      
+      - name: Run cargo-deny advisories check
+        run: cargo deny check advisories
+      
+      - name: Run cargo-deny bans check
+        run: cargo deny check bans
+      
+      - name: Verify deny.toml exists
+        run: |
+          if [ ! -f "deny.toml" ]; then
+            echo "❌ deny.toml configuration not found"
+            exit 1
+          fi
+          echo "✅ License compliance configuration verified"
+
   typescript-workspace:
     name: TypeScript Workspace
     runs-on: ubuntu-latest
@@ -179,7 +212,7 @@ jobs:
     name: Build and Push Docker Images (Internal)
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/internal'
-    needs: [rust-workspace, typescript-workspace]
+    needs: [rust-workspace, typescript-workspace, license-compliance]
     permissions:
       contents: read
       id-token: write  # For OIDC authentication with AWS
@@ -252,7 +285,7 @@ jobs:
     name: Build Desktop App (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-    needs: [verify-documentation, rust-workspace, typescript-workspace]
+    needs: [verify-documentation, rust-workspace, typescript-workspace, license-compliance]
     strategy:
       fail-fast: false
       matrix:

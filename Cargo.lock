@@ -5541,6 +5541,7 @@ dependencies = [
  "aethercore-identity",
  "aethercore-mesh",
  "aethercore-stream",
+ "aethercore-trust-mesh",
  "anyhow",
  "base64 0.22.1",
  "blake3",
