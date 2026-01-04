@@ -145,6 +145,39 @@ Ensures all required documentation exists and meets minimum quality standards.
 
 ---
 
+### `generate-tauri-icons.sh`
+
+**Tauri Icon Generation from AetherCore Brand**
+
+Generates all required icon formats for the Tactical Glass desktop application from the source AetherCore brand icon.
+
+**Usage:**
+```bash
+./scripts/generate-tauri-icons.sh
+```
+
+**Source Icon:**
+- `packages/shared/app-icon.png` - AetherCore brand icon (must exist)
+
+**Generates:**
+- `icon.ico` - Windows installer and app icon (multi-size)
+- `icon.icns` - macOS DMG and app bundle icon
+- `32x32.png`, `128x128.png`, `128x128@2x.png` - Standard sizes
+- `Square*Logo.png` - Windows Store logos (9 variants)
+- `icon.png` - Base 512x512 icon
+
+**Requirements:**
+- `imagemagick` (convert command)
+- `iconutil` (macOS) or `icnsutils` (Linux) for .icns generation
+
+**Output:**
+All icons written to `packages/dashboard/src-tauri/icons/`
+
+**Integration:**
+This script should be run after merging branches that include the brand icon file. The generated icons will be automatically used by Tauri during desktop builds.
+
+---
+
 ### `generate-tactical-certs.sh`
 
 **Tactical Certificate Generation**
