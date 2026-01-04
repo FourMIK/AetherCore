@@ -15,6 +15,7 @@ pub mod merkle;
 pub mod node_health;
 pub mod service;
 pub mod signing;
+pub mod topology_bench;
 pub mod trust;
 
 pub use chain::{ChainError, ChainManager};

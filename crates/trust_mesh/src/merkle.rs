@@ -175,6 +175,13 @@ impl MerkleAggregator {
     /// hashing pairs of nodes until a single root remains.
     /// Uses a delimiter to prevent length extension attacks.
     pub fn build_merkle_tree(&self, event_hashes: &[EventHash]) -> Result<EventHash> {
+        let _span = tracing::debug_span!(
+            "mesh_verification",
+            operation = "merkle_tree_build",
+            event_count = event_hashes.len()
+        )
+        .entered();
+
         if event_hashes.is_empty() {
             return Err(MerkleError::EmptyWindow);
         }
