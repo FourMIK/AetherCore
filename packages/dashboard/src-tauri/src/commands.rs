@@ -212,6 +212,15 @@ pub struct StreamIntegrityStatus {
 /// 
 /// Checks the Merkle-Vine integrity status for a given stream/node.
 /// Returns the current integrity state including chain verification status.
+/// 
+/// **IMPLEMENTATION NOTE**: This is currently a placeholder that returns mock data.
+/// For production deployment, this must be integrated with the actual
+/// `StreamIntegrityTracker` from `crates/stream`. The integration requires:
+/// 1. Maintaining a shared `StreamIntegrityTracker` instance in `AppState`
+/// 2. Updating the tracker via events from the stream processor
+/// 3. Querying real-time integrity status from the tracker
+/// 
+/// Without this integration, the UI will not reflect actual integrity violations.
 #[tauri::command]
 pub async fn check_stream_integrity(
     stream_id: String,
@@ -236,6 +245,7 @@ pub async fn check_stream_integrity(
         compromise_reason: None,
     };
     
+    log::warn!("PLACEHOLDER: Stream integrity check not yet integrated with backend");
     log::info!("Stream {} integrity: {:?}", stream_id, status.verification_status);
     Ok(status)
 }
@@ -243,6 +253,10 @@ pub async fn check_stream_integrity(
 /// Get All Compromised Streams
 /// 
 /// Returns a list of all streams with broken Merkle-Vine chains.
+/// 
+/// **IMPLEMENTATION NOTE**: This is currently a placeholder that returns an empty list.
+/// For production deployment, this must be integrated with the actual
+/// `StreamIntegrityTracker.get_compromised_streams()` method.
 #[tauri::command]
 pub async fn get_compromised_streams() -> Result<Vec<String>, String> {
     log::info!("Fetching all compromised streams");
@@ -250,6 +264,7 @@ pub async fn get_compromised_streams() -> Result<Vec<String>, String> {
     // TODO: Integrate with StreamIntegrityTracker.get_compromised_streams()
     // This should return the actual list of compromised stream IDs
     
+    log::warn!("PLACEHOLDER: Compromised streams query not yet integrated with backend");
     // Placeholder: return empty list
     Ok(vec![])
 }

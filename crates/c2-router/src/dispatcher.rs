@@ -181,7 +181,13 @@ impl CommandDispatcher {
     /// Check if a unit's integrity is compromised
     fn check_integrity(&self, unit_id: &str) -> Result<(), DispatchError> {
         if let Some(tracker) = &self.integrity_tracker {
-            let tracker_lock = tracker.lock().unwrap();
+            let tracker_lock = tracker.lock().map_err(|e| {
+                DispatchError::InvalidUnitId(format!(
+                    "Failed to acquire integrity tracker lock: {}",
+                    e
+                ))
+            })?;
+            
             if tracker_lock.is_stream_compromised(unit_id) {
                 let reason = tracker_lock
                     .get(unit_id)
