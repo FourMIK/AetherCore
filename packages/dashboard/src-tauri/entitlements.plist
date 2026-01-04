@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Network Client Entitlement: Required for WebSocket connections to testnet -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    
+    <!-- Network Server Entitlement: Required for P2P mesh networking -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+    
+    <!-- Hardened Runtime: Disable JIT and unsigned executable memory -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <false/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <false/>
+    
+    <!-- Disable DYLD environment variables for security -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <false/>
+    
+    <!-- Disable library validation to allow loading of frameworks -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <false/>
+</dict>
+</plist>

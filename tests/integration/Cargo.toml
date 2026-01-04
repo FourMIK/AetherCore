@@ -1,0 +1,42 @@
+[package]
+name = "aethercore-integration-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+# Core dependencies
+aethercore-core = { path = "../../crates/core" }
+aethercore-identity = { path = "../../crates/identity", features = ["grpc-server"] }
+aethercore-c2-router = { path = "../../crates/c2-router" }
+aethercore-trust-mesh = { path = "../../crates/trust_mesh" }
+aethercore-crypto = { path = "../../crates/crypto" }
+aethercore-stream = { path = "../../crates/stream" }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# gRPC
+tonic = { workspace = true }
+prost = { workspace = true }
+
+# Cryptography
+blake3 = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand = { workspace = true }
+hex = { workspace = true }
+
+# Testing utilities
+tokio-stream = { version = "0.1", features = ["net"] }
+base64 = "0.21"
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[build-dependencies]
+tonic-build = "0.10"

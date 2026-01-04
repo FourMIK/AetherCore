@@ -8,6 +8,10 @@ repository.workspace = true
 
 [dependencies]
 aethercore-core = { path = "../core" }
+aethercore-crypto = { path = "../crypto" }
 tokio = { workspace = true }
 serde = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
+blake3 = { workspace = true }
+tracing = { workspace = true }

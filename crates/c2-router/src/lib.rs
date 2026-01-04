@@ -65,6 +65,7 @@ pub mod dispatcher;
 pub mod feeds;
 pub mod grpc;
 pub mod ledger;
+pub mod offline;
 pub mod quorum;
 
 // Re-export commonly used types
@@ -78,8 +79,12 @@ pub use dispatcher::{
 };
 pub use feeds::{AlertFeed, FleetFeed, MissionFeed};
 pub use grpc::{
-    C2RouterService, SwarmCommandRequest, SwarmCommandResponse, UnitCommandRequest,
-    UnitCommandResponse,
+    c2_proto, C2GrpcServer, C2Router, C2RouterServer, AbortRequest, AbortResponse,
+    CommandStatusRequest, CommandStatusResponse, SwarmCommandRequest, SwarmCommandResponse,
+    UnitCommandRequest, UnitCommandResponse,
 };
 pub use ledger::{CommandRecord, RecorderError, TruthChainRecorder};
+pub use offline::{
+    ConnectionState, EncryptedPacket, OfflineError, OfflineGapInfo, OfflineMateriaBuffer,
+};
 pub use quorum::{CommandScope, QuorumError, QuorumGate, QuorumProof};
