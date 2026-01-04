@@ -63,6 +63,7 @@ Generates comprehensive Software Bill of Materials (SBOM) and audits all depende
 
 **Requirements:**
 - `cargo-audit` - Rust vulnerability scanner
+- `cargo-deny` - License compliance checker (Operation Legal Shield)
 - `cargo-cyclonedx` - Rust SBOM generator
 - `@cyclonedx/cyclonedx-npm` - npm SBOM generator
 - `b3sum` - BLAKE3 hash tool (falls back to SHA-256)
@@ -70,10 +71,48 @@ Generates comprehensive Software Bill of Materials (SBOM) and audits all depende
 **Policy:**
 - Fails on HIGH or CRITICAL CVEs in Rust dependencies
 - Fails on HIGH or CRITICAL CVEs in npm dependencies
+- Fails on non-compliant licenses (GPL, AGPL, LGPL)
 - Fails if SBOM generation errors
 
 **Documentation:**
-See [docs/SUPPLY_CHAIN_SECURITY.md](../docs/SUPPLY_CHAIN_SECURITY.md)
+See [LICENSE_COMPLIANCE.md](../LICENSE_COMPLIANCE.md) for license compliance details.
+
+---
+
+### `test-license-compliance.sh`
+
+**Operation Legal Shield: License Compliance Testing**
+
+Validates the license compliance configuration and tests for violations.
+
+**Usage:**
+```bash
+./scripts/test-license-compliance.sh
+```
+
+**Tests:**
+- ✅ License compliance check (cargo-deny)
+- ✅ Security advisories check
+- ✅ Banned dependencies check
+- ✅ License whitelist validation
+- ✅ GPL/AGPL verification
+
+**Requirements:**
+- `cargo-deny` installed
+- `deny.toml` configuration present
+- `jq` for JSON parsing
+
+**Exit Codes:**
+- `0`: All license compliance tests passed
+- `1`: License violations detected
+
+**Integration:**
+- Run before any PR merge
+- Automated in CI via `.github/workflows/ci.yml`
+- Part of release checklist validation
+
+**Documentation:**
+See [LICENSE_COMPLIANCE.md](../LICENSE_COMPLIANCE.md)
 
 ---
 
