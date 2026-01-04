@@ -28,24 +28,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
       
-      - name: "📚 Verify Documentation Completeness"
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📚 Documentation Completeness Check"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          
-          chmod +x ./scripts/verify-docs.sh
-          ./scripts/verify-docs.sh
-          
-          if [ $? -ne 0 ]; then
-            echo ""
-            echo "❌ RELEASE BLOCKED: Documentation incomplete"
-            echo "Required documentation must be complete before release."
-            echo "See output above for missing or incomplete files."
-            exit 1
-          fi
-        shell: bash
-      
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -91,10 +73,46 @@ jobs:
       - name: Install npm Dependencies
         run: npm ci
       
-      - name: "🛡️ Operation Glass Fortress: Supply Chain Verification"
+      - name: "🛡️ Operation Ironclad: Comprehensive Release Checklist"
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🛡️  Supply Chain Hardening: SBOM Generation & Audit"
+          echo "🛡️  Operation Ironclad: Release Validation Gate"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Executing comprehensive pre-release validation..."
+          echo "This checks:"
+          echo "  - Documentation completeness"
+          echo "  - Test suite execution (Rust + TypeScript)"
+          echo "  - SBOM generation and supply chain security"
+          echo "  - Code signing configuration"
+          echo "  - Version consistency"
+          echo "  - Lock file integrity"
+          echo "  - Build validation"
+          echo ""
+          
+          chmod +x ./scripts/release-checklist.sh
+          ./scripts/release-checklist.sh
+          
+          if [ $? -ne 0 ]; then
+            echo ""
+            echo "❌ RELEASE BLOCKED: Checklist validation failed"
+            echo "All checks must pass before desktop release can proceed."
+            echo "See output above for specific failures."
+            exit 1
+          fi
+          
+          echo ""
+          echo "✅ Release validation passed - proceeding with build"
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      
+      - name: "🛡️ Install Supply Chain Tools"
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📦 Installing Supply Chain Security Tools"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           # Install SBOM generation tools (fail fast on errors)
@@ -114,8 +132,8 @@ jobs:
             echo "USE_FALLBACK=true" > /tmp/sbom-fallback-mode
           fi
           
-          # Execute Operation Glass Fortress
-          bash ./scripts/generate-sbom.sh
+          echo ""
+          echo "✅ Supply chain tools installed successfully"
         shell: bash
       
       - name: Build Frontend (TypeScript)
@@ -126,11 +144,16 @@ jobs:
       - name: Setup Code Signing (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ]; then
-            echo "Code signing configured"
+          if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ] && [ -n "${{ secrets.APPLE_SIGNING_IDENTITY }}" ] && [ -n "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ]; then
+            echo "✅ Code signing configured for macOS"
             # In production, import certificate and set up signing identity
           else
-            echo "::warning::Code signing not configured - binary will not be notarized"
+            echo "❌ RELEASE BLOCKED: Code signing not configured"
+            echo "   macOS releases must be signed and notarized."
+            echo "   Required secrets: APPLE_CERTIFICATE, APPLE_SIGNING_IDENTITY, APPLE_CERTIFICATE_PASSWORD"
+            echo ""
+            echo "To bypass this check for testing, use a pre-release tag (e.g., v0.1.0-beta)"
+            exit 1
           fi
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -141,9 +164,14 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: |
           if ("${{ secrets.WINDOWS_CERTIFICATE }}") {
-            Write-Output "Code signing configured"
+            Write-Output "✅ Code signing configured for Windows"
           } else {
-            Write-Output "::warning::Code signing not configured - binary will not be signed"
+            Write-Output "❌ RELEASE BLOCKED: Code signing not configured"
+            Write-Output "   Windows releases must be signed with a valid certificate."
+            Write-Output "   Required secrets: WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD"
+            Write-Output ""
+            Write-Output "To bypass this check for testing, use a pre-release tag (e.g., v0.1.0-beta)"
+            exit 1
           }
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
