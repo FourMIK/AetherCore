@@ -119,7 +119,7 @@ if [ -f "./scripts/verify-docs.sh" ]; then
     else
         check_status "Documentation completeness check" "FAIL" "See /tmp/verify-docs-output.log"
         echo "Documentation verification output:"
-        cat /tmp/verify-docs-output.log | tail -20
+        tail -20 /tmp/verify-docs-output.log
         echo ""
     fi
 else
@@ -193,11 +193,11 @@ if [ -d "$REPO_ROOT/packages/dashboard" ]; then
     else
         check_status "TypeScript type checking" "FAIL" "Type errors found - see /tmp/ts-test-output.log"
     fi
-    cd "$REPO_ROOT"
 else
     check_status "TypeScript type checking" "WARN" "Dashboard directory not found"
-    cd "$REPO_ROOT"
 fi
+
+cd "$REPO_ROOT"
 echo ""
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
