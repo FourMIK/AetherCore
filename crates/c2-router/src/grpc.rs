@@ -6,10 +6,20 @@
 //! # Security Architecture
 //!
 //! Every command must pass through the following security gates:
-//! 1. **Signature Verification**: Extract and verify TPM-backed Ed25519 signatures
-//! 2. **Trust Score Gating**: Check sender's trust score against threshold (≥ 0.8)
-//! 3. **Quorum Validation**: Verify sufficient authority signatures for command scope
-//! 4. **Audit Logging**: Record every command attempt with outcome
+//! 1. **Identity Verification**: Validate device registration and revocation status
+//! 2. **Trust Score Gating**: Check sender's trust score and explicitly reject quarantined nodes
+//! 3. **Signature Verification**: Extract and verify TPM-backed Ed25519 signatures (placeholder)
+//! 4. **Quorum Validation**: Verify sufficient authority signatures for command scope
+//! 5. **Audit Logging**: Record every command attempt with outcome
+//!
+//! # Trust Mesh Integration
+//!
+//! Commands are gated by trust level with explicit rejection semantics:
+//! - **Quarantined** (score < 0.5): Hard reject with detailed reason
+//! - **Suspect** (score 0.5-0.9): Reject if below operational threshold (0.8)
+//! - **Healthy** (score ≥ 0.9): Allow through to dispatch
+//!
+//! All rejections include structured error messages for UI display.
 //!
 //! # Authentication Flow
 //!
@@ -25,7 +35,7 @@ use crate::command_types::{SwarmCommand, UnitCommand};
 use crate::dispatcher::CommandDispatcher;
 use crate::quorum::QuorumGate;
 use aethercore_identity::{IdentityManager, PlatformIdentity};
-use aethercore_trust_mesh::TrustScorer;
+use aethercore_trust_mesh::{TrustLevel, TrustScorer};
 use std::sync::{Arc, RwLock};
 use tonic::{Request, Response, Status};
 
@@ -128,7 +138,7 @@ impl C2GrpcServer {
         Ok(device_id)
     }
 
-    /// Check trust score against threshold
+    /// Check trust score against threshold and quarantine status
     fn verify_trust_score(&self, device_id: &str) -> Result<(), Status> {
         let scorer = self.trust_scorer.read().map_err(|e| {
             self.audit_log("TRUST_CHECK_FAILED", device_id, "None", &format!("Lock error: {}", e));
@@ -136,22 +146,32 @@ impl C2GrpcServer {
         })?;
 
         if let Some(trust_score) = scorer.get_score(device_id) {
-            if trust_score.score < TRUST_THRESHOLD {
-                self.audit_log(
-                    "TRUST_DENIED",
+            // Hard invariant: Explicitly reject quarantined nodes
+            if trust_score.level == TrustLevel::Quarantined {
+                let rejection_reason = format!(
+                    "COMMAND REJECTED: Node {} is Quarantined. Reason: {}",
                     device_id,
-                    "None",
-                    &format!("Trust score {} below threshold {}", trust_score.score, TRUST_THRESHOLD),
+                    trust_score.rejection_summary()
                 );
-                return Err(Status::permission_denied(format!(
-                    "Node untrusted: trust score {} below threshold {}",
-                    trust_score.score, TRUST_THRESHOLD
-                )));
+                self.audit_log("TRUST_QUARANTINE_REJECT", device_id, "None", &rejection_reason);
+                return Err(Status::permission_denied(rejection_reason));
+            }
+
+            // Additional threshold check for operational readiness
+            if trust_score.score < TRUST_THRESHOLD {
+                let rejection_reason = format!(
+                    "Trust Score Below Threshold ({}): {}",
+                    trust_score.score,
+                    trust_score.rejection_summary()
+                );
+                self.audit_log("TRUST_DENIED", device_id, "None", &rejection_reason);
+                return Err(Status::permission_denied(rejection_reason));
             }
         } else {
             // No trust score available - deny by default (zero trust)
-            self.audit_log("TRUST_DENIED", device_id, "None", "No trust score available");
-            return Err(Status::permission_denied("No trust score available for device"));
+            let rejection_reason = "No trust score available - Zero Trust Default Applied";
+            self.audit_log("TRUST_DENIED", device_id, "None", rejection_reason);
+            return Err(Status::permission_denied(rejection_reason));
         }
 
         Ok(())
@@ -504,12 +524,12 @@ mod tests {
             .register(identity)
             .unwrap();
 
-        // Set low trust score
+        // Set low trust score (Suspect level, not Quarantined)
         server
             .trust_scorer
             .write()
             .unwrap()
-            .update_score("device-1", -0.5); // Score will be 0.5
+            .update_score("device-1", -0.5); // Score will be 0.5 (Suspect level)
 
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
@@ -529,7 +549,8 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.code(), tonic::Code::PermissionDenied);
-        assert!(err.message().contains("untrusted"));
+        // Score 0.5 is Suspect (not Quarantined), so it fails the threshold check
+        assert!(err.message().contains("Trust Score Below Threshold"));
     }
 
     #[tokio::test]
@@ -731,5 +752,48 @@ mod tests {
         let err = result.unwrap_err();
         assert_eq!(err.code(), tonic::Code::PermissionDenied);
         assert!(err.message().contains("revoked"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_unit_command_quarantined_node() {
+        let mut server = create_test_server();
+
+        // Register the device
+        let identity = create_test_identity("device-1");
+        server
+            .identity_manager
+            .write()
+            .unwrap()
+            .register(identity)
+            .unwrap();
+
+        // Set quarantined trust score (< 0.5)
+        server
+            .trust_scorer
+            .write()
+            .unwrap()
+            .update_score("device-1", -0.6); // Score will be 0.4, which is quarantined
+
+        let mut request = Request::new(UnitCommandRequest {
+            unit_id: "unit-1".to_string(),
+            command_json: r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#.to_string(),
+            signatures: vec!["sig1".to_string()],
+            timestamp_ns: 1000,
+        });
+
+        request
+            .metadata_mut()
+            .insert("x-device-id", MetadataValue::from_static("device-1"));
+        request
+            .metadata_mut()
+            .insert("x-signature", MetadataValue::from_static("c2lnbmF0dXJl"));
+
+        let result = server.execute_unit_command(request).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.code(), tonic::Code::PermissionDenied);
+        // Verify the rejection message explicitly mentions quarantine
+        assert!(err.message().contains("Quarantined"));
+        assert!(err.message().contains("COMMAND REJECTED"));
     }
 }

@@ -72,6 +72,12 @@ pub enum TrustLevel {
     Quarantined, // Trust score < 0.5
 }
 
+/// Threshold for healthy trust level
+pub const HEALTHY_THRESHOLD: f64 = 0.9;
+
+/// Threshold for suspect trust level (below this is quarantined)
+pub const QUARANTINE_THRESHOLD: f64 = 0.5;
+
 /// Trust score for a node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrustScore {
@@ -79,6 +85,29 @@ pub struct TrustScore {
     pub score: f64, // 0.0 to 1.0
     pub level: TrustLevel,
     pub last_updated: u64,
+}
+
+impl TrustScore {
+    /// Generate a human-readable rejection summary for quarantined or suspect nodes
+    pub fn rejection_summary(&self) -> String {
+        match self.level {
+            TrustLevel::Quarantined => {
+                format!(
+                    "Trust score {} is below quarantine threshold ({}). Node exhibits Byzantine behavior or integrity violations.",
+                    self.score, QUARANTINE_THRESHOLD
+                )
+            }
+            TrustLevel::Suspect => {
+                format!(
+                    "Trust score {} is below operational threshold ({}). Node trust degraded due to anomalous behavior.",
+                    self.score, HEALTHY_THRESHOLD
+                )
+            }
+            TrustLevel::Healthy => {
+                format!("Trust score {} meets operational threshold", self.score)
+            }
+        }
+    }
 }
 
 /// Trust scorer
@@ -112,9 +141,9 @@ impl TrustScorer {
 
         score = (score + delta).clamp(0.0, 1.0);
 
-        let level = if score >= 0.9 {
+        let level = if score >= HEALTHY_THRESHOLD {
             TrustLevel::Healthy
-        } else if score >= 0.5 {
+        } else if score >= QUARANTINE_THRESHOLD {
             TrustLevel::Suspect
         } else {
             TrustLevel::Quarantined
@@ -171,9 +200,9 @@ impl TrustScorer {
             }
         };
 
-        let level = if score >= 0.9 {
+        let level = if score >= HEALTHY_THRESHOLD {
             TrustLevel::Healthy
-        } else if score >= 0.5 {
+        } else if score >= QUARANTINE_THRESHOLD {
             TrustLevel::Suspect
         } else {
             TrustLevel::Quarantined
