@@ -73,6 +73,24 @@ jobs:
       - name: Install npm Dependencies
         run: npm ci
       
+      - name: "🛡️ Operation Glass Fortress: Supply Chain Verification"
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🛡️  Supply Chain Hardening: SBOM Generation & Audit"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          # Install SBOM generation tools
+          cargo install cargo-audit --locked || true
+          cargo install cargo-cyclonedx --locked || true
+          npm install -g @cyclonedx/cyclonedx-npm || true
+          
+          # Attempt to install b3sum (BLAKE3 hashing)
+          cargo install b3sum --locked || echo "⚠️  b3sum installation skipped"
+          
+          # Execute Operation Glass Fortress
+          bash ./scripts/generate-sbom.sh
+        shell: bash
+      
       - name: Build Frontend (TypeScript)
         run: |
           cd packages/dashboard
@@ -165,3 +183,27 @@ jobs:
           # Note: Actual build time is tracked by GitHub Actions automatically
           # To enforce 15-minute budget, set job timeout at job level
         shell: bash
+      
+      - name: "📦 Upload Supply Chain Evidence (SBOM Artifacts)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.platform }}
+          path: |
+            sbom-artifacts/tauri-sbom.json
+            sbom-artifacts/frontend-sbom.json
+            sbom-artifacts/LICENSE_MANIFEST.txt
+            sbom-artifacts/SUPPLY_CHAIN_MANIFEST.md
+          if-no-files-found: error
+          retention-days: 90
+      
+      - name: "🔒 Attach SBOM to GitHub Release"
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            sbom-artifacts/tauri-sbom.json
+            sbom-artifacts/frontend-sbom.json
+            sbom-artifacts/LICENSE_MANIFEST.txt
+            sbom-artifacts/SUPPLY_CHAIN_MANIFEST.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
