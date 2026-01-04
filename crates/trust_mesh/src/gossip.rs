@@ -1,8 +1,10 @@
 //! Gossip Protocol Module
 //!
-//! Implements lightweight gossip for checkpoint synchronization across the mesh.
+//! Implements lightweight gossip for checkpoint synchronization and chain proof
+//! exchange across the mesh.
 
 use crate::merkle::LedgerCheckpoint;
+use aethercore_crypto::ChainProof;
 use serde::{Deserialize, Serialize};
 
 /// Gossip message types
@@ -25,6 +27,30 @@ pub enum GossipMessage {
 
     /// Response with requested checkpoints
     CheckpointResponse { checkpoints: Vec<LedgerCheckpoint> },
+    
+    /// Chain proof for integrity verification
+    ChainProofAnnouncement {
+        /// Node/stream identifier
+        node_id: String,
+        /// Chain proof
+        proof: ChainProof,
+    },
+    
+    /// Request for chain proof from a specific node
+    ChainProofRequest {
+        /// Requesting node ID
+        requester_id: String,
+        /// Target node ID
+        target_node_id: String,
+    },
+    
+    /// Response with chain proof
+    ChainProofResponse {
+        /// Node ID providing the proof
+        node_id: String,
+        /// Chain proof
+        proof: ChainProof,
+    },
 }
 
 /// Peer state in the gossip network

@@ -58,7 +58,7 @@ mod chain_bench;
 
 pub use chain::{
     compute_event_hash, compute_pointer, verify_chain, Blake3Hash, ChainError, ChainManager,
-    ChainMetrics, ChainedEvent, VerifyResult, GENESIS_HASH,
+    ChainMetrics, ChainedEvent, ChainProof, VerifyResult, GENESIS_HASH,
 };
 
 pub use session::{

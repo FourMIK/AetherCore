@@ -196,6 +196,79 @@ pub async fn create_node(
     Ok(format!("Node {} successfully created", node_id))
 }
 
+/// Stream Integrity Status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamIntegrityStatus {
+    pub stream_id: String,
+    pub is_compromised: bool,
+    pub total_events: u64,
+    pub valid_events: u64,
+    pub broken_events: u64,
+    pub verification_status: String, // "VERIFIED", "STATUS_UNVERIFIED", "SPOOFED"
+    pub compromise_reason: Option<String>,
+}
+
+/// Check Stream Integrity
+/// 
+/// Checks the Merkle-Vine integrity status for a given stream/node.
+/// Returns the current integrity state including chain verification status.
+/// 
+/// **IMPLEMENTATION NOTE**: This is currently a placeholder that returns mock data.
+/// For production deployment, this must be integrated with the actual
+/// `StreamIntegrityTracker` from `crates/stream`. The integration requires:
+/// 1. Maintaining a shared `StreamIntegrityTracker` instance in `AppState`
+/// 2. Updating the tracker via events from the stream processor
+/// 3. Querying real-time integrity status from the tracker
+/// 
+/// Without this integration, the UI will not reflect actual integrity violations.
+#[tauri::command]
+pub async fn check_stream_integrity(
+    stream_id: String,
+) -> Result<StreamIntegrityStatus, String> {
+    log::info!("Checking stream integrity for: {}", stream_id);
+    
+    // TODO: Integrate with actual StreamIntegrityTracker from crates/stream
+    // This is a placeholder that demonstrates the interface
+    // In production, this should:
+    // 1. Query the StreamIntegrityTracker for the given stream_id
+    // 2. Return the actual integrity status from the Merkle-Vine chain
+    // 3. Include compromise details if chain discontinuity detected
+    
+    // Placeholder: simulate checking integrity
+    let status = StreamIntegrityStatus {
+        stream_id: stream_id.clone(),
+        is_compromised: false,
+        total_events: 100,
+        valid_events: 100,
+        broken_events: 0,
+        verification_status: "VERIFIED".to_string(),
+        compromise_reason: None,
+    };
+    
+    log::warn!("PLACEHOLDER: Stream integrity check not yet integrated with backend");
+    log::info!("Stream {} integrity: {:?}", stream_id, status.verification_status);
+    Ok(status)
+}
+
+/// Get All Compromised Streams
+/// 
+/// Returns a list of all streams with broken Merkle-Vine chains.
+/// 
+/// **IMPLEMENTATION NOTE**: This is currently a placeholder that returns an empty list.
+/// For production deployment, this must be integrated with the actual
+/// `StreamIntegrityTracker.get_compromised_streams()` method.
+#[tauri::command]
+pub async fn get_compromised_streams() -> Result<Vec<String>, String> {
+    log::info!("Fetching all compromised streams");
+    
+    // TODO: Integrate with StreamIntegrityTracker.get_compromised_streams()
+    // This should return the actual list of compromised stream IDs
+    
+    log::warn!("PLACEHOLDER: Compromised streams query not yet integrated with backend");
+    // Placeholder: return empty list
+    Ok(vec![])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
