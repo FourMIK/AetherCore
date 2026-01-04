@@ -725,11 +725,13 @@ mod tests {
             .unwrap();
 
         // Set low trust score (Suspect level, not Quarantined)
+        // QUARANTINE_THRESHOLD = 0.6, TRUST_THRESHOLD = 0.8
+        // So we need score >= 0.6 and < 0.8 for Suspect level
         server
             .trust_scorer
             .write()
             .unwrap()
-            .update_score("device-1", -0.5); // Score will be 0.5 (Suspect level)
+            .update_score("device-1", -0.3); // Score will be 0.7 (Suspect level, below 0.8 threshold)
 
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
@@ -749,7 +751,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.code(), tonic::Code::PermissionDenied);
-        // Score 0.5 is Suspect (not Quarantined), so it fails the threshold check
+        // Score 0.7 is Suspect (not Quarantined), so it fails the threshold check (0.8)
         assert!(err.message().contains("Trust Score Below Threshold"));
     }
 
