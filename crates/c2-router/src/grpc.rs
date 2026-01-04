@@ -550,7 +550,8 @@ impl C2Router for C2GrpcServer {
         );
 
         // Step 10: Clear buffer after successful sync
-        drop(buffer); // Release lock
+        // Must release read lock before acquiring write lock to avoid deadlock
+        drop(buffer);
         let mut buffer = buffer_arc.lock().map_err(|e| {
             self.audit_log("AUTHORIZE_SYNC", &device_id, &req.node_id, &format!("Lock error: {}", e));
             Status::internal("Buffer lock error")
@@ -731,11 +732,12 @@ mod tests {
         // Set low trust score (Suspect level, not Quarantined)
         // We need score >= QUARANTINE_THRESHOLD (0.6) and < TRUST_THRESHOLD (0.8)
         const TEST_TRUST_SCORE: f64 = 0.7; // Suspect level, below operational threshold
+        // Trust scorer starts at 1.0, so we subtract to reach target score
         server
             .trust_scorer
             .write()
             .unwrap()
-            .update_score("device-1", TEST_TRUST_SCORE - 1.0); // Delta from base 1.0
+            .update_score("device-1", TEST_TRUST_SCORE - 1.0);
 
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),

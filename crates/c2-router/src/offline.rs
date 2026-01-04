@@ -99,6 +99,10 @@ impl ConnectionState {
 }
 
 /// Encrypted event packet for offline storage
+/// 
+/// Note: Encryption at rest is planned for Phase 2 enhancement.
+/// Currently stores event data with signatures but payload encryption
+/// via TPM-derived keys is not yet implemented.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptedPacket {
     /// Event identifier
