@@ -41,13 +41,7 @@
       "wix": {
         "language": "en-US"
       },
-      "nsis": {
-        "license": "../../../LICENSE",
-        "installerIcon": "icons/icon.ico",
-        "installMode": "currentUser",
-        "languages": ["en-US"],
-        "displayLanguageSelector": false
-      },
+      "nsis": null,
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
       "timestampUrl": ""

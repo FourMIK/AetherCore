@@ -32,14 +32,38 @@ const NodeMesh: React.FC<NodeMeshProps> = ({
   const meshRef = useRef<THREE.Mesh>(null);
   const timeRef = useRef(0);
 
+  const updateEmissiveIntensity = (intensity: number) => {
+    const material = meshRef.current?.material;
+    if (!material) return;
+
+    if (Array.isArray(material)) {
+      material.forEach((mat) => {
+        if (mat instanceof THREE.MeshStandardMaterial) {
+          mat.emissiveIntensity = intensity;
+        }
+      });
+      return;
+    }
+
+    if (material instanceof THREE.MeshStandardMaterial) {
+      material.emissiveIntensity = intensity;
+    }
+  };
+
   // Strobe effect for compromised nodes
   useFrame((state, delta) => {
-    if (integrityCompromised && meshRef.current) {
+    if (!meshRef.current) return;
+
+    if (integrityCompromised) {
       timeRef.current += delta;
       // High-contrast strobe: 2Hz (500ms period)
       const strobeValue = Math.sin(timeRef.current * Math.PI * 4) > 0 ? 1 : 0.1;
-      meshRef.current.material.emissiveIntensity = strobeValue * 2;
+      updateEmissiveIntensity(strobeValue * 2);
+      return;
     }
+
+    // Reset to base emissive level when node is healthy
+    updateEmissiveIntensity(verified ? 0.5 : 0.2);
   });
 
   // Color based on integrity and trust score

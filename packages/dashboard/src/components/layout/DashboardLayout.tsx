@@ -87,7 +87,7 @@ export const DashboardLayout: React.FC = () => {
   };
 
   return (
-    <div className="w-screen h-screen flex flex-col bg-carbon overflow-hidden">
+    <div className="w-screen h-screen flex flex-col bg-carbon overflow-hidden relative">
       {/* Scanline Overlay */}
       <div className="scanline-overlay" />
 
@@ -115,7 +115,7 @@ export const DashboardLayout: React.FC = () => {
       {currentView !== 'tactical' && (
         <button
           onClick={() => setShowWizard(true)}
-          className="fixed bottom-6 right-6 btn-primary px-6 py-3 flex items-center gap-2 shadow-lg z-30"
+          className="absolute bottom-6 right-6 btn-primary px-6 py-3 flex items-center gap-2 shadow-lg z-30"
         >
           <Plus size={20} />
           Add Node
