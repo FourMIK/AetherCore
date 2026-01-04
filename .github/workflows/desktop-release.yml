@@ -79,13 +79,18 @@ jobs:
           echo "🛡️  Supply Chain Hardening: SBOM Generation & Audit"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
-          # Install SBOM generation tools
-          cargo install cargo-audit --locked || true
-          cargo install cargo-cyclonedx --locked || true
-          npm install -g @cyclonedx/cyclonedx-npm || true
+          # Install SBOM generation tools (fail fast on errors)
+          echo "📦 Installing cargo-audit..."
+          cargo install cargo-audit --locked
           
-          # Attempt to install b3sum (BLAKE3 hashing)
-          cargo install b3sum --locked || echo "⚠️  b3sum installation skipped"
+          echo "📦 Installing cargo-cyclonedx..."
+          cargo install cargo-cyclonedx --locked
+          
+          echo "📦 Installing cyclonedx-npm..."
+          npm install -g @cyclonedx/cyclonedx-npm
+          
+          echo "📦 Installing b3sum (BLAKE3 hashing)..."
+          cargo install b3sum --locked || echo "⚠️  b3sum installation failed, will use SHA-256 fallback"
           
           # Execute Operation Glass Fortress
           bash ./scripts/generate-sbom.sh

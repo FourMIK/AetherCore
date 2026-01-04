@@ -175,7 +175,7 @@ if ! command -v b3sum &> /dev/null; then
     
     # Try to install via cargo
     if command -v cargo &> /dev/null; then
-        cargo install b3sum --locked
+        cargo install b3sum --locked || USE_FALLBACK_HASH=true
     else
         echo "❌ Cannot install b3sum - cargo not available"
         echo "   Falling back to SHA-256 (TEMPORARY - BLAKE3 required for production)"
@@ -190,9 +190,16 @@ echo ""
 LICENSE_MANIFEST="$SBOM_OUTPUT_DIR/LICENSE_MANIFEST.txt"
 > "$LICENSE_MANIFEST"  # Clear/create file
 
+# Determine which hash algorithm to use for the header
+if [ "${USE_FALLBACK_HASH}" = "true" ]; then
+    HASH_ALG="SHA-256 (BLAKE3 unavailable)"
+else
+    HASH_ALG="BLAKE3"
+fi
+
 echo "# Operation Glass Fortress: License Integrity Manifest" >> "$LICENSE_MANIFEST"
 echo "# Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$LICENSE_MANIFEST"
-echo "# Hash Algorithm: BLAKE3" >> "$LICENSE_MANIFEST"
+echo "# Hash Algorithm: $HASH_ALG" >> "$LICENSE_MANIFEST"
 echo "" >> "$LICENSE_MANIFEST"
 
 # Find all license files in node_modules and Cargo registry
@@ -219,6 +226,7 @@ fi
 # Hash Rust crate licenses (if they exist in target/debug/deps or similar)
 if [ -d "$HOME/.cargo/registry" ]; then
     echo "🦀 Hashing Rust crate licenses..."
+    # Note: No arbitrary limit - hash all found licenses
     while IFS= read -r -d '' license_file; do
         if [ -f "$license_file" ]; then
             # Get relative path from .cargo/registry
@@ -232,7 +240,7 @@ if [ -d "$HOME/.cargo/registry" ]; then
             fi
             ((license_count++))
         fi
-    done < <(find "$HOME/.cargo/registry/src" -type f \( -iname "LICENSE*" -o -iname "LICENCE*" -o -iname "COPYING*" \) -print0 2>/dev/null | head -100)
+    done < <(find "$HOME/.cargo/registry/src" -type f \( -iname "LICENSE*" -o -iname "LICENCE*" -o -iname "COPYING*" \) -print0 2>/dev/null)
 fi
 
 echo ""
@@ -250,67 +258,7 @@ echo "────────────────────────�
 # Create a unified manifest
 UNIFIED_MANIFEST="$SBOM_OUTPUT_DIR/SUPPLY_CHAIN_MANIFEST.md"
 
-cat > "$UNIFIED_MANIFEST" << 'EOF'
-# AetherCore Supply Chain Manifest
-## Operation Glass Fortress
-
-**Classification:** COSMIC  
-**Generated:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")  
-**Mission:** TRL-8 Field Deployment Supply Chain Verification
-
----
-
-## 🛡️ Supply Chain Evidence
-
-This manifest provides cryptographic proof of the provenance of all dependencies
-in the AetherCore Tactical Glass desktop application.
-
-### Artifacts Generated
-
-1. **tauri-sbom.json** - CycloneDX SBOM for Rust/Tauri backend
-2. **frontend-sbom.json** - CycloneDX SBOM for TypeScript/React frontend  
-3. **LICENSE_MANIFEST.txt** - BLAKE3 hashes of all dependency licenses
-
-### Verification Policy
-
-- ✅ All Rust dependencies audited via RUSTSEC database (cargo-audit)
-- ✅ All npm dependencies audited via npm security advisories
-- ✅ Zero HIGH or CRITICAL CVEs present in production dependencies
-- ✅ All direct and transitive dependencies pinned in lock files
-- ✅ All license files cryptographically hashed
-
-### Integrity Verification
-
-**Cargo.lock hash:**
-$(b3sum Cargo.lock 2>/dev/null || sha256sum Cargo.lock | cut -d' ' -f1)
-
-**package-lock.json hash:**
-$(b3sum package-lock.json 2>/dev/null || sha256sum package-lock.json | cut -d' ' -f1)
-
----
-
-## 📋 SBOM Statistics
-
-### Rust Dependencies
-$(jq -r '.components | length' "$SBOM_OUTPUT_DIR/tauri-sbom.json" 2>/dev/null || echo "N/A") total packages
-
-### Frontend Dependencies  
-$(jq -r '.components | length' "$SBOM_OUTPUT_DIR/frontend-sbom.json" 2>/dev/null || echo "N/A") total packages
-
-### License Files Hashed
-$(wc -l < "$SBOM_OUTPUT_DIR/LICENSE_MANIFEST.txt" | xargs) entries
-
----
-
-**Directive:** This supply chain evidence must be signed and distributed  
-alongside all release artifacts. Any modification to dependencies requires  
-regeneration and re-verification of this manifest.
-
-**Aetheric Sweep Protocol:** Dependencies with known CVEs are considered  
-Byzantine nodes and must be purged from the mesh.
-EOF
-
-# Execute the cat with actual command substitution
+# Use eval to expand variables in heredoc
 eval "cat > \"$UNIFIED_MANIFEST\" << 'EOFINNER'
 # AetherCore Supply Chain Manifest
 ## Operation Glass Fortress
@@ -359,7 +307,7 @@ in the AetherCore Tactical Glass desktop application.
 \$(jq -r '.components | length' \"$SBOM_OUTPUT_DIR/frontend-sbom.json\" 2>/dev/null || echo \"N/A\") total packages
 
 ### License Files Hashed
-\$(wc -l < \"$SBOM_OUTPUT_DIR/LICENSE_MANIFEST.txt\" | xargs) entries
+\$(grep -v '^#' \"$SBOM_OUTPUT_DIR/LICENSE_MANIFEST.txt\" | grep -v '^$' | wc -l | xargs) entries
 
 ---
 
