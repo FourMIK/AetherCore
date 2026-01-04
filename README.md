@@ -157,7 +157,8 @@ Comprehensive documentation for deployment, installation, security, and supply c
 - **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices
 - **[PROVENANCE.md](PROVENANCE.md)** - Software provenance and supply chain security
 - **[docs/SUPPLY_CHAIN_SECURITY.md](docs/SUPPLY_CHAIN_SECURITY.md)** - Detailed supply chain procedures
-- **[docs/PERFORMANCE_BENCHMARKS.md](docs/PERFORMANCE_BENCHMARKS.md)** - Performance benchmarks and expectations
+- **[docs/PERFORMANCE_BENCHMARKS.md](docs/PERFORMANCE_BENCHMARKS.md)** - Detailed performance benchmarks and analysis
+- **[docs/DESKTOP_PERFORMANCE_SUMMARY.md](docs/DESKTOP_PERFORMANCE_SUMMARY.md)** - Executive performance summary for desktop release
 - **[docs/production-deployment-playbook.md](docs/production-deployment-playbook.md)** - Production deployment playbook
 
 ## Contributing
