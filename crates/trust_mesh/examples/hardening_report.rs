@@ -75,7 +75,10 @@ fn main() {
 
     // Window 500 should be < 5ms for desktop grid
     total_tests += 1;
-    let window_500_result = window_results.iter().find(|r| r.window_size == 500).unwrap();
+    let window_500_result = window_results
+        .iter()
+        .find(|r| r.window_size == 500)
+        .expect("Window size 500 benchmark should be present");
     let window_pass = window_500_result.mean_micros() < 5000.0;
     if window_pass {
         pass_count += 1;

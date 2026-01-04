@@ -144,7 +144,14 @@ impl TrustScorer {
     pub fn update_score(&self, node_id: &str, delta: f64) {
         let mut scores = match self.scores.write() {
             Ok(s) => s,
-            Err(_) => return, // Lock poisoned, skip update
+            Err(e) => {
+                tracing::error!(
+                    node_id = %node_id,
+                    error = %e,
+                    "Trust scorer lock poisoned - skipping score update"
+                );
+                return;
+            }
         };
 
         let mut score = scores.get(node_id).map(|s| s.score).unwrap_or(1.0);
@@ -241,8 +248,17 @@ impl TrustScorer {
             last_updated: health.timestamp,
         };
 
-        if let Ok(mut scores) = self.scores.write() {
-            scores.insert(health.node_id.clone(), trust_score);
+        match self.scores.write() {
+            Ok(mut scores) => {
+                scores.insert(health.node_id.clone(), trust_score);
+            }
+            Err(e) => {
+                tracing::error!(
+                    node_id = %health.node_id,
+                    error = %e,
+                    "Trust scorer lock poisoned - skipping health score update"
+                );
+            }
         }
     }
 }

@@ -356,8 +356,14 @@ mod tests {
         let scenario = ScenarioOmega::new();
         let result = scenario.run_byzantine_test();
         println!("{}", result.format_report());
-        // Should detect most Byzantine nodes
-        assert!(result.detected >= 8); // At least 80% detection
+        // Should detect at least 80% of Byzantine nodes
+        let min_detection = (result.total_byzantine * 80) / 100;
+        assert!(
+            result.detected >= min_detection,
+            "Detection rate too low: {}/{}",
+            result.detected,
+            result.total_byzantine
+        );
     }
 
     #[test]
