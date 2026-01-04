@@ -11,6 +11,7 @@ aethercore-identity = { path = "../../crates/identity", features = ["grpc-server
 aethercore-c2-router = { path = "../../crates/c2-router" }
 aethercore-trust-mesh = { path = "../../crates/trust_mesh" }
 aethercore-crypto = { path = "../../crates/crypto" }
+aethercore-stream = { path = "../../crates/stream" }
 
 # Async runtime
 tokio = { workspace = true }
