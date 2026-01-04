@@ -48,7 +48,7 @@ async fn test_no_trust_score_defaults_to_deny() {
         .metadata_mut()
         .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
-    let response = client.execute_unit_command(request).await;
+    let response: Result<tonic::Response<_>, _> = client.execute_unit_command(request).await;
 
     // Assert: Zero Trust - no score means deny by default
     assert!(
@@ -102,7 +102,7 @@ async fn test_healthy_node_at_threshold_boundary() {
         .metadata_mut()
         .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
-    let response = client.execute_unit_command(request).await;
+    let response: Result<tonic::Response<_>, _> = client.execute_unit_command(request).await;
 
     // Assert: Score at threshold (0.8) should be accepted
     assert!(
@@ -149,7 +149,7 @@ async fn test_just_below_threshold_rejected() {
         .metadata_mut()
         .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
-    let response = client.execute_unit_command(request).await;
+    let response: Result<tonic::Response<_>, _> = client.execute_unit_command(request).await;
 
     // Assert: Score just below threshold should be rejected
     assert!(
@@ -199,7 +199,7 @@ async fn test_trust_level_overrides_score() {
         .metadata_mut()
         .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
-    let response = client.execute_unit_command(request).await;
+    let response: Result<tonic::Response<_>, _> = client.execute_unit_command(request).await;
 
     // Assert: Quarantined level should override high score
     assert!(

@@ -209,7 +209,7 @@ async fn test_stale_timestamp_rejected() {
         .metadata_mut()
         .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
-    let response = client.execute_unit_command(request).await;
+    let response: Result<tonic::Response<_>, _> = client.execute_unit_command(request).await;
 
     // EXPECTED: Old timestamps should be rejected
     // Current implementation may not check timestamp freshness

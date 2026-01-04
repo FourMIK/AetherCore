@@ -66,7 +66,7 @@ async fn test_valid_tpm_signed_payload_accepted() {
         .insert("x-signature", tonic::metadata::tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     // Execute command
-    let response = client.execute_unit_command(request).await;
+    let response: Result<tonic::Response<_>, _> = client.execute_unit_command(request).await;
 
     // Assert: Command should be accepted
     assert!(
@@ -119,7 +119,7 @@ async fn test_malformed_signature_rejected_with_descriptive_error() {
         .insert("x-signature", tonic::metadata::MetadataValue::from_str("").unwrap()); // Empty signature
 
     // Execute command
-    let response = client.execute_unit_command(request).await;
+    let response: Result<tonic::Response<_>, _> = client.execute_unit_command(request).await;
 
     // Assert: Should fail with descriptive error
     assert!(response.is_err(), "Malformed signature should be rejected");
@@ -156,7 +156,7 @@ async fn test_missing_device_id_rejected() {
     });
 
     // Execute command
-    let response = client.execute_unit_command(request).await;
+    let response: Result<tonic::Response<_>, _> = client.execute_unit_command(request).await;
 
     // Assert: Should fail with missing device-id error
     assert!(
@@ -222,7 +222,7 @@ async fn test_quarantined_node_rejected_with_trust_level() {
         .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     // Execute command
-    let response = client.execute_unit_command(request).await;
+    let response: Result<tonic::Response<_>, _> = client.execute_unit_command(request).await;
 
     // Assert: Should fail with PermissionDenied and mention Quarantined
     assert!(
@@ -281,7 +281,7 @@ async fn test_suspect_node_below_threshold_rejected() {
         .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     // Execute command
-    let response = client.execute_unit_command(request).await;
+    let response: Result<tonic::Response<_>, _> = client.execute_unit_command(request).await;
 
     // Assert: Should fail with trust score below threshold
     assert!(
@@ -332,7 +332,7 @@ async fn test_unregistered_device_rejected() {
         .insert("x-signature", tonic::metadata::MetadataValue::from_str(&signature_b64).unwrap());
 
     // Execute command
-    let response = client.execute_unit_command(request).await;
+    let response: Result<tonic::Response<_>, _> = client.execute_unit_command(request).await;
 
     // Assert: Should fail with unknown device error
     assert!(response.is_err(), "Unregistered device should be rejected");
