@@ -258,13 +258,21 @@ echo "────────────────────────�
 # Create a unified manifest
 UNIFIED_MANIFEST="$SBOM_OUTPUT_DIR/SUPPLY_CHAIN_MANIFEST.md"
 
-# Use eval to expand variables in heredoc
-eval "cat > \"$UNIFIED_MANIFEST\" << 'EOFINNER'
+# Pre-compute values to avoid command injection in heredoc
+MANIFEST_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+CARGO_LOCK_HASH=$(b3sum Cargo.lock 2>/dev/null || sha256sum Cargo.lock | cut -d' ' -f1)
+PACKAGE_LOCK_HASH=$(b3sum package-lock.json 2>/dev/null || sha256sum package-lock.json | cut -d' ' -f1)
+RUST_COMPONENT_COUNT=$(jq -r '.components | length' "$SBOM_OUTPUT_DIR/tauri-sbom.json" 2>/dev/null || echo "N/A")
+FRONTEND_COMPONENT_COUNT=$(jq -r '.components | length' "$SBOM_OUTPUT_DIR/frontend-sbom.json" 2>/dev/null || echo "N/A")
+LICENSE_ENTRY_COUNT=$(grep -v '^#' "$SBOM_OUTPUT_DIR/LICENSE_MANIFEST.txt" | grep -v '^$' | wc -l | xargs)
+
+# Generate manifest using safe variable substitution
+cat > "$UNIFIED_MANIFEST" << EOF
 # AetherCore Supply Chain Manifest
 ## Operation Glass Fortress
 
 **Classification:** COSMIC  
-**Generated:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")  
+**Generated:** $MANIFEST_TIMESTAMP  
 **Mission:** TRL-8 Field Deployment Supply Chain Verification
 
 ---
@@ -291,23 +299,23 @@ in the AetherCore Tactical Glass desktop application.
 ### Integrity Verification
 
 **Cargo.lock hash:**
-\$(b3sum Cargo.lock 2>/dev/null || sha256sum Cargo.lock | cut -d' ' -f1)
+$CARGO_LOCK_HASH
 
 **package-lock.json hash:**
-\$(b3sum package-lock.json 2>/dev/null || sha256sum package-lock.json | cut -d' ' -f1)
+$PACKAGE_LOCK_HASH
 
 ---
 
 ## 📋 SBOM Statistics
 
 ### Rust Dependencies
-\$(jq -r '.components | length' \"$SBOM_OUTPUT_DIR/tauri-sbom.json\" 2>/dev/null || echo \"N/A\") total packages
+$RUST_COMPONENT_COUNT total packages
 
 ### Frontend Dependencies  
-\$(jq -r '.components | length' \"$SBOM_OUTPUT_DIR/frontend-sbom.json\" 2>/dev/null || echo \"N/A\") total packages
+$FRONTEND_COMPONENT_COUNT total packages
 
 ### License Files Hashed
-\$(grep -v '^#' \"$SBOM_OUTPUT_DIR/LICENSE_MANIFEST.txt\" | grep -v '^$' | wc -l | xargs) entries
+$LICENSE_ENTRY_COUNT entries
 
 ---
 
@@ -317,7 +325,7 @@ regeneration and re-verification of this manifest.
 
 **Aetheric Sweep Protocol:** Dependencies with known CVEs are considered  
 Byzantine nodes and must be purged from the mesh.
-EOFINNER"
+EOF
 
 echo ""
 echo "✅ Unified manifest generated: SUPPLY_CHAIN_MANIFEST.md"
