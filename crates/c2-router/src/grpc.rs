@@ -6,10 +6,20 @@
 //! # Security Architecture
 //!
 //! Every command must pass through the following security gates:
-//! 1. **Signature Verification**: Extract and verify TPM-backed Ed25519 signatures
-//! 2. **Trust Score Gating**: Check sender's trust score against threshold (≥ 0.8)
-//! 3. **Quorum Validation**: Verify sufficient authority signatures for command scope
-//! 4. **Audit Logging**: Record every command attempt with outcome
+//! 1. **Identity Verification**: Validate device registration and revocation status
+//! 2. **Trust Score Gating**: Check sender's trust score and explicitly reject quarantined nodes
+//! 3. **Signature Verification**: Extract and verify TPM-backed Ed25519 signatures (placeholder)
+//! 4. **Quorum Validation**: Verify sufficient authority signatures for command scope
+//! 5. **Audit Logging**: Record every command attempt with outcome
+//!
+//! # Trust Mesh Integration
+//!
+//! Commands are gated by trust level with explicit rejection semantics:
+//! - **Quarantined** (score < 0.5): Hard reject with detailed reason
+//! - **Suspect** (score 0.5-0.9): Reject if below operational threshold (0.8)
+//! - **Healthy** (score ≥ 0.9): Allow through to dispatch
+//!
+//! All rejections include structured error messages for UI display.
 //!
 //! # Authentication Flow
 //!
