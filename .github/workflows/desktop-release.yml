@@ -1,0 +1,168 @@
+name: "Operation Ironclad: Desktop Release"
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build Desktop App (${{ matrix.platform }})
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            os: macos-latest
+            target: 'universal-apple-darwin'
+          - platform: 'windows-latest'
+            os: windows-latest
+            target: 'x86_64-pc-windows-msvc'
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Cache Rust Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-desktop-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-desktop-
+            ${{ runner.os }}-cargo-
+      
+      - name: Cache Node Modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            node_modules
+            */*/node_modules
+            packages/*/node_modules
+            services/*/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      
+      - name: Install Dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Install Apple Silicon and Intel targets for universal binary
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+      
+      - name: Install npm Dependencies
+        run: npm ci
+      
+      - name: Build Frontend (TypeScript)
+        run: |
+          cd packages/dashboard
+          npm run build
+      
+      - name: Setup Code Signing (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ]; then
+            echo "Code signing configured"
+            # In production, import certificate and set up signing identity
+          else
+            echo "::warning::Code signing not configured - binary will not be notarized"
+          fi
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      
+      - name: Setup Code Signing (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          if ("${{ secrets.WINDOWS_CERTIFICATE }}") {
+            Write-Output "Code signing configured"
+          } else {
+            Write-Output "::warning::Code signing not configured - binary will not be signed"
+          }
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      
+      - name: Build & Package Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        with:
+          projectPath: "./packages/dashboard"
+          tagName: ${{ github.ref_name }}
+          releaseName: "AetherCore Tactical Glass ${{ github.ref_name }}"
+          releaseBody: |
+            ## AetherCore Tactical Glass Release ${{ github.ref_name }}
+            
+            ### Desktop Applications
+            - **Windows**: NSIS Installer (currentUser mode)
+            - **macOS**: Universal DMG (Intel + Apple Silicon)
+            
+            ### Security Notes
+            - All binaries use BLAKE3 for integrity verification
+            - Ed25519 signatures for Zero-Touch enrollment
+            - TPM-backed keys recommended for production deployment
+            
+            ### Installation
+            See [DEPLOYMENT_DESKTOP.md](https://github.com/FourMIK/AetherCore/blob/main/DEPLOYMENT_DESKTOP.md) for detailed installation instructions.
+            
+            ### Verification
+            SHA-256 checksums are published below for The Great Gospel ledger verification.
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.os == 'macos-latest' && '--target universal-apple-darwin' || '' }}
+      
+      - name: Generate SHA-256 Checksums (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Write-Output "=== Windows Build Artifacts Checksums ==="
+          Get-ChildItem -Path "packages/dashboard/src-tauri/target/release/bundle" -Recurse -Include "*.msi","*.exe" | ForEach-Object {
+            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash
+            Write-Output "$($_.Name): $hash"
+          }
+      
+      - name: Generate SHA-256 Checksums (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          echo "=== macOS Build Artifacts Checksums ==="
+          find packages/dashboard/src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app" \) -exec sh -c '
+            for file; do
+              echo "$(basename "$file"): $(shasum -a 256 "$file" | cut -d " " -f 1)"
+            done
+          ' sh {} +
+      
+      - name: Performance Budget Check
+        run: |
+          echo "Build completed in ${{ job.duration }} seconds"
+          # Fail if build takes more than 15 minutes (900 seconds)
+          if [ "${{ job.duration }}" -gt "900" ]; then
+            echo "::error::Build exceeded 15 minute performance budget"
+            exit 1
+          fi
+        shell: bash

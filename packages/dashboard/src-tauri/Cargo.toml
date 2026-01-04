@@ -22,6 +22,8 @@ tauri-build = { version = "2.5.3", features = [] }
 aethercore-core = { path = "../../../crates/core" }
 aethercore-identity = { path = "../../../crates/identity" }
 aethercore-crypto = { path = "../../../crates/crypto" }
+aethercore-stream = { path = "../../../crates/stream" }
+aethercore-mesh = { path = "../../../crates/mesh" }
 
 # Tauri
 tauri = { version = "2.9.5", features = [] }
@@ -37,3 +39,4 @@ blake3 = "1.5"
 base64 = "0.22"
 ed25519-dalek = "2.1"
 rand = "0.8"
+url = "2.5"
