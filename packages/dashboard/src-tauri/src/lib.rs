@@ -27,6 +27,8 @@ pub fn run() {
       commands::bundle_to_qr_data,
       commands::verify_telemetry_signature,
       commands::create_node,
+      commands::check_stream_integrity,
+      commands::get_compromised_streams,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

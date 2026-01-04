@@ -19,6 +19,7 @@ export interface TacticalNode {
   lastSeen: Date;
   status: 'online' | 'offline' | 'degraded';
   firmwareVersion?: string;
+  integrityCompromised?: boolean; // Merkle-Vine chain integrity status
 }
 
 // Track Types

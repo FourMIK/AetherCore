@@ -196,6 +196,64 @@ pub async fn create_node(
     Ok(format!("Node {} successfully created", node_id))
 }
 
+/// Stream Integrity Status
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamIntegrityStatus {
+    pub stream_id: String,
+    pub is_compromised: bool,
+    pub total_events: u64,
+    pub valid_events: u64,
+    pub broken_events: u64,
+    pub verification_status: String, // "VERIFIED", "STATUS_UNVERIFIED", "SPOOFED"
+    pub compromise_reason: Option<String>,
+}
+
+/// Check Stream Integrity
+/// 
+/// Checks the Merkle-Vine integrity status for a given stream/node.
+/// Returns the current integrity state including chain verification status.
+#[tauri::command]
+pub async fn check_stream_integrity(
+    stream_id: String,
+) -> Result<StreamIntegrityStatus, String> {
+    log::info!("Checking stream integrity for: {}", stream_id);
+    
+    // TODO: Integrate with actual StreamIntegrityTracker from crates/stream
+    // This is a placeholder that demonstrates the interface
+    // In production, this should:
+    // 1. Query the StreamIntegrityTracker for the given stream_id
+    // 2. Return the actual integrity status from the Merkle-Vine chain
+    // 3. Include compromise details if chain discontinuity detected
+    
+    // Placeholder: simulate checking integrity
+    let status = StreamIntegrityStatus {
+        stream_id: stream_id.clone(),
+        is_compromised: false,
+        total_events: 100,
+        valid_events: 100,
+        broken_events: 0,
+        verification_status: "VERIFIED".to_string(),
+        compromise_reason: None,
+    };
+    
+    log::info!("Stream {} integrity: {:?}", stream_id, status.verification_status);
+    Ok(status)
+}
+
+/// Get All Compromised Streams
+/// 
+/// Returns a list of all streams with broken Merkle-Vine chains.
+#[tauri::command]
+pub async fn get_compromised_streams() -> Result<Vec<String>, String> {
+    log::info!("Fetching all compromised streams");
+    
+    // TODO: Integrate with StreamIntegrityTracker.get_compromised_streams()
+    // This should return the actual list of compromised stream IDs
+    
+    // Placeholder: return empty list
+    Ok(vec![])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
