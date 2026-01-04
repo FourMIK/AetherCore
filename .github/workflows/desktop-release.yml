@@ -73,6 +73,33 @@ jobs:
       - name: Install npm Dependencies
         run: npm ci
       
+      - name: "🛡️ Operation Glass Fortress: Supply Chain Verification"
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🛡️  Supply Chain Hardening: SBOM Generation & Audit"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          # Install SBOM generation tools (fail fast on errors)
+          echo "📦 Installing cargo-audit..."
+          cargo install cargo-audit --locked
+          
+          echo "📦 Installing cargo-cyclonedx..."
+          cargo install cargo-cyclonedx --locked
+          
+          echo "📦 Installing cyclonedx-npm..."
+          npm install -g @cyclonedx/cyclonedx-npm
+          
+          echo "📦 Installing b3sum (BLAKE3 hashing)..."
+          if ! cargo install b3sum --locked; then
+            echo "⚠️  b3sum installation failed, script will use SHA-256 fallback"
+            # Create a marker file to indicate fallback mode
+            echo "USE_FALLBACK=true" > /tmp/sbom-fallback-mode
+          fi
+          
+          # Execute Operation Glass Fortress
+          bash ./scripts/generate-sbom.sh
+        shell: bash
+      
       - name: Build Frontend (TypeScript)
         run: |
           cd packages/dashboard
@@ -165,3 +192,27 @@ jobs:
           # Note: Actual build time is tracked by GitHub Actions automatically
           # To enforce 15-minute budget, set job timeout at job level
         shell: bash
+      
+      - name: "📦 Upload Supply Chain Evidence (SBOM Artifacts)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.platform }}
+          path: |
+            sbom-artifacts/tauri-sbom.json
+            sbom-artifacts/frontend-sbom.json
+            sbom-artifacts/LICENSE_MANIFEST.txt
+            sbom-artifacts/SUPPLY_CHAIN_MANIFEST.md
+          if-no-files-found: error
+          retention-days: 90
+      
+      - name: "🔒 Attach SBOM to GitHub Release"
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            sbom-artifacts/tauri-sbom.json
+            sbom-artifacts/frontend-sbom.json
+            sbom-artifacts/LICENSE_MANIFEST.txt
+            sbom-artifacts/SUPPLY_CHAIN_MANIFEST.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
