@@ -81,6 +81,29 @@ pub struct TrustScore {
     pub last_updated: u64,
 }
 
+impl TrustScore {
+    /// Generate a human-readable rejection summary for quarantined or suspect nodes
+    pub fn rejection_summary(&self) -> String {
+        match self.level {
+            TrustLevel::Quarantined => {
+                format!(
+                    "Trust score {} is below quarantine threshold (0.5). Node exhibits Byzantine behavior or integrity violations.",
+                    self.score
+                )
+            }
+            TrustLevel::Suspect => {
+                format!(
+                    "Trust score {} is below operational threshold (0.9). Node trust degraded due to anomalous behavior.",
+                    self.score
+                )
+            }
+            TrustLevel::Healthy => {
+                format!("Trust score {} meets operational threshold", self.score)
+            }
+        }
+    }
+}
+
 /// Trust scorer
 pub struct TrustScorer {
     scores: HashMap<String, TrustScore>,
