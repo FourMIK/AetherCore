@@ -125,6 +125,29 @@ The root `package.json` defines npm workspaces for all services and packages. Th
 
 MIT OR Apache-2.0
 
+## Security & Supply Chain
+
+AetherCore implements comprehensive supply chain security measures for all releases:
+
+- **Software Bill of Materials (SBOM)**: CycloneDX-compliant SBOMs for all dependencies
+- **Vulnerability Scanning**: Automated audits against RUSTSEC and npm advisory databases
+- **Dependency Pinning**: All dependencies locked via `Cargo.lock` and `package-lock.json`
+- **License Integrity**: BLAKE3 cryptographic hashing of all dependency licenses
+
+### Generate SBOM Locally
+
+```bash
+./scripts/generate-sbom.sh
+```
+
+Output artifacts are generated in `sbom-artifacts/`:
+- `tauri-sbom.json` - Rust/Tauri dependencies
+- `frontend-sbom.json` - Frontend dependencies
+- `LICENSE_MANIFEST.txt` - License integrity hashes
+- `SUPPLY_CHAIN_MANIFEST.md` - Human-readable summary
+
+For detailed information, see [Supply Chain Security Documentation](docs/SUPPLY_CHAIN_SECURITY.md).
+
 ## Contributing
 
 This is a monorepo project. Please ensure:
