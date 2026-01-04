@@ -40,6 +40,10 @@ use aethercore_trust_mesh::{TrustLevel, TrustScorer};
 use std::sync::{Arc, Mutex, RwLock};
 use tonic::{Request, Response, Status};
 
+// Note: Mutex is used for OfflineMateriaBuffer instead of RwLock because
+// rusqlite::Connection is not Send/Sync. Mutex provides the required
+// exclusive access for all database operations.
+
 // Include generated protobuf code
 pub mod c2_proto {
     tonic::include_proto!("aethercore.c2");
@@ -725,13 +729,14 @@ mod tests {
             .unwrap();
 
         // Set low trust score (Suspect level, not Quarantined)
-        // QUARANTINE_THRESHOLD = 0.6, TRUST_THRESHOLD = 0.8
-        // So we need score >= 0.6 and < 0.8 for Suspect level
+        // QUARANTINE_THRESHOLD = 0.6, HEALTHY_THRESHOLD = 0.9, TRUST_THRESHOLD = 0.8
+        // So we need score >= 0.6 and < 0.8 for Suspect level that fails operational threshold
+        const TEST_TRUST_SCORE: f64 = 0.7; // Suspect level, below operational threshold
         server
             .trust_scorer
             .write()
             .unwrap()
-            .update_score("device-1", -0.3); // Score will be 0.7 (Suspect level, below 0.8 threshold)
+            .update_score("device-1", TEST_TRUST_SCORE - 1.0); // Delta from base 1.0
 
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
@@ -751,7 +756,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.code(), tonic::Code::PermissionDenied);
-        // Score 0.7 is Suspect (not Quarantined), so it fails the threshold check (0.8)
+        // Score 0.7 is Suspect (not Quarantined), should fail operational threshold (0.8)
         assert!(err.message().contains("Trust Score Below Threshold"));
     }
 

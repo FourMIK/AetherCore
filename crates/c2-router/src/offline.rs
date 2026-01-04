@@ -157,6 +157,12 @@ pub struct OfflineMateriaBuffer {
     offline_since: Option<u64>,
 }
 
+/// Nanoseconds to milliseconds conversion factor
+const NANOS_TO_MILLIS: u64 = 1_000_000;
+
+/// Default Merkle root size (BLAKE3 hash size)
+const MERKLE_ROOT_SIZE: usize = 32;
+
 impl OfflineMateriaBuffer {
     /// Maximum buffer size (10000 events)
     const DEFAULT_MAX_BUFFER_SIZE: usize = 10000;
@@ -311,7 +317,7 @@ impl OfflineMateriaBuffer {
         }
 
         // Extend local Merkle Vine
-        let timestamp = event.timestamp_ns / 1_000_000; // Convert to milliseconds
+        let timestamp = event.timestamp_ns / NANOS_TO_MILLIS;
         self.merkle_vine.add_leaf(
             event.encrypted_payload.clone(),
             event.event_hash.clone(),
@@ -460,7 +466,7 @@ impl OfflineMateriaBuffer {
             .merkle_vine
             .get_root()
             .map(|r| r.clone())
-            .unwrap_or_else(|| vec![0u8; 32]);
+            .unwrap_or_else(|| vec![0u8; MERKLE_ROOT_SIZE]);
         Ok(root)
     }
 
@@ -536,8 +542,8 @@ mod tests {
             timestamp_ns: 1000,
             encrypted_payload: vec![1, 2, 3, 4],
             nonce: vec![5, 6, 7, 8],
-            event_hash: vec![0u8; 32],
-            prev_event_hash: vec![0u8; 32],
+            event_hash: vec![0u8; MERKLE_ROOT_SIZE],
+            prev_event_hash: vec![0u8; MERKLE_ROOT_SIZE],
             signature: vec![0u8; 64],
             public_key_id: "pubkey-1".to_string(),
         };
@@ -571,8 +577,8 @@ mod tests {
             timestamp_ns: 1000,
             encrypted_payload: vec![1, 2, 3, 4],
             nonce: vec![5, 6, 7, 8],
-            event_hash: vec![0u8; 32],
-            prev_event_hash: vec![0u8; 32],
+            event_hash: vec![0u8; MERKLE_ROOT_SIZE],
+            prev_event_hash: vec![0u8; MERKLE_ROOT_SIZE],
             signature: vec![0u8; 64],
             public_key_id: "pubkey-1".to_string(),
         };
