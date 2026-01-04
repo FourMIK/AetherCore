@@ -327,8 +327,8 @@ Breakdown:
 - Unit execution + acknowledgment: 10-100 ms
 
 **Trust Mesh Updates**:
-- Event signing: ~23 µs per event
-- Merkle checkpoint (100 events): ~63 µs
+- Event signing: ~22 µs per event
+- Merkle checkpoint (100 events): ~64 µs
 - Mesh-wide convergence: <50 ms (3-hop network)
 
 **Bottlenecks**:
