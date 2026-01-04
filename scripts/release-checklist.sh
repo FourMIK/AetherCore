@@ -149,7 +149,7 @@ if [ -n "$CI" ]; then
     fi
     
     # Windows signing
-    if [ "$(uname -s | cut -c 1-5)" = "MINGW" ] || [ "$(uname -s | cut -c 1-10)" = "MINGW32_NT" ] || [ "$(uname -s | cut -c 1-10)" = "MINGW64_NT" ]; then
+    if [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32" ]] || [ -n "$MSYSTEM" ]; then
         if [ -n "$WINDOWS_CERTIFICATE" ]; then
             check_status "Windows code signing configured" "PASS"
         else
@@ -186,14 +186,18 @@ fi
 
 # Run TypeScript type checking (minimal test for now)
 echo "📦 Running TypeScript type checks..."
-cd "$REPO_ROOT/packages/dashboard"
-if npm run test:types 2>&1 | tee /tmp/ts-test-output.log; then
-    check_status "TypeScript type checking" "PASS"
+if [ -d "$REPO_ROOT/packages/dashboard" ]; then
+    cd "$REPO_ROOT/packages/dashboard"
+    if npm run test:types 2>&1 | tee /tmp/ts-test-output.log; then
+        check_status "TypeScript type checking" "PASS"
+    else
+        check_status "TypeScript type checking" "FAIL" "Type errors found - see /tmp/ts-test-output.log"
+    fi
+    cd "$REPO_ROOT"
 else
-    check_status "TypeScript type checking" "FAIL" "Type errors found - see /tmp/ts-test-output.log"
+    check_status "TypeScript type checking" "WARN" "Dashboard directory not found"
+    cd "$REPO_ROOT"
 fi
-
-cd "$REPO_ROOT"
 echo ""
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -257,7 +261,7 @@ echo ""
 
 # Extract versions from different files
 PACKAGE_JSON_VERSION=$(jq -r '.version' package.json 2>/dev/null || echo "N/A")
-TAURI_CARGO_VERSION=$(grep -m 1 '^version' packages/dashboard/src-tauri/Cargo.toml | sed 's/version = "\(.*\)"/\1/' || echo "N/A")
+TAURI_CARGO_VERSION=$(grep -m 1 '^version' packages/dashboard/src-tauri/Cargo.toml | sed -n 's/^version[[:space:]]*=[[:space:]]*["\x27]\([^"\x27]*\)["\x27].*/\1/p' || echo "N/A")
 TAURI_CONF_VERSION=$(jq -r '.version' packages/dashboard/src-tauri/tauri.conf.json 2>/dev/null || echo "N/A")
 
 echo "Root package.json version: $PACKAGE_JSON_VERSION"
@@ -275,7 +279,13 @@ fi
 # Check if we're on a release tag
 if [ -n "$CI" ]; then
     if [ -n "$GITHUB_REF_NAME" ]; then
-        GIT_TAG="${GITHUB_REF_NAME#v}"
+        # Handle both v-prefixed and non-prefixed tags
+        if [[ "$GITHUB_REF_NAME" =~ ^v(.+)$ ]]; then
+            GIT_TAG="${BASH_REMATCH[1]}"
+        else
+            GIT_TAG="$GITHUB_REF_NAME"
+        fi
+        
         if [ "$GIT_TAG" = "$PACKAGE_JSON_VERSION" ]; then
             check_status "Git tag matches version" "PASS"
         else

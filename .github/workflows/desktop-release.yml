@@ -144,7 +144,7 @@ jobs:
       - name: Setup Code Signing (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ] && [ -n "${{ secrets.APPLE_SIGNING_IDENTITY }}" ]; then
+          if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ] && [ -n "${{ secrets.APPLE_SIGNING_IDENTITY }}" ] && [ -n "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ]; then
             echo "✅ Code signing configured for macOS"
             # In production, import certificate and set up signing identity
           else
