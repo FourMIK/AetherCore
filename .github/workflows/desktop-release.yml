@@ -119,6 +119,9 @@ jobs:
           echo "📦 Installing cargo-audit..."
           cargo install cargo-audit --locked
           
+          echo "📦 Installing cargo-deny (license compliance)..."
+          cargo install cargo-deny --locked
+          
           echo "📦 Installing cargo-cyclonedx..."
           cargo install cargo-cyclonedx --locked
           
@@ -134,6 +137,27 @@ jobs:
           
           echo ""
           echo "✅ Supply chain tools installed successfully"
+        shell: bash
+      
+      - name: "🛡️ Operation Legal Shield: License Compliance Check"
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🛡️  Operation Legal Shield: License Compliance"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          echo "📋 Enforcing license whitelist (deny.toml)..."
+          cargo deny check licenses
+          
+          echo ""
+          echo "🔍 Checking for security advisories..."
+          cargo deny check advisories
+          
+          echo ""
+          echo "🚫 Checking for banned dependencies..."
+          cargo deny check bans
+          
+          echo ""
+          echo "✅ License compliance verified - all dependencies approved"
         shell: bash
       
       - name: Build Frontend (TypeScript)

@@ -24,6 +24,7 @@ aethercore-identity = { path = "../../../crates/identity" }
 aethercore-crypto = { path = "../../../crates/crypto" }
 aethercore-stream = { path = "../../../crates/stream" }
 aethercore-mesh = { path = "../../../crates/mesh" }
+aethercore-trust-mesh = { path = "../../../crates/trust_mesh" }
 
 # Tauri
 tauri = { version = "2.9.5", features = [] }
