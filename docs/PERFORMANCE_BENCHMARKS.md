@@ -1,7 +1,7 @@
 # AetherCore Performance Benchmark Results
 
 **Test Environment**: GitHub Actions Runner (Ubuntu Latest, x86_64)  
-**Date**: 2026-01-03  
+**Date**: 2026-01-04  
 **Rust Version**: 1.92.0  
 **Criterion Version**: 0.5.1
 
@@ -15,10 +15,10 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Operation | Latency (Mean) | Min | Max | Throughput |
 |-----------|---------------|-----|-----|------------|
-| Single event signing | 22.6 µs | 22.4 µs | 22.8 µs | ~44,000 events/sec |
-| Batch signing (10 events) | 232.8 µs | 230.9 µs | 235.1 µs | ~43,000 events/sec |
-| Batch signing (100 events) | 2.31 ms | 2.30 ms | 2.32 ms | ~43,000 events/sec |
-| Batch signing (1000 events) | 23.0 ms | 23.0 ms | 23.1 ms | ~43,000 events/sec |
+| Single event signing | 22.168 µs | 22.115 µs | 22.241 µs | ~45,000 events/sec |
+| Batch signing (10 events) | 227.74 µs | 224.56 µs | 232.59 µs | ~43,900 events/sec |
+| Batch signing (100 events) | 2.2741 ms | 2.2664 ms | 2.2844 ms | ~44,000 events/sec |
+| Batch signing (1000 events) | 22.816 ms | 22.662 ms | 23.043 ms | ~43,800 events/sec |
 
 **Analysis**: Event signing maintains consistent ~22-23 µs per event regardless of batch size. This confirms efficient pipelining and minimal overhead. TPM-backed signing (CodeRalphie) will add 5-15ms per operation but occurs async.
 
@@ -26,9 +26,9 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Window Size | Latency (Mean) | Min | Max |
 |-------------|---------------|-----|-----|
-| 10 events | 5.39 µs | 5.00 µs | 6.22 µs |
-| 100 events | 63.2 µs | 62.5 µs | 63.9 µs |
-| 1000 events | 679 µs | 676 µs | 683 µs |
+| 10 events | 5.18 µs | 4.82 µs | 5.97 µs |
+| 100 events | 64.35 µs | 63.35 µs | 65.74 µs |
+| 1000 events | 691.85 µs | 685.32 µs | 701.86 µs |
 
 **Analysis**: Merkle aggregation scales linearly with event count (~0.68 µs per event). Checkpoint windows of 100 events complete in <100 µs, enabling 1-minute checkpoint intervals with negligible CPU impact.
 
@@ -36,8 +36,8 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Operation | Latency |
 |-----------|---------|
-| Trust score lookup | 939 ps (0.94 ns) |
-| Node health computation | 86.8 ns |
+| Trust score lookup | 5.45 ns (0.00545 µs) |
+| Node health computation | 87.58 ns |
 
 **Analysis**: Trust metadata lookups are effectively instantaneous (sub-nanosecond). Node health computation completes in <100 ns, allowing continuous real-time monitoring without performance impact.
 
@@ -45,8 +45,8 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Operation | Latency |
 |-----------|---------|
-| Checkpoint summary serialization | 304 ns |
-| Checkpoint summary deserialization | 213 ns |
+| Checkpoint summary serialization | 319.77 ns |
+| Checkpoint summary deserialization | 220.77 ns |
 
 **Analysis**: Gossip message overhead is negligible (<500 ns round-trip). Network latency will dominate; local serialization adds <1 µs to mesh synchronization.
 
@@ -56,12 +56,12 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Operation | Latency (Mean) | Throughput |
 |-----------|---------------|------------|
-| Single unit command dispatch | 36.5 ns | 27M commands/sec |
-| Swarm fanout (5 units) | 185 ns | 5.4M commands/sec |
-| Swarm fanout (10 units) | 314 ns | 3.2M commands/sec |
-| Swarm fanout (25 units) | 884 ns | 1.1M commands/sec |
-| Swarm fanout (50 units) | 2.04 µs | 490K commands/sec |
-| Swarm fanout (100 units) | 3.96 µs | 252K commands/sec |
+| Single unit command dispatch | 38.34 ns | 26M commands/sec |
+| Swarm fanout (5 units) | 207.33 ns | 4.8M commands/sec |
+| Swarm fanout (10 units) | 355.36 ns | 2.8M commands/sec |
+| Swarm fanout (25 units) | 1.014 µs | 986K commands/sec |
+| Swarm fanout (50 units) | 2.193 µs | 456K commands/sec |
+| Swarm fanout (100 units) | 4.341 µs | 230K commands/sec |
 
 **Analysis**: Command dispatch overhead is minimal. Swarm fanout scales linearly (~40ns per unit). Network transmission will dominate end-to-end latency. Local routing adds <4 µs for 100-unit swarms.
 
@@ -69,8 +69,8 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Operation | Latency (Mean) | Throughput |
 |-----------|---------------|------------|
-| Single authority signature | 41.2 µs | 24,000 verifications/sec |
-| Quorum verification (3 signatures) | 120.2 µs | 8,300 verifications/sec |
+| Single authority signature | 41.726 µs | 24,000 verifications/sec |
+| Quorum verification (3 signatures) | 120.93 µs | 8,270 verifications/sec |
 
 **Analysis**: Ed25519 signature verification is the computational bottleneck. Single authority verification completes in ~41 µs. 2-of-3 quorum verification requires ~120 µs (3× single verification). Critical commands requiring quorum complete verification in <150 µs.
 
@@ -78,7 +78,7 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Operation | Latency |
 |-----------|---------|
-| Command hash (64 bytes) | 99.3 ns |
+| Command hash (64 bytes) | 100.94 ns |
 
 **Analysis**: BLAKE3 hashing is extremely fast (<100 ns for typical command payloads). Hash computation adds negligible overhead to command processing.
 
@@ -86,8 +86,8 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Operation | Latency |
 |-----------|---------|
-| Unit command serialization | 229.7 ns |
-| Swarm command serialization | 617.3 ns |
+| Unit command serialization | 232.76 ns |
+| Swarm command serialization | 586.79 ns |
 
 **Analysis**: JSON serialization overhead is minor (<1 µs). More complex swarm commands take ~3× longer but still complete in <1 µs. Serialization is not a bottleneck.
 
@@ -97,10 +97,10 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Operation | Latency (Mean) |
 |-----------|---------------|
-| Single leaf addition | 29.5 µs |
-| Batch (10 leaves) | 19.1 µs total (1.91 µs per leaf) |
-| Batch (100 leaves) | 1.45 ms total (14.5 µs per leaf) |
-| Batch (1000 leaves) | 148.6 ms total (148.6 µs per leaf) |
+| Single leaf addition | 29.33 µs |
+| Batch (10 leaves) | 19.10 µs total (1.91 µs per leaf) |
+| Batch (100 leaves) | 1.445 ms total (14.45 µs per leaf) |
+| Batch (1000 leaves) | 146.94 ms total (146.9 µs per leaf) |
 
 **Analysis**: Single leaf additions show higher per-operation cost due to root recomputation. Batch operations amortize recomputation overhead. For streaming telemetry, batch updates every 100ms achieve optimal throughput.
 
@@ -108,10 +108,10 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Operation | Latency |
 |-----------|---------|
-| Root hash retrieval (any size) | 623 ps (0.62 ns) |
-| Proof generation (100 leaves) | 43.9 ns |
-| Proof generation (1000 leaves) | 44.2 ns |
-| Proof verification | 7.2 ns |
+| Root hash retrieval (any size) | 622 ps (0.622 ns) |
+| Proof generation (100 leaves) | 43.91 ns |
+| Proof generation (1000 leaves) | 53.11 ns |
+| Proof verification | 7.18 ns |
 
 **Analysis**: Root lookups and proof operations are extremely fast (sub-100 ns). Vine size does not significantly impact proof generation. Verification is 6× faster than generation.
 
@@ -119,10 +119,10 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Data Size | Latency |
 |-----------|---------|
-| 64 bytes | 99.3 ns |
-| 256 bytes | 317.6 ns |
-| 1 KB | 1.19 µs |
-| 4 KB | 1.51 µs |
+| 64 bytes | 100.28 ns |
+| 256 bytes | 317.35 ns |
+| 1 KB | 1.194 µs |
+| 4 KB | 1.503 µs |
 
 **Analysis**: BLAKE3 hashing scales linearly with data size (~0.37 ns per byte). Even 4KB telemetry payloads hash in <2 µs. Hashing is never a bottleneck.
 
@@ -130,9 +130,9 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Operation | Latency |
 |-----------|---------|
-| 100 sequential leaf additions | 1.45 ms |
+| 100 sequential leaf additions | 1.428 ms |
 
-**Analysis**: Continuous streaming of 100 events completes in ~1.45 ms, supporting ~69,000 events/sec sustained throughput. This exceeds requirements for real-time telemetry ingestion.
+**Analysis**: Continuous streaming of 100 events completes in ~1.43 ms, supporting ~70,000 events/sec sustained throughput. This exceeds requirements for real-time telemetry ingestion.
 
 ## 4. Desktop Hardware Requirements
 
@@ -175,10 +175,10 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 | Component | Budget | Actual (Measured) |
 |-----------|--------|-------------------|
 | User input → command generation | 50 ms | 10-30 ms (UI) |
-| Authority signature verification | 150 µs | 41 µs (single), 120 µs (quorum) |
-| Command serialization | 10 µs | 0.6 µs |
-| Command routing/dispatch | 50 µs | 4 µs (100-unit swarm) |
-| **Desktop processing total** | **210 µs** | **~165 µs** |
+| Authority signature verification | 150 µs | 42 µs (single), 121 µs (quorum) |
+| Command serialization | 10 µs | 0.59 µs |
+| Command routing/dispatch | 50 µs | 4.3 µs (100-unit swarm) |
+| **Desktop processing total** | **210 µs** | **~168 µs** |
 | Network transmission (LAN) | 1-5 ms | - |
 | Unit execution + ACK | 10-100 ms | - |
 | **End-to-end (LAN)** | **60-160 ms** | **<100 ms typical** |
@@ -189,9 +189,9 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 
 | Component | Budget | Actual (Measured) |
 |-----------|--------|-------------------|
-| Event signing (per node) | 50 µs | 23 µs |
-| Merkle checkpoint (100 events) | 200 µs | 63 µs |
-| Gossip serialization | 5 µs | 0.5 µs |
+| Event signing (per node) | 50 µs | 22 µs |
+| Merkle checkpoint (100 events) | 200 µs | 64 µs |
+| Gossip serialization | 5 µs | 0.54 µs |
 | **Per-node processing** | **255 µs** | **~87 µs** |
 | Network propagation (3 hops) | 15-30 ms | - |
 | **Mesh-wide convergence** | **50-100 ms** | **<50 ms typical** |
@@ -210,12 +210,12 @@ All core AetherCore operations meet desktop performance requirements. Critical o
 **Coalition, Medium Fleet (10-50 units)**:
 - Recommended: 4-core desktop, 8GB RAM
 - Quorum verification adds ~80 µs per command (still <150 µs total)
-- Swarm commands (50 units) route in <2 µs
+- Swarm commands (50 units) route in <2.2 µs
 - Trust mesh updates scale linearly; 50-node mesh converges in <100 ms
 
 **Coalition, Large Fleet (50-100 units)**:
 - Recommended: 6-core desktop, 16GB RAM
-- 100-unit swarm dispatch completes in <4 µs
+- 100-unit swarm dispatch completes in <4.4 µs
 - Consider splitting large swarms across multiple commands for parallel execution
 - Trust mesh checkpoints may increase to 90-120 seconds to reduce network traffic
 

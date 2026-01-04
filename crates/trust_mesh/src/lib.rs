@@ -26,7 +26,7 @@ pub use audit::{
 };
 pub use chain::{ChainError, ChainManager};
 pub use gossip::{GossipMessage, GossipProtocol, PeerState};
-pub use ledger::{DistributedLedger, LedgerState};
+pub use ledger::{ComplianceProof, DistributedLedger, LedgerState};
 pub use merkle::{CheckpointWindow, LedgerCheckpoint, MerkleAggregator};
 pub use node_health::{
     HealthThresholds, IntegrityCounters, IntegrityMetrics, NodeHealth, NodeHealthComputer,

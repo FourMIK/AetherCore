@@ -52,6 +52,11 @@ out/
 coverage/
 .nyc_output/
 
+# Playwright
+playwright-report/
+test-results/
+playwright/.cache/
+
 # Temporary files
 tmp/
 temp/

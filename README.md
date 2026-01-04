@@ -156,9 +156,44 @@ Comprehensive documentation for deployment, installation, security, and supply c
 - **[DEPLOYMENT_DESKTOP.md](DEPLOYMENT_DESKTOP.md)** - Desktop application deployment procedures
 - **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices
 - **[PROVENANCE.md](PROVENANCE.md)** - Software provenance and supply chain security
+- **[docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)** - Desktop release process and checklist
 - **[docs/SUPPLY_CHAIN_SECURITY.md](docs/SUPPLY_CHAIN_SECURITY.md)** - Detailed supply chain procedures
-- **[docs/PERFORMANCE_BENCHMARKS.md](docs/PERFORMANCE_BENCHMARKS.md)** - Performance benchmarks and expectations
+- **[docs/PERFORMANCE_BENCHMARKS.md](docs/PERFORMANCE_BENCHMARKS.md)** - Detailed performance benchmarks and analysis
+- **[docs/DESKTOP_PERFORMANCE_SUMMARY.md](docs/DESKTOP_PERFORMANCE_SUMMARY.md)** - Executive performance summary for desktop release
 - **[docs/production-deployment-playbook.md](docs/production-deployment-playbook.md)** - Production deployment playbook
+
+## Releasing
+
+### Desktop Application Release
+
+Before creating a release tag, run the comprehensive release checklist:
+
+```bash
+./scripts/release-checklist.sh
+```
+
+This validates:
+- ✅ Documentation completeness
+- ✅ Test suite execution
+- ✅ SBOM generation and supply chain security
+- ✅ Code signing configuration
+- ✅ Version consistency
+- ✅ Lock file integrity
+
+The release workflow is automatically triggered when you push a version tag:
+
+```bash
+# Update version in package.json, Cargo.toml, and tauri.conf.json
+# Commit changes
+git commit -m "chore: bump version to v0.2.0"
+
+# Create and push tag
+git tag -a v0.2.0 -m "Release v0.2.0"
+git push origin main
+git push origin v0.2.0
+```
+
+See **[docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)** for detailed release procedures.
 
 ## Contributing
 

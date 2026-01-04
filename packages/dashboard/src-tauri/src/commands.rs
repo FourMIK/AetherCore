@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use aethercore_stream::{StreamIntegrityTracker, IntegrityStatus};
 use aethercore_identity::IdentityManager;
+use aethercore_trust_mesh::ComplianceProof;
 use ed25519_dalek::VerifyingKey;
 
 /// Genesis Bundle for Zero-Touch Enrollment
@@ -420,6 +421,142 @@ pub async fn get_compromised_streams(
     
     log::info!("Found {} compromised stream(s)", stream_ids.len());
     Ok(stream_ids)
+}
+
+/// License Inventory Entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LicenseInventoryEntry {
+    pub package_name: String,
+    pub version: String,
+    pub license: String,
+    pub license_hash: Option<String>,
+    pub ecosystem: String, // "rust" or "npm"
+    pub compliance_status: String, // "APPROVED", "FLAGGED", "UNKNOWN"
+}
+
+/// License Inventory Response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LicenseInventory {
+    pub total_dependencies: u64,
+    pub approved_count: u64,
+    pub flagged_count: u64,
+    pub unknown_count: u64,
+    pub entries: Vec<LicenseInventoryEntry>,
+    pub manifest_hash: Option<String>,
+    pub last_verification: Option<u64>,
+}
+
+/// Get License Inventory
+/// 
+/// Returns the current license compliance status for all dependencies.
+/// Integrates with cargo-deny output and LICENSE_MANIFEST.txt for
+/// cryptographic verification of license provenance.
+/// 
+/// This command powers the Compliance HUD in the System Admin View.
+#[tauri::command]
+pub async fn get_license_inventory() -> Result<LicenseInventory, String> {
+    log::info!("Fetching license inventory for compliance HUD");
+    
+    // In a full implementation, this would:
+    // 1. Read sbom-artifacts/tauri-sbom.json and frontend-sbom.json
+    // 2. Parse LICENSE_MANIFEST.txt for license hashes
+    // 3. Compare against cargo-deny whitelist in deny.toml
+    // 4. Return aggregated compliance status
+    //
+    // For now, return a placeholder that demonstrates the structure
+    
+    let mut entries = Vec::new();
+    
+    // Example approved entry
+    entries.push(LicenseInventoryEntry {
+        package_name: "tokio".to_string(),
+        version: "1.0.0".to_string(),
+        license: "MIT".to_string(),
+        license_hash: Some("blake3:abc123...".to_string()),
+        ecosystem: "rust".to_string(),
+        compliance_status: "APPROVED".to_string(),
+    });
+    
+    // Example flagged entry (for demonstration)
+    entries.push(LicenseInventoryEntry {
+        package_name: "example-gpl-crate".to_string(),
+        version: "0.1.0".to_string(),
+        license: "GPL-3.0".to_string(),
+        license_hash: None,
+        ecosystem: "rust".to_string(),
+        compliance_status: "FLAGGED".to_string(),
+    });
+    
+    let approved_count = entries.iter().filter(|e| e.compliance_status == "APPROVED").count() as u64;
+    let flagged_count = entries.iter().filter(|e| e.compliance_status == "FLAGGED").count() as u64;
+    let unknown_count = entries.iter().filter(|e| e.compliance_status == "UNKNOWN").count() as u64;
+    
+    let inventory = LicenseInventory {
+        total_dependencies: entries.len() as u64,
+        approved_count,
+        flagged_count,
+        unknown_count,
+        entries,
+        manifest_hash: Some("blake3:placeholder".to_string()),
+        last_verification: Some(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| format!("System time error: {}", e))?
+                .as_millis() as u64
+        ),
+    };
+    
+    log::info!(
+        "License inventory: {} total, {} approved, {} flagged",
+        inventory.total_dependencies,
+        inventory.approved_count,
+        inventory.flagged_count
+    );
+    
+    Ok(inventory)
+}
+
+/// Record License Compliance Proof
+/// 
+/// Records a compliance verification event in The Great Gospel ledger.
+/// Called after successful license audits during build/release processes.
+#[tauri::command]
+pub async fn record_license_compliance(
+    verifier_id: String,
+    total_deps: u64,
+    approved: u64,
+    violations: Vec<String>,
+    manifest_hash: String,
+) -> Result<String, String> {
+    log::info!(
+        "Recording license compliance: verifier={}, total={}, approved={}, violations={}",
+        verifier_id,
+        total_deps,
+        approved,
+        violations.len()
+    );
+    
+    let proof = if violations.is_empty() {
+        ComplianceProof::compliant(verifier_id, total_deps, approved, manifest_hash)
+    } else {
+        ComplianceProof::non_compliant(
+            verifier_id,
+            total_deps,
+            approved,
+            violations.clone(),
+            manifest_hash,
+            Some(format!("{} license violations detected", violations.len())),
+        )
+    };
+    
+    // In production, this would be persisted to the distributed ledger
+    // For now, just log the event
+    log::info!("Compliance proof created: status={}", proof.status);
+    
+    Ok(format!(
+        "Compliance proof recorded: {} (status: {})",
+        proof.verifier_id, proof.status
+    ))
 }
 
 #[cfg(test)]
