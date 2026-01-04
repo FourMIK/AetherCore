@@ -7,6 +7,17 @@ on:
     branches: [ main, develop, internal ]
 
 jobs:
+  verify-documentation:
+    name: Verify Documentation Completeness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run documentation verification
+        run: |
+          chmod +x scripts/verify-docs.sh
+          ./scripts/verify-docs.sh
+
   verify-structure:
     name: Verify MonoRepo Structure
     runs-on: ubuntu-latest
@@ -241,7 +252,7 @@ jobs:
     name: Build Desktop App (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-    needs: [rust-workspace, typescript-workspace]
+    needs: [verify-documentation, rust-workspace, typescript-workspace]
     strategy:
       fail-fast: false
       matrix:
