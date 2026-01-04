@@ -46,6 +46,9 @@ getrandom = "0.2"
 hex = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 toml = "0.8"
+tonic = "0.10"
+prost = "0.12"
+prost-types = "0.12"
 
 [profile.release]
 opt-level = 3
