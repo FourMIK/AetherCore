@@ -65,6 +65,7 @@ pub mod dispatcher;
 pub mod feeds;
 pub mod grpc;
 pub mod ledger;
+pub mod offline;
 pub mod quorum;
 
 // Re-export commonly used types
@@ -83,4 +84,7 @@ pub use grpc::{
     UnitCommandRequest, UnitCommandResponse,
 };
 pub use ledger::{CommandRecord, RecorderError, TruthChainRecorder};
+pub use offline::{
+    ConnectionState, EncryptedPacket, OfflineError, OfflineGapInfo, OfflineMateriaBuffer,
+};
 pub use quorum::{CommandScope, QuorumError, QuorumGate, QuorumProof};

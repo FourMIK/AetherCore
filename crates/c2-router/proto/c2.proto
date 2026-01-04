@@ -15,6 +15,12 @@ service C2Router {
   
   // Abort a swarm command
   rpc AbortSwarmCommand(AbortRequest) returns (AbortResponse);
+
+  // Get offline gap information (Guardian Gate visibility)
+  rpc GetOfflineGapInfo(OfflineGapRequest) returns (OfflineGapResponse);
+
+  // Authorize sync of offline buffer (requires Sovereign signature)
+  rpc AuthorizeSyncBundle(SyncAuthorizationRequest) returns (SyncAuthorizationResponse);
 }
 
 // Request to execute a unit command
@@ -77,4 +83,37 @@ message AbortResponse {
   bool success = 1;
   string message = 2;
   uint64 timestamp_ns = 3;
+}
+
+// Request to get offline gap information
+message OfflineGapRequest {
+  string node_id = 1;
+}
+
+// Response with offline gap information
+message OfflineGapResponse {
+  uint64 queued_count = 1;
+  uint64 offline_since_ns = 2;
+  uint64 reconnect_at_ns = 3;
+  bool chain_intact = 4;
+  double buffer_utilization = 5;
+  string connection_state = 6;
+}
+
+// Request to authorize sync of offline buffer
+message SyncAuthorizationRequest {
+  string node_id = 1;
+  string admin_signature = 2;  // Sovereign-level signature
+  string admin_public_key_id = 3;
+  uint64 timestamp_ns = 4;
+}
+
+// Response to sync authorization
+message SyncAuthorizationResponse {
+  bool success = 1;
+  string message = 2;
+  uint64 events_synced = 3;
+  uint64 timestamp_ns = 4;
+  bool merkle_verified = 5;
+  string status = 6;  // "synced", "verification_failed", "unauthorized"
 }
