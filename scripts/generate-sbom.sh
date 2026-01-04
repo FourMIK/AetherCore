@@ -171,15 +171,21 @@ echo "────────────────────────�
 
 # Check if b3sum is installed
 if ! command -v b3sum &> /dev/null; then
-    echo "⚠️  b3sum not found. Attempting to install..."
-    
-    # Try to install via cargo
-    if command -v cargo &> /dev/null; then
-        cargo install b3sum --locked || USE_FALLBACK_HASH=true
-    else
-        echo "❌ Cannot install b3sum - cargo not available"
-        echo "   Falling back to SHA-256 (TEMPORARY - BLAKE3 required for production)"
+    # Check if CI indicated fallback mode via marker file
+    if [ -f "/tmp/sbom-fallback-mode" ]; then
+        echo "⚠️  b3sum not available. Using SHA-256 fallback as indicated by CI."
         USE_FALLBACK_HASH=true
+    else
+        echo "⚠️  b3sum not found. Attempting to install..."
+        
+        # Try to install via cargo
+        if command -v cargo &> /dev/null; then
+            cargo install b3sum --locked || USE_FALLBACK_HASH=true
+        else
+            echo "❌ Cannot install b3sum - cargo not available"
+            echo "   Falling back to SHA-256 (TEMPORARY - BLAKE3 required for production)"
+            USE_FALLBACK_HASH=true
+        fi
     fi
 fi
 
@@ -260,11 +266,34 @@ UNIFIED_MANIFEST="$SBOM_OUTPUT_DIR/SUPPLY_CHAIN_MANIFEST.md"
 
 # Pre-compute values to avoid command injection in heredoc
 MANIFEST_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-CARGO_LOCK_HASH=$(b3sum Cargo.lock 2>/dev/null || sha256sum Cargo.lock | cut -d' ' -f1)
-PACKAGE_LOCK_HASH=$(b3sum package-lock.json 2>/dev/null || sha256sum package-lock.json | cut -d' ' -f1)
-RUST_COMPONENT_COUNT=$(jq -r '.components | length' "$SBOM_OUTPUT_DIR/tauri-sbom.json" 2>/dev/null || echo "N/A")
-FRONTEND_COMPONENT_COUNT=$(jq -r '.components | length' "$SBOM_OUTPUT_DIR/frontend-sbom.json" 2>/dev/null || echo "N/A")
-LICENSE_ENTRY_COUNT=$(grep -v '^#' "$SBOM_OUTPUT_DIR/LICENSE_MANIFEST.txt" | grep -v '^$' | wc -l | xargs)
+
+# Hash lock files with existence checks
+if [ -f "Cargo.lock" ]; then
+    CARGO_LOCK_HASH=$(b3sum Cargo.lock 2>/dev/null || sha256sum Cargo.lock | cut -d' ' -f1)
+else
+    CARGO_LOCK_HASH="ERROR: Cargo.lock not found"
+fi
+
+if [ -f "package-lock.json" ]; then
+    PACKAGE_LOCK_HASH=$(b3sum package-lock.json 2>/dev/null || sha256sum package-lock.json | cut -d' ' -f1)
+else
+    PACKAGE_LOCK_HASH="ERROR: package-lock.json not found"
+fi
+
+# Count SBOM components with explicit error handling
+if [ -f "$SBOM_OUTPUT_DIR/tauri-sbom.json" ]; then
+    RUST_COMPONENT_COUNT=$(jq -r '.components | length' "$SBOM_OUTPUT_DIR/tauri-sbom.json" 2>/dev/null || echo "ERROR: Failed to parse tauri-sbom.json")
+else
+    RUST_COMPONENT_COUNT="N/A (SBOM not generated)"
+fi
+
+if [ -f "$SBOM_OUTPUT_DIR/frontend-sbom.json" ]; then
+    FRONTEND_COMPONENT_COUNT=$(jq -r '.components | length' "$SBOM_OUTPUT_DIR/frontend-sbom.json" 2>/dev/null || echo "ERROR: Failed to parse frontend-sbom.json")
+else
+    FRONTEND_COMPONENT_COUNT="N/A (SBOM not generated)"
+fi
+
+LICENSE_ENTRY_COUNT=$(grep -v '^#' "$SBOM_OUTPUT_DIR/LICENSE_MANIFEST.txt" 2>/dev/null | grep -v '^$' | wc -l | xargs)
 
 # Generate manifest using safe variable substitution
 cat > "$UNIFIED_MANIFEST" << EOF

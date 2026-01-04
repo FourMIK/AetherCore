@@ -90,10 +90,11 @@ jobs:
           npm install -g @cyclonedx/cyclonedx-npm
           
           echo "📦 Installing b3sum (BLAKE3 hashing)..."
-          cargo install b3sum --locked || {
+          if ! cargo install b3sum --locked; then
             echo "⚠️  b3sum installation failed, script will use SHA-256 fallback"
-            export USE_FALLBACK_HASH=true
-          }
+            # Create a marker file to indicate fallback mode
+            echo "USE_FALLBACK=true" > /tmp/sbom-fallback-mode
+          fi
           
           # Execute Operation Glass Fortress
           bash ./scripts/generate-sbom.sh
