@@ -147,7 +147,7 @@ impl C2GrpcServer {
 
         if let Some(trust_score) = scorer.get_score(device_id) {
             // Hard invariant: Explicitly reject quarantined nodes
-            if trust_score.level == aethercore_trust_mesh::TrustLevel::Quarantined {
+            if trust_score.level == TrustLevel::Quarantined {
                 let rejection_reason = format!(
                     "COMMAND REJECTED: Node {} is Quarantined. Reason: {}",
                     device_id,

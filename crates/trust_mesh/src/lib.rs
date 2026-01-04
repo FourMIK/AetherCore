@@ -27,7 +27,10 @@ pub use node_health::{
 };
 pub use service::{TrustMeshConfig, TrustMeshService};
 pub use signing::{EventSigner, KeyManager, SigningError};
-pub use trust::{TrustComputationConfig, TrustLevel, TrustScore, TrustScorer};
+pub use trust::{
+    TrustComputationConfig, TrustLevel, TrustScore, TrustScorer, HEALTHY_THRESHOLD,
+    QUARANTINE_THRESHOLD,
+};
 
 #[cfg(test)]
 mod tests {

@@ -72,6 +72,12 @@ pub enum TrustLevel {
     Quarantined, // Trust score < 0.5
 }
 
+/// Threshold for healthy trust level
+pub const HEALTHY_THRESHOLD: f64 = 0.9;
+
+/// Threshold for suspect trust level (below this is quarantined)
+pub const QUARANTINE_THRESHOLD: f64 = 0.5;
+
 /// Trust score for a node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrustScore {
@@ -87,14 +93,14 @@ impl TrustScore {
         match self.level {
             TrustLevel::Quarantined => {
                 format!(
-                    "Trust score {} is below quarantine threshold (0.5). Node exhibits Byzantine behavior or integrity violations.",
-                    self.score
+                    "Trust score {} is below quarantine threshold ({}). Node exhibits Byzantine behavior or integrity violations.",
+                    self.score, QUARANTINE_THRESHOLD
                 )
             }
             TrustLevel::Suspect => {
                 format!(
-                    "Trust score {} is below operational threshold (0.9). Node trust degraded due to anomalous behavior.",
-                    self.score
+                    "Trust score {} is below operational threshold ({}). Node trust degraded due to anomalous behavior.",
+                    self.score, HEALTHY_THRESHOLD
                 )
             }
             TrustLevel::Healthy => {
@@ -135,9 +141,9 @@ impl TrustScorer {
 
         score = (score + delta).clamp(0.0, 1.0);
 
-        let level = if score >= 0.9 {
+        let level = if score >= HEALTHY_THRESHOLD {
             TrustLevel::Healthy
-        } else if score >= 0.5 {
+        } else if score >= QUARANTINE_THRESHOLD {
             TrustLevel::Suspect
         } else {
             TrustLevel::Quarantined
@@ -194,9 +200,9 @@ impl TrustScorer {
             }
         };
 
-        let level = if score >= 0.9 {
+        let level = if score >= HEALTHY_THRESHOLD {
             TrustLevel::Healthy
-        } else if score >= 0.5 {
+        } else if score >= QUARANTINE_THRESHOLD {
             TrustLevel::Suspect
         } else {
             TrustLevel::Quarantined
