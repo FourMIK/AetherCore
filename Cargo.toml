@@ -18,6 +18,7 @@ members = [
     "crates/unit-status",
     "services/h2-ingest",
     "packages/dashboard/src-tauri",
+    "tests/integration",
 ]
 
 [workspace.package]
