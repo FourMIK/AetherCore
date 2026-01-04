@@ -26,7 +26,7 @@ use proto::identity_registry_server::{IdentityRegistry, IdentityRegistryServer};
 #[cfg(feature = "grpc-server")]
 use proto::*;
 
-use crate::{IdentityManager, PlatformIdentity};
+use crate::{IdentityManager, PlatformIdentity, TpmManager};
 use std::sync::{Arc, Mutex};
 
 /// Identity Registry gRPC service implementation
@@ -34,13 +34,37 @@ use std::sync::{Arc, Mutex};
 pub struct IdentityRegistryService {
     /// Identity manager instance
     identity_manager: Arc<Mutex<IdentityManager>>,
+    /// TPM manager for hardware attestation validation
+    tpm_manager: Arc<Mutex<TpmManager>>,
+    /// Admin node IDs authorized to revoke nodes
+    admin_node_ids: Arc<Mutex<Vec<String>>>,
 }
 
 #[cfg(feature = "grpc-server")]
 impl IdentityRegistryService {
     /// Create a new Identity Registry service
-    pub fn new(identity_manager: Arc<Mutex<IdentityManager>>) -> Self {
-        Self { identity_manager }
+    pub fn new(
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        tpm_manager: Arc<Mutex<TpmManager>>,
+    ) -> Self {
+        Self {
+            identity_manager,
+            tpm_manager,
+            admin_node_ids: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    /// Create a new Identity Registry service with admin node IDs
+    pub fn with_admin_nodes(
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        tpm_manager: Arc<Mutex<TpmManager>>,
+        admin_node_ids: Vec<String>,
+    ) -> Self {
+        Self {
+            identity_manager,
+            tpm_manager,
+            admin_node_ids: Arc::new(Mutex::new(admin_node_ids)),
+        }
     }
 
     /// Get current timestamp in milliseconds
@@ -241,22 +265,132 @@ impl IdentityRegistry for IdentityRegistryService {
         let timestamp_ms = Self::current_timestamp_ms();
 
         // Decode public key
-        let public_key = hex::decode(&req.public_key_hex)
-            .map_err(|e| Status::invalid_argument(format!("Invalid public key hex: {}", e)))?;
+        let public_key = hex::decode(&req.public_key_hex).map_err(|e| {
+            tracing::warn!(
+                "Registration failed for node {}: Invalid public key hex: {}",
+                req.node_id,
+                e
+            );
+            Status::invalid_argument(format!("Invalid public key hex: {}", e))
+        })?;
 
         if public_key.len() != 32 {
+            tracing::warn!(
+                "Registration failed for node {}: Invalid public key length: {} (expected 32)",
+                req.node_id,
+                public_key.len()
+            );
             return Err(Status::invalid_argument(format!(
                 "Invalid public key length: {} (expected 32)",
                 public_key.len()
             )));
         }
 
+        // Validate NodeID matches BLAKE3(public_key)
+        let computed_node_id = hex::encode(blake3::hash(&public_key).as_bytes());
+        if computed_node_id != req.node_id {
+            tracing::error!(
+                "Registration failed for node {}: NodeID mismatch. Expected: {}, Got: {}",
+                req.node_id,
+                computed_node_id,
+                req.node_id
+            );
+            return Err(Status::permission_denied(
+                "NodeID does not match BLAKE3 hash of public key",
+            ));
+        }
+
         // Create attestation from TPM data
         let attestation = crate::Attestation::Tpm {
-            quote: req.tpm_quote,
-            pcrs: req.pcrs,
-            ak_cert: req.ak_cert,
+            quote: req.tpm_quote.clone(),
+            pcrs: req.pcrs.clone(),
+            ak_cert: req.ak_cert.clone(),
         };
+
+        // Validate TPM attestation (hardware-rooted trust)
+        // NO GRACEFUL DEGRADATION: If TPM attestation fails, the node is Byzantine
+        if !req.tpm_quote.is_empty() {
+            let tpm_manager = self
+                .tpm_manager
+                .lock()
+                .map_err(|e| Status::internal(format!("Lock error: {}", e)))?;
+
+            // Parse PCRs from the request
+            // For stub implementation, we accept simple PCR format
+            let pcr_values = if !req.pcrs.is_empty() {
+                // Create a simple PCR value for validation
+                vec![crate::PcrValue {
+                    index: 0,
+                    value: req.pcrs.clone(),
+                }]
+            } else {
+                vec![]
+            };
+
+            // Create TPM quote structure for verification
+            let tpm_quote = crate::TpmQuote {
+                pcrs: pcr_values,
+                signature: req.tpm_quote.clone(),
+                nonce: vec![], // Nonce would be from challenge-response
+                timestamp: req.timestamp_ms,
+            };
+
+            // Create attestation key from AK cert
+            let ak = crate::AttestationKey {
+                key_id: req.node_id.clone(),
+                public_key: public_key.clone(),
+                certificate: if req.ak_cert.is_empty() {
+                    None
+                } else {
+                    Some(req.ak_cert.clone())
+                },
+            };
+
+            // Verify TPM quote
+            if !tpm_manager.verify_quote(&tpm_quote, &ak) {
+                tracing::error!(
+                    "Registration DENIED for node {}: Invalid TPM attestation - Hardware root of trust verification failed",
+                    req.node_id
+                );
+                return Err(Status::permission_denied(
+                    "Invalid TPM attestation: Hardware signature verification failed. Node is considered Byzantine.",
+                ));
+            }
+
+            tracing::info!(
+                "Node {} passed TPM attestation validation",
+                req.node_id
+            );
+        } else {
+            // NO TPM QUOTE PROVIDED - This is a security failure
+            tracing::error!(
+                "Registration DENIED for node {}: No TPM attestation provided. Hardware root of trust required.",
+                req.node_id
+            );
+            return Err(Status::permission_denied(
+                "TPM attestation required for registration. No graceful degradation for security failures.",
+            ));
+        }
+
+        // Validate PCRs are provided
+        if req.pcrs.is_empty() {
+            tracing::warn!(
+                "Registration failed for node {}: No PCR values provided",
+                req.node_id
+            );
+            return Err(Status::invalid_argument("PCR values required for TPM attestation"));
+        }
+
+        // Validate AK certificate is provided
+        if req.ak_cert.is_empty() {
+            tracing::warn!(
+                "Registration failed for node {}: No AK certificate provided",
+                req.node_id
+            );
+            return Err(Status::invalid_argument(
+                "Attestation Key certificate required for TPM attestation",
+            ));
+        }
 
         // Create platform identity
         let identity = PlatformIdentity {
@@ -274,16 +408,29 @@ impl IdentityRegistry for IdentityRegistryService {
             .map_err(|e| Status::internal(format!("Lock error: {}", e)))?;
 
         match manager.register(identity) {
-            Ok(_) => Ok(Response::new(RegisterNodeResponse {
-                success: true,
-                error_message: String::new(),
-                timestamp_ms,
-            })),
-            Err(e) => Ok(Response::new(RegisterNodeResponse {
-                success: false,
-                error_message: format!("Registration failed: {}", e),
-                timestamp_ms,
-            })),
+            Ok(_) => {
+                tracing::info!(
+                    "Node {} successfully registered with TPM attestation",
+                    req.node_id
+                );
+                Ok(Response::new(RegisterNodeResponse {
+                    success: true,
+                    error_message: String::new(),
+                    timestamp_ms,
+                }))
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Registration failed for node {}: {}",
+                    req.node_id,
+                    e
+                );
+                Ok(Response::new(RegisterNodeResponse {
+                    success: false,
+                    error_message: format!("Registration failed: {}", e),
+                    timestamp_ms,
+                }))
+            }
         }
     }
 
@@ -295,7 +442,76 @@ impl IdentityRegistry for IdentityRegistryService {
         let req = request.into_inner();
         let timestamp_ms = Self::current_timestamp_ms();
 
-        // TODO: Verify authority signature before revoking
+        // Verify authority signature before revoking
+        // Only admin nodes can revoke other nodes
+        let admin_nodes = self
+            .admin_node_ids
+            .lock()
+            .map_err(|e| Status::internal(format!("Lock error: {}", e)))?;
+
+        if admin_nodes.is_empty() {
+            tracing::error!(
+                "Revocation failed for node {}: No admin nodes configured",
+                req.node_id
+            );
+            return Err(Status::permission_denied(
+                "No admin nodes configured for revocation authority",
+            ));
+        }
+
+        // Verify the authority signature
+        // The signature should be over the payload: node_id + reason + timestamp
+        let payload = format!("{}{}{}", req.node_id, req.reason, req.timestamp_ms);
+        let payload_bytes = payload.as_bytes();
+
+        // Try to verify with each admin node's public key
+        let manager = self
+            .identity_manager
+            .lock()
+            .map_err(|e| Status::internal(format!("Lock error: {}", e)))?;
+
+        let mut signature_verified = false;
+        let mut verifying_admin = String::new();
+
+        for admin_id in admin_nodes.iter() {
+            if let Some(admin_identity) = manager.get(admin_id) {
+                let admin_public_key_hex = hex::encode(&admin_identity.public_key);
+
+                match Self::verify_ed25519_signature(
+                    &admin_public_key_hex,
+                    payload_bytes,
+                    &req.authority_signature_hex,
+                ) {
+                    Ok(true) => {
+                        signature_verified = true;
+                        verifying_admin = admin_id.clone();
+                        break;
+                    }
+                    Ok(false) => continue,
+                    Err(e) => {
+                        tracing::debug!(
+                            "Signature verification failed for admin {}: {}",
+                            admin_id,
+                            e
+                        );
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if !signature_verified {
+            tracing::error!(
+                "Revocation DENIED for node {}: Invalid authority signature. No admin signature verified.",
+                req.node_id
+            );
+            return Err(Status::permission_denied(
+                "Invalid authority signature: Revocation must be signed by an admin node",
+            ));
+        }
+
+        // Drop the read lock before acquiring write lock
+        drop(manager);
 
         let mut manager = self
             .identity_manager
@@ -305,8 +521,9 @@ impl IdentityRegistry for IdentityRegistryService {
         match manager.revoke(&req.node_id) {
             Ok(_) => {
                 tracing::warn!(
-                    "Node revoked: {} - Reason: {}",
+                    "Node revoked: {} by admin {} - Reason: {}",
                     req.node_id,
+                    verifying_admin,
                     req.reason
                 );
 
@@ -316,11 +533,18 @@ impl IdentityRegistry for IdentityRegistryService {
                     timestamp_ms,
                 }))
             }
-            Err(e) => Ok(Response::new(RevokeNodeResponse {
-                success: false,
-                error_message: format!("Revocation failed: {}", e),
-                timestamp_ms,
-            })),
+            Err(e) => {
+                tracing::error!(
+                    "Revocation failed for node {}: {}",
+                    req.node_id,
+                    e
+                );
+                Ok(Response::new(RevokeNodeResponse {
+                    success: false,
+                    error_message: format!("Revocation failed: {}", e),
+                    timestamp_ms,
+                }))
+            }
         }
     }
 }
@@ -330,8 +554,9 @@ impl IdentityRegistry for IdentityRegistryService {
 pub async fn start_grpc_server(
     addr: std::net::SocketAddr,
     identity_manager: Arc<Mutex<IdentityManager>>,
+    tpm_manager: Arc<Mutex<TpmManager>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let service = IdentityRegistryService::new(identity_manager);
+    let service = IdentityRegistryService::new(identity_manager, tpm_manager);
 
     tracing::info!("Identity Registry gRPC server listening on {}", addr);
 

@@ -29,6 +29,7 @@ hex = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+tokio-stream = { version = "0.1", features = ["net"] }
 
 [build-dependencies]
 tonic-build = { version = "0.10", optional = true }
