@@ -21,7 +21,6 @@
 
 use aethercore_core::ledger::{LedgerError, SignedEvent};
 use aethercore_core::merkle_vine::MerkleVine;
-use blake3::Hasher;
 use rusqlite::{params, Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -471,12 +470,14 @@ impl OfflineMateriaBuffer {
     }
 
     /// Get current timestamp in nanoseconds
+    /// 
+    /// Returns 0 if system time is before Unix epoch (should never happen in practice)
     fn current_timestamp_ns() -> u64 {
         use std::time::{SystemTime, UNIX_EPOCH};
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as u64
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0)
     }
 }
 

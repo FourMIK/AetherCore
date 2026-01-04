@@ -36,7 +36,7 @@ use crate::dispatcher::CommandDispatcher;
 use crate::offline::OfflineMateriaBuffer;
 use crate::quorum::QuorumGate;
 use aethercore_identity::{IdentityManager, PlatformIdentity};
-use aethercore_trust_mesh::{TrustLevel, TrustScorer};
+use aethercore_trust_mesh::{TrustLevel, TrustScorer, HEALTHY_THRESHOLD, QUARANTINE_THRESHOLD};
 use std::sync::{Arc, Mutex, RwLock};
 use tonic::{Request, Response, Status};
 
@@ -729,8 +729,7 @@ mod tests {
             .unwrap();
 
         // Set low trust score (Suspect level, not Quarantined)
-        // QUARANTINE_THRESHOLD = 0.6, HEALTHY_THRESHOLD = 0.9, TRUST_THRESHOLD = 0.8
-        // So we need score >= 0.6 and < 0.8 for Suspect level that fails operational threshold
+        // We need score >= QUARANTINE_THRESHOLD (0.6) and < TRUST_THRESHOLD (0.8)
         const TEST_TRUST_SCORE: f64 = 0.7; // Suspect level, below operational threshold
         server
             .trust_scorer
