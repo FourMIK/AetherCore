@@ -8,7 +8,7 @@ on:
 jobs:
   release:
     name: Build Desktop App (${{ matrix.platform }})
-    timeout-minutes: 15
+    timeout-minutes: 60
     permissions:
       contents: write
     strategy:
