@@ -17,8 +17,14 @@ cd "$REPO_ROOT"
 SBOM_OUTPUT_DIR="${REPO_ROOT}/sbom-artifacts"
 mkdir -p "$SBOM_OUTPUT_DIR"
 
+# Use cross-platform temporary directory
+TEMP_DIR="${TMPDIR:-${TEMP:-${TMP:-/tmp}}}"
+SBOM_LOG_DIR="${TEMP_DIR}/aethercore-sbom-logs"
+mkdir -p "$SBOM_LOG_DIR"
+
 echo "📂 Repository Root: $REPO_ROOT"
 echo "📦 SBOM Output Directory: $SBOM_OUTPUT_DIR"
+echo "📋 Log Directory: $SBOM_LOG_DIR"
 echo ""
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -135,19 +141,36 @@ echo ""
 # Generate SBOM for the Tauri application
 if [ "${SKIP_RUST_SBOM}" != "true" ]; then
     cd "$REPO_ROOT/packages/dashboard/src-tauri"
-    cargo cyclonedx --all-features --format json --output-cdx --output-file "$SBOM_OUTPUT_DIR/tauri-sbom.json"
     
-    echo "✅ Rust SBOM generated: tauri-sbom.json"
+    echo "Running cargo-cyclonedx..."
+    if cargo cyclonedx --all-features --format json --output-cdx --output-file "$SBOM_OUTPUT_DIR/tauri-sbom.json" 2>&1 | tee "$SBOM_LOG_DIR"/sbom-rust-output.log; then
+        echo "✅ Rust SBOM generated: tauri-sbom.json"
+    else
+        # Check if SBOM file was still created
+        if [ -f "$SBOM_OUTPUT_DIR/tauri-sbom.json" ]; then
+            echo "⚠️  Rust SBOM generation completed with warnings"
+            echo "   SBOM file was generated but may have encountered non-critical issues"
+            echo "   Check $SBOM_LOG_DIR/sbom-rust-output.log for details"
+        else
+            echo "❌ Rust SBOM generation failed completely"
+            echo "   Last error output:"
+            tail -20 "$SBOM_LOG_DIR"/sbom-rust-output.log
+            exit 1
+        fi
+    fi
     echo ""
 else
     echo "⚠️  cargo-cyclonedx not available, generating fallback SBOM..."
     cd "$REPO_ROOT"
     
     # Generate a simple JSON manifest using cargo metadata
-    cargo metadata --format-version 1 --manifest-path packages/dashboard/src-tauri/Cargo.toml > "$SBOM_OUTPUT_DIR/tauri-sbom-metadata.json"
-    
-    echo "✅ Rust dependency metadata generated: tauri-sbom-metadata.json"
-    echo "   (Fallback format - full SBOM will be generated in CI)"
+    if cargo metadata --format-version 1 --manifest-path packages/dashboard/src-tauri/Cargo.toml > "$SBOM_OUTPUT_DIR/tauri-sbom-metadata.json" 2>&1; then
+        echo "✅ Rust dependency metadata generated: tauri-sbom-metadata.json"
+        echo "   (Fallback format - full SBOM will be generated in CI)"
+    else
+        echo "❌ Failed to generate Rust dependency metadata"
+        exit 1
+    fi
     echo ""
 fi
 
@@ -196,17 +219,40 @@ cd "$REPO_ROOT/packages/dashboard"
 # For the dashboard package, we need to generate SBOM based on what's actually installed
 # Using the --package-lock-only flag to work with lock file
 if [ -f "package-lock.json" ]; then
-    npx @cyclonedx/cyclonedx-npm --output-file "$SBOM_OUTPUT_DIR/frontend-sbom.json" --output-format JSON
+    echo "Using local package-lock.json in packages/dashboard"
+    if npx @cyclonedx/cyclonedx-npm --output-file "$SBOM_OUTPUT_DIR/frontend-sbom.json" --output-format JSON 2>&1 | tee "$SBOM_LOG_DIR"/sbom-npm-output.log; then
+        echo "✅ Frontend SBOM generated successfully"
+    else
+        # Check if SBOM was still generated despite errors
+        if [ -f "$SBOM_OUTPUT_DIR/frontend-sbom.json" ]; then
+            echo "⚠️  SBOM generation completed with warnings (check $SBOM_LOG_DIR/sbom-npm-output.log)"
+            echo "   SBOM file was generated but may have encountered non-critical issues"
+        else
+            echo "❌ Frontend SBOM generation failed completely"
+            exit 1
+        fi
+    fi
 elif [ -f "../../package-lock.json" ]; then
-    # If using monorepo structure, generate from root but filter to dashboard
+    echo "Using monorepo root package-lock.json"
+    # If using monorepo structure, generate from root
     cd "$REPO_ROOT"
-    # Create a temporary focused SBOM for dashboard only
-    npx @cyclonedx/cyclonedx-npm --output-file "$SBOM_OUTPUT_DIR/frontend-sbom.json" --output-format JSON --ignore-npm-errors || {
-        echo "⚠️  Note: SBOM generation encountered non-critical errors (monorepo workspace links)"
-        echo "   Generated SBOM may include root-level dependencies"
-    }
+    # Create SBOM from root - this will include all workspace dependencies
+    if npx @cyclonedx/cyclonedx-npm --output-file "$SBOM_OUTPUT_DIR/frontend-sbom.json" --output-format JSON --ignore-npm-errors 2>&1 | tee "$SBOM_LOG_DIR"/sbom-npm-output.log; then
+        echo "✅ Frontend SBOM generated from monorepo root"
+    else
+        # Check if SBOM was still generated despite errors
+        if [ -f "$SBOM_OUTPUT_DIR/frontend-sbom.json" ]; then
+            echo "⚠️  SBOM generation completed with warnings (monorepo workspace links)"
+            echo "   Generated SBOM includes root-level dependencies (check $SBOM_LOG_DIR/sbom-npm-output.log)"
+        else
+            echo "❌ Frontend SBOM generation failed"
+            echo "   Last error output:"
+            tail -20 "$SBOM_LOG_DIR"/sbom-npm-output.log
+            exit 1
+        fi
+    fi
 else
-    echo "❌ No package-lock.json found"
+    echo "❌ No package-lock.json found in packages/dashboard or repository root"
     exit 1
 fi
 
@@ -225,7 +271,7 @@ echo "────────────────────────�
 # Check if b3sum is installed
 if ! command -v b3sum &> /dev/null; then
     # Check if CI indicated fallback mode via marker file
-    if [ -f "/tmp/sbom-fallback-mode" ]; then
+    if [ -f "$SBOM_LOG_DIR/sbom-fallback-mode" ]; then
         echo "⚠️  b3sum not available. Using SHA-256 fallback as indicated by CI."
         USE_FALLBACK_HASH=true
     else

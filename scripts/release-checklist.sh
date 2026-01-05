@@ -139,10 +139,24 @@ echo ""
 
 # In CI environment, check for signing secrets
 if [ -n "$CI" ]; then
+    # Check if this is a pre-release tag
+    IS_PRERELEASE=false
+    if [ -n "$GITHUB_REF_NAME" ]; then
+        # Validate semver format with optional v prefix, then check for pre-release suffix
+        if [[ "$GITHUB_REF_NAME" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
+            # Check for pre-release suffix (after - but before optional + build metadata)
+            if [[ "$GITHUB_REF_NAME" =~ -(alpha|beta|rc|dev|pre) ]]; then
+                IS_PRERELEASE=true
+            fi
+        fi
+    fi
+    
     # macOS signing
     if [ "$(uname)" = "Darwin" ]; then
         if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
             check_status "macOS code signing configured" "PASS"
+        elif [ "$IS_PRERELEASE" = "true" ]; then
+            check_status "macOS code signing configured" "WARN" "Pre-release build - code signing not required"
         else
             check_status "macOS code signing configured" "FAIL" "APPLE_CERTIFICATE or APPLE_SIGNING_IDENTITY not set"
         fi
@@ -152,6 +166,8 @@ if [ -n "$CI" ]; then
     if [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32" ]] || [ -n "$MSYSTEM" ]; then
         if [ -n "$WINDOWS_CERTIFICATE" ]; then
             check_status "Windows code signing configured" "PASS"
+        elif [ "$IS_PRERELEASE" = "true" ]; then
+            check_status "Windows code signing configured" "WARN" "Pre-release build - code signing not required"
         else
             check_status "Windows code signing configured" "FAIL" "WINDOWS_CERTIFICATE not set"
         fi
