@@ -4,6 +4,8 @@
 
 This guide covers deployment of the AetherCore Tactical Glass desktop application across multiple platforms and architectures.
 
+> **For Release Managers**: If you're building and releasing desktop applications, see [docs/SECRET_PROVISIONING.md](docs/SECRET_PROVISIONING.md) for code signing certificate setup and release workflow configuration.
+
 ## Build Artifacts
 
 ### Desktop Applications
