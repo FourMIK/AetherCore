@@ -142,8 +142,12 @@ if [ -n "$CI" ]; then
     # Check if this is a pre-release tag
     IS_PRERELEASE=false
     if [ -n "$GITHUB_REF_NAME" ]; then
-        if [[ "$GITHUB_REF_NAME" =~ -(alpha|beta|rc|dev|pre) ]]; then
-            IS_PRERELEASE=true
+        # Validate that it looks like a semver tag first (optional v prefix, then digits.digits.digits)
+        if [[ "$GITHUB_REF_NAME" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            # Check for pre-release suffix
+            if [[ "$GITHUB_REF_NAME" =~ -(alpha|beta|rc|dev|pre) ]]; then
+                IS_PRERELEASE=true
+            fi
         fi
     fi
     

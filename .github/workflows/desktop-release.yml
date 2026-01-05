@@ -132,7 +132,8 @@ jobs:
           if ! cargo install b3sum --locked; then
             echo "⚠️  b3sum installation failed, script will use SHA-256 fallback"
             # Create a marker file to indicate fallback mode
-            echo "USE_FALLBACK=true" > /tmp/sbom-fallback-mode
+            mkdir -p "${TMPDIR:-${TEMP:-/tmp}}/aethercore-sbom-logs"
+            echo "USE_FALLBACK=true" > "${TMPDIR:-${TEMP:-/tmp}}/aethercore-sbom-logs/sbom-fallback-mode"
           fi
           
           echo ""
@@ -169,8 +170,11 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           IS_PRERELEASE=false
-          if [[ "${{ github.ref_name }}" =~ -(alpha|beta|rc|dev|pre) ]]; then
-            IS_PRERELEASE=true
+          # Check if tag looks like semver and has pre-release suffix
+          if [[ "${{ github.ref_name }}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            if [[ "${{ github.ref_name }}" =~ -(alpha|beta|rc|dev|pre) ]]; then
+              IS_PRERELEASE=true
+            fi
           fi
           
           if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ] && [ -n "${{ secrets.APPLE_SIGNING_IDENTITY }}" ] && [ -n "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ]; then
@@ -196,7 +200,13 @@ jobs:
       - name: Setup Code Signing (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          $isPreRelease = "${{ github.ref_name }}" -match "-(alpha|beta|rc|dev|pre)"
+          $isPreRelease = $false
+          # Check if tag looks like semver and has pre-release suffix
+          if ("${{ github.ref_name }}" -match '^v?[0-9]+\.[0-9]+\.[0-9]+') {
+            if ("${{ github.ref_name }}" -match '-(alpha|beta|rc|dev|pre)') {
+              $isPreRelease = $true
+            }
+          }
           
           if ("${{ secrets.WINDOWS_CERTIFICATE }}") {
             Write-Output "✅ Code signing configured for Windows"
