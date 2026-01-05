@@ -18,7 +18,7 @@ SBOM_OUTPUT_DIR="${REPO_ROOT}/sbom-artifacts"
 mkdir -p "$SBOM_OUTPUT_DIR"
 
 # Use cross-platform temporary directory
-TEMP_DIR="${TMPDIR:-${TEMP:-/tmp}}"
+TEMP_DIR="${TMPDIR:-${TEMP:-${TMP:-/tmp}}}"
 SBOM_LOG_DIR="${TEMP_DIR}/aethercore-sbom-logs"
 mkdir -p "$SBOM_LOG_DIR"
 
