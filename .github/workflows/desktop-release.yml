@@ -137,7 +137,9 @@ jobs:
           if ! cargo install b3sum --locked; then
             echo "⚠️  b3sum installation failed, script will use SHA-256 fallback"
             # Create a marker file to indicate fallback mode
-            echo "USE_FALLBACK=true" > /tmp/sbom-fallback-mode
+            FALLBACK_DIR="${TMPDIR:-${TEMP:-${TMP:-/tmp}}}/aethercore-sbom-logs"
+            mkdir -p "$FALLBACK_DIR"
+            echo "USE_FALLBACK=true" > "$FALLBACK_DIR/sbom-fallback-mode"
           fi
           
           echo ""
@@ -173,15 +175,27 @@ jobs:
       - name: Setup Code Signing (macOS)
         if: matrix.os == 'macos-latest'
         run: |
+          IS_PRERELEASE=false
+          # Validate semver format and check for pre-release suffix
+          if [[ "${{ github.ref_name }}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
+            if [[ "${{ github.ref_name }}" =~ -(alpha|beta|rc|dev|pre) ]]; then
+              IS_PRERELEASE=true
+            fi
+          fi
+          
           if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ] && [ -n "${{ secrets.APPLE_SIGNING_IDENTITY }}" ] && [ -n "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ]; then
             echo "✅ Code signing configured for macOS"
             # In production, import certificate and set up signing identity
+          elif [ "$IS_PRERELEASE" = "true" ]; then
+            echo "⚠️  Code signing not configured, but this is a pre-release build"
+            echo "   Pre-release tag detected: ${{ github.ref_name }}"
+            echo "   Proceeding without code signing for testing purposes"
           else
             echo "❌ RELEASE BLOCKED: Code signing not configured"
-            echo "   macOS releases must be signed and notarized."
+            echo "   Production macOS releases must be signed and notarized."
             echo "   Required secrets: APPLE_CERTIFICATE, APPLE_SIGNING_IDENTITY, APPLE_CERTIFICATE_PASSWORD"
             echo ""
-            echo "To bypass this check for testing, use a pre-release tag (e.g., v0.1.0-beta)"
+            echo "To bypass this check for testing, use a pre-release tag (e.g., v1.0.0-alpha, v1.0.0-beta)"
             exit 1
           fi
         env:
@@ -192,14 +206,26 @@ jobs:
       - name: Setup Code Signing (Windows)
         if: matrix.os == 'windows-latest'
         run: |
+          $isPreRelease = $false
+          # Validate semver format and check for pre-release suffix
+          if ("${{ github.ref_name }}" -match '^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$') {
+            if ("${{ github.ref_name }}" -match '-(alpha|beta|rc|dev|pre)') {
+              $isPreRelease = $true
+            }
+          }
+          
           if ("${{ secrets.WINDOWS_CERTIFICATE }}") {
             Write-Output "✅ Code signing configured for Windows"
+          } elseif ($isPreRelease) {
+            Write-Output "⚠️  Code signing not configured, but this is a pre-release build"
+            Write-Output "   Pre-release tag detected: ${{ github.ref_name }}"
+            Write-Output "   Proceeding without code signing for testing purposes"
           } else {
             Write-Output "❌ RELEASE BLOCKED: Code signing not configured"
-            Write-Output "   Windows releases must be signed with a valid certificate."
+            Write-Output "   Production Windows releases must be signed with a valid certificate."
             Write-Output "   Required secrets: WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD"
             Write-Output ""
-            Write-Output "To bypass this check for testing, use a pre-release tag (e.g., v0.1.0-beta)"
+            Write-Output "To bypass this check for testing, use a pre-release tag (e.g., v1.0.0-alpha, v1.0.0-beta)"
             exit 1
           }
         env:
