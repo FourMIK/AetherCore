@@ -9,7 +9,7 @@ import { Shield, Lock, AlertTriangle, CheckCircle, Key } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 
 export const TrustGuardianView: React.FC = () => {
-  const nodes = useTacticalStore((s) => s.nodes);
+  const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const nodeArray = Array.from(nodes.values());
   
   const trustMetrics = {

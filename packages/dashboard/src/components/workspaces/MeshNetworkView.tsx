@@ -9,7 +9,7 @@ import { Radio, Wifi, Activity, TrendingUp } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 
 export const MeshNetworkView: React.FC = () => {
-  const nodes = useTacticalStore((s) => s.nodes);
+  const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const nodeArray = Array.from(nodes.values());
   
   const meshStats = {

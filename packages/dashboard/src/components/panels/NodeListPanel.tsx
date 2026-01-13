@@ -9,7 +9,7 @@ import { GlassPanel } from '../hud/GlassPanel';
 import { useTacticalStore } from '../../store/useTacticalStore';
 
 export const NodeListPanel: React.FC = () => {
-  const nodes = useTacticalStore((s) => s.nodes);
+  const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const selectedNodeId = useTacticalStore((s) => s.selectedNodeId);
   const selectNode = useTacticalStore((s) => s.selectNode);
 

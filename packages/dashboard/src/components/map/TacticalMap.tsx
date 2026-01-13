@@ -148,17 +148,18 @@ const RadarGrid: React.FC = () => {
 
 // Main TacticalMap Component
 export const TacticalMap: React.FC = () => {
-  const nodes = useTacticalStore((s) => s.nodes);
+  const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const selectNode = useTacticalStore((s) => s.selectNode);
   const viewMode = useTacticalStore((s) => s.viewMode);
 
-  const origin = { latitude: 0, longitude: 0, altitude: 0 };
+  // Set origin to San Francisco Bay Area center for our dummy data
+  const origin = { latitude: 37.7749, longitude: -122.4194, altitude: 0 };
 
   return (
     <div className="w-full h-full bg-carbon">
       <Canvas
         camera={{
-          position: [50, 100, 50],
+          position: [0, 100, 100],
           fov: 75,
           near: 0.1,
           far: 10000,

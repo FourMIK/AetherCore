@@ -24,7 +24,7 @@ import { useCommStore } from '../../store/useCommStore';
 import { Plus } from 'lucide-react';
 
 export const DashboardLayout: React.FC = () => {
-  const nodes = useTacticalStore((s) => s.nodes);
+  const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const byzantineAlert = useTacticalStore((s) => s.byzantineAlert);
   const verificationFailure = useTacticalStore((s) => s.verificationFailure);
   const clearByzantineAlert = useTacticalStore((s) => s.clearByzantineAlert);
@@ -133,7 +133,13 @@ export const DashboardLayout: React.FC = () => {
       {/* Security Animations */}
       {byzantineAlert && (
         <div className="fixed inset-0 z-50">
-          <AethericSweep websocketUrl={`ws://localhost:8080/mesh-health`} />
+          <AethericSweep 
+            websocketUrl={
+              typeof window !== 'undefined' && '__TAURI__' in window 
+                ? `ws://localhost:8080/mesh-health`
+                : '' // Disable WebSocket in web mode
+            } 
+          />
           <button
             onClick={clearByzantineAlert}
             className="absolute top-4 right-4 btn-secondary"
