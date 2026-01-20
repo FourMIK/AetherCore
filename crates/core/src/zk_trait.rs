@@ -26,6 +26,10 @@ pub const MAX_LATENCY_MS: u64 = 500;
 /// Movement exceeding this velocity is rejected as spatial violations
 pub const MAX_VELOCITY_MPS: f64 = 343.0;
 
+/// Minimum time delta for spatial validation (1 millisecond)
+/// Time deltas below this are too short for meaningful velocity calculations
+const MIN_TIME_DELTA_MS: f64 = 1.0;
+
 /// Geographic coordinates (latitude, longitude)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct GeoCoordinate {
@@ -246,9 +250,9 @@ pub trait ZkPhysicsVerifier: ZkProverService {
         // Convert time delta to seconds
         let time_delta_s = time_delta_ms as f64 / 1000.0;
 
-        // Prevent division by zero
-        if time_delta_s < 0.001 {
-            // Less than 1ms
+        // Prevent division by zero and handle very short time deltas
+        if time_delta_s < MIN_TIME_DELTA_MS / 1000.0 {
+            // Time delta too short for meaningful velocity calculation
             return Ok(());
         }
 
@@ -277,6 +281,12 @@ pub trait ZkPhysicsVerifier: ZkProverService {
     ///
     /// # Returns
     /// * `Ok(PhysicsValidation)` - Validation results
+    ///
+    /// # Note
+    /// - Temporal validation is only performed if `last_seen` is provided
+    /// - Spatial validation requires historical coordinate data and is not yet implemented
+    ///   in this method. It should be performed separately using `verify_spatial_bounds`
+    ///   with tracked coordinate history.
     fn validate_physics(&self, request: &ZkProofRequest) -> Result<PhysicsValidation, ZkVerificationError> {
         let mut validation = PhysicsValidation {
             temporal_valid: true,
@@ -297,8 +307,9 @@ pub trait ZkPhysicsVerifier: ZkProverService {
         }
 
         // Note: Spatial validation would require previous coordinates and timestamp
-        // which would need to be tracked separately. For now, this is a placeholder.
-        // In production, you would call verify_spatial_bounds with historical data.
+        // which would need to be tracked separately. Implementations of this trait
+        // should maintain coordinate history and call verify_spatial_bounds directly
+        // when historical data is available.
 
         Ok(validation)
     }

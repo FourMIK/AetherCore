@@ -247,10 +247,19 @@ pub enum SlashingError {
 pub type Result<T> = std::result::Result<T, SlashingError>;
 
 /// Slashing engine for Byzantine fault detection and node revocation
+///
+/// # Memory Management
+///
+/// This implementation stores event history in memory for equivocation detection.
+/// For production deployments with long-running systems, consider:
+/// - Implementing a bounded history with a sliding window
+/// - Persisting event history to durable storage
+/// - Implementing periodic garbage collection for old events
 pub struct SlashingEngine {
     /// Map of node IDs to their current state
     node_states: HashMap<String, NodeState>,
     /// Map of node IDs to their event history (seq_no -> event_hash)
+    /// WARNING: Unbounded growth - implement history limits in production
     node_event_history: HashMap<String, HashMap<u64, Vec<u8>>>,
     /// List of slashing events
     slashing_events: Vec<SlashingEvent>,
@@ -301,6 +310,11 @@ impl SlashingEngine {
     /// * `Ok(true)` - Byzantine fault detected
     /// * `Ok(false)` - No fault detected
     /// * `Err(SlashingError)` - Error during detection
+    ///
+    /// # Note
+    /// Currently uses timestamp as a proxy for sequence number. In production deployments,
+    /// this should extract the actual sequence number from event metadata to avoid false
+    /// positives when events have identical timestamps.
     pub fn detect_byzantine_fault(
         &mut self,
         node_id: &str,
@@ -312,8 +326,8 @@ impl SlashingEngine {
             .or_insert_with(HashMap::new);
 
         // Extract sequence number from the event
-        // For now, we'll use the timestamp as a proxy for sequence number
-        // In production, this would come from the event metadata
+        // NOTE: Using timestamp as proxy for sequence number. In production,
+        // extract from event metadata to avoid false positives.
         let seq_no = event.timestamp;
 
         // Check for equivocation: same seq_no but different hash
@@ -411,8 +425,19 @@ impl SlashingEngine {
         if is_byzantine {
             // Extract sequence number and hashes for evidence
             let seq_no = event.timestamp;
-            let history = self.node_event_history.get(&node_id).unwrap();
-            let existing_hash = history.get(&seq_no).unwrap().clone();
+            
+            // Safely extract hashes with proper error handling
+            let history = self.node_event_history.get(&node_id)
+                .ok_or_else(|| SlashingError::InvalidEvent(
+                    format!("Node history not found for {}", node_id)
+                ))?;
+            
+            let existing_hash = history.get(&seq_no)
+                .ok_or_else(|| SlashingError::InvalidEvent(
+                    format!("Event hash not found for seq_no {}", seq_no)
+                ))?
+                .clone();
+            
             let new_hash = event.event_hash.clone();
 
             // Create fault type
