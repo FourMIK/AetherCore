@@ -50,6 +50,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "criterion",
+ "ed25519-dalek",
  "hex",
  "rand 0.8.5",
  "rusqlite",
