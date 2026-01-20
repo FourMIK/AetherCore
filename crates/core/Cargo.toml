@@ -23,6 +23,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 blake3 = { workspace = true }
 hex = { workspace = true }
+ed25519-dalek = { workspace = true }
 rusqlite = { workspace = true, optional = true }
 toml = { workspace = true, optional = true }
 
