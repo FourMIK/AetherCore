@@ -32,6 +32,9 @@ async function audit(record: Record<string, unknown>) {
 }
 
 function sanitizeHost(host: string) {
+  // NOTE: This regex allows basic IPv4, IPv6 (with brackets), and hostnames
+  // For production, consider using a proper IP validation library like 'ip' or 'ipaddr.js'
+  // to prevent potential injection attacks with malformed IPv6 addresses
   if (!/^[a-zA-Z0-9.\-:\[\]]+$/.test(host)) throw new Error('invalid host');
   return host;
 }
@@ -69,6 +72,11 @@ export class OperatorService {
 
         await audit({ jobId, step: 'ssh_exec_start', ssh: { host } });
 
+        // SECURITY NOTE: Using sudo with bash -lc introduces additional attack surface.
+        // For production deployment, consider:
+        // 1. Adding CODE_RALPHIE_PATH to a whitelist of allowed paths
+        // 2. Using a dedicated deployment user with limited sudo permissions
+        // 3. Restricting which scripts can be executed via sudoers configuration
         const sshArgs = [
           '-i', SSH_KEY,
           '-o', 'StrictHostKeyChecking=yes',

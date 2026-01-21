@@ -19,19 +19,19 @@ export const DeployCodeRalphieButton: React.FC<DeployButtonProps> = ({
   const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const operator = useCommStore.getState().currentOperator;
+  const currentOperator = useCommStore((state) => state.currentOperator);
 
   const handleDeploy = async () => {
     setError(null);
     setJobId(null);
-    if (!operator?.id) {
+    if (!currentOperator?.id) {
       setError('Operator identity not available');
       return;
     }
     setLoading(true);
     try {
       const payload = {
-        operatorId: operator.id,
+        operatorId: currentOperator.id,
         strategy: defaultStrategy as 'pi-ssh' | 'k8s' | 'local-compose',
         targetHost,
         manifestPath,

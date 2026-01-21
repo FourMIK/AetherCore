@@ -3,12 +3,21 @@ import OperatorService, { DeployRequest } from './operator-service';
 
 const operatorService = new OperatorService();
 
-export function ensureOperatorAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+// Extend Express Request interface for type safety
+interface AuthenticatedRequest extends express.Request {
+  operatorId: string;
+}
+
+export function ensureOperatorAuth(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
   const operatorId = req.header('x-operator-id') || '';
   if (!operatorId) {
     return res.status(401).json({ error: 'missing operator id header' });
   }
-  (req as any).operatorId = operatorId;
+  (req as AuthenticatedRequest).operatorId = operatorId;
   next();
 }
 
@@ -18,7 +27,7 @@ export function createApp() {
 
   app.post('/api/operator/deploy', ensureOperatorAuth, async (req, res) => {
     try {
-      const operatorId = (req as any).operatorId as string;
+      const operatorId = (req as AuthenticatedRequest).operatorId;
       const body = req.body as Partial<DeployRequest>;
       if (!body || !body.strategy) {
         return res.status(400).json({ error: 'strategy is required' });
