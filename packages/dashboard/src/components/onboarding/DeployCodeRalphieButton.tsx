@@ -32,7 +32,7 @@ export const DeployCodeRalphieButton: React.FC<DeployButtonProps> = ({
     try {
       const payload = {
         operatorId: operator.id,
-        strategy: defaultStrategy,
+        strategy: defaultStrategy as 'pi-ssh' | 'k8s' | 'local-compose',
         targetHost,
         manifestPath,
       };
