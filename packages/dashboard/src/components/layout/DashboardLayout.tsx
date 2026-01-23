@@ -18,6 +18,7 @@ import { CommView } from '../workspaces/CommView';
 import { TrustGuardianView } from '../workspaces/TrustGuardianView';
 import { MeshNetworkView } from '../workspaces/MeshNetworkView';
 import { SystemAdminView } from '../workspaces/SystemAdminView';
+import { DeploymentManagementView } from '../workspaces/DeploymentManagementView';
 import { VideoCallPanel } from '../comms/VideoCallPanel';
 import { DevModeBanner } from './DevModeBanner';
 import { useTacticalStore } from '../../store/useTacticalStore';
@@ -80,6 +81,8 @@ export const DashboardLayout: React.FC = () => {
         return <TrustGuardianView />;
       case 'mesh':
         return <MeshNetworkView />;
+      case 'deployments':
+        return <DeploymentManagementView />;
       case 'admin':
         return <SystemAdminView />;
       default:

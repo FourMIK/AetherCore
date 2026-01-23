@@ -425,6 +425,291 @@ describe("Desktop Integration - Tauri Command Invocations", () => {
     });
   });
 
+  describe("deploy_node command", () => {
+    it("should deploy node with valid configuration", async () => {
+      const config = {
+        node_id: "test-node-001",
+        mesh_endpoint: "ws://localhost:8080",
+        listen_port: 9000,
+        data_dir: "./data/test-node-001",
+        log_level: "info",
+      };
+
+      const mockResponse = {
+        node_id: config.node_id,
+        pid: 12345,
+        port: config.listen_port,
+        started_at: Math.floor(Date.now() / 1000),
+        status: "Running",
+      };
+
+      mockInvoke.mockResolvedValue(mockResponse);
+
+      const result = await invoke<any>("deploy_node", { config });
+
+      expect(mockInvoke).toHaveBeenCalledWith("deploy_node", { config });
+      expect(result.node_id).toBe(config.node_id);
+      expect(result.pid).toBeTruthy();
+      expect(result.port).toBe(config.listen_port);
+      expect(result.status).toBe("Running");
+    });
+
+    it("should reject invalid port numbers", async () => {
+      const config = {
+        node_id: "test-node-001",
+        mesh_endpoint: "ws://localhost:8080",
+        listen_port: 500, // Invalid: below 1024
+        data_dir: "./data/test-node-001",
+        log_level: "info",
+      };
+
+      mockInvoke.mockRejectedValue(
+        new Error("Invalid port: 500 (must be 1024-65535)")
+      );
+
+      await expect(invoke("deploy_node", { config })).rejects.toThrow(
+        "Invalid port"
+      );
+    });
+
+    it("should reject port numbers above 65535", async () => {
+      const config = {
+        node_id: "test-node-001",
+        mesh_endpoint: "ws://localhost:8080",
+        listen_port: 70000, // Invalid: above 65535
+        data_dir: "./data/test-node-001",
+        log_level: "info",
+      };
+
+      mockInvoke.mockRejectedValue(
+        new Error("Invalid port: 70000 (must be 1024-65535)")
+      );
+
+      await expect(invoke("deploy_node", { config })).rejects.toThrow(
+        "Invalid port"
+      );
+    });
+
+    it("should reject invalid mesh endpoint URL", async () => {
+      const config = {
+        node_id: "test-node-001",
+        mesh_endpoint: "not-a-valid-url",
+        listen_port: 9000,
+        data_dir: "./data/test-node-001",
+        log_level: "info",
+      };
+
+      mockInvoke.mockRejectedValue(
+        new Error("Invalid mesh endpoint URL: relative URL without a base")
+      );
+
+      await expect(invoke("deploy_node", { config })).rejects.toThrow(
+        "Invalid mesh endpoint URL"
+      );
+    });
+
+    it("should reject non-WebSocket endpoint schemes", async () => {
+      const config = {
+        node_id: "test-node-001",
+        mesh_endpoint: "http://localhost:8080", // Should be ws:// or wss://
+        listen_port: 9000,
+        data_dir: "./data/test-node-001",
+        log_level: "info",
+      };
+
+      mockInvoke.mockRejectedValue(
+        new Error("Mesh endpoint must use ws:// or wss:// scheme")
+      );
+
+      await expect(invoke("deploy_node", { config })).rejects.toThrow(
+        "ws:// or wss://"
+      );
+    });
+
+    it("should reject invalid log levels", async () => {
+      const config = {
+        node_id: "test-node-001",
+        mesh_endpoint: "ws://localhost:8080",
+        listen_port: 9000,
+        data_dir: "./data/test-node-001",
+        log_level: "invalid-level",
+      };
+
+      mockInvoke.mockRejectedValue(
+        new Error(
+          "Invalid log level: invalid-level (must be one of: trace, debug, info, warn, error)"
+        )
+      );
+
+      await expect(invoke("deploy_node", { config })).rejects.toThrow(
+        "Invalid log level"
+      );
+    });
+
+    it("should reject path traversal in data_dir", async () => {
+      const config = {
+        node_id: "test-node-001",
+        mesh_endpoint: "ws://localhost:8080",
+        listen_port: 9000,
+        data_dir: "../../../etc/passwd", // Path traversal attempt
+        log_level: "info",
+      };
+
+      mockInvoke.mockRejectedValue(
+        new Error("Invalid data_dir: path traversal not allowed")
+      );
+
+      await expect(invoke("deploy_node", { config })).rejects.toThrow(
+        "path traversal not allowed"
+      );
+    });
+
+    it("should handle binary not found gracefully", async () => {
+      const config = {
+        node_id: "test-node-001",
+        mesh_endpoint: "ws://localhost:8080",
+        listen_port: 9000,
+        data_dir: "./data/test-node-001",
+        log_level: "info",
+      };
+
+      mockInvoke.mockRejectedValue(
+        new Error(
+          "Failed to locate node binary: Node binary not found. Set NODE_BINARY_PATH environment variable or ensure 'aethercore-node' is in PATH"
+        )
+      );
+
+      await expect(invoke("deploy_node", { config })).rejects.toThrow(
+        "Failed to locate node binary"
+      );
+    });
+  });
+
+  describe("stop_node command", () => {
+    it("should stop a running node", async () => {
+      const nodeId = "test-node-001";
+      const expectedResponse = `Node ${nodeId} stopped successfully`;
+
+      mockInvoke.mockResolvedValue(expectedResponse);
+
+      const result = await invoke<string>("stop_node", { nodeId });
+
+      expect(mockInvoke).toHaveBeenCalledWith("stop_node", { nodeId });
+      expect(result).toBe(expectedResponse);
+    });
+
+    it("should reject empty node_id", async () => {
+      const nodeId = "";
+
+      mockInvoke.mockRejectedValue(
+        new Error("Invalid node_id: cannot be empty")
+      );
+
+      await expect(invoke("stop_node", { nodeId })).rejects.toThrow(
+        "Invalid node_id"
+      );
+    });
+
+    it("should handle stopping non-existent node", async () => {
+      const nodeId = "non-existent-node";
+
+      mockInvoke.mockRejectedValue(
+        new Error(`Failed to stop node: Node ${nodeId} not found`)
+      );
+
+      await expect(invoke("stop_node", { nodeId })).rejects.toThrow(
+        "not found"
+      );
+    });
+  });
+
+  describe("get_deployment_status command", () => {
+    it("should return all deployment statuses", async () => {
+      const mockStatuses = [
+        {
+          node_id: "node-001",
+          pid: 12345,
+          port: 9000,
+          started_at: 1234567890,
+          status: "Running",
+        },
+        {
+          node_id: "node-002",
+          pid: 12346,
+          port: 9001,
+          started_at: 1234567900,
+          status: "Running",
+        },
+      ];
+
+      mockInvoke.mockResolvedValue(mockStatuses);
+
+      const result = await invoke<any[]>("get_deployment_status");
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_deployment_status");
+      expect(result).toEqual(mockStatuses);
+      expect(result).toHaveLength(2);
+    });
+
+    it("should return empty array when no deployments", async () => {
+      mockInvoke.mockResolvedValue([]);
+
+      const result = await invoke<any[]>("get_deployment_status");
+
+      expect(result).toEqual([]);
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe("get_node_logs command", () => {
+    it("should retrieve logs for a node", async () => {
+      const nodeId = "test-node-001";
+      const tail = 100;
+      const mockLogs = [
+        "[OUT] Node starting...",
+        "[OUT] Listening on port 9000",
+        "[ERR] Warning: connection timeout",
+      ];
+
+      mockInvoke.mockResolvedValue(mockLogs);
+
+      const result = await invoke<string[]>("get_node_logs", { nodeId, tail });
+
+      expect(mockInvoke).toHaveBeenCalledWith("get_node_logs", {
+        nodeId,
+        tail,
+      });
+      expect(result).toEqual(mockLogs);
+      expect(result).toHaveLength(3);
+    });
+
+    it("should reject empty node_id", async () => {
+      const nodeId = "";
+      const tail = 100;
+
+      mockInvoke.mockRejectedValue(
+        new Error("Invalid node_id: cannot be empty")
+      );
+
+      await expect(invoke("get_node_logs", { nodeId, tail })).rejects.toThrow(
+        "Invalid node_id"
+      );
+    });
+
+    it("should handle logs for non-existent node", async () => {
+      const nodeId = "non-existent-node";
+      const tail = 100;
+
+      mockInvoke.mockRejectedValue(
+        new Error(`Failed to get logs: Node ${nodeId} not found`)
+      );
+
+      await expect(invoke("get_node_logs", { nodeId, tail })).rejects.toThrow(
+        "not found"
+      );
+    });
+  });
+
   describe("Type Safety and Validation", () => {
     it("should handle boolean return values correctly", async () => {
       mockInvoke.mockResolvedValue(true);

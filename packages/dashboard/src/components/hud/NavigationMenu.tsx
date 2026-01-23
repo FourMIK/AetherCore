@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { GlassPanel } from './GlassPanel';
 
-export type WorkspaceView = 'tactical' | 'fleet' | 'isr' | 'comms' | 'guardian' | 'mesh' | 'admin';
+export type WorkspaceView = 'tactical' | 'fleet' | 'isr' | 'comms' | 'guardian' | 'mesh' | 'admin' | 'deployments';
 
 interface NavigationMenuProps {
   currentView: WorkspaceView;
@@ -59,6 +59,12 @@ const workspaceItems = [
     label: 'Mesh Network',
     icon: Radio,
     description: 'Network topology and radio frequency management'
+  },
+  {
+    id: 'deployments' as WorkspaceView,
+    label: 'Deployments',
+    icon: Database,
+    description: 'Local node process deployment and management'
   },
   {
     id: 'admin' as WorkspaceView,

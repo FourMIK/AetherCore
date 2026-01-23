@@ -20,6 +20,10 @@ export interface TacticalNode {
   status: 'online' | 'offline' | 'degraded';
   firmwareVersion?: string;
   integrityCompromised?: boolean; // Merkle-Vine chain integrity status
+  deployedLocally?: boolean; // Whether this node is deployed locally
+  deploymentPid?: number; // Process ID if deployed locally
+  deploymentStatus?: string; // Deployment status: Running, Stopped, Failed
+  deploymentPort?: number; // Listen port if deployed locally
 }
 
 // Track Types
@@ -97,6 +101,7 @@ interface TacticalStore {
   removeNode: (id: string) => void;
   selectNode: (id: string | null) => void;
   clearNodes: () => void;
+  updateDeploymentStatus: (id: string, status: { pid?: number; port?: number; status?: string }) => void;
 
   // Track Actions
   addTrack: (track: Track) => void;
@@ -173,6 +178,21 @@ export const useTacticalStore = create<TacticalStore>()(
       selectNode: (selectedNodeId) => set({ selectedNodeId }),
 
       clearNodes: () => set({ nodes: new Map() }),
+
+      updateDeploymentStatus: (id, status) =>
+        set((state) => {
+          const nodes = new Map(state.nodes);
+          const node = nodes.get(id);
+          if (node) {
+            nodes.set(id, {
+              ...node,
+              deploymentPid: status.pid ?? node.deploymentPid,
+              deploymentPort: status.port ?? node.deploymentPort,
+              deploymentStatus: status.status ?? node.deploymentStatus,
+            });
+          }
+          return { nodes };
+        }),
 
       // Track Actions
       addTrack: (track) =>
