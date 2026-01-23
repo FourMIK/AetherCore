@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use aethercore_stream::{StreamIntegrityTracker, IntegrityStatus};
+use aethercore_stream::StreamIntegrityTracker;
 use aethercore_identity::IdentityManager;
 use aethercore_trust_mesh::ComplianceProof;
 use ed25519_dalek::VerifyingKey;
@@ -288,12 +288,14 @@ pub async fn create_node(
     
     // Generate Ed25519 keypair for this node
     // In production, replace with TPM-backed key generation (CodeRalphie)
-    let mut csprng = rand::thread_rng();
-    let signing_key = ed25519_dalek::SigningKey::from_bytes(
-        &rand::Rng::gen::<[u8; 32]>(&mut csprng)
-    );
-    let verifying_key = signing_key.verifying_key();
-    let public_key_bytes = verifying_key.to_bytes();
+    let public_key_bytes = {
+        let mut csprng = rand::thread_rng();
+        let signing_key = ed25519_dalek::SigningKey::from_bytes(
+            &rand::Rng::gen::<[u8; 32]>(&mut csprng)
+        );
+        let verifying_key = signing_key.verifying_key();
+        verifying_key.to_bytes()
+    };
     
     // Create platform identity
     let now_ms = std::time::SystemTime::now()
