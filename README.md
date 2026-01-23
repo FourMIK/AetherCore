@@ -23,7 +23,9 @@ This repository provides a development and demonstration environment. For produc
 ### Install from Release
 
 1. **Download** the latest MSI installer from [Releases](https://github.com/your-org/AetherCore/releases)
+   - File size: ~200-250 MB (includes all dependencies and WebView2 runtime)
 2. **Run installer** as Administrator
+   - No internet connection required - all dependencies bundled
 3. **Launch** from Start Menu: "AetherCore Tactical Glass (Dev Mode)"
 
 ### Build from Source

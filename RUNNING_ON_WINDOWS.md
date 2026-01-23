@@ -40,8 +40,8 @@
   - [Download here](https://visualstudio.microsoft.com/downloads/)
 
 - **WebView2 Runtime:**
-  - Usually pre-installed on Windows 11
-  - [Download installer](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) if needed
+  - Bundled within MSI installer (no separate download required)
+  - Automatically installed during application installation
 
 ## Installation
 
@@ -49,10 +49,12 @@
 
 1. **Download** the latest MSI installer from releases
    - File: `AetherCore-Tactical-Glass-Dev-Mode_[version]_x64_en-US.msi`
+   - **Size:** ~200-250 MB (includes all dependencies and WebView2 runtime)
 
 2. **Run installer** with administrator privileges
    - Right-click MSI → "Run as administrator"
    - Follow installation wizard
+   - **No internet connection required** - all dependencies are bundled
 
 3. **Launch application**
    - Start Menu → "AetherCore Tactical Glass (Dev Mode)"
@@ -62,6 +64,13 @@
 ```
 C:\Program Files\AetherCore Tactical Glass Dev Mode\
 ```
+
+**What's Included in the Installer:**
+- AetherCore Tactical Glass application binaries
+- All Rust dependencies (compiled and linked)
+- WebView2 runtime (~127 MB) for UI rendering
+- Application icons and resources
+- Uninstaller
 
 ### Option 2: Build from Source
 
@@ -229,15 +238,11 @@ Edit configuration file before launch:
 
 **Causes & Solutions:**
 
-1. **WebView2 Not Installed**
-   - Download and install WebView2 Runtime
-   - Reboot and retry
-
-2. **Missing Visual C++ Redistributable**
+1. **Missing Visual C++ Redistributable**
    - Install [VC++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
    - Reboot and retry
 
-3. **Corrupted Configuration**
+2. **Corrupted Configuration**
    - Delete `%APPDATA%\com.aethercore.tactical-glass-dev\`
    - Relaunch application
 

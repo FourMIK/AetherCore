@@ -38,6 +38,9 @@
     "shortDescription": "AetherCore Tactical Glass - Development Mode Desktop Application",
     "longDescription": "AetherCore Tactical Glass Dev Mode is a desktop application for development, testing, and controlled demonstrations. This version does not implement production security features such as TPM attestation or hardware-backed identity. Production versions implement TPM-backed security, hardware-rooted identity, and remote attestation.",
     "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      },
       "wix": {
         "language": "en-US"
       },
