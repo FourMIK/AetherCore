@@ -19,6 +19,7 @@ import { TrustGuardianView } from '../workspaces/TrustGuardianView';
 import { MeshNetworkView } from '../workspaces/MeshNetworkView';
 import { SystemAdminView } from '../workspaces/SystemAdminView';
 import { VideoCallPanel } from '../comms/VideoCallPanel';
+import { DevModeBanner } from './DevModeBanner';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { useCommStore } from '../../store/useCommStore';
 import { Plus } from 'lucide-react';
@@ -90,6 +91,9 @@ export const DashboardLayout: React.FC = () => {
     <div className="w-screen h-screen flex flex-col bg-carbon overflow-hidden relative">
       {/* Scanline Overlay */}
       <div className="scanline-overlay" />
+
+      {/* Dev Mode Banner */}
+      <DevModeBanner />
 
       {/* TopBar - Fixed Height */}
       <div className="flex items-center gap-4 p-4 pb-2 flex-shrink-0">

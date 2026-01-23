@@ -1,6 +1,79 @@
-# AetherCore MonoRepo
+# AetherCore
 
-The AetherCore system integrating H2OS/4MIK - A comprehensive platform for distributed computing, mesh networking, and ISR capabilities.
+**Tamper-evident data streaming and trust mesh coordination for distributed systems**
+
+---
+
+## Overview
+
+AetherCore is a distributed system implementing:
+- **Merkle Vine streaming protocol** for tamper-evident data integrity
+- **Trust mesh coordination** with Byzantine fault detection
+- **Mesh networking** with gossip-based dissemination
+- **Tactical Glass** operator interface for real-time monitoring
+
+**Current Deployment:** Windows Desktop Application (Dev Mode)
+
+This repository provides a development and demonstration environment. For production deployment requirements, see [docs/production-deployment-playbook.md](docs/production-deployment-playbook.md).
+
+---
+
+## Quick Start for Windows
+
+### Install from Release
+
+1. **Download** the latest MSI installer from [Releases](https://github.com/your-org/AetherCore/releases)
+2. **Run installer** as Administrator
+3. **Launch** from Start Menu: "AetherCore Tactical Glass (Dev Mode)"
+
+### Build from Source
+
+```powershell
+# Prerequisites: Rust 1.70+, Node.js 18+, Visual Studio Build Tools
+
+# Clone repository
+git clone https://github.com/your-org/AetherCore.git
+cd AetherCore
+
+# Install dependencies
+npm install
+
+# Build Rust workspace
+cargo build --workspace --release
+
+# Build Windows desktop application
+cd packages\dashboard
+npm run tauri:build
+```
+
+**Output:** MSI installer in `packages/dashboard/src-tauri/target/release/bundle/msi/`
+
+See **[RUNNING_ON_WINDOWS.md](RUNNING_ON_WINDOWS.md)** for detailed instructions, troubleshooting, and configuration.
+
+---
+
+## What is Dev Mode?
+
+**Dev Mode** is a configuration for development, testing, and controlled demonstrations:
+
+✅ **Provides:**
+- Merkle Vine integrity verification
+- Trust mesh with Byzantine detection
+- Operator interface (Tactical Glass)
+- Local mesh simulation
+
+❌ **Does NOT provide:**
+- TPM/Secure Enclave integration
+- Hardware-backed identity
+- Remote attestation
+- Production security hardening
+
+**Dev Mode is NOT suitable for:**
+- Operational deployment
+- Processing sensitive data
+- Mission-critical applications
+
+See **[DEV_MODE.md](DEV_MODE.md)** for complete capabilities and limitations.
 
 ## Repository Structure
 
@@ -121,46 +194,118 @@ The root `package.json` defines npm workspaces for all services and packages. Th
 4. Create `src/index.ts`
 
 
-## License
+---
 
-MIT OR Apache-2.0
+## Documentation
 
-## Security & Supply Chain
+### Core Documentation
 
-AetherCore implements comprehensive supply chain security measures for all releases:
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and component overview
+- **[DEV_MODE.md](DEV_MODE.md)** - Dev Mode capabilities and limitations
+- **[PROTOCOL_OVERVIEW.md](PROTOCOL_OVERVIEW.md)** - Protocol concepts and design
+- **[SECURITY_SCOPE.md](SECURITY_SCOPE.md)** - Security boundaries and threat model
+- **[RUNNING_ON_WINDOWS.md](RUNNING_ON_WINDOWS.md)** - Windows build and operations guide
 
-- **Software Bill of Materials (SBOM)**: CycloneDX-compliant SBOMs for all dependencies
-- **Vulnerability Scanning**: Automated audits against RUSTSEC and npm advisory databases
-- **Dependency Pinning**: All dependencies locked via `Cargo.lock` and `package-lock.json`
-- **License Integrity**: BLAKE3 cryptographic hashing of all dependency licenses
+### Additional Documentation
 
-### Generate SBOM Locally
+- **[INSTALLATION.md](INSTALLATION.md)** - Installation guide for all platforms
+- **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices
+- **[PROVENANCE.md](PROVENANCE.md)** - Software provenance and supply chain security
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
+- **[LICENSE_COMPLIANCE.md](LICENSE_COMPLIANCE.md)** - License compliance information
 
+### Technical Documentation
+
+- **[docs/SUPPLY_CHAIN_SECURITY.md](docs/SUPPLY_CHAIN_SECURITY.md)** - Supply chain procedures
+- **[docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)** - Release process and checklist
+- **[docs/PERFORMANCE_BENCHMARKS.md](docs/PERFORMANCE_BENCHMARKS.md)** - Performance analysis
+- **[docs/trust-mesh-design.md](docs/trust-mesh-design.md)** - Trust mesh detailed design
+- **[docs/production-deployment-playbook.md](docs/production-deployment-playbook.md)** - Production deployment guide
+
+---
+
+## Development
+
+### Hot Reload Development
+
+For rapid iteration during development:
+
+```powershell
+cd packages\dashboard
+npm run tauri:dev
+```
+
+This enables:
+- Frontend hot reload on TypeScript/React changes
+- Rust recompilation on code changes
+- Browser dev tools (F12) for debugging
+
+### Testing
+
+```bash
+# Rust tests
+cargo test --workspace
+
+# TypeScript tests
+cd packages/dashboard
+npm run test
+
+# End-to-end tests
+npm run test:e2e
+```
+
+### Code Quality
+
+```bash
+# Rust linting
+cargo clippy --workspace
+
+# TypeScript type checking
+npm run test:types
+```
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for detailed development guidelines.
+
+---
+
+## Security and Supply Chain
+
+### Security Scope
+
+AetherCore Dev Mode provides:
+- ✅ **Tamper-evident** data integrity via BLAKE3 hashing
+- ✅ **Verifiable** signatures via Ed25519 cryptography
+- ✅ **Byzantine detection** via trust mesh consensus
+
+AetherCore Dev Mode does NOT provide:
+- ❌ Hardware-backed identity (no TPM integration)
+- ❌ Remote attestation
+- ❌ Production security hardening
+
+See **[SECURITY_SCOPE.md](SECURITY_SCOPE.md)** for complete security boundaries and threat model.
+
+### Supply Chain Security
+
+AetherCore implements supply chain security measures:
+- **Software Bill of Materials (SBOM):** CycloneDX-compliant SBOMs for all dependencies
+- **Vulnerability Scanning:** Automated audits against RUSTSEC and npm advisory databases
+- **Dependency Pinning:** All dependencies locked via `Cargo.lock` and `package-lock.json`
+- **License Integrity:** BLAKE3 cryptographic hashing of all dependency licenses
+
+**Generate SBOM locally:**
 ```bash
 ./scripts/generate-sbom.sh
 ```
 
-Output artifacts are generated in `sbom-artifacts/`:
+Output in `sbom-artifacts/`:
 - `tauri-sbom.json` - Rust/Tauri dependencies
 - `frontend-sbom.json` - Frontend dependencies
 - `LICENSE_MANIFEST.txt` - License integrity hashes
 - `SUPPLY_CHAIN_MANIFEST.md` - Human-readable summary
 
-For detailed information, see [Supply Chain Security Documentation](docs/SUPPLY_CHAIN_SECURITY.md).
+See **[docs/SUPPLY_CHAIN_SECURITY.md](docs/SUPPLY_CHAIN_SECURITY.md)** for detailed procedures.
 
-## Documentation
-
-Comprehensive documentation for deployment, installation, security, and supply chain:
-
-- **[INSTALLATION.md](INSTALLATION.md)** - Complete installation guide for all platforms
-- **[DEPLOYMENT_DESKTOP.md](DEPLOYMENT_DESKTOP.md)** - Desktop application deployment procedures
-- **[SECURITY.md](SECURITY.md)** - Security guidelines and best practices
-- **[PROVENANCE.md](PROVENANCE.md)** - Software provenance and supply chain security
-- **[docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)** - Desktop release process and checklist
-- **[docs/SUPPLY_CHAIN_SECURITY.md](docs/SUPPLY_CHAIN_SECURITY.md)** - Detailed supply chain procedures
-- **[docs/PERFORMANCE_BENCHMARKS.md](docs/PERFORMANCE_BENCHMARKS.md)** - Detailed performance benchmarks and analysis
-- **[docs/DESKTOP_PERFORMANCE_SUMMARY.md](docs/DESKTOP_PERFORMANCE_SUMMARY.md)** - Executive performance summary for desktop release
-- **[docs/production-deployment-playbook.md](docs/production-deployment-playbook.md)** - Production deployment playbook
+---
 
 ## Releasing
 
@@ -176,7 +321,6 @@ This validates:
 - ✅ Documentation completeness
 - ✅ Test suite execution
 - ✅ SBOM generation and supply chain security
-- ✅ Code signing configuration
 - ✅ Version consistency
 - ✅ Lock file integrity
 
@@ -193,13 +337,45 @@ git push origin main
 git push origin v0.2.0
 ```
 
-See **[docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)** for detailed release procedures.
+See **[docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)** for detailed procedures.
+
+---
 
 ## Contributing
 
-This is a monorepo project. Please ensure:
+Contributions are welcome! Please ensure:
 
 - All Rust code passes `cargo clippy` and `cargo test`
-- All TypeScript code builds with `tsc`
-- Follow the dependency rules (especially regarding `/legacy`)
-- Update this README if adding new crates or packages
+- All TypeScript code builds with `tsc` and passes tests
+- Follow the dependency rules (see [CONTRIBUTING.md](CONTRIBUTING.md))
+- Update documentation for significant changes
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for complete guidelines.
+
+---
+
+## License
+
+MIT OR Apache-2.0
+
+See [LICENSE](LICENSE) and [LICENSE_COMPLIANCE.md](LICENSE_COMPLIANCE.md) for details.
+
+---
+
+## Disclaimer
+
+**AetherCore Dev Mode is explicitly NOT authorized for:**
+- Production deployment
+- Processing classified information
+- Mission-critical operations
+- Compliance-requiring environments
+
+**Dev Mode makes NO claims regarding:**
+- DoD certification or authorization
+- FIPS 140-3 compliance
+- Common Criteria evaluation
+- Production security posture
+
+All demonstrations and tests conducted in Dev Mode must be clearly labeled as **non-operational** and **for development purposes only**.
+
+See **[DEV_MODE.md](DEV_MODE.md)** and **[SECURITY_SCOPE.md](SECURITY_SCOPE.md)** for complete limitations.
