@@ -11,19 +11,21 @@ import './index.css';
 
 export const App: React.FC = () => {
   const theme = useTacticalStore((s) => s.theme);
-  const connectToTestnet = useTacticalStore((s) => s.connectToTestnet);
+  const connectToMesh = useTacticalStore((s) => s.connectToMesh);
 
   // Apply theme
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
 
-  // Connect to testnet on mount
+  // PRODUCTION: Connect to live C2 mesh on mount
+  // In production, this establishes connection to the authenticated c2-router
+  // endpoint with TLS 1.3 and hardware-rooted identity verification.
   useEffect(() => {
-    connectToTestnet().catch((err) => {
-      console.error('Failed to connect to testnet:', err);
+    connectToMesh().catch((err) => {
+      console.error('Failed to connect to C2 mesh:', err);
     });
-  }, [connectToTestnet]);
+  }, [connectToMesh]);
 
   return (
     <MapProvider>
