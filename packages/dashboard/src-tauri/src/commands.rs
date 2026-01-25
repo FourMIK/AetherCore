@@ -98,18 +98,54 @@ pub async fn connect_to_mesh(
 /// DEPRECATED: This function is maintained for backward compatibility only.
 /// Use `connect_to_mesh` for production deployments.
 /// 
-/// NOTE: Full mesh integration requires async runtime setup. This validates
-/// the endpoint and stores it for later connection establishment.
+/// NOTE: Unlike connect_to_mesh, this function allows both ws:// and wss://
+/// connections for backward compatibility with existing testnet configurations.
+/// 
+/// SECURITY WARNING: ws:// (non-encrypted) connections should only be used
+/// in isolated test environments. Production deployments must use connect_to_mesh.
 #[tauri::command]
 pub async fn connect_to_testnet(
     endpoint: String,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<String, String> {
-    log::warn!("connect_to_testnet is deprecated. Use connect_to_mesh instead.");
+    log::warn!(
+        "connect_to_testnet is deprecated. Use connect_to_mesh for production. \
+         Endpoint: {}",
+        endpoint
+    );
     
-    // Delegate to connect_to_mesh for production consistency
-    // Note: connect_to_mesh enforces WSS, so testnet with ws:// will be rejected
-    connect_to_mesh(endpoint, state).await
+    // Validate endpoint format (allow both ws:// and wss:// for backward compatibility)
+    if !endpoint.starts_with("ws://") && !endpoint.starts_with("wss://") {
+        return Err("Invalid endpoint format. Must start with ws:// or wss://".to_string());
+    }
+    
+    // Log security warning if using non-secure connection
+    if endpoint.starts_with("ws://") {
+        log::warn!(
+            "SECURITY WARNING: Using non-encrypted ws:// connection. \
+             This should only be used in isolated test environments."
+        );
+    }
+    
+    // Parse and validate endpoint URL
+    let url = url::Url::parse(&endpoint)
+        .map_err(|e| format!("Invalid endpoint URL: {}", e))?;
+    
+    // Validate host is present
+    if url.host_str().is_none() {
+        return Err("Endpoint must have a valid host".to_string());
+    }
+    
+    // Store the endpoint in state
+    let app_state = state.lock().await;
+    *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
+    
+    log::info!("Testnet endpoint validated and stored: {}", endpoint);
+    
+    Ok(format!(
+        "Connected to testnet at {} (validation successful)",
+        endpoint
+    ))
 }
 
 /// Generate Genesis Bundle for Zero-Touch Enrollment

@@ -13,7 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
  */
 export const MeshConnection: React.FC = () => {
   const [endpoint, setEndpoint] = useState('wss://c2.aethercore.local:8443');
-  const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'unverified'>('disconnected');
+  const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [attestationStatus, setAttestationStatus] = useState<'pending' | 'verified' | 'failed'>('pending');
@@ -157,8 +157,6 @@ export const MeshConnection: React.FC = () => {
               ? '#d4edda'
               : status === 'connecting'
               ? '#fff3cd'
-              : status === 'unverified'
-              ? '#f8d7da'
               : '#f8d7da',
           color:
             status === 'connected'
@@ -173,8 +171,6 @@ export const MeshConnection: React.FC = () => {
           ? '🟢 Connected & Verified'
           : status === 'connecting'
           ? '🟡 Connecting...'
-          : status === 'unverified'
-          ? '🔴 UNVERIFIED - LINK COMPROMISED'
           : '🔴 Disconnected'}
       </div>
 
