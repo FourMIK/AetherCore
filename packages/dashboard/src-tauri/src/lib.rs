@@ -23,6 +23,7 @@ pub fn run() {
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
+      commands::connect_to_mesh,
       commands::connect_to_testnet,
       commands::generate_genesis_bundle,
       commands::bundle_to_qr_data,

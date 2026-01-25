@@ -2,19 +2,25 @@ import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 /**
- * Testnet Connection Component
+ * Mesh Connection Component (Production Mode)
  * 
  * Allows operators to connect the Tactical Glass desktop app
- * to a testnet P2P endpoint for mesh networking.
+ * to the production C2 mesh with hardware-rooted authentication.
+ * 
+ * Security: All connections use TLS 1.3 / WSS with mutual TPM attestation.
+ * The "Fail-Visible" doctrine requires that connection failures are prominently
+ * displayed and unverified endpoints are rejected.
  */
-export const TestnetConnection: React.FC = () => {
-  const [endpoint, setEndpoint] = useState('wss://testnet.aethercore.local:8443');
+export const MeshConnection: React.FC = () => {
+  const [endpoint, setEndpoint] = useState('wss://c2.aethercore.local:8443');
   const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [attestationStatus, setAttestationStatus] = useState<'pending' | 'verified' | 'failed'>('pending');
 
   /**
-   * Connect to Testnet
+   * Connect to Production C2 Mesh
+   * Establishes hardware-authenticated connection to command & control router
    */
   const handleConnect = async () => {
     if (!endpoint) {
@@ -22,44 +28,58 @@ export const TestnetConnection: React.FC = () => {
       return;
     }
 
+    // Production mode: Reject non-WSS endpoints (fail-visible)
+    if (!endpoint.startsWith('wss://')) {
+      setError('SECURITY VIOLATION: Production mode requires WSS (secure WebSocket). Non-encrypted endpoints are rejected.');
+      return;
+    }
+
     setStatus('connecting');
     setError(null);
     setMessage('');
+    setAttestationStatus('pending');
 
     try {
-      // Invoke Tauri command to connect to testnet
-      const result: string = await invoke('connect_to_testnet', { endpoint });
+      // Invoke Tauri command to connect to production mesh
+      // This will perform TPM attestation before allowing data transfer
+      const result: string = await invoke('connect_to_mesh', { endpoint });
       
       setStatus('connected');
       setMessage(result);
+      setAttestationStatus('verified');
     } catch (err) {
       setStatus('disconnected');
+      setAttestationStatus('failed');
       setError(err instanceof Error ? err.message : String(err));
     }
   };
 
   /**
-   * Disconnect from Testnet
+   * Disconnect from C2 Mesh
    */
   const handleDisconnect = () => {
     // TODO: Implement disconnect command
     setStatus('disconnected');
     setMessage('');
+    setAttestationStatus('pending');
   };
 
   return (
     <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
-      <h2>Testnet Connection</h2>
-      <p>Connect to the AetherCore P2P testnet for development and testing</p>
+      <h2>Production C2 Mesh Connection</h2>
+      <p>
+        Connect to the AetherCore Command & Control mesh with hardware-rooted authentication.
+        All connections use TLS 1.3 and require valid TPM attestation.
+      </p>
 
       <div style={{ marginBottom: '20px' }}>
         <label style={{ display: 'block', marginBottom: '8px' }}>
-          Testnet Endpoint:
+          C2 Endpoint (WSS only):
           <input
             type="text"
             value={endpoint}
             onChange={(e) => setEndpoint(e.target.value)}
-            placeholder="wss://testnet.example.com:8443"
+            placeholder="wss://c2.aethercore.local:8443"
             disabled={status === 'connected' || status === 'connecting'}
             style={{
               display: 'block',
@@ -72,7 +92,7 @@ export const TestnetConnection: React.FC = () => {
           />
         </label>
         <p style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
-          Must start with ws:// or wss://
+          Must start with wss:// (secure WebSocket). Non-encrypted connections are rejected.
         </p>
       </div>
 
@@ -89,7 +109,7 @@ export const TestnetConnection: React.FC = () => {
               cursor: 'pointer',
             }}
           >
-            Connect to Testnet
+            Connect to C2 Mesh
           </button>
         )}
 
@@ -106,7 +126,7 @@ export const TestnetConnection: React.FC = () => {
               opacity: 0.6,
             }}
           >
-            Connecting...
+            Connecting & Attesting...
           </button>
         )}
 
@@ -148,11 +168,32 @@ export const TestnetConnection: React.FC = () => {
       >
         <strong>Status:</strong>{' '}
         {status === 'connected'
-          ? '🟢 Connected'
+          ? '🟢 Connected & Verified'
           : status === 'connecting'
           ? '🟡 Connecting...'
           : '🔴 Disconnected'}
       </div>
+
+      {/* Attestation Status (Fail-Visible Design) */}
+      {status === 'connected' && (
+        <div
+          style={{
+            marginTop: '10px',
+            padding: '10px',
+            borderRadius: '4px',
+            backgroundColor:
+              attestationStatus === 'verified' ? '#d1ecf1' : '#f8d7da',
+            color: attestationStatus === 'verified' ? '#0c5460' : '#721c24',
+          }}
+        >
+          <strong>TPM Attestation:</strong>{' '}
+          {attestationStatus === 'verified'
+            ? '✅ Hardware Root of Trust Verified'
+            : attestationStatus === 'failed'
+            ? '❌ ATTESTATION FAILED - BYZANTINE NODE'
+            : '⏳ Pending...'}
+        </div>
+      )}
 
       {message && (
         <div
@@ -176,9 +217,10 @@ export const TestnetConnection: React.FC = () => {
             backgroundColor: '#f8d7da',
             color: '#721c24',
             borderRadius: '4px',
+            border: '2px solid #721c24',
           }}
         >
-          <strong>Error:</strong> {error}
+          <strong>⚠️ SECURITY ALERT:</strong> {error}
         </div>
       )}
 
@@ -191,10 +233,13 @@ export const TestnetConnection: React.FC = () => {
               <strong>Endpoint:</strong> {endpoint}
             </li>
             <li>
-              <strong>Protocol:</strong> WebSocket (WSS)
+              <strong>Protocol:</strong> WebSocket Secure (WSS) / TLS 1.3
             </li>
             <li>
-              <strong>Mesh Type:</strong> P2P Testnet
+              <strong>Authentication:</strong> Mutual TPM Attestation
+            </li>
+            <li>
+              <strong>Mesh Type:</strong> Production C2 Router
             </li>
           </ul>
         </div>
@@ -203,4 +248,7 @@ export const TestnetConnection: React.FC = () => {
   );
 };
 
-export default TestnetConnection;
+// Maintain backward compatibility alias
+export const TestnetConnection = MeshConnection;
+
+export default MeshConnection;

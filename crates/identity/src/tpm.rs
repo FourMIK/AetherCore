@@ -52,13 +52,36 @@ impl TpmManager {
     ///
     /// If `use_hardware` is true, attempts to use real TPM hardware.
     /// Falls back to stub implementation if hardware is unavailable.
+    ///
+    /// # Production Mode
+    ///
+    /// In production builds (when AETHERCORE_PRODUCTION env is set), this function
+    /// will panic if hardware TPM is not available. This enforces the "Fail-Visible"
+    /// doctrine and prevents accidental use of insecure stub implementations in
+    /// operational environments.
     pub fn new(use_hardware: bool) -> Self {
         let hardware_available = use_hardware && Self::detect_hardware();
+        
+        // PRODUCTION GUARD: Enforce hardware TPM in production mode
+        let is_production = std::env::var("AETHERCORE_PRODUCTION")
+            .map(|v| v == "1" || v.to_lowercase() == "true")
+            .unwrap_or(false);
+
+        if is_production && !hardware_available {
+            panic!(
+                "PRODUCTION MODE VIOLATION: TPM hardware not available. \
+                 AetherCore requires hardware-rooted trust in production. \
+                 Ensure /dev/tpm0 exists and is accessible, or disable production mode."
+            );
+        }
 
         if hardware_available {
             tracing::info!("TPM hardware detected and enabled");
         } else {
-            tracing::warn!("Using TPM stub implementation (no hardware or disabled)");
+            tracing::warn!(
+                "Using TPM stub implementation (no hardware or disabled). \
+                 INSECURE - FOR TESTING ONLY. Never use in production."
+            );
         }
 
         Self {
