@@ -50,34 +50,34 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <GlassPanel
       variant="heavy"
-      className={`flex items-center justify-between px-6 py-3 ${className}`}
+      className={`flex items-center justify-between px-4 py-2 ${className}`}
       hover={false}
     >
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <Shield className="text-overmatch" size={20} />
-          <span className="font-display text-lg font-semibold text-overmatch">
+          <Shield className="text-overmatch flex-shrink-0" size={20} />
+          <span className="font-display text-lg font-semibold text-overmatch whitespace-nowrap">
             AETHERCORE
           </span>
         </div>
-        <div className="h-6 w-px bg-tungsten/20" />
+        <div className="h-6 w-px bg-tungsten/20 flex-shrink-0" />
         <div className="flex items-center gap-2">
           <Activity className={statusColor} size={16} />
-          <span className={statusBadge}>{systemStatus.toUpperCase()}</span>
+          <span className={`${statusBadge} whitespace-nowrap`}>{systemStatus.toUpperCase()}</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-6">
-        <div className="text-sm text-tungsten/70">
+      <div className="flex items-center gap-4 ml-4">
+        <div className="text-sm text-tungsten/70 whitespace-nowrap">
           <span className="font-semibold text-verified-green">{verifiedNodes}</span>
           <span className="mx-1">/</span>
           <span>{totalNodes}</span>
-          <span className="ml-1">Verified Nodes</span>
+          <span className="ml-1 hidden sm:inline">Verified Nodes</span>
         </div>
-        <div className="h-6 w-px bg-tungsten/20" />
-        <div className="flex items-center gap-2 font-mono text-sm text-tungsten/70">
-          <Clock size={16} />
-          <span>{utcTime}</span>
+        <div className="h-6 w-px bg-tungsten/20 flex-shrink-0" />
+        <div className="flex items-center gap-2 font-mono text-sm text-tungsten/70 whitespace-nowrap">
+          <Clock size={16} className="flex-shrink-0" />
+          <span className="hidden md:inline">{utcTime}</span>
         </div>
       </div>
     </GlassPanel>

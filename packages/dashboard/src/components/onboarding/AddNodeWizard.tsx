@@ -9,7 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { GlassPanel } from '../hud/GlassPanel';
 import { useTacticalStore } from '../../store/useTacticalStore';
 
-type WizardStage = 'identity' | 'qr-enrollment' | 'attestation' | 'provisioning' | 'complete' | 'error';
+type WizardStage = 'identity' | 'qr-enrollment' | 'attestation' | 'provisioning' | 'deployment' | 'complete' | 'error';
 
 interface AddNodeWizardProps {
   onClose: () => void;
@@ -22,10 +22,19 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Deployment configuration
+  const [deployLocally, setDeployLocally] = useState(false);
+  const [meshEndpoint, setMeshEndpoint] = useState('ws://localhost:8080');
+  const [listenPort, setListenPort] = useState(9000);
+  const [dataDir, setDataDir] = useState('');
+  const [logLevel, setLogLevel] = useState('info');
+  
   const addNode = useTacticalStore((s) => s.addNode);
+  const updateDeploymentStatus = useTacticalStore((s) => s.updateDeploymentStatus);
 
   const handleNext = async () => {
-    const stages: WizardStage[] = ['identity', 'qr-enrollment', 'attestation', 'provisioning', 'complete'];
+    const stages: WizardStage[] = ['identity', 'qr-enrollment', 'attestation', 'provisioning', 'deployment', 'complete'];
     const currentIndex = stages.indexOf(stage);
 
     if (stage === 'identity' && (!nodeId || !domain)) {
@@ -34,23 +43,30 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
     }
 
     if (stage === 'qr-enrollment') {
-      // Generate QR code for Zero-Touch Enrollment
-      setIsLoading(true);
-      try {
-        const bundle = await invoke<any>('generate_genesis_bundle', {
-          userIdentity: nodeId,
-          squadId: domain,
-        });
-        const qrData = await invoke<string>('bundle_to_qr_data', { bundle });
-        setQrCode(qrData);
-        setError('');
-      } catch (err) {
-        setError(`Failed to generate QR code: ${err}`);
-        setStage('error');
+      // Only generate QR if not already skipped or generated
+      if (!qrCode) {
+        setIsLoading(true);
+        try {
+          const bundle = await invoke<any>('generate_genesis_bundle', {
+            userIdentity: nodeId,
+            squadId: domain,
+          });
+          const qrData = await invoke<string>('bundle_to_qr_data', { bundle });
+          setQrCode(qrData);
+          setError('');
+        } catch (err) {
+          // If QR generation fails, allow manual skip
+          console.warn('QR generation failed:', err);
+          setError('QR generation unavailable - proceeding with manual configuration');
+          setQrCode('skipped');
+        }
         setIsLoading(false);
-        return;
       }
-      setIsLoading(false);
+    }
+
+    // Set default data directory if not set
+    if (stage === 'provisioning' && !dataDir) {
+      setDataDir(`./data/${nodeId}`);
     }
 
     if (currentIndex < stages.length - 1) {
@@ -59,7 +75,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
   };
 
   const handleBack = () => {
-    const stages: WizardStage[] = ['identity', 'qr-enrollment', 'attestation', 'provisioning', 'complete'];
+    const stages: WizardStage[] = ['identity', 'qr-enrollment', 'attestation', 'provisioning', 'deployment', 'complete'];
     const currentIndex = stages.indexOf(stage);
     if (currentIndex > 0) {
       setStage(stages[currentIndex - 1]);
@@ -76,6 +92,33 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
         domain,
       });
 
+      // If deployLocally is true, deploy the node process
+      let deploymentPid: number | undefined;
+      let deploymentPort: number | undefined;
+      let deploymentStatus: string | undefined;
+
+      if (deployLocally) {
+        try {
+          const deployResult = await invoke<any>('deploy_node', {
+            config: {
+              node_id: nodeId,
+              mesh_endpoint: meshEndpoint,
+              listen_port: listenPort,
+              data_dir: dataDir,
+              log_level: logLevel,
+            },
+          });
+          deploymentPid = deployResult.pid;
+          deploymentPort = deployResult.port;
+          deploymentStatus = deployResult.status;
+          console.log('Node deployed:', deployResult);
+        } catch (deployErr) {
+          console.error('Failed to deploy node locally:', deployErr);
+          setError(`Node created but deployment failed: ${deployErr}`);
+          // Continue anyway - node is created even if deployment failed
+        }
+      }
+
       // Add the node to local store
       addNode({
         id: nodeId,
@@ -84,8 +127,13 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
         trustScore: 100,
         verified: true,
         lastSeen: new Date(),
-        status: 'online',
+        status: deploymentStatus === 'Running' ? 'online' : 'offline',
+        deployedLocally: deployLocally,
+        deploymentPid,
+        deploymentStatus,
+        deploymentPort,
       });
+
       setError('');
     } catch (err) {
       setError(`Failed to create node: ${err}`);
@@ -98,29 +146,28 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-carbon/80 backdrop-blur-sm">
-      <GlassPanel variant="heavy" className="w-full max-w-2xl mx-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-carbon/80 backdrop-blur-sm p-4">
+      <GlassPanel variant="heavy" className="w-full max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b border-tungsten/10">
+        <div className="p-6 border-b border-tungsten/10 flex-shrink-0">
           <h2 className="font-display text-2xl font-semibold text-tungsten">
             Add Node
           </h2>
           <div className="flex gap-2 mt-4">
-            {['identity', 'qr-enrollment', 'attestation', 'provisioning', 'complete'].map((s, i) => (
+            {['identity', 'qr-enrollment', 'attestation', 'provisioning', 'deployment', 'complete'].map((s, i) => (
               <div
                 key={s}
-                className={`flex-1 h-2 rounded-full ${
-                  ['identity', 'qr-enrollment', 'attestation', 'provisioning', 'complete'].indexOf(stage) >= i
+                className={`flex-1 h-2 rounded-full transition-all ${['identity', 'qr-enrollment', 'attestation', 'provisioning', 'deployment', 'complete'].indexOf(stage) >= i
                     ? 'bg-overmatch'
                     : 'bg-tungsten/20'
-                }`}
+                  }`}
               />
             ))}
           </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6 min-h-[400px]">
+        {/* Content - Scrollable */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-6">
           {/* Error State */}
           {stage === 'error' && (
             <div className="space-y-4 text-center">
@@ -167,21 +214,58 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
                   <p className="text-tungsten/70">Generating QR code...</p>
                 </>
               ) : qrCode ? (
-                <>
-                  <p className="text-tungsten/70 mb-4">
-                    Scan this QR code with the node hardware to enroll automatically
-                  </p>
-                  <div className="bg-white p-4 rounded-lg inline-block">
-                    {/* In production, use qrcode.react to render QR code */}
-                    <div className="w-48 h-48 bg-carbon flex items-center justify-center text-tungsten/50 text-sm">
-                      [QR Code: {qrCode.substring(0, 30)}...]
+                qrCode === 'skipped' ? (
+                  <div className="text-center py-8">
+                    <div className="text-verified-green mb-3">
+                      <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
                     </div>
+                    <h4 className="font-display text-lg text-tungsten mb-2">Manual Configuration Mode</h4>
+                    <p className="text-tungsten/70 text-sm">
+                      Proceeding without zero-touch enrollment.
+                      <br />
+                      CodeRalphie will be provisioned manually.
+                    </p>
                   </div>
-                  <p className="text-xs text-tungsten/50 mt-4">
-                    QR Code ready for scanning
-                  </p>
-                </>
+                ) : (
+                  <>
+                    <p className="text-tungsten/70 mb-4">
+                      Scan this QR code with the node hardware to enroll automatically
+                    </p>
+                    <div className="bg-white p-4 rounded-lg inline-block">
+                      {/* In production, use qrcode.react to render QR code */}
+                      <div className="w-48 h-48 bg-carbon flex items-center justify-center text-tungsten/50 text-sm">
+                        [QR Code: {qrCode.substring(0, 30)}...]
+                      </div>
+                    </div>
+                    <p className="text-xs text-tungsten/50 mt-4">
+                      QR Code ready for scanning
+                    </p>
+                  </>
+                )
               ) : null}
+              <div className="pt-4 mt-4 border-t border-tungsten/10">
+                {!qrCode && (
+                  <>
+                    <p className="text-sm text-tungsten/50 mb-3">
+                      Node without imaging capabilities?
+                    </p>
+                    <button
+                      onClick={() => {
+                        setQrCode('skipped');
+                        setError('');
+                      }}
+                      className="px-4 py-2 bg-tungsten/10 hover:bg-tungsten/20 text-tungsten rounded-lg transition-colors text-sm"
+                    >
+                      Skip Zero-Touch – Manual Configuration
+                    </button>
+                    <p className="text-xs text-tungsten/40 mt-2">
+                      CodeRalphie will be provisioned without QR enrollment
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -219,6 +303,90 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
             </div>
           )}
 
+          {stage === 'deployment' && (
+            <div className="space-y-4">
+              <h3 className="font-display text-xl text-tungsten">Local Deployment</h3>
+              <p className="text-tungsten/70 mb-4">
+                Optionally deploy the node process locally on this machine.
+              </p>
+              
+              <label className="flex items-center gap-3 p-3 bg-carbon/50 border border-tungsten/20 rounded-lg cursor-pointer hover:border-overmatch/30 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={deployLocally}
+                  onChange={(e) => setDeployLocally(e.target.checked)}
+                  className="w-4 h-4 rounded border-tungsten/30 text-overmatch focus:ring-overmatch focus:ring-offset-0"
+                />
+                <span className="text-tungsten font-medium">Deploy node process locally</span>
+              </label>
+
+              {deployLocally && (
+                <div className="space-y-3 mt-4 pt-4 border-t border-tungsten/10">
+                  <div>
+                    <label className="block text-sm text-tungsten/70 mb-2">Mesh Endpoint</label>
+                    <input
+                      type="text"
+                      value={meshEndpoint}
+                      onChange={(e) => setMeshEndpoint(e.target.value)}
+                      className="w-full px-4 py-2 bg-carbon/50 border border-tungsten/20 rounded-lg text-tungsten focus:outline-none focus:border-overmatch"
+                      placeholder="ws://localhost:8080"
+                    />
+                    <p className="text-xs text-tungsten/50 mt-1">WebSocket endpoint for mesh connectivity</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-tungsten/70 mb-2">Listen Port</label>
+                    <input
+                      type="number"
+                      value={listenPort}
+                      onChange={(e) => setListenPort(parseInt(e.target.value) || 9000)}
+                      min="1024"
+                      max="65535"
+                      className="w-full px-4 py-2 bg-carbon/50 border border-tungsten/20 rounded-lg text-tungsten focus:outline-none focus:border-overmatch"
+                    />
+                    <p className="text-xs text-tungsten/50 mt-1">Port range: 1024-65535</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-tungsten/70 mb-2">Data Directory</label>
+                    <input
+                      type="text"
+                      value={dataDir}
+                      onChange={(e) => setDataDir(e.target.value)}
+                      className="w-full px-4 py-2 bg-carbon/50 border border-tungsten/20 rounded-lg text-tungsten focus:outline-none focus:border-overmatch"
+                      placeholder={`./data/${nodeId}`}
+                    />
+                    <p className="text-xs text-tungsten/50 mt-1">Local directory for node data storage</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-tungsten/70 mb-2">Log Level</label>
+                    <select
+                      value={logLevel}
+                      onChange={(e) => setLogLevel(e.target.value)}
+                      className="w-full px-4 py-2 bg-carbon/50 border border-tungsten/20 rounded-lg text-tungsten focus:outline-none focus:border-overmatch"
+                    >
+                      <option value="trace">Trace</option>
+                      <option value="debug">Debug</option>
+                      <option value="info">Info</option>
+                      <option value="warn">Warn</option>
+                      <option value="error">Error</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {!deployLocally && (
+                <div className="p-3 bg-tungsten/5 border border-tungsten/10 rounded-lg">
+                  <p className="text-sm text-tungsten/70">
+                    Node will be registered in the identity registry but not deployed locally. 
+                    You can deploy it later from the Deployments view.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {stage === 'complete' && (
             <div className="space-y-4 text-center">
               <CheckCircle className="text-verified-green mx-auto" size={64} />
@@ -243,7 +411,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-tungsten/10 flex justify-between">
+        <div className="p-6 border-t border-tungsten/10 flex justify-between flex-shrink-0">
           <button
             onClick={stage === 'identity' ? onClose : handleBack}
             className="px-4 py-2 bg-tungsten/10 hover:bg-tungsten/20 text-tungsten rounded-lg transition-colors disabled:opacity-50"

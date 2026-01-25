@@ -8,7 +8,7 @@ on:
 jobs:
   release:
     name: Build Desktop App (${{ matrix.platform }})
-    timeout-minutes: 15
+    timeout-minutes: 60
     permissions:
       contents: write
     strategy:
@@ -28,10 +28,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
       
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      
       - name: Setup Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.os == 'windows-latest' && 'x86_64-pc-windows-msvc' || '' }}
       
       - name: Setup Node.js
         uses: actions/setup-node@v4

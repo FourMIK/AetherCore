@@ -9,6 +9,7 @@ pub mod event;
 pub mod ledger;
 pub mod merkle_aggregator;
 pub mod merkle_vine;
+pub mod slashing;
 pub mod trust_chain;
 pub mod types;
 pub mod zk_trait;
@@ -23,8 +24,14 @@ pub use merkle_aggregator::{
     MerkleError, MerkleProof, MerkleTree,
 };
 pub use merkle_vine::{InclusionProof, MerkleVine, VineNode};
+pub use slashing::{
+    ByzantineFaultType, NodeState, SlashingEngine, SlashingError, SlashingEvent,
+};
 pub use trust_chain::{TrustChain, TrustLink};
-pub use zk_trait::{ZkProofRequest, ZkProofResult, ZkProverService};
+pub use zk_trait::{
+    GeoCoordinate, PhysicsValidation, ZkPhysicsVerifier, ZkProofRequest, ZkProofResult,
+    ZkProverService, ZkVerificationError, MAX_LATENCY_MS, MAX_VELOCITY_MPS,
+};
 
 #[cfg(test)]
 mod tests {

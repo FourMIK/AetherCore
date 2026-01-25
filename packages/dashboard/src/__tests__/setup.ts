@@ -1,16 +1,23 @@
 /**
  * Vitest test setup for AetherCore Tactical Glass Desktop
- * 
+ *
  * Mocks the Tauri API for testing TypeScript/Rust FFI boundary
  */
 
-import { vi } from 'vitest';
+import { beforeEach, vi } from "vitest";
+
+type MockTauriInvoke = ReturnType<typeof vi.fn>;
+
+declare global {
+  // eslint-disable-next-line no-var
+  var mockTauriInvoke: MockTauriInvoke;
+}
 
 // Mock Tauri's invoke function
-const mockInvoke = vi.fn();
+const mockInvoke: MockTauriInvoke = vi.fn();
 
 // Mock @tauri-apps/api/core module
-vi.mock('@tauri-apps/api/core', () => ({
+vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
 }));
 

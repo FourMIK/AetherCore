@@ -32,14 +32,38 @@ const NodeMesh: React.FC<NodeMeshProps> = ({
   const meshRef = useRef<THREE.Mesh>(null);
   const timeRef = useRef(0);
 
+  const updateEmissiveIntensity = (intensity: number) => {
+    const material = meshRef.current?.material;
+    if (!material) return;
+
+    if (Array.isArray(material)) {
+      material.forEach((mat) => {
+        if (mat instanceof THREE.MeshStandardMaterial) {
+          mat.emissiveIntensity = intensity;
+        }
+      });
+      return;
+    }
+
+    if (material instanceof THREE.MeshStandardMaterial) {
+      material.emissiveIntensity = intensity;
+    }
+  };
+
   // Strobe effect for compromised nodes
   useFrame((state, delta) => {
-    if (integrityCompromised && meshRef.current) {
+    if (!meshRef.current) return;
+
+    if (integrityCompromised) {
       timeRef.current += delta;
       // High-contrast strobe: 2Hz (500ms period)
       const strobeValue = Math.sin(timeRef.current * Math.PI * 4) > 0 ? 1 : 0.1;
-      meshRef.current.material.emissiveIntensity = strobeValue * 2;
+      updateEmissiveIntensity(strobeValue * 2);
+      return;
     }
+
+    // Reset to base emissive level when node is healthy
+    updateEmissiveIntensity(verified ? 0.5 : 0.2);
   });
 
   // Color based on integrity and trust score
@@ -124,17 +148,18 @@ const RadarGrid: React.FC = () => {
 
 // Main TacticalMap Component
 export const TacticalMap: React.FC = () => {
-  const nodes = useTacticalStore((s) => s.nodes);
+  const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const selectNode = useTacticalStore((s) => s.selectNode);
   const viewMode = useTacticalStore((s) => s.viewMode);
 
-  const origin = { latitude: 0, longitude: 0, altitude: 0 };
+  // Set origin to San Francisco Bay Area center for our dummy data
+  const origin = { latitude: 37.7749, longitude: -122.4194, altitude: 0 };
 
   return (
     <div className="w-full h-full bg-carbon">
       <Canvas
         camera={{
-          position: [50, 100, 50],
+          position: [0, 100, 100],
           fov: 75,
           near: 0.1,
           far: 10000,

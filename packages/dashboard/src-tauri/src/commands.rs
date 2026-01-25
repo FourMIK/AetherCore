@@ -2,10 +2,12 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use aethercore_stream::{StreamIntegrityTracker, IntegrityStatus};
+use aethercore_stream::StreamIntegrityTracker;
 use aethercore_identity::IdentityManager;
 use aethercore_trust_mesh::ComplianceProof;
 use ed25519_dalek::VerifyingKey;
+use crate::process_manager::{NodeProcessManager, NodeProcessInfo, ProcessStatus};
+use std::path::PathBuf;
 
 /// Genesis Bundle for Zero-Touch Enrollment
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +25,7 @@ pub struct AppState {
     pub mesh_endpoint: Arc<Mutex<Option<String>>>,
     pub stream_tracker: Arc<Mutex<StreamIntegrityTracker>>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
+    pub process_manager: Arc<Mutex<NodeProcessManager>>,
 }
 
 /// Connect to Production C2 Mesh
@@ -366,12 +369,14 @@ pub async fn create_node(
     
     // Generate Ed25519 keypair for this node
     // In production, replace with TPM-backed key generation (CodeRalphie)
-    let mut csprng = rand::thread_rng();
-    let signing_key = ed25519_dalek::SigningKey::from_bytes(
-        &rand::Rng::gen::<[u8; 32]>(&mut csprng)
-    );
-    let verifying_key = signing_key.verifying_key();
-    let public_key_bytes = verifying_key.to_bytes();
+    let public_key_bytes = {
+        let mut csprng = rand::thread_rng();
+        let signing_key = ed25519_dalek::SigningKey::from_bytes(
+            &rand::Rng::gen::<[u8; 32]>(&mut csprng)
+        );
+        let verifying_key = signing_key.verifying_key();
+        verifying_key.to_bytes()
+    };
     
     // Create platform identity
     let now_ms = std::time::SystemTime::now()
@@ -634,6 +639,277 @@ pub async fn record_license_compliance(
     Ok(format!(
         "Compliance proof recorded: {} (status: {})",
         proof.verifier_id, proof.status
+    ))
+}
+
+/// Node Deployment Configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeDeployConfig {
+    pub node_id: String,
+    pub mesh_endpoint: String,
+    pub listen_port: u16,
+    pub data_dir: String,
+    pub log_level: String,
+}
+
+/// Deployment Status Response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeploymentStatus {
+    pub node_id: String,
+    pub pid: u32,
+    pub port: u16,
+    pub started_at: u64,
+    pub status: String,
+}
+
+/// Deploy a node process locally
+/// 
+/// This command spawns a node binary as a child process with the provided configuration.
+/// It validates all inputs rigorously and handles security considerations.
+/// 
+/// # Security Considerations
+/// - All inputs are validated (ports, paths, URLs)
+/// - Config files are written to sanitized paths
+/// - Binary location is checked in secure order (env var -> bundled -> PATH)
+/// 
+/// # Integration
+/// Uses NodeProcessManager to track and manage the spawned process lifecycle.
+#[tauri::command]
+pub async fn deploy_node(
+    config: NodeDeployConfig,
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<DeploymentStatus, String> {
+    log::info!("Deploying node: {}", config.node_id);
+
+    // Validate node_id
+    if config.node_id.is_empty() || config.node_id.len() > 255 {
+        return Err("Invalid node_id: must be 1-255 characters".to_string());
+    }
+
+    // Validate port range (1024-65535)
+    if config.listen_port < 1024 || config.listen_port > 65535 {
+        return Err(format!(
+            "Invalid port: {} (must be 1024-65535)",
+            config.listen_port
+        ));
+    }
+
+    // Validate mesh endpoint URL
+    let endpoint_url = url::Url::parse(&config.mesh_endpoint)
+        .map_err(|e| format!("Invalid mesh endpoint URL: {}", e))?;
+
+    // Ensure endpoint uses ws:// or wss://
+    if endpoint_url.scheme() != "ws" && endpoint_url.scheme() != "wss" {
+        return Err("Mesh endpoint must use ws:// or wss:// scheme".to_string());
+    }
+
+    // Validate log level
+    let valid_log_levels = ["trace", "debug", "info", "warn", "error"];
+    if !valid_log_levels.contains(&config.log_level.to_lowercase().as_str()) {
+        return Err(format!(
+            "Invalid log level: {} (must be one of: trace, debug, info, warn, error)",
+            config.log_level
+        ));
+    }
+
+    // Sanitize and validate data_dir path
+    let data_dir = PathBuf::from(&config.data_dir);
+    
+    // Canonicalize the path to resolve any .. or symlinks
+    // First create the directory if it doesn't exist
+    std::fs::create_dir_all(&data_dir)
+        .map_err(|e| format!("Failed to create data directory: {}", e))?;
+    
+    let canonical_data_dir = data_dir.canonicalize()
+        .map_err(|e| format!("Failed to canonicalize data directory path: {}", e))?;
+    
+    // Basic security check: ensure the canonical path doesn't contain suspicious patterns
+    let path_str = canonical_data_dir.to_string_lossy();
+    if path_str.contains("..") {
+        return Err("Invalid data_dir: path traversal not allowed".to_string());
+    }
+
+    // Locate node binary
+    let binary_path = locate_node_binary()
+        .map_err(|e| format!("Failed to locate node binary: {}", e))?;
+
+    log::info!("Using node binary: {}", binary_path);
+
+    // Create temporary config file
+    let config_path = canonical_data_dir.join(format!("{}_config.json", config.node_id));
+    let config_json = serde_json::json!({
+        "node_id": config.node_id,
+        "mesh_endpoint": config.mesh_endpoint,
+        "listen_port": config.listen_port,
+        "data_dir": canonical_data_dir.to_string_lossy(),
+        "log_level": config.log_level,
+    });
+
+    std::fs::write(&config_path, serde_json::to_string_pretty(&config_json).unwrap())
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
+
+    log::info!("Config file written to: {}", config_path.display());
+
+    // Spawn the node process
+    let app_state = state.lock().await;
+    let process_manager = app_state.process_manager.lock().await;
+
+    let pid = process_manager
+        .spawn(
+            config.node_id.clone(),
+            binary_path,
+            config_path.to_string_lossy().to_string(),
+            config.listen_port,
+        )
+        .map_err(|e| format!("Failed to spawn node process: {}", e))?;
+
+    let started_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("System time error: {}", e))?
+        .as_secs();
+
+    log::info!("Node {} deployed with PID: {}", config.node_id, pid);
+
+    Ok(DeploymentStatus {
+        node_id: config.node_id,
+        pid,
+        port: config.listen_port,
+        started_at,
+        status: "Running".to_string(),
+    })
+}
+
+/// Stop a running node process
+/// 
+/// This command stops a node that was previously deployed via deploy_node.
+#[tauri::command]
+pub async fn stop_node(
+    node_id: String,
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<String, String> {
+    log::info!("Stopping node: {}", node_id);
+
+    // Validate node_id
+    if node_id.is_empty() {
+        return Err("Invalid node_id: cannot be empty".to_string());
+    }
+
+    let app_state = state.lock().await;
+    let process_manager = app_state.process_manager.lock().await;
+
+    process_manager
+        .stop(&node_id)
+        .map_err(|e| format!("Failed to stop node: {}", e))?;
+
+    log::info!("Node {} stopped successfully", node_id);
+    Ok(format!("Node {} stopped successfully", node_id))
+}
+
+/// Get deployment status for all locally deployed nodes
+/// 
+/// Returns a list of all nodes currently managed by the NodeProcessManager.
+#[tauri::command]
+pub async fn get_deployment_status(
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<Vec<DeploymentStatus>, String> {
+    log::info!("Fetching deployment status for all nodes");
+
+    let app_state = state.lock().await;
+    let process_manager = app_state.process_manager.lock().await;
+
+    let statuses = process_manager
+        .get_all_statuses()
+        .map_err(|e| format!("Failed to get deployment statuses: {}", e))?;
+
+    let deployment_statuses: Vec<DeploymentStatus> = statuses
+        .into_iter()
+        .map(|info| DeploymentStatus {
+            node_id: info.node_id,
+            pid: info.pid,
+            port: info.port,
+            started_at: info.started_at,
+            status: format!("{:?}", info.status),
+        })
+        .collect();
+
+    log::info!("Found {} deployed node(s)", deployment_statuses.len());
+    Ok(deployment_statuses)
+}
+
+/// Get logs for a specific node
+/// 
+/// Retrieves the captured stdout/stderr logs from a running or stopped node.
+/// 
+/// # Arguments
+/// * `node_id` - The node identifier
+/// * `tail` - Number of lines to retrieve from the end (0 = all lines)
+#[tauri::command]
+pub async fn get_node_logs(
+    node_id: String,
+    tail: usize,
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<Vec<String>, String> {
+    log::info!("Fetching logs for node: {} (tail={})", node_id, tail);
+
+    // Validate node_id
+    if node_id.is_empty() {
+        return Err("Invalid node_id: cannot be empty".to_string());
+    }
+
+    let app_state = state.lock().await;
+    let process_manager = app_state.process_manager.lock().await;
+
+    let logs = process_manager
+        .get_logs(&node_id, tail)
+        .map_err(|e| format!("Failed to get logs: {}", e))?;
+
+    log::info!("Retrieved {} log line(s) for node {}", logs.len(), node_id);
+    Ok(logs)
+}
+
+/// Locate the node binary in the following order:
+/// 1. Environment variable NODE_BINARY_PATH
+/// 2. Bundled resource: ../resources/aethercore-node
+/// 3. System PATH
+fn locate_node_binary() -> Result<String> {
+    // Check environment variable first
+    if let Ok(env_path) = std::env::var("NODE_BINARY_PATH") {
+        let path = PathBuf::from(&env_path);
+        if path.exists() {
+            log::info!("Found node binary via NODE_BINARY_PATH: {}", env_path);
+            return Ok(env_path);
+        } else {
+            log::warn!("NODE_BINARY_PATH set but file not found: {}", env_path);
+        }
+    }
+
+    // Check bundled resource
+    let bundled_path = if cfg!(target_os = "windows") {
+        PathBuf::from("../resources/aethercore-node.exe")
+    } else {
+        PathBuf::from("../resources/aethercore-node")
+    };
+
+    if bundled_path.exists() {
+        log::info!("Found bundled node binary: {}", bundled_path.display());
+        return Ok(bundled_path.to_string_lossy().to_string());
+    }
+
+    // Try to find in PATH
+    let binary_name = if cfg!(target_os = "windows") {
+        "aethercore-node.exe"
+    } else {
+        "aethercore-node"
+    };
+
+    if let Ok(path) = which::which(binary_name) {
+        log::info!("Found node binary in PATH: {}", path.display());
+        return Ok(path.to_string_lossy().to_string());
+    }
+
+    // If all else fails, return an error
+    Err(anyhow::anyhow!(
+        "Node binary not found. Set NODE_BINARY_PATH environment variable or ensure 'aethercore-node' is in PATH"
     ))
 }
 

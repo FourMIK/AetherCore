@@ -7,6 +7,8 @@ import React, { useEffect } from 'react';
 import { MapProvider } from './map-engine/MapContext';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { useTacticalStore } from './store/useTacticalStore';
+import { initializeComms } from './store/initComms';
+import { initDummyData } from './store/initDummyData';
 import './index.css';
 
 export const App: React.FC = () => {
@@ -22,10 +24,26 @@ export const App: React.FC = () => {
   // In production, this establishes connection to the authenticated c2-router
   // endpoint with TLS 1.3 and hardware-rooted identity verification.
   useEffect(() => {
-    connectToMesh().catch((err) => {
-      console.error('Failed to connect to C2 mesh:', err);
-    });
-  }, [connectToMesh]);
+    // Add a small delay to ensure store is hydrated
+    setTimeout(() => {
+      // Only try to connect if running in Tauri
+      if (typeof window !== 'undefined' && '__TAURI__' in window) {
+        connectToTestnet().catch((err) => {
+          console.error('Failed to connect to testnet:', err);
+        });
+      }
+
+      // Initialize communications
+      initializeComms();
+      
+      // Initialize dummy data for demos/screenshots
+      try {
+        initDummyData();
+      } catch (err) {
+        console.error('Failed to initialize dummy data:', err);
+      }
+    }, 100);
+  }, [connectToTestnet]);
 
   return (
     <MapProvider>

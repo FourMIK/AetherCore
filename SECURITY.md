@@ -2,13 +2,31 @@
 
 **Classification:** CRITICAL  
 **Mission:** Comprehensive Security Procedures and Best Practices  
-**Last Updated:** 2026-01-04
+**Last Updated:** 2025-01-23
+
+---
+
+## ⚠️ Dev Mode Security Scope
+
+**This document describes production security architecture.** The current Windows desktop application runs in **Dev Mode**, which implements only a subset of these security features.
+
+**For Dev Mode security boundaries and limitations, see:**
+- **[DEV_MODE.md](DEV_MODE.md)** - Dev Mode capabilities and limitations
+- **[SECURITY_SCOPE.md](SECURITY_SCOPE.md)** - Detailed security boundaries and threat model
+
+**Key Dev Mode Limitations:**
+- ❌ No TPM/Secure Enclave integration
+- ❌ No hardware-backed identity
+- ❌ No remote attestation
+- ❌ Software-only cryptography
+
+**Do NOT deploy Dev Mode builds to production environments.**
 
 ---
 
 ## Overview
 
-This document outlines security architecture, best practices, and operational procedures for AetherCore Tactical Glass and associated infrastructure. All personnel must adhere to these guidelines for production deployments.
+This document outlines security architecture, best practices, and operational procedures for AetherCore production deployments. All personnel must adhere to these guidelines for production use.
 
 ## Table of Contents
 

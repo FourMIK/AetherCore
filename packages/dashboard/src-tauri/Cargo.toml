@@ -1,6 +1,6 @@
 [package]
 name = "tactical-glass-desktop"
-version = "0.1.0"
+version = "1.0.0"
 description = "AetherCore Tactical Glass Desktop Application"
 authors = ["AetherCore Team"]
 license = "MIT OR Apache-2.0"
@@ -41,3 +41,4 @@ base64 = "0.22"
 ed25519-dalek = "2.1"
 rand = "0.8"
 url = "2.5"
+which = "6.0"

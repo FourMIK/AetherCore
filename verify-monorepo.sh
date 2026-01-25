@@ -46,14 +46,9 @@ if [ -f "Cargo.toml" ]; then
         fi
     done
     
-    # Build workspace
-    echo "  Building Rust workspace..."
-    if cargo check --workspace --quiet 2>&1; then
-        echo -e "  ${GREEN}✓${NC} Rust workspace builds successfully"
-    else
-        echo -e "  ${RED}✗${NC} Rust workspace build failed"
-        FAILED=1
-    fi
+    # Note: Build verification is handled by the rust-workspace CI job
+    # which installs all necessary system dependencies for GTK/Tauri.
+    # This script only verifies structure, not buildability.
 else
     echo -e "  ${RED}✗${NC} Cargo.toml is missing"
     FAILED=1

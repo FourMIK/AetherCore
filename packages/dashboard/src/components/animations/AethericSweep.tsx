@@ -123,6 +123,12 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
    * Establish WebSocket connection with auto-reconnect
    */
   useEffect(() => {
+    // Skip WebSocket connection if URL is empty (web mode)
+    if (!websocketUrl) {
+      console.info('[AethericSweep] Running in demo mode (no WebSocket)');
+      return;
+    }
+
     const connectWebSocket = () => {
       try {
         const ws = new WebSocket(websocketUrl);

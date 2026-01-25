@@ -9,7 +9,7 @@ import { GlassPanel } from '../hud/GlassPanel';
 import { useTacticalStore } from '../../store/useTacticalStore';
 
 export const NodeListPanel: React.FC = () => {
-  const nodes = useTacticalStore((s) => s.nodes);
+  const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const selectedNodeId = useTacticalStore((s) => s.selectedNodeId);
   const selectNode = useTacticalStore((s) => s.selectNode);
 
@@ -100,10 +100,10 @@ export const NodeListPanel: React.FC = () => {
       </div>
 
       {/* Node List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 pt-2 space-y-2">
         {filteredNodes.length === 0 ? (
           <div className="text-center text-tungsten/50 py-8">
-            <Filter size={32} className="mx-auto mb-2" />
+            <Filter size={32} className="mx-auto mb-2 opacity-30" />
             <p className="text-sm">No nodes found</p>
           </div>
         ) : (
@@ -111,29 +111,28 @@ export const NodeListPanel: React.FC = () => {
             <GlassPanel
               key={node.id}
               variant="light"
-              className={`p-3 cursor-pointer transition-colors ${
-                selectedNodeId === node.id ? 'border-overmatch' : ''
-              }`}
+              className={`p-3 cursor-pointer transition-all hover:border-tungsten/40 ${selectedNodeId === node.id ? 'border-overmatch ring-1 ring-overmatch/30' : ''
+                }`}
               onClick={() => selectNode(node.id)}
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="font-mono text-sm text-tungsten">{node.id}</span>
-                <span className={getStatusBadge(node.status)}>
+                <span className="font-mono text-sm text-tungsten truncate mr-2">{node.id}</span>
+                <span className={`${getStatusBadge(node.status)} text-xs flex-shrink-0`}>
                   {node.status.toUpperCase()}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs text-tungsten/70">
-                <span>{node.domain}</span>
-                <span className={node.verified ? 'text-verified-green' : 'text-ghost'}>
+                <span className="truncate mr-2">{node.domain}</span>
+                <span className={`flex-shrink-0 ${node.verified ? 'text-verified-green' : 'text-ghost'
+                  }`}>
                   {node.verified ? 'Verified' : 'Unverified'}
                 </span>
               </div>
               <div className="mt-2">
                 <div className="trust-gauge">
                   <div
-                    className={`trust-gauge-fill ${
-                      node.trustScore >= 80 ? 'high' : node.trustScore >= 50 ? 'medium' : 'low'
-                    }`}
+                    className={`trust-gauge-fill ${node.trustScore >= 80 ? 'high' : node.trustScore >= 50 ? 'medium' : 'low'
+                      }`}
                     style={{ width: `${node.trustScore}%` }}
                   />
                 </div>

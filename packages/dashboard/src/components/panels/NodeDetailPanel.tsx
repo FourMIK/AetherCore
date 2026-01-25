@@ -12,7 +12,7 @@ import { VerificationPanel } from '../command/VerificationPanel';
 import { useTacticalStore } from '../../store/useTacticalStore';
 
 export const NodeDetailPanel: React.FC = () => {
-  const nodes = useTacticalStore((s) => s.nodes);
+  const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const selectedNodeId = useTacticalStore((s) => s.selectedNodeId);
   const selectNode = useTacticalStore((s) => s.selectNode);
 
@@ -55,17 +55,17 @@ export const NodeDetailPanel: React.FC = () => {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
         {/* Node ID */}
         <div>
           <div className="text-xs text-tungsten/50 mb-1">Node ID</div>
-          <div className="font-mono text-sm text-tungsten">{node.id}</div>
+          <div className="font-mono text-sm text-tungsten break-all">{node.id}</div>
         </div>
 
         {/* Domain */}
         <div>
           <div className="text-xs text-tungsten/50 mb-1">Domain</div>
-          <div className="text-sm text-tungsten">{node.domain}</div>
+          <div className="text-sm text-tungsten break-all">{node.domain}</div>
         </div>
 
         {/* Status */}

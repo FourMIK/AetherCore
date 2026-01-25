@@ -1,6 +1,6 @@
 {
   "name": "@aethercore/dashboard",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "AetherCore Tactical Glass Dashboard",
   "main": "dist/index.js",
