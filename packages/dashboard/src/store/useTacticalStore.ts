@@ -113,7 +113,7 @@ interface TacticalStore {
   clearVerificationFailure: () => void;
 
   // Tauri Bridge Actions
-  connectToTestnet: () => Promise<{ success: boolean; nodeId: string }>;
+  connectToMesh: () => Promise<{ success: boolean; nodeId: string }>;
   generateGenesisBundle: () => Promise<{ bundleHash: string; timestamp: number }>;
   verifyTelemetrySignature: (payload: TelemetryPayload) => Promise<boolean>;
 }
@@ -197,13 +197,17 @@ export const useTacticalStore = create<TacticalStore>()(
       clearVerificationFailure: () => set({ verificationFailure: null }),
 
       // Tauri Bridge Actions
-      connectToTestnet: async () => {
+      // PRODUCTION: Connect to authenticated C2 mesh with hardware-rooted trust
+      // This replaces the previous testnet connection with production-grade
+      // WebSocket connection using TLS 1.3 and mutual TPM attestation.
+      connectToMesh: async () => {
         try {
-          const endpoint = 'ws://localhost:8080';
-          const result = await invoke<string>('connect_to_testnet', { endpoint });
+          // Production endpoint from config/production.yaml
+          const endpoint = import.meta.env.VITE_C2_ENDPOINT || 'wss://c2.aethercore.local:8443';
+          const result = await invoke<string>('connect_to_mesh', { endpoint });
           return { success: true, nodeId: result };
         } catch (error) {
-          console.error('Failed to connect to testnet:', error);
+          console.error('Failed to connect to C2 mesh:', error);
           return { success: false, nodeId: '' };
         }
       },

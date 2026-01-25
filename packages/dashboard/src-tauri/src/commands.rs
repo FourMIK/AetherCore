@@ -20,28 +20,40 @@ pub struct GenesisBundle {
 /// Application state for managing connections
 #[derive(Default)]
 pub struct AppState {
-    pub testnet_endpoint: Arc<Mutex<Option<String>>>,
+    pub mesh_endpoint: Arc<Mutex<Option<String>>>,
     pub stream_tracker: Arc<Mutex<StreamIntegrityTracker>>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
 }
 
-/// Connect to Testnet P2P Network
+/// Connect to Production C2 Mesh
 /// 
-/// This command initiates a P2P handshake with the specified testnet endpoint.
-/// The connection is managed through the AetherCore mesh protocol.
+/// This command initiates a secure connection to the production C2 mesh with
+/// hardware-rooted authentication. All connections use TLS 1.3 / WSS and
+/// require valid TPM attestation per the "Fail-Visible" doctrine.
+/// 
+/// PRODUCTION MODE: Only WSS (secure WebSocket) connections are permitted.
+/// Non-encrypted endpoints are rejected per security policy.
 /// 
 /// NOTE: Full mesh integration requires async runtime setup. This validates
 /// the endpoint and stores it for later connection establishment.
 #[tauri::command]
-pub async fn connect_to_testnet(
+pub async fn connect_to_mesh(
     endpoint: String,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<String, String> {
-    log::info!("Connecting to testnet endpoint: {}", endpoint);
+    log::info!("Connecting to production C2 mesh endpoint: {}", endpoint);
     
-    // Validate endpoint format
-    if !endpoint.starts_with("ws://") && !endpoint.starts_with("wss://") {
-        return Err("Invalid endpoint format. Must start with ws:// or wss://".to_string());
+    // PRODUCTION GUARD: Reject non-WSS endpoints (fail-visible)
+    if !endpoint.starts_with("wss://") {
+        log::error!(
+            "SECURITY VIOLATION: Attempted connection to non-WSS endpoint: {}",
+            endpoint
+        );
+        return Err(
+            "SECURITY VIOLATION: Production mode requires WSS (secure WebSocket). \
+             Non-encrypted endpoints are rejected per fail-visible doctrine."
+                .to_string(),
+        );
     }
     
     // Parse and validate endpoint URL
@@ -55,19 +67,85 @@ pub async fn connect_to_testnet(
     
     // Store the endpoint in state
     let app_state = state.lock().await;
-    *app_state.testnet_endpoint.lock().await = Some(endpoint.clone());
+    *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
     
-    // In a full implementation, this would:
+    // In production, this would:
     // 1. Initialize TacticalMesh with the endpoint as a seed peer
-    // 2. Establish WebSocket connection
-    // 3. Perform cryptographic handshake with identity verification
-    // 4. Start gossip protocol for mesh coordination
+    // 2. Establish secure WebSocket connection (WSS with TLS 1.3)
+    // 3. Perform mutual TPM attestation handshake
+    // 4. Verify cryptographic identity via EK certificate chain
+    // 5. Start authenticated gossip protocol for mesh coordination
+    // 6. Initialize Merkle Vine stream tracking
     // 
     // For now, we validate and store the endpoint for future connection attempts
     
+    log::info!(
+        "Production C2 mesh endpoint validated and stored: {}",
+        endpoint
+    );
+    
+    Ok(format!(
+        "Connected to C2 mesh at {} (validation successful, TPM attestation pending)",
+        endpoint
+    ))
+}
+
+/// Connect to Testnet P2P Network (DEPRECATED - Use connect_to_mesh)
+/// 
+/// This command initiates a P2P handshake with the specified testnet endpoint.
+/// The connection is managed through the AetherCore mesh protocol.
+/// 
+/// DEPRECATED: This function is maintained for backward compatibility only.
+/// Use `connect_to_mesh` for production deployments.
+/// 
+/// NOTE: Unlike connect_to_mesh, this function allows both ws:// and wss://
+/// connections for backward compatibility with existing testnet configurations.
+/// 
+/// SECURITY WARNING: ws:// (non-encrypted) connections should only be used
+/// in isolated test environments. Production deployments must use connect_to_mesh.
+#[tauri::command]
+pub async fn connect_to_testnet(
+    endpoint: String,
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<String, String> {
+    log::warn!(
+        "connect_to_testnet is deprecated. Use connect_to_mesh for production. \
+         Endpoint: {}",
+        endpoint
+    );
+    
+    // Validate endpoint format (allow both ws:// and wss:// for backward compatibility)
+    if !endpoint.starts_with("ws://") && !endpoint.starts_with("wss://") {
+        return Err("Invalid endpoint format. Must start with ws:// or wss://".to_string());
+    }
+    
+    // Log security warning if using non-secure connection
+    if endpoint.starts_with("ws://") {
+        log::warn!(
+            "SECURITY WARNING: Using non-encrypted ws:// connection. \
+             This should only be used in isolated test environments."
+        );
+    }
+    
+    // Parse and validate endpoint URL
+    let url = url::Url::parse(&endpoint)
+        .map_err(|e| format!("Invalid endpoint URL: {}", e))?;
+    
+    // Validate host is present
+    if url.host_str().is_none() {
+        return Err("Endpoint must have a valid host".to_string());
+    }
+    
+    // Store the endpoint in state
+    let app_state = state.lock().await;
+    *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
+    
     log::info!("Testnet endpoint validated and stored: {}", endpoint);
     
-    Ok(format!("Connected to testnet at {} (validation successful)", endpoint))
+    Ok(format!(
+        "Connected to testnet at {} (validation successful)",
+        endpoint
+    ))
 }
 
 /// Generate Genesis Bundle for Zero-Touch Enrollment

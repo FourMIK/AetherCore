@@ -1,0 +1,196 @@
+# AetherCore Production Configuration
+# OPERATION SOVEREIGN GENESIS - TRL-9 Operational State
+#
+# Doctrine: "Truth as a Weapon"
+# Philosophy: "Fail-Visible"
+#
+# This configuration enforces hardware-rooted trust and rejects all simulated/mock operations.
+# Any compromise in cryptographic verification results in immediate rejection, not degradation.
+
+# =============================================================================
+# CODERALPHIE EDGE NODE CONFIGURATION
+# =============================================================================
+ralphie:
+  # Bootstrap Configuration
+  bootstrap:
+    # TPM (Trusted Platform Module) Configuration
+    tpm:
+      # mode: MUST be "hardware" in production. Stub/mock modes are prohibited.
+      # The system will panic if TPM hardware is not available in production mode.
+      mode: "hardware"
+      
+      # device: TPM device path (Linux: /dev/tpm0, Windows: TBS)
+      device: "/dev/tpm0"
+      
+      # timeout_ms: Maximum time to wait for TPM operations (milliseconds)
+      timeout_ms: 10000
+      
+      # pcr_selection: Platform Configuration Registers to include in quotes
+      # PCR 0-7: BIOS/UEFI, PCR 8-15: Boot loader/OS, PCR 16-23: Application
+      pcr_selection: [0, 1, 2, 3, 4, 7, 8, 14]
+    
+    # Secure Boot Configuration
+    secureBoot:
+      # strictMode: MUST be true in production. Disables boot if verification fails.
+      strictMode: true
+      
+      # verifyKernelSignature: Verify kernel module signatures
+      verifyKernelSignature: true
+      
+      # allowDebugKeys: MUST be false in production
+      allowDebugKeys: false
+
+  # Security Configuration
+  security:
+    # fail_visible_mode: MUST be true. Unverified data is flagged/rejected, never hidden.
+    fail_visible_mode: true
+    
+    # reject_unverified: Immediately reject any data stream that cannot be cryptographically verified
+    reject_unverified: true
+    
+    # byzantine_sweep_enabled: Automatically purge nodes with integrity violations
+    byzantine_sweep_enabled: true
+    
+    # attestation_required: All nodes must provide valid TPM attestation quotes
+    attestation_required: true
+    
+    # max_attestation_age_seconds: Maximum age of attestation before re-verification required
+    max_attestation_age_seconds: 3600
+
+  # Cryptographic Configuration
+  crypto:
+    # hash_algorithm: MUST be BLAKE3. SHA-256 and other algorithms are deprecated.
+    hash_algorithm: "BLAKE3"
+    
+    # signature_algorithm: MUST be Ed25519 with TPM backing
+    signature_algorithm: "Ed25519"
+    
+    # signature_backend: MUST be TPM in production. Private keys never in system memory.
+    signature_backend: "TPM"
+    
+    # key_storage: TPM-sealed keys only
+    key_storage: "TPM_SEALED"
+
+# =============================================================================
+# AETHERCORE COMMAND & CONTROL CONFIGURATION
+# =============================================================================
+aethercore:
+  # Identity Service Configuration
+  identity:
+    # attestation_gate: Reject connections without valid EK certificate chain
+    attestation_gate_enabled: true
+    
+    # ek_cert_validation: Endorsement Key certificate chain validation
+    ek_cert_validation:
+      enabled: true
+      # trusted_manufacturers: TPM manufacturer OIDs (empty = trust platform CA)
+      trusted_manufacturers: []
+      # check_revocation: Check certificate revocation lists
+      check_revocation: true
+    
+    # revocation_ledger: "The Great Gospel" - sovereign revocation tracking
+    revocation_ledger:
+      enabled: true
+      # persistence: s3 | postgres | both
+      persistence: "both"
+
+  # Stream Processing Configuration
+  stream:
+    # integrity_tracking: Merkle Vine chain validation
+    integrity_tracking:
+      enabled: true
+      # hash_algorithm: MUST be BLAKE3
+      hash_algorithm: "BLAKE3"
+      # require_ancestor_hash: Every event must contain hash of its ancestor
+      require_ancestor_hash: true
+    
+    # verification_enforcement
+    verification:
+      # mode: strict | lenient | audit_only
+      # MUST be "strict" in production: unsigned frames trigger SecurityEvent::IntegrityViolation
+      mode: "strict"
+      # log_violations: Log all integrity violations
+      log_violations: true
+      # emit_security_events: Emit SecurityEvent for violations
+      emit_security_events: true
+
+  # Dashboard (Tactical Glass) Configuration
+  dashboard:
+    # connection_mode: Production dashboard connects to live c2-router, not mocks
+    connection_mode: "production"
+    
+    # c2_router_endpoint: WebSocket endpoint for Command & Control router
+    c2_router_endpoint: "wss://c2.aethercore.local:8443"
+    
+    # grpc_endpoint: gRPC endpoint for service mesh
+    grpc_endpoint: "https://gateway.aethercore.local:3000"
+    
+    # fail_visible_ui: Show integrity warnings prominently in UI
+    fail_visible_ui:
+      enabled: true
+      # show_unverified_overlay: Overlay warning on unverified data streams
+      show_unverified_overlay: true
+      # fracture_compromised_feeds: Visual fracture effect on compromised streams
+      fracture_compromised_feeds: true
+      # link_compromised_banner: "LINK COMPROMISED" banner on integrity violations
+      link_compromised_banner: true
+
+# =============================================================================
+# DEPLOYMENT CONFIGURATION
+# =============================================================================
+deployment:
+  # environment: production | staging | development
+  environment: "production"
+  
+  # zero_touch_onboarding: Silicon Handshake protocol for node enrollment
+  zero_touch_onboarding:
+    enabled: true
+    # require_attestation_before_data: Node must attest before sending telemetry
+    require_attestation_before_data: true
+  
+  # logging
+  logging:
+    level: "info"
+    # audit_log: Separate audit log for security events
+    audit_log:
+      enabled: true
+      path: "/var/log/aethercore/audit.log"
+      rotation: "daily"
+      retention_days: 90
+
+# =============================================================================
+# OBSERVABILITY CONFIGURATION
+# =============================================================================
+observability:
+  # metrics
+  metrics:
+    enabled: true
+    prometheus_port: 9090
+    
+  # tracing
+  tracing:
+    enabled: true
+    # otlp_endpoint: OpenTelemetry endpoint
+    otlp_endpoint: "http://localhost:4317"
+
+# =============================================================================
+# NETWORK CONFIGURATION
+# =============================================================================
+network:
+  # tls_version: Minimum TLS version (TLS 1.3 required for authenticated pathways)
+  tls_min_version: "1.3"
+  
+  # websocket_config
+  websocket:
+    # use_wss: MUST be true in production (secure WebSocket only)
+    use_wss: true
+    # ping_interval_ms: Keep-alive interval for congested networks
+    ping_interval_ms: 30000
+    # ping_timeout_ms: Timeout before considering connection dead
+    ping_timeout_ms: 10000
+    # auto_reconnect: Implement auto-recovery for intermittent connectivity
+    auto_reconnect: true
+    # max_reconnect_attempts: Maximum reconnection attempts
+    max_reconnect_attempts: 10
+    # reconnect_backoff_ms: Initial backoff for reconnection (exponential)
+    reconnect_backoff_ms: 1000
