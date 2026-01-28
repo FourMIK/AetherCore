@@ -23,3 +23,8 @@ export * from './types/guardian';
  * Identity Protocol - Cross-Platform Node Identity
  */
 export * from './identity';
+
+/**
+ * Protocol - Canonical implementations for cross-platform verification
+ */
+export * from './protocol';
