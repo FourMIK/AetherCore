@@ -1,23 +1,38 @@
 {
   "name": "@aethercore/linux-agent",
   "version": "0.1.0",
-  "description": "AetherCore Linux/Pi Identity Agent",
-  "main": "dist/identity.js",
-  "types": "src/identity.ts",
+  "description": "AetherCore Linux/Pi Identity Agent - CodeRalphie Warhead Build",
+  "main": "dist/index.js",
+  "types": "src/index.ts",
+  "bin": {
+    "coderalphie": "dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
-    "start": "ts-node src/identity.ts",
+    "build:warhead": "npm run build && pkg dist/index.js --targets node18-linux-arm64 --output dist/coderalphie-linux-arm64 --compress GZip",
+    "package:payloads": "bash -c 'mkdir -p ../../packages/dashboard/src-tauri/resources/payloads && cp dist/coderalphie-linux-arm64 ../../packages/dashboard/src-tauri/resources/payloads/ && cp install.sh ../../packages/dashboard/src-tauri/resources/payloads/ && echo \"Payloads copied to dashboard resources\"'",
+    "build:full": "npm run build:warhead && npm run package:payloads",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
     "clean": "rm -rf dist"
   },
-  "keywords": ["aethercore", "identity", "linux", "pi"],
+  "keywords": ["aethercore", "identity", "linux", "pi", "coderalphie", "warhead"],
   "author": "AetherCore Team",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "dependencies": {
-    "@aethercore/shared": "file:../../packages/shared"
+    "@aethercore/shared": "file:../../packages/shared",
+    "hash-wasm": "^4.11.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
     "@types/node": "^20.10.6",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "assets": [
+      "node_modules/@aethercore/shared/**/*"
+    ],
+    "outputPath": "dist"
   }
 }
