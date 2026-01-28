@@ -1,5 +1,6 @@
 mod commands;
 mod process_manager;
+mod provisioning;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -37,6 +38,9 @@ pub fn run() {
       commands::stop_node,
       commands::get_deployment_status,
       commands::get_node_logs,
+      provisioning::list_serial_ports,
+      provisioning::flash_firmware,
+      provisioning::listen_for_genesis,
     ])
     .on_window_event(|window, event| {
       if let tauri::WindowEvent::CloseRequested { .. } = event {
