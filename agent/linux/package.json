@@ -1,0 +1,23 @@
+{
+  "name": "@aethercore/linux-agent",
+  "version": "0.1.0",
+  "description": "AetherCore Linux/Pi Identity Agent",
+  "main": "dist/identity.js",
+  "types": "src/identity.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/identity.ts",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["aethercore", "identity", "linux", "pi"],
+  "author": "AetherCore Team",
+  "license": "MIT",
+  "dependencies": {
+    "@aethercore/shared": "file:../../packages/shared"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6",
+    "ts-node": "^10.9.2"
+  }
+}
