@@ -4,10 +4,9 @@
   "private": true,
   "description": "AetherCore monorepo integrating H2OS/4MIK",
   "workspaces": [
-    "agent",
-    "firmware",
+    "agent/linux",
     "packages/*",
-    "shared"
+    "services/*"
   ],
   "scripts": {
     "build": "npm run build --workspaces",

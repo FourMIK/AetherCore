@@ -1,6 +1,4 @@
 packages:
-  - 'agent'
-  - 'firmware'
+  - 'agent/linux'
   - 'packages/*'
-  - 'shared'
   - 'services/*'
