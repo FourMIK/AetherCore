@@ -8,17 +8,10 @@
  */
 
 import { blake3 } from 'hash-wasm';
+import type { GenesisHashInput } from './identity';
 
-/**
- * Genesis Hash Input
- * 
- * Raw materials for generating the cryptographic identity.
- */
-export interface GenesisHashInput {
-  hardware_id: string;
-  public_key: string;
-  salt: string;
-}
+// Re-export for convenience
+export type { GenesisHashInput } from './identity';
 
 /**
  * Calculate Genesis Hash using BLAKE3
