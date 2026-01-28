@@ -9,7 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { GlassPanel } from '../hud/GlassPanel';
 import { useTacticalStore } from '../../store/useTacticalStore';
 
-type WizardStage = 'identity' | 'qr-enrollment' | 'attestation' | 'provisioning' | 'deployment' | 'complete' | 'error';
+type WizardStage = 'identity' | 'qr-enrollment' | 'attestation' | 'verifying-proof' | 'provisioning' | 'deployment' | 'complete' | 'error';
 
 interface AddNodeWizardProps {
   onClose: () => void;
@@ -34,7 +34,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
   const updateDeploymentStatus = useTacticalStore((s) => s.updateDeploymentStatus);
 
   const handleNext = async () => {
-    const stages: WizardStage[] = ['identity', 'qr-enrollment', 'attestation', 'provisioning', 'deployment', 'complete'];
+    const stages: WizardStage[] = ['identity', 'qr-enrollment', 'attestation', 'verifying-proof', 'provisioning', 'deployment', 'complete'];
     const currentIndex = stages.indexOf(stage);
 
     if (stage === 'identity' && (!nodeId || !domain)) {
@@ -75,7 +75,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
   };
 
   const handleBack = () => {
-    const stages: WizardStage[] = ['identity', 'qr-enrollment', 'attestation', 'provisioning', 'deployment', 'complete'];
+    const stages: WizardStage[] = ['identity', 'qr-enrollment', 'attestation', 'verifying-proof', 'provisioning', 'deployment', 'complete'];
     const currentIndex = stages.indexOf(stage);
     if (currentIndex > 0) {
       setStage(stages[currentIndex - 1]);
@@ -154,10 +154,10 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
             Add Node
           </h2>
           <div className="flex gap-2 mt-4">
-            {['identity', 'qr-enrollment', 'attestation', 'provisioning', 'deployment', 'complete'].map((s, i) => (
+            {['identity', 'qr-enrollment', 'attestation', 'verifying-proof', 'provisioning', 'deployment', 'complete'].map((s, i) => (
               <div
                 key={s}
-                className={`flex-1 h-2 rounded-full transition-all ${['identity', 'qr-enrollment', 'attestation', 'provisioning', 'deployment', 'complete'].indexOf(stage) >= i
+                className={`flex-1 h-2 rounded-full transition-all ${['identity', 'qr-enrollment', 'attestation', 'verifying-proof', 'provisioning', 'deployment', 'complete'].indexOf(stage) >= i
                     ? 'bg-overmatch'
                     : 'bg-tungsten/20'
                   }`}
@@ -282,6 +282,30 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
                 <div>✓ TPM Present: Verified</div>
                 <div>✓ Attestation Key: Generated</div>
                 <div>○ CodeRalphie Identity: Pending</div>
+              </div>
+            </div>
+          )}
+
+          {stage === 'verifying-proof' && (
+            <div className="space-y-4">
+              <h3 className="font-display text-xl text-tungsten">Verifying Hardware Integrity</h3>
+              <p className="text-tungsten/70">
+                Performing challenge-response attestation with hardware root of trust...
+              </p>
+              <div className="h-2 bg-carbon border border-overmatch/30 rounded-full overflow-hidden">
+                <div className="h-full bg-overmatch animate-pulse w-2/3" />
+              </div>
+              <div className="text-xs text-tungsten/50 space-y-2">
+                <div>✓ Challenge Generated: 32-byte random</div>
+                <div>✓ Challenge Sent: ENROLL command</div>
+                <div>○ Awaiting Proof: ECDSA P-256 signature</div>
+                <div>○ Signature Verification: Pending</div>
+              </div>
+              <div className="p-3 bg-overmatch/10 border border-overmatch/30 rounded-lg">
+                <p className="text-xs text-tungsten/70">
+                  <strong className="text-overmatch">FAIL-VISIBLE:</strong> If signature verification fails, 
+                  the device will be rejected as an adversary. No graceful degradation.
+                </p>
               </div>
             </div>
           )}
