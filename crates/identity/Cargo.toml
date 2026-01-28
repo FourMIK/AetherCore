@@ -8,7 +8,7 @@ repository.workspace = true
 
 [features]
 default = []
-hardware-tpm = []
+hardware-tpm = ["tss-esapi"]
 grpc-server = ["tonic", "tonic-build", "prost"]
 
 [dependencies]
@@ -26,6 +26,7 @@ tonic = { version = "0.10", optional = true }
 prost = { version = "0.12", optional = true }
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
+tss-esapi = { version = "7.0", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

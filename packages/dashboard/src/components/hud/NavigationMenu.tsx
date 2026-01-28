@@ -12,11 +12,12 @@ import {
   Shield,
   Database,
   Settings,
-  ChevronDown
+  ChevronDown,
+  Zap
 } from 'lucide-react';
 import { GlassPanel } from './GlassPanel';
 
-export type WorkspaceView = 'tactical' | 'fleet' | 'isr' | 'comms' | 'guardian' | 'mesh' | 'admin' | 'deployments';
+export type WorkspaceView = 'tactical' | 'fleet' | 'isr' | 'comms' | 'guardian' | 'mesh' | 'admin' | 'deployments' | 'provisioning';
 
 interface NavigationMenuProps {
   currentView: WorkspaceView;
@@ -65,6 +66,12 @@ const workspaceItems = [
     label: 'Deployments',
     icon: Database,
     description: 'Local node process deployment and management'
+  },
+  {
+    id: 'provisioning' as WorkspaceView,
+    label: 'RalphieNode Provisioning',
+    icon: Zap,
+    description: 'Zero-Touch Enrollment for Arduino Satellite devices'
   },
   {
     id: 'admin' as WorkspaceView,

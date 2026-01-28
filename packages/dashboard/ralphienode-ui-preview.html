@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RalphieNode Provisioning UI Preview</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0A0B0E;
+            color: #E1E2E6;
+            padding: 40px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 36px;
+            font-weight: 700;
+            color: #00D4FF;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #E1E2E6;
+            opacity: 0.7;
+            margin-bottom: 40px;
+        }
+        .panel {
+            background: rgba(225, 226, 230, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(225, 226, 230, 0.1);
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .step-circle {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid;
+            font-size: 24px;
+        }
+        .step-complete {
+            background: rgba(57, 255, 20, 0.2);
+            border-color: #39FF14;
+            color: #39FF14;
+        }
+        .step-active {
+            background: rgba(0, 212, 255, 0.2);
+            border-color: #00D4FF;
+            color: #00D4FF;
+            animation: pulse 2s infinite;
+        }
+        .step-pending {
+            background: rgba(225, 226, 230, 0.05);
+            border-color: rgba(225, 226, 230, 0.3);
+            color: rgba(225, 226, 230, 0.5);
+        }
+        .step-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .step-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.5;
+        }
+        .step-title {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .chevron {
+            color: rgba(225, 226, 230, 0.3);
+            font-size: 24px;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(225, 226, 230, 0.1);
+            margin-bottom: 24px;
+        }
+        .section-icon {
+            color: #00D4FF;
+            font-size: 24px;
+        }
+        .section-title {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        .device-card {
+            background: rgba(225, 226, 230, 0.05);
+            border: 2px solid #00D4FF;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .device-icon {
+            color: #00D4FF;
+            font-size: 20px;
+        }
+        .device-info {
+            flex: 1;
+        }
+        .device-port {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .device-details {
+            font-size: 12px;
+            opacity: 0.5;
+        }
+        .progress-bar {
+            height: 8px;
+            background: rgba(225, 226, 230, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 12px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00D4FF, #39FF14);
+            width: 73%;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .progress-message {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            opacity: 0.5;
+            margin-top: 8px;
+        }
+        .btn-primary {
+            background: #00D4FF;
+            color: #0A0B0E;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-secondary {
+            background: rgba(225, 226, 230, 0.1);
+            color: #E1E2E6;
+            border: 1px solid rgba(225, 226, 230, 0.2);
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .success-icon {
+            color: #39FF14;
+            font-size: 64px;
+            text-align: center;
+            margin: 32px 0;
+        }
+        .hash-display {
+            background: rgba(225, 226, 230, 0.05);
+            border: 1px solid rgba(225, 226, 230, 0.1);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+        .hash-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.5;
+            margin-bottom: 4px;
+        }
+        .hash-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: #39FF14;
+            word-break: break-all;
+        }
+        .qr-placeholder {
+            width: 256px;
+            height: 256px;
+            background: white;
+            border-radius: 12px;
+            margin: 24px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 4px solid #00D4FF;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 RalphieNode Zero-Touch Enrollment</h1>
+        <p class="subtitle">Seamless operator workflow for Arduino Satellite provisioning</p>
+
+        <!-- Step Progress Indicator -->
+        <div class="panel">
+            <div class="step-indicator">
+                <div class="step">
+                    <div class="step-circle step-complete">✓</div>
+                    <div class="step-info">
+                        <div class="step-label">Step 1</div>
+                        <div class="step-title">Flash Firmware</div>
+                    </div>
+                </div>
+                <div class="chevron">›</div>
+                <div class="step">
+                    <div class="step-circle step-active">📡</div>
+                    <div class="step-info">
+                        <div class="step-label">Step 2</div>
+                        <div class="step-title">Await Genesis</div>
+                    </div>
+                </div>
+                <div class="chevron">›</div>
+                <div class="step">
+                    <div class="step-circle step-pending">📱</div>
+                    <div class="step-info">
+                        <div class="step-label">Step 3</div>
+                        <div class="step-title">Enroll Device</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 1: Device Selection (Complete) -->
+        <div class="panel">
+            <div class="section-header">
+                <span class="section-icon">✓</span>
+                <h2 class="section-title">Step 1: Flash Firmware (Complete)</h2>
+            </div>
+            
+            <div class="device-card">
+                <span class="device-icon">🔌</span>
+                <div class="device-info">
+                    <div class="device-port">/dev/ttyUSB0</div>
+                    <div class="device-details">Silicon Labs • CP210x UART Bridge</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 24px;">
+                <div class="progress-text">
+                    <span style="opacity: 0.7;">flashing</span>
+                    <span style="color: #00D4FF; font-family: 'JetBrains Mono', monospace;">73%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+                <div class="progress-message">
+                    Writing at 0x0001c000... (73%)
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Genesis Listening (Active) -->
+        <div class="panel">
+            <div class="section-header">
+                <span class="section-icon">📡</span>
+                <h2 class="section-title">Step 2: Awaiting GENESIS Message</h2>
+            </div>
+            
+            <div style="text-align: center; padding: 32px 0;">
+                <div style="font-size: 64px; color: #00D4FF; animation: pulse 2s infinite;">📡</div>
+                <h3 style="font-family: 'Rajdhani', sans-serif; font-size: 20px; margin: 16px 0;">Listening for device response...</h3>
+                <p style="opacity: 0.7;">Waiting for GENESIS message from RalphieNode on /dev/ttyUSB0</p>
+                <p style="font-family: 'JetBrains Mono', monospace; font-size: 12px; opacity: 0.5; margin-top: 16px;">
+                    The device will broadcast its cryptographic identity within 30 seconds
+                </p>
+            </div>
+        </div>
+
+        <!-- Step 3: Success State (Preview) -->
+        <div class="panel" style="opacity: 0.5;">
+            <div class="section-header">
+                <span class="section-icon">📱</span>
+                <h2 class="section-title">Step 3: Complete Enrollment (Preview)</h2>
+            </div>
+            
+            <div style="text-align: center;">
+                <div class="success-icon">✓</div>
+                <h3 style="font-family: 'Rajdhani', sans-serif; font-size: 24px; margin-bottom: 24px;">
+                    Enrollment Complete!
+                </h3>
+                
+                <div class="qr-placeholder">
+                    <div style="color: #888; font-size: 48px;">QR</div>
+                </div>
+
+                <div style="max-width: 400px; margin: 0 auto;">
+                    <div class="hash-display">
+                        <div class="hash-label">Device Root Hash (BLAKE3)</div>
+                        <div class="hash-value">abc123def456789abc123def456789abc123def456789abc123def456789...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- UI/UX Highlights -->
+        <div class="panel">
+            <h2 style="font-family: 'Rajdhani', sans-serif; font-size: 24px; margin-bottom: 16px;">
+                ✨ UI/UX Best Practices Implemented
+            </h2>
+            <ul style="line-height: 1.8; opacity: 0.8;">
+                <li>✅ <strong>Progressive Disclosure</strong> - 3-step wizard prevents cognitive overload</li>
+                <li>✅ <strong>Real-Time Feedback</strong> - Live progress bars and status messages</li>
+                <li>✅ <strong>Fail-Visible Errors</strong> - Prominent error panels with retry options</li>
+                <li>✅ <strong>Clear Visual Hierarchy</strong> - Icons, colors, and typography guide attention</li>
+                <li>✅ <strong>Success Celebration</strong> - Large checkmarks and verified-green feedback</li>
+                <li>✅ <strong>Consistent Design Language</strong> - Tactical Glass theme throughout</li>
+                <li>✅ <strong>Helpful Empty States</strong> - Guidance when no devices connected</li>
+                <li>✅ <strong>Accessible Controls</strong> - High contrast, clear labels, logical flow</li>
+            </ul>
+        </div>
+
+        <div style="text-align: center; margin-top: 40px; opacity: 0.5; font-size: 14px;">
+            Built for operators in contested multi-domain environments<br>
+            Hardware-Rooted Truth | Fail-Visible Design | Cryptographic Certainty
+        </div>
+    </div>
+</body>
+</html>
