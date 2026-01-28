@@ -30,21 +30,30 @@ import { SignalingServer } from './SignalingServer';
  * - Fail-visible security event logging
  */
 export function startCollaborationService(
-  port: number = 8080,
-  identityRegistryAddress: string = 'localhost:50051',
+  port?: number,
+  identityRegistryAddress?: string,
 ): SignalingServer {
+  // Read from environment variables or use defaults
+  const serverPort = port ?? parseInt(process.env.PORT || '8080', 10);
+  const registryAddress = identityRegistryAddress ?? process.env.IDENTITY_REGISTRY_ADDRESS ?? 'localhost:50051';
+
   console.log('='.repeat(80));
   console.log('[CollaborationService] Starting Mission Guardian Collaboration Service');
   console.log('[CollaborationService] PRODUCTION MODE - Hardware-backed signatures enabled');
   console.log('='.repeat(80));
 
   const server = new SignalingServer({
-    port,
-    identityRegistryAddress,
+    port: serverPort,
+    identityRegistryAddress: registryAddress,
   });
 
-  console.log('[CollaborationService] Mission Guardian ready on port', port);
-  console.log(`[CollaborationService] Identity Registry: ${identityRegistryAddress}`);
+  console.log('[CollaborationService] Mission Guardian ready on port', serverPort);
+  console.log(`[CollaborationService] Identity Registry: ${registryAddress}`);
 
   return server;
+}
+
+// Auto-start if run directly
+if (require.main === module) {
+  startCollaborationService();
 }

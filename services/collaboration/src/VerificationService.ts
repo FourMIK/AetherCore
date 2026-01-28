@@ -19,6 +19,17 @@ import {
 import { IdentityRegistryClient } from './IdentityRegistryClient';
 
 /**
+ * Custom error for Identity Registry failures
+ * Used to distinguish between re-thrown gRPC errors and other errors
+ */
+class IdentityRegistryError extends Error {
+  constructor(message: string, public readonly originalError?: Error) {
+    super(message);
+    this.name = 'IdentityRegistryError';
+  }
+}
+
+/**
  * Security Event Handler Interface
  */
 interface SecurityEventHandler {
@@ -64,7 +75,10 @@ export class VerificationService {
             context: 'Identity Registry unreachable - treating as Byzantine',
           },
         );
-        throw error; // Re-throw to indicate failure
+        throw new IdentityRegistryError(
+          'Identity Registry unreachable',
+          error instanceof Error ? error : undefined
+        );
       }
 
       if (!isEnrolled) {
@@ -103,7 +117,10 @@ export class VerificationService {
             context: 'Signature verification service failure',
           },
         );
-        throw error; // Re-throw to indicate failure
+        throw new IdentityRegistryError(
+          'Signature verification service failure',
+          error instanceof Error ? error : undefined
+        );
       }
 
       if (!verificationResult.isValid) {
@@ -130,11 +147,8 @@ export class VerificationService {
         return null;
       }
     } catch (error) {
-      // If error was already logged and re-thrown, just re-throw
-      if (
-        error instanceof Error &&
-        error.message.includes('Identity Registry')
-      ) {
+      // If error is an IdentityRegistryError, it was already logged and should be re-thrown
+      if (error instanceof IdentityRegistryError) {
         throw error;
       }
 

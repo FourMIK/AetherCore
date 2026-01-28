@@ -219,31 +219,3 @@ export class ConsoleSecurityEventHandler implements SecurityEventHandler {
     }
   }
 }
-
-/**
- * Legacy Mock Identity Registry (DEPRECATED)
- * 
- * WARNING: This is a mock implementation for testing only.
- * DO NOT use in production. Use IdentityRegistryClient instead.
- */
-export class MockIdentityRegistry {
-  private registry: Map<NodeID, string> = new Map();
-
-  constructor() {
-    console.warn(
-      '[MockIdentityRegistry] WARNING: Using MOCK identity registry. This should NEVER be used in production!',
-    );
-  }
-
-  async getPublicKey(nodeId: NodeID): Promise<string | null> {
-    return this.registry.get(nodeId) || null;
-  }
-
-  async isNodeEnrolled(nodeId: NodeID): Promise<boolean> {
-    return this.registry.has(nodeId);
-  }
-
-  registerNode(nodeId: NodeID, publicKeyHex: string): void {
-    this.registry.set(nodeId, publicKeyHex);
-  }
-}

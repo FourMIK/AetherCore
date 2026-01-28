@@ -78,11 +78,11 @@ export class SignalingServer {
     });
 
     console.log(
-      `[SignalingServerV2] PRODUCTION MODE - Hardware-backed signatures enabled`,
+      `[SignalingServer] PRODUCTION MODE - Hardware-backed signatures enabled`,
     );
-    console.log(`[SignalingServerV2] Listening on port ${config.port}`);
+    console.log(`[SignalingServer] Listening on port ${config.port}`);
     console.log(
-      `[SignalingServerV2] Identity Registry: ${config.identityRegistryAddress}`,
+      `[SignalingServer] Identity Registry: ${config.identityRegistryAddress}`,
     );
   }
 
@@ -97,7 +97,7 @@ export class SignalingServer {
     };
 
     this.clients.set(ws, client);
-    console.log('[SignalingServerV2] New connection');
+    console.log('[SignalingServer] New connection');
 
     ws.on('message', async (data: Buffer) => {
       await this.handleMessage(ws, data);
@@ -108,7 +108,7 @@ export class SignalingServer {
     });
 
     ws.on('error', (error: Error) => {
-      console.error('[SignalingServerV2] WebSocket error:', error);
+      console.error('[SignalingServer] WebSocket error:', error);
       this.handleDisconnect(ws);
     });
   }
@@ -132,7 +132,7 @@ export class SignalingServer {
       } catch (error) {
         // FAIL-VISIBLE: Identity service failure
         console.error(
-          '[SignalingServerV2] CRITICAL: Identity Registry service failure',
+          '[SignalingServer] CRITICAL: Identity Registry service failure',
         );
         console.error(
           '  This node may be Byzantine or network is contested/congested',
@@ -144,7 +144,7 @@ export class SignalingServer {
       if (!payload) {
         // Signature verification failed - packet dropped (FAIL-VISIBLE)
         console.error(
-          '[SignalingServerV2] SECURITY: Invalid signature - dropping packet',
+          '[SignalingServer] SECURITY: Invalid signature - dropping packet',
         );
         this.sendError(ws, 'Invalid signature - packet dropped');
         return;
@@ -160,14 +160,14 @@ export class SignalingServer {
         client.authenticated = true;
         this.nodeIdToClient.set(guardianSignal.from, ws);
         console.log(
-          `[SignalingServerV2] Client authenticated: ${guardianSignal.from} (Hardware-verified)`,
+          `[SignalingServer] Client authenticated: ${guardianSignal.from} (Hardware-verified)`,
         );
       }
 
       // Forward signal to destination
       await this.forwardSignal(guardianSignal);
     } catch (error) {
-      console.error('[SignalingServerV2] Error processing message:', error);
+      console.error('[SignalingServer] Error processing message:', error);
       this.sendError(ws, 'Invalid message format');
     }
   }
@@ -180,7 +180,7 @@ export class SignalingServer {
 
     if (!destinationWs) {
       console.warn(
-        `[SignalingServerV2] Destination not connected: ${signal.to}`,
+        `[SignalingServer] Destination not connected: ${signal.to}`,
       );
       return;
     }
@@ -191,10 +191,10 @@ export class SignalingServer {
       destinationWs.send(message);
 
       console.log(
-        `[SignalingServerV2] Forwarded ${signal.type} from ${signal.from} to ${signal.to}`,
+        `[SignalingServer] Forwarded ${signal.type} from ${signal.from} to ${signal.to}`,
       );
     } catch (error) {
-      console.error('[SignalingServerV2] Error forwarding signal:', error);
+      console.error('[SignalingServer] Error forwarding signal:', error);
     }
   }
 
@@ -206,7 +206,7 @@ export class SignalingServer {
 
     if (client?.nodeId) {
       this.nodeIdToClient.delete(client.nodeId);
-      console.log(`[SignalingServerV2] Client disconnected: ${client.nodeId}`);
+      console.log(`[SignalingServer] Client disconnected: ${client.nodeId}`);
     }
 
     this.clients.delete(ws);
@@ -219,7 +219,7 @@ export class SignalingServer {
     try {
       ws.send(JSON.stringify({ error: message }));
     } catch (error) {
-      console.error('[SignalingServerV2] Error sending error message:', error);
+      console.error('[SignalingServer] Error sending error message:', error);
     }
   }
 
@@ -234,7 +234,7 @@ export class SignalingServer {
         try {
           ws.send(messageStr);
         } catch (error) {
-          console.error('[SignalingServerV2] Error broadcasting:', error);
+          console.error('[SignalingServer] Error broadcasting:', error);
         }
       }
     });
@@ -253,6 +253,6 @@ export class SignalingServer {
   close(): void {
     this.identityRegistryClient.close();
     this.wss.close();
-    console.log('[SignalingServerV2] Server closed');
+    console.log('[SignalingServer] Server closed');
   }
 }
