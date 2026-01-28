@@ -13,7 +13,6 @@ import './index.css';
 
 export const App: React.FC = () => {
   const theme = useTacticalStore((s) => s.theme);
-  const connectToMesh = useTacticalStore((s) => s.connectToMesh);
 
   // Apply theme
   useEffect(() => {
@@ -26,13 +25,6 @@ export const App: React.FC = () => {
   useEffect(() => {
     // Add a small delay to ensure store is hydrated
     setTimeout(() => {
-      // Only try to connect if running in Tauri
-      if (typeof window !== 'undefined' && '__TAURI__' in window) {
-        connectToTestnet().catch((err) => {
-          console.error('Failed to connect to testnet:', err);
-        });
-      }
-
       // Initialize communications
       initializeComms();
       
@@ -43,7 +35,7 @@ export const App: React.FC = () => {
         console.error('Failed to initialize dummy data:', err);
       }
     }, 100);
-  }, [connectToTestnet]);
+  }, []);
 
   return (
     <MapProvider>
