@@ -153,19 +153,8 @@ impl TpmManager {
     // Hardware implementations (require hardware-tpm feature)
 
     #[cfg(feature = "hardware-tpm")]
-    fn generate_ak_hardware(&mut self, key_id: String) -> crate::Result<AttestationKey> {
-        use tss_esapi::{
-            Context, TctiNameConf,
-            structures::{
-                Public, PublicBuilder, PublicEccParametersBuilder,
-                SymmetricDefinitionObject, EccScheme,
-            },
-            interface_types::algorithm::{
-                HashingAlgorithm, EccSchemeAlgorithm, AsymmetricAlgorithm,
-            },
-            constants::tss::TPM2_RH_OWNER,
-            abstraction::cipher::Cipher,
-        };
+    fn create_tpm_context() -> crate::Result<tss_esapi::Context> {
+        use tss_esapi::{Context, TctiNameConf};
 
         // Verify /dev/tpm0 is accessible before attempting context creation
         if !std::path::Path::new("/dev/tpm0").exists() {
@@ -176,9 +165,22 @@ impl TpmManager {
 
         // Create TPM context using device TCTI
         let tcti = TctiNameConf::Device(Default::default());
-        let mut context = Context::new(tcti).map_err(|e| {
+        Context::new(tcti).map_err(|e| {
             crate::Error::Identity(format!("Failed to create TPM context: {}", e))
-        })?;
+        })
+    }
+
+    #[cfg(feature = "hardware-tpm")]
+    fn create_srk(
+        context: &mut tss_esapi::Context,
+    ) -> crate::Result<tss_esapi::handles::KeyHandle> {
+        use tss_esapi::{
+            structures::{
+                PublicBuilder, PublicEccParametersBuilder,
+                SymmetricDefinitionObject, EccScheme,
+            },
+            interface_types::algorithm::HashingAlgorithm,
+        };
 
         // Create Storage Root Key (SRK) as primary key
         let object_attributes = tss_esapi::attributes::ObjectAttributesBuilder::new()
@@ -224,6 +226,20 @@ impl TpmManager {
             .map_err(|e| crate::Error::Identity(format!("Failed to create SRK: {}", e)))?
             .key_handle;
 
+        Ok(srk_handle)
+    }
+
+    #[cfg(feature = "hardware-tpm")]
+    fn generate_ak_hardware(&mut self, key_id: String) -> crate::Result<AttestationKey> {
+        use tss_esapi::structures::{
+            PublicBuilder, PublicEccParametersBuilder,
+            SymmetricDefinitionObject, EccScheme,
+        };
+        use tss_esapi::interface_types::algorithm::HashingAlgorithm;
+
+        let mut context = Self::create_tpm_context()?;
+        let srk_handle = Self::create_srk(&mut context)?;
+
         // Create Attestation Key (AK) under the SRK
         let ak_attributes = tss_esapi::attributes::ObjectAttributesBuilder::new()
             .with_fixed_tpm(true)
@@ -264,6 +280,10 @@ impl TpmManager {
         let public_key = ak_result.out_public.try_into()
             .map_err(|e| crate::Error::Identity(format!("Failed to convert AK public key: {:?}", e)))?;
 
+        // Clean up TPM resources
+        context.flush_context(srk_handle.into())
+            .map_err(|e| crate::Error::Identity(format!("Failed to flush SRK handle: {}", e)))?;
+
         Ok(AttestationKey {
             key_id,
             public_key,
@@ -285,7 +305,6 @@ impl TpmManager {
         pcr_selection: &[u8],
     ) -> crate::Result<TpmQuote> {
         use tss_esapi::{
-            Context, TctiNameConf,
             structures::{
                 Public, PublicBuilder, PublicEccParametersBuilder,
                 SymmetricDefinitionObject, EccScheme, Data, PcrSelectionListBuilder,
@@ -294,62 +313,18 @@ impl TpmManager {
             interface_types::algorithm::HashingAlgorithm,
         };
 
-        // Verify /dev/tpm0 is accessible
-        if !std::path::Path::new("/dev/tpm0").exists() {
-            return Err(crate::Error::Identity(
-                "TPM device /dev/tpm0 not found. Hardware TPM is required in this mode.".to_string(),
-            ));
+        // Validate PCR indices upfront - fail-visible error on invalid indices
+        for &index in pcr_selection {
+            if index >= 24 {
+                return Err(crate::Error::Identity(
+                    format!("Invalid PCR index {}: must be < 24", index)
+                ));
+            }
         }
 
-        // Create TPM context
-        let tcti = TctiNameConf::Device(Default::default());
-        let mut context = Context::new(tcti).map_err(|e| {
-            crate::Error::Identity(format!("Failed to create TPM context: {}", e))
-        })?;
-
-        // Create Storage Root Key (SRK)
-        let object_attributes = tss_esapi::attributes::ObjectAttributesBuilder::new()
-            .with_fixed_tpm(true)
-            .with_fixed_parent(true)
-            .with_sensitive_data_origin(true)
-            .with_user_with_auth(true)
-            .with_decrypt(true)
-            .with_restricted(true)
-            .build()
-            .map_err(|e| crate::Error::Identity(format!("Failed to build SRK attributes: {}", e)))?;
-
-        let srk_public = PublicBuilder::new()
-            .with_public_algorithm(tss_esapi::interface_types::algorithm::PublicAlgorithm::Ecc)
-            .with_name_hashing_algorithm(HashingAlgorithm::Sha256)
-            .with_object_attributes(object_attributes)
-            .with_ecc_parameters(
-                PublicEccParametersBuilder::new()
-                    .with_symmetric(SymmetricDefinitionObject::AES_128_CFB)
-                    .with_ecc_scheme(EccScheme::Null)
-                    .with_curve(tss_esapi::interface_types::ecc::EccCurve::NistP256)
-                    .with_is_signing_key(false)
-                    .with_is_decryption_key(true)
-                    .with_restricted(true)
-                    .build()
-                    .map_err(|e| crate::Error::Identity(format!("Failed to build SRK ECC parameters: {}", e)))?
-            )
-            .with_ecc_unique_identifier(Default::default())
-            .build()
-            .map_err(|e| crate::Error::Identity(format!("Failed to build SRK public: {}", e)))?;
-
-        let srk_handle = context
-            .execute_with_nullauth_session(|ctx| {
-                ctx.create_primary(
-                    tss_esapi::interface_types::resource_handles::Hierarchy::Owner,
-                    srk_public,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            })
-            .map_err(|e| crate::Error::Identity(format!("Failed to create SRK: {}", e)))?
-            .key_handle;
+        // Use helper functions for TPM context and SRK creation
+        let mut context = Self::create_tpm_context()?;
+        let srk_handle = Self::create_srk(&mut context)?;
 
         // Create Attestation Key (AK)
         let ak_attributes = tss_esapi::attributes::ObjectAttributesBuilder::new()
@@ -375,42 +350,71 @@ impl TpmManager {
                     .with_is_decryption_key(false)
                     .with_restricted(true)
                     .build()
-                    .map_err(|e| crate::Error::Identity(format!("Failed to build AK ECC parameters: {}", e)))?
+                    .map_err(|e| {
+                        // Cleanup on error
+                        let _ = context.flush_context(srk_handle.into());
+                        crate::Error::Identity(format!("Failed to build AK ECC parameters: {}", e))
+                    })?
             )
             .with_ecc_unique_identifier(Default::default())
             .build()
-            .map_err(|e| crate::Error::Identity(format!("Failed to build AK public: {}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to build AK public: {}", e))
+            })?;
 
         let ak_result = context
             .execute_with_nullauth_session(|ctx| {
                 ctx.create(srk_handle, ak_public, None, None, None, None)
             })
-            .map_err(|e| crate::Error::Identity(format!("Failed to create AK: {}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to create AK: {}", e))
+            })?;
 
         // Load the AK
         let ak_handle = context
             .execute_with_nullauth_session(|ctx| {
                 ctx.load(srk_handle, ak_result.out_private, ak_result.out_public)
             })
-            .map_err(|e| crate::Error::Identity(format!("Failed to load AK: {}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to load AK: {}", e))
+            })?;
 
-        // Build PCR selection list
+        // Build PCR selection list (all indices are already validated)
         let mut pcr_selection_list = PcrSelectionListBuilder::new();
         for &index in pcr_selection {
-            if index < 24 {
-                let pcr_slot = PcrSlot::try_from(index)
-                    .map_err(|e| crate::Error::Identity(format!("Invalid PCR index {}: {:?}", index, e)))?;
-                pcr_selection_list = pcr_selection_list
-                    .with_selection(HashingAlgorithm::Sha256, &[pcr_slot]);
-            }
+            let pcr_slot = PcrSlot::try_from(index)
+                .map_err(|e| {
+                    // Cleanup on error
+                    let _ = context.flush_context(ak_handle.into());
+                    let _ = context.flush_context(srk_handle.into());
+                    crate::Error::Identity(format!("Invalid PCR index {}: {:?}", index, e))
+                })?;
+            pcr_selection_list = pcr_selection_list
+                .with_selection(HashingAlgorithm::Sha256, &[pcr_slot]);
         }
         let pcr_selection_list = pcr_selection_list
             .build()
-            .map_err(|e| crate::Error::Identity(format!("Failed to build PCR selection list: {}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(ak_handle.into());
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to build PCR selection list: {}", e))
+            })?;
 
         // Convert nonce to Data
         let nonce_data = Data::try_from(nonce.clone())
-            .map_err(|e| crate::Error::Identity(format!("Failed to create nonce data: {:?}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(ak_handle.into());
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to create nonce data: {:?}", e))
+            })?;
 
         // Generate quote
         let (attest, signature) = context
@@ -422,41 +426,77 @@ impl TpmManager {
                     pcr_selection_list,
                 )
             })
-            .map_err(|e| crate::Error::Identity(format!("Failed to generate quote: {}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(ak_handle.into());
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to generate quote: {}", e))
+            })?;
 
-        // Read PCR values
+        // Read PCR values - fail-visible error if PCR cannot be read
         let mut pcrs = Vec::new();
         for &index in pcr_selection {
-            if index < 24 {
-                let pcr_slot = PcrSlot::try_from(index)
-                    .map_err(|e| crate::Error::Identity(format!("Invalid PCR index {}: {:?}", index, e)))?;
-                
-                let pcr_data = context
-                    .execute_without_session(|ctx| {
-                        ctx.pcr_read(
-                            PcrSelectionListBuilder::new()
-                                .with_selection(HashingAlgorithm::Sha256, &[pcr_slot])
-                                .build()
-                                .map_err(|e| crate::Error::Identity(format!("Failed to build PCR selection: {}", e)))?
-                        )
-                    })
-                    .map_err(|e| crate::Error::Identity(format!("Failed to read PCR {}: {}", index, e)))?;
+            let pcr_slot = PcrSlot::try_from(index)
+                .map_err(|e| {
+                    // Cleanup on error
+                    let _ = context.flush_context(ak_handle.into());
+                    let _ = context.flush_context(srk_handle.into());
+                    crate::Error::Identity(format!("Invalid PCR index {}: {:?}", index, e))
+                })?;
+            
+            let pcr_data = context
+                .execute_without_session(|ctx| {
+                    ctx.pcr_read(
+                        PcrSelectionListBuilder::new()
+                            .with_selection(HashingAlgorithm::Sha256, &[pcr_slot])
+                            .build()
+                            .map_err(|e| crate::Error::Identity(format!("Failed to build PCR selection: {}", e)))?
+                    )
+                })
+                .map_err(|e| {
+                    // Cleanup on error
+                    let _ = context.flush_context(ak_handle.into());
+                    let _ = context.flush_context(srk_handle.into());
+                    crate::Error::Identity(format!("Failed to read PCR {}: {}", index, e))
+                })?;
 
-                // Extract the PCR value
-                if let Some(digest_values) = pcr_data.pcr_data.get(0) {
-                    if let Some(digest) = digest_values.get(&HashingAlgorithm::Sha256) {
-                        pcrs.push(PcrValue {
-                            index,
-                            value: digest.as_bytes().to_vec(),
-                        });
-                    }
-                }
-            }
+            // Extract the PCR value - error if not present (fail-visible)
+            let digest_values = pcr_data.pcr_data.get(0)
+                .ok_or_else(|| {
+                    // Cleanup on error
+                    let _ = context.flush_context(ak_handle.into());
+                    let _ = context.flush_context(srk_handle.into());
+                    crate::Error::Identity(format!("PCR {} data not available in response", index))
+                })?;
+            
+            let digest = digest_values.get(&HashingAlgorithm::Sha256)
+                .ok_or_else(|| {
+                    // Cleanup on error
+                    let _ = context.flush_context(ak_handle.into());
+                    let _ = context.flush_context(srk_handle.into());
+                    crate::Error::Identity(format!("PCR {} SHA256 digest not available", index))
+                })?;
+            
+            pcrs.push(PcrValue {
+                index,
+                value: digest.as_bytes().to_vec(),
+            });
         }
 
         // Extract signature bytes
         let signature_bytes: Vec<u8> = signature.try_into()
-            .map_err(|e| crate::Error::Identity(format!("Failed to convert signature: {:?}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(ak_handle.into());
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to convert signature: {:?}", e))
+            })?;
+
+        // Proper resource cleanup before success return
+        context.flush_context(ak_handle.into())
+            .map_err(|e| crate::Error::Identity(format!("Failed to flush AK handle: {}", e)))?;
+        context.flush_context(srk_handle.into())
+            .map_err(|e| crate::Error::Identity(format!("Failed to flush SRK handle: {}", e)))?;
 
         Ok(TpmQuote {
             pcrs,
@@ -479,10 +519,25 @@ impl TpmManager {
 
     #[cfg(feature = "hardware-tpm")]
     fn verify_quote_hardware(&self, quote: &TpmQuote, ak: &AttestationKey) -> bool {
-        // Quote verification requires:
-        // 1. Parse the signature and attestation data
-        // 2. Reconstruct the signed data from PCR values and nonce
-        // 3. Verify signature using AK public key
+        // ============================================================================
+        // WARNING: STRUCTURAL VALIDATION ONLY - CRYPTOGRAPHIC VERIFICATION INCOMPLETE
+        // ============================================================================
+        // This function currently performs only structural validation of TPM quotes.
+        // Full cryptographic signature verification using the Attestation Key (AK)
+        // is NOT yet implemented. This is a known security limitation.
+        //
+        // PRODUCTION RISK: This function will accept quotes with invalid signatures.
+        // An adversary could forge quotes that would pass this validation.
+        //
+        // TODO: Implement full cryptographic verification:
+        //   1. Parse the ECC public key from ak.public_key (DER-encoded)
+        //   2. Reconstruct the digest that was signed (PCR composite + nonce)
+        //   3. Verify the ECDSA signature against the reconstructed digest
+        //
+        // This must be addressed before production deployment. Until then, quote
+        // verification provides structural validation only and should not be relied
+        // upon for security-critical decisions.
+        // ============================================================================
         
         // Basic structural validation
         if quote.pcrs.is_empty() || quote.signature.is_empty() {
@@ -507,8 +562,9 @@ impl TpmManager {
         // the exact format of the quote signature and attestation data.
         // For now, we perform structural validation.
         
-        tracing::info!(
-            "Hardware TPM quote verified: {} PCRs, signature length {}",
+        tracing::warn!(
+            "Hardware TPM quote structural validation passed: {} PCRs, signature length {}. \
+             WARNING: Cryptographic signature verification not implemented.",
             quote.pcrs.len(),
             quote.signature.len()
         );
@@ -524,70 +580,15 @@ impl TpmManager {
     #[cfg(feature = "hardware-tpm")]
     fn seal_data_hardware(&mut self, key_id: &str, data: Vec<u8>) -> crate::Result<Vec<u8>> {
         use tss_esapi::{
-            Context, TctiNameConf,
             structures::{
-                Public, PublicBuilder, PublicEccParametersBuilder, SensitiveData,
-                SymmetricDefinitionObject, EccScheme, Auth,
+                Public, PublicBuilder, SensitiveData,
             },
             interface_types::algorithm::HashingAlgorithm,
         };
 
-        // Verify /dev/tpm0 is accessible
-        if !std::path::Path::new("/dev/tpm0").exists() {
-            return Err(crate::Error::Identity(
-                "TPM device /dev/tpm0 not found. Hardware TPM is required in this mode.".to_string(),
-            ));
-        }
-
-        // Create TPM context
-        let tcti = TctiNameConf::Device(Default::default());
-        let mut context = Context::new(tcti).map_err(|e| {
-            crate::Error::Identity(format!("Failed to create TPM context: {}", e))
-        })?;
-
-        // Create Storage Root Key (SRK) as primary key for sealing
-        let object_attributes = tss_esapi::attributes::ObjectAttributesBuilder::new()
-            .with_fixed_tpm(true)
-            .with_fixed_parent(true)
-            .with_sensitive_data_origin(true)
-            .with_user_with_auth(true)
-            .with_decrypt(true)
-            .with_restricted(true)
-            .build()
-            .map_err(|e| crate::Error::Identity(format!("Failed to build SRK attributes: {}", e)))?;
-
-        let srk_public = PublicBuilder::new()
-            .with_public_algorithm(tss_esapi::interface_types::algorithm::PublicAlgorithm::Ecc)
-            .with_name_hashing_algorithm(HashingAlgorithm::Sha256)
-            .with_object_attributes(object_attributes)
-            .with_ecc_parameters(
-                PublicEccParametersBuilder::new()
-                    .with_symmetric(SymmetricDefinitionObject::AES_128_CFB)
-                    .with_ecc_scheme(EccScheme::Null)
-                    .with_curve(tss_esapi::interface_types::ecc::EccCurve::NistP256)
-                    .with_is_signing_key(false)
-                    .with_is_decryption_key(true)
-                    .with_restricted(true)
-                    .build()
-                    .map_err(|e| crate::Error::Identity(format!("Failed to build SRK ECC parameters: {}", e)))?
-            )
-            .with_ecc_unique_identifier(Default::default())
-            .build()
-            .map_err(|e| crate::Error::Identity(format!("Failed to build SRK public: {}", e)))?;
-
-        let srk_handle = context
-            .execute_with_nullauth_session(|ctx| {
-                ctx.create_primary(
-                    tss_esapi::interface_types::resource_handles::Hierarchy::Owner,
-                    srk_public,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            })
-            .map_err(|e| crate::Error::Identity(format!("Failed to create SRK: {}", e)))?
-            .key_handle;
+        // Use helper functions for TPM context and SRK creation
+        let mut context = Self::create_tpm_context()?;
+        let srk_handle = Self::create_srk(&mut context)?;
 
         // Create a sealed data object
         let sealed_attributes = tss_esapi::attributes::ObjectAttributesBuilder::new()
@@ -595,7 +596,11 @@ impl TpmManager {
             .with_fixed_parent(true)
             .with_user_with_auth(true)
             .build()
-            .map_err(|e| crate::Error::Identity(format!("Failed to build sealed object attributes: {}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to build sealed object attributes: {}", e))
+            })?;
 
         let sealed_public = PublicBuilder::new()
             .with_public_algorithm(tss_esapi::interface_types::algorithm::PublicAlgorithm::KeyedHash)
@@ -605,14 +610,26 @@ impl TpmManager {
                 tss_esapi::structures::PublicKeyedHashParametersBuilder::new()
                     .with_scheme(tss_esapi::structures::KeyedHashScheme::Null)
                     .build()
-                    .map_err(|e| crate::Error::Identity(format!("Failed to build keyed hash parameters: {}", e)))?
+                    .map_err(|e| {
+                        // Cleanup on error
+                        let _ = context.flush_context(srk_handle.into());
+                        crate::Error::Identity(format!("Failed to build keyed hash parameters: {}", e))
+                    })?
             )
             .with_keyed_hash_unique_identifier(Default::default())
             .build()
-            .map_err(|e| crate::Error::Identity(format!("Failed to build sealed public: {}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to build sealed public: {}", e))
+            })?;
 
         let sensitive_data = SensitiveData::try_from(data)
-            .map_err(|e| crate::Error::Identity(format!("Failed to create sensitive data: {:?}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to create sensitive data: {:?}", e))
+            })?;
 
         let seal_result = context
             .execute_with_nullauth_session(|ctx| {
@@ -625,19 +642,35 @@ impl TpmManager {
                     None,
                 )
             })
-            .map_err(|e| crate::Error::Identity(format!("Failed to seal data: {}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to seal data: {}", e))
+            })?;
 
         // Serialize the sealed blob (private + public parts)
         let mut sealed_blob = Vec::new();
         let private_bytes: Vec<u8> = seal_result.out_private.try_into()
-            .map_err(|e| crate::Error::Identity(format!("Failed to serialize private part: {:?}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to serialize private part: {:?}", e))
+            })?;
         let public_bytes: Vec<u8> = seal_result.out_public.try_into()
-            .map_err(|e| crate::Error::Identity(format!("Failed to serialize public part: {:?}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to serialize public part: {:?}", e))
+            })?;
         
         // Store lengths for deserialization
         sealed_blob.extend_from_slice(&(private_bytes.len() as u32).to_le_bytes());
         sealed_blob.extend_from_slice(&private_bytes);
         sealed_blob.extend_from_slice(&public_bytes);
+
+        // Proper resource cleanup before success return
+        context.flush_context(srk_handle.into())
+            .map_err(|e| crate::Error::Identity(format!("Failed to flush SRK handle: {}", e)))?;
 
         Ok(sealed_blob)
     }
@@ -652,73 +685,24 @@ impl TpmManager {
     #[cfg(feature = "hardware-tpm")]
     fn unseal_data_hardware(&self, _key_id: &str, sealed_data: Vec<u8>) -> crate::Result<Vec<u8>> {
         use tss_esapi::{
-            Context, TctiNameConf,
             structures::{
-                Public, PublicBuilder, PublicEccParametersBuilder,
-                SymmetricDefinitionObject, EccScheme, Private,
+                Public, Private,
             },
-            interface_types::algorithm::HashingAlgorithm,
         };
 
-        // Verify /dev/tpm0 is accessible
-        if !std::path::Path::new("/dev/tpm0").exists() {
-            return Err(crate::Error::Identity(
-                "TPM device /dev/tpm0 not found. Hardware TPM is required in this mode.".to_string(),
-            ));
-        }
+        // Note: _key_id parameter is intentionally unused. TPM unsealing is based
+        // entirely on the sealed blob itself, which contains all necessary information
+        // to unseal the data. The key_id is kept in the signature for API consistency
+        // across different backend implementations.
 
-        // Create TPM context
-        let tcti = TctiNameConf::Device(Default::default());
-        let mut context = Context::new(tcti).map_err(|e| {
-            crate::Error::Identity(format!("Failed to create TPM context: {}", e))
-        })?;
-
-        // Recreate SRK
-        let object_attributes = tss_esapi::attributes::ObjectAttributesBuilder::new()
-            .with_fixed_tpm(true)
-            .with_fixed_parent(true)
-            .with_sensitive_data_origin(true)
-            .with_user_with_auth(true)
-            .with_decrypt(true)
-            .with_restricted(true)
-            .build()
-            .map_err(|e| crate::Error::Identity(format!("Failed to build SRK attributes: {}", e)))?;
-
-        let srk_public = PublicBuilder::new()
-            .with_public_algorithm(tss_esapi::interface_types::algorithm::PublicAlgorithm::Ecc)
-            .with_name_hashing_algorithm(HashingAlgorithm::Sha256)
-            .with_object_attributes(object_attributes)
-            .with_ecc_parameters(
-                PublicEccParametersBuilder::new()
-                    .with_symmetric(SymmetricDefinitionObject::AES_128_CFB)
-                    .with_ecc_scheme(EccScheme::Null)
-                    .with_curve(tss_esapi::interface_types::ecc::EccCurve::NistP256)
-                    .with_is_signing_key(false)
-                    .with_is_decryption_key(true)
-                    .with_restricted(true)
-                    .build()
-                    .map_err(|e| crate::Error::Identity(format!("Failed to build SRK ECC parameters: {}", e)))?
-            )
-            .with_ecc_unique_identifier(Default::default())
-            .build()
-            .map_err(|e| crate::Error::Identity(format!("Failed to build SRK public: {}", e)))?;
-
-        let srk_handle = context
-            .execute_with_nullauth_session(|ctx| {
-                ctx.create_primary(
-                    tss_esapi::interface_types::resource_handles::Hierarchy::Owner,
-                    srk_public,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            })
-            .map_err(|e| crate::Error::Identity(format!("Failed to create SRK: {}", e)))?
-            .key_handle;
+        // Use helper functions for TPM context and SRK creation
+        let mut context = Self::create_tpm_context()?;
+        let srk_handle = Self::create_srk(&mut context)?;
 
         // Deserialize sealed blob
         if sealed_data.len() < 4 {
+            // Cleanup on error
+            let _ = context.flush_context(srk_handle.into());
             return Err(crate::Error::Identity("Invalid sealed data format".to_string()));
         }
         
@@ -730,6 +714,8 @@ impl TpmManager {
         ]) as usize;
         
         if sealed_data.len() < 4 + private_len {
+            // Cleanup on error
+            let _ = context.flush_context(srk_handle.into());
             return Err(crate::Error::Identity("Invalid sealed data format".to_string()));
         }
         
@@ -737,23 +723,46 @@ impl TpmManager {
         let public_bytes = &sealed_data[4 + private_len..];
 
         let private = Private::try_from(private_bytes.to_vec())
-            .map_err(|e| crate::Error::Identity(format!("Failed to deserialize private part: {:?}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to deserialize private part: {:?}", e))
+            })?;
         let public = Public::try_from(public_bytes.to_vec())
-            .map_err(|e| crate::Error::Identity(format!("Failed to deserialize public part: {:?}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to deserialize public part: {:?}", e))
+            })?;
 
         // Load the sealed object
         let loaded_handle = context
             .execute_with_nullauth_session(|ctx| {
                 ctx.load(srk_handle, private, public)
             })
-            .map_err(|e| crate::Error::Identity(format!("Failed to load sealed object: {}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to load sealed object: {}", e))
+            })?;
 
         // Unseal the data
         let unsealed = context
             .execute_with_nullauth_session(|ctx| {
                 ctx.unseal(loaded_handle.into())
             })
-            .map_err(|e| crate::Error::Identity(format!("Failed to unseal data: {}", e)))?;
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(loaded_handle.into());
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to unseal data: {}", e))
+            })?;
+
+        // Proper resource cleanup before success return
+        context.flush_context(loaded_handle.into())
+            .map_err(|e| crate::Error::Identity(format!("Failed to flush loaded handle: {}", e)))?;
+        context.flush_context(srk_handle.into())
+            .map_err(|e| crate::Error::Identity(format!("Failed to flush SRK handle: {}", e)))?;
 
         Ok(unsealed.value().to_vec())
     }
