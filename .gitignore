@@ -83,3 +83,4 @@ infra/k8s/overlays/bunker/secrets.env
 # Warhead Build Artifacts (built on CI/CD pipeline)
 packages/dashboard/src-tauri/resources/payloads/*
 !packages/dashboard/src-tauri/resources/payloads/.gitkeep
+*.backup
