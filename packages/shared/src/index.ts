@@ -18,3 +18,8 @@ export default utils;
  * Mission Guardian Protocol Types
  */
 export * from './types/guardian';
+
+/**
+ * Identity Protocol - Cross-Platform Node Identity
+ */
+export * from './identity';
