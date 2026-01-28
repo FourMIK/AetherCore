@@ -11,7 +11,7 @@
  * and Ed25519 cryptographic identity establishment.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { QRCodeSVG } from 'qrcode.react';
@@ -65,6 +65,9 @@ interface GenesisBundle {
 // ============================================================================
 
 export const RalphieNodeProvisioning: React.FC = () => {
+  // Refs for cleanup
+  const stepTransitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Workflow state
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   
@@ -105,7 +108,39 @@ export const RalphieNodeProvisioning: React.FC = () => {
   };
 
   useEffect(() => {
-    scanDevices();
+    let mounted = true;
+    
+    const scan = async () => {
+      try {
+        const result = await invoke<SerialDevice[]>('list_serial_ports');
+        if (mounted) {
+          setDevices(result);
+          if (result.length > 0 && !selectedDevice) {
+            setSelectedDevice(result[0].port_name);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to scan devices:', err);
+        if (mounted) {
+          setFlashError(`Failed to scan devices: ${err}`);
+        }
+      }
+    };
+    
+    scan();
+    
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Cleanup effect for timeouts
+  useEffect(() => {
+    return () => {
+      if (stepTransitionTimeoutRef.current) {
+        clearTimeout(stepTransitionTimeoutRef.current);
+      }
+    };
   }, []);
 
   const handleFlashFirmware = async () => {
@@ -130,7 +165,12 @@ export const RalphieNodeProvisioning: React.FC = () => {
       });
 
       // Flash successful, move to next step
-      setTimeout(() => {
+      // Clear any existing timeout first
+      if (stepTransitionTimeoutRef.current) {
+        clearTimeout(stepTransitionTimeoutRef.current);
+      }
+      
+      stepTransitionTimeoutRef.current = setTimeout(() => {
         setCurrentStep(2);
         // Automatically start listening for genesis
         handleListenForGenesis();
