@@ -1,0 +1,68 @@
+{
+  "description": "Cross-Language Test Vectors for AetherCore Identity Protocol",
+  "version": "1.0.0",
+  "vectors": [
+    {
+      "name": "primary_test_vector",
+      "description": "Primary test vector for verifying protocol coherence between TypeScript and C++",
+      "inputs": {
+        "hardware_id": "AA:BB:CC:DD:EE:FF",
+        "public_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "salt": "test-salt-12345"
+      },
+      "expected": {
+        "genesis_hash": "5aa61945715d82358e2f53fc4f86f5a34b0d54b2408b7aed07f1266e34f9725e",
+        "hash_algorithm": "BLAKE3",
+        "concatenation_order": "hardware_id + public_key + salt"
+      }
+    },
+    {
+      "name": "minimal_test_vector",
+      "description": "Minimal inputs to test basic functionality",
+      "inputs": {
+        "hardware_id": "00:00:00:00:00:00",
+        "public_key": "0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": ""
+      },
+      "expected": {
+        "genesis_hash": "COMPUTE_ON_FIRST_RUN",
+        "hash_algorithm": "BLAKE3",
+        "concatenation_order": "hardware_id + public_key + salt"
+      }
+    },
+    {
+      "name": "max_values_test_vector",
+      "description": "Maximum valid values for testing edge cases",
+      "inputs": {
+        "hardware_id": "FF:FF:FF:FF:FF:FF",
+        "public_key": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "salt": "max-salt-value"
+      },
+      "expected": {
+        "genesis_hash": "COMPUTE_ON_FIRST_RUN",
+        "hash_algorithm": "BLAKE3",
+        "concatenation_order": "hardware_id + public_key + salt"
+      }
+    }
+  ],
+  "protocol_invariants": {
+    "hash_algorithm": "BLAKE3",
+    "hash_output_length_bytes": 32,
+    "hash_output_length_hex": 64,
+    "concatenation_order": [
+      "hardware_id",
+      "public_key",
+      "salt"
+    ],
+    "byte_order": "N/A - text concatenation, no numeric encoding",
+    "character_encoding": "UTF-8"
+  },
+  "critical_notes": [
+    "The genesis_hash MUST be computed as BLAKE3(hardware_id + public_key + salt)",
+    "All implementations (TypeScript, C++, Rust) MUST produce identical hashes",
+    "If hashes do not match, the network protocol is BROKEN",
+    "Salt may be empty string, but hardware_id and public_key are required",
+    "Public key is 32 bytes Ed25519 key encoded as 64 hex characters",
+    "Hardware ID is MAC address in format XX:XX:XX:XX:XX:XX"
+  ]
+}
