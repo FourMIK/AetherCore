@@ -1,0 +1,6 @@
+packages:
+  - 'agent'
+  - 'firmware'
+  - 'packages/*'
+  - 'shared'
+  - 'services/*'
