@@ -45,3 +45,5 @@ which = "6.0"
 serialport = "4.5"
 p256 = { version = "0.13", features = ["ecdsa"] }
 hex = "0.4"
+ssh2 = "0.9"
+mdns-sd = "0.11"

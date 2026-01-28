@@ -1,6 +1,7 @@
 mod commands;
 mod process_manager;
 mod provisioning;
+mod provisioning_legacy;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -38,6 +39,10 @@ pub fn run() {
       commands::stop_node,
       commands::get_deployment_status,
       commands::get_node_logs,
+      // New unified provisioning commands
+      provisioning::scan_for_assets,
+      provisioning::provision_target,
+      // Legacy provisioning commands (backwards compatibility)
       provisioning::list_serial_ports,
       provisioning::flash_firmware,
       provisioning::listen_for_genesis,
