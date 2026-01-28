@@ -1,8 +1,13 @@
 /**
- * SignalingServer - Mission Guardian Signaling Server
+ * SignalingServer - Mission Guardian Signaling Server (Production)
  * 
- * WebSocket/NATS-based signaling server for WebRTC with Trust Fabric verification
- * All signals must be wrapped in SignedEnvelope and verified before forwarding
+ * WebSocket-based signaling server for WebRTC with hardware-backed Trust Fabric verification.
+ * All signals must be wrapped in SignedEnvelope and verified via gRPC Identity Registry.
+ * 
+ * Security Model:
+ * - NO GRACEFUL DEGRADATION: Invalid signatures = packet dropped
+ * - Identity Registry failures = Byzantine nodes (fail-visible)
+ * - All security failures are logged to Tactical Glass dashboard
  */
 
 import { WebSocket, WebSocketServer } from 'ws';
@@ -12,13 +17,12 @@ import {
   GuardianSignal,
   GuardianSignalSchema,
   NodeID,
-  SecurityEvent,
 } from '@aethercore/shared';
 import {
   VerificationService,
-  MockIdentityRegistry,
   ConsoleSecurityEventHandler,
 } from './VerificationService';
+import { IdentityRegistryClient } from './IdentityRegistryClient';
 
 /**
  * Connected client info
@@ -30,32 +34,56 @@ interface ConnectedClient {
 }
 
 /**
- * SignalingServer
- * Handles WebRTC signaling with hardware-backed signature verification
+ * SignalingServer Configuration
+ */
+export interface SignalingServerConfig {
+  /** WebSocket server port */
+  port: number;
+  /** Identity Registry gRPC address */
+  identityRegistryAddress: string;
+}
+
+/**
+ * SignalingServer (Production)
+ * Handles WebRTC signaling with hardware-backed signature verification via gRPC
  */
 export class SignalingServer {
   private wss: WebSocketServer;
   private clients: Map<WebSocket, ConnectedClient> = new Map();
   private nodeIdToClient: Map<NodeID, WebSocket> = new Map();
   private verificationService: VerificationService;
+  private identityRegistryClient: IdentityRegistryClient;
 
-  constructor(
-    port: number = 8080,
-    identityRegistry?: MockIdentityRegistry,
-  ) {
-    // Initialize verification service
-    const registry = identityRegistry || new MockIdentityRegistry();
+  constructor(config: SignalingServerConfig) {
+    // Initialize Identity Registry gRPC client
+    this.identityRegistryClient = new IdentityRegistryClient({
+      serverAddress: config.identityRegistryAddress,
+      timeout: 5000, // 5 second timeout
+      maxRetries: 3, // Retry 3 times
+      retryDelay: 1000, // 1 second initial delay
+    });
+
+    // Initialize verification service with gRPC client
     const eventHandler = new ConsoleSecurityEventHandler();
-    this.verificationService = new VerificationService(registry, eventHandler);
+    this.verificationService = new VerificationService(
+      this.identityRegistryClient,
+      eventHandler,
+    );
 
     // Initialize WebSocket server
-    this.wss = new WebSocketServer({ port });
+    this.wss = new WebSocketServer({ port: config.port });
 
     this.wss.on('connection', (ws: WebSocket) => {
       this.handleConnection(ws);
     });
 
-    console.log(`[SignalingServer] Listening on port ${port}`);
+    console.log(
+      `[SignalingServer] PRODUCTION MODE - Hardware-backed signatures enabled`,
+    );
+    console.log(`[SignalingServer] Listening on port ${config.port}`);
+    console.log(
+      `[SignalingServer] Identity Registry: ${config.identityRegistryAddress}`,
+    );
   }
 
   /**
@@ -91,19 +119,34 @@ export class SignalingServer {
   private async handleMessage(ws: WebSocket, data: Buffer): Promise<void> {
     try {
       const message = JSON.parse(data.toString());
-      
+
       // Validate as SignedSignal
       const signedSignal = SignedSignalSchema.parse(message);
 
-      // Verify signature against identity registry
-      const payload = await this.verificationService.verifyEnvelope(
-        signedSignal.envelope,
-      );
+      // Verify signature against Identity Registry (gRPC)
+      let payload: any;
+      try {
+        payload = await this.verificationService.verifyEnvelope(
+          signedSignal.envelope,
+        );
+      } catch (error) {
+        // FAIL-VISIBLE: Identity service failure
+        console.error(
+          '[SignalingServer] CRITICAL: Identity Registry service failure',
+        );
+        console.error(
+          '  This node may be Byzantine or network is contested/congested',
+        );
+        this.sendError(ws, 'Identity verification service unavailable');
+        return;
+      }
 
       if (!payload) {
-        // Signature verification failed - packet dropped
-        console.error('[SignalingServer] SECURITY: Invalid signature - dropping packet');
-        this.sendError(ws, 'Invalid signature');
+        // Signature verification failed - packet dropped (FAIL-VISIBLE)
+        console.error(
+          '[SignalingServer] SECURITY: Invalid signature - dropping packet',
+        );
+        this.sendError(ws, 'Invalid signature - packet dropped');
         return;
       }
 
@@ -116,12 +159,13 @@ export class SignalingServer {
         client.nodeId = guardianSignal.from;
         client.authenticated = true;
         this.nodeIdToClient.set(guardianSignal.from, ws);
-        console.log(`[SignalingServer] Client authenticated: ${guardianSignal.from}`);
+        console.log(
+          `[SignalingServer] Client authenticated: ${guardianSignal.from} (Hardware-verified)`,
+        );
       }
 
       // Forward signal to destination
       await this.forwardSignal(guardianSignal);
-
     } catch (error) {
       console.error('[SignalingServer] Error processing message:', error);
       this.sendError(ws, 'Invalid message format');
@@ -135,7 +179,9 @@ export class SignalingServer {
     const destinationWs = this.nodeIdToClient.get(signal.to);
 
     if (!destinationWs) {
-      console.warn(`[SignalingServer] Destination not connected: ${signal.to}`);
+      console.warn(
+        `[SignalingServer] Destination not connected: ${signal.to}`,
+      );
       return;
     }
 
@@ -157,7 +203,7 @@ export class SignalingServer {
    */
   private handleDisconnect(ws: WebSocket): void {
     const client = this.clients.get(ws);
-    
+
     if (client?.nodeId) {
       this.nodeIdToClient.delete(client.nodeId);
       console.log(`[SignalingServer] Client disconnected: ${client.nodeId}`);
@@ -205,6 +251,7 @@ export class SignalingServer {
    * Close the server
    */
   close(): void {
+    this.identityRegistryClient.close();
     this.wss.close();
     console.log('[SignalingServer] Server closed');
   }
