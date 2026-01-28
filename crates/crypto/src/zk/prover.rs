@@ -10,8 +10,71 @@
 //!
 //! Zero-Knowledge proof generation and verification.
 //!
+//! # Overview
+//!
 //! This module provides ZK-SNARK proof generation for device attestation and location verification.
-//! Implements Groth16 proofs over BN254 curve using arkworks.
+//! Implements Groth16 proofs over BN254 curve using the arkworks ecosystem for Ethereum/Circom 
+//! compatibility.
+//!
+//! # Architecture
+//!
+//! The ZK proof system follows the "Truth as a Weapon" doctrine - no security theater.
+//! Either the system has valid cryptographic proofs, or it fails visibly with clear diagnostics.
+//!
+//! ## Key Components
+//!
+//! - **ZkProver**: Main prover instance that manages circuit artifacts and generates proofs
+//! - **ZkProof**: Groth16 proof structure containing π_A, π_B, π_C components
+//! - **Circuit Artifacts**: .wasm (witness generator), .r1cs (constraints), .zkey (proving key)
+//!
+//! ## Fail-Visible Pattern
+//!
+//! This implementation adheres to the fail-visible security pattern:
+//! - Missing circuit artifacts result in CRITICAL errors, not silent degradation
+//! - Invalid proofs are rejected with clear error messages
+//! - Temporal constraints are strictly enforced (no time travel, no stale proofs)
+//!
+//! # Usage
+//!
+//! ## Production Mode (with circuit artifacts)
+//!
+//! ```rust,no_run
+//! use std::path::Path;
+//! use aethercore_crypto::zk::{ZkProver, ZkPrivateInputs, ZkPublicInputs};
+//!
+//! let mut prover = ZkProver::new();
+//! prover.initialize(
+//!     Path::new("./circuits/auth.wasm"),
+//!     Path::new("./circuits/auth.r1cs"),
+//!     Path::new("./circuits/auth.zkey"),
+//! )?;
+//!
+//! let private_inputs = ZkPrivateInputs::new(/* ... */);
+//! let public_inputs = ZkPublicInputs::new(/* ... */);
+//! let proof = prover.generate_proof(&private_inputs, &public_inputs)?;
+//! # Ok::<(), aethercore_crypto::zk::ZkError>(())
+//! ```
+//!
+//! ## Mock Mode (for testing)
+//!
+//! ```rust
+//! use aethercore_crypto::zk::{ZkProver, ZkPrivateInputs, ZkPublicInputs};
+//!
+//! let mut prover = ZkProver::new();
+//! prover.initialize_mock()?;
+//! # Ok::<(), aethercore_crypto::zk::ZkError>(())
+//! ```
+//!
+//! # Security Considerations
+//!
+//! - **Trusted Setup**: Groth16 requires a trusted setup. Ensure the .zkey file comes from a
+//!   multi-party computation ceremony or trusted source.
+//! - **Temporal Validation**: Proofs include timestamps to prevent replay attacks. The system
+//!   enforces strict temporal bounds.
+//! - **Commitment Scheme**: Uses BLAKE3-based Poseidon hash for all commitments. SHA-256 is
+//!   prohibited per system architectural invariants.
+//! - **Circuit Compatibility**: BN254 curve ensures compatibility with Ethereum and standard
+//!   Circom tooling.
 
 use super::error::{ZkError, ZkResult};
 use super::inputs::{ZkPrivateInputs, ZkPublicInputs};
@@ -19,12 +82,14 @@ use super::poseidon::{attestation_root, device_commitment, location_commitment};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-// Placeholder proof component sizes for Groth16 on BN254 curve
-// These sizes are based on BN254 curve parameters:
-// - π_A: G1 point (2 field elements × 32 bytes = 64 bytes)
-// - π_B: G2 point (4 field elements × 32 bytes = 128 bytes)
-// - π_C: G1 point (2 field elements × 32 bytes = 64 bytes)
-// When integrating ark-groth16, these will be replaced with actual serialized proof sizes
+/// Groth16 proof component sizes for BN254 curve
+///
+/// These sizes are based on BN254 curve parameters:
+/// - π_A: G1 point (2 field elements × 32 bytes = 64 bytes)
+/// - π_B: G2 point (4 field elements × 32 bytes = 128 bytes)  
+/// - π_C: G1 point (2 field elements × 32 bytes = 64 bytes)
+///
+/// Total proof size: 256 bytes
 const PROOF_PI_A_SIZE: usize = 64;
 const PROOF_PI_B_SIZE: usize = 128;
 const PROOF_PI_C_SIZE: usize = 64;
