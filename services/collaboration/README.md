@@ -173,9 +173,15 @@ Logged when verification fails:
 
 ### Backend (`services/collaboration`)
 
-- **SignalingServer**: WebSocket server for WebRTC signaling
-- **VerificationService**: Ed25519 signature verification
-- **MockIdentityRegistry**: Test implementation (replace with gRPC to `crates/identity`)
+- **SignalingServer**: WebSocket server for WebRTC signaling (Production)
+- **VerificationService**: Ed25519 signature verification via gRPC (Production)
+- **IdentityRegistryClient**: gRPC client for `crates/identity` (Production)
+
+**✅ Production Implementation Active:**
+- ✅ MockIdentityRegistry removed - replaced with gRPC integration
+- ✅ Hardware-backed Ed25519 verification via `crates/identity`
+- ✅ TPM-backed signatures (CodeRalphie)
+- ✅ Fail-visible security model enforced
 
 ### Frontend (`packages/dashboard`)
 
@@ -229,19 +235,53 @@ This service replaces:
 
 ## Production Deployment
 
-### Before Production:
+### ✅ Operation Ironclad - Phase 4 Complete
 
-1. **Replace Mock Identity Registry**
-   - Implement gRPC client to `crates/identity`
-   - Use real Ed25519 public key lookups
+The collaboration service now uses **production gRPC integration**:
 
-2. **Replace Mock Signatures**
-   - Implement FFI/gRPC to `crates/crypto`
-   - Use TPM-backed Ed25519 signing
+1. **✅ Mock Identity Registry Removed**
+   - Replaced with `IdentityRegistryClient` (gRPC)
+   - Connects to `crates/identity` service on port 50051
 
-3. **Replace SHA-256 with BLAKE3**
-   - Use real BLAKE3 implementation
-   - Either via npm package or `crates/crypto` FFI
+2. **✅ Hardware-Backed Signatures**
+   - All signature verification via `crates/crypto` gRPC service
+   - TPM-backed Ed25519 keys (CodeRalphie)
+   - Private keys never enter Node.js memory
+
+3. **✅ BLAKE3 Hashing**
+   - All hashing delegated to Rust implementation
+   - No SHA-256 in codebase
+
+### Prerequisites
+
+Start the required Rust gRPC servers:
+
+```bash
+# Terminal 1: Identity Registry (Port 50051)
+cd crates/identity
+cargo run --release --features grpc-server --bin identity-grpc-server
+
+# Terminal 2: Signing Service (Port 50052)
+cd crates/crypto
+cargo run --release --features grpc-server --bin signing-grpc-server
+
+# Terminal 3: Collaboration Service
+cd services/collaboration
+npm run build
+npm start
+```
+
+### Configuration
+
+```bash
+# Default configuration
+PORT=8080 IDENTITY_REGISTRY_ADDRESS=localhost:50051 npm start
+
+# Production with TLS
+PORT=8443 IDENTITY_REGISTRY_ADDRESS=identity-service.aethercore.local:50051 npm start
+```
+
+### Remaining Tasks
 
 4. **Add TURN Servers**
    - Configure TURN servers for NAT traversal
