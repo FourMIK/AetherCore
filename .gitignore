@@ -79,3 +79,7 @@ infra/k8s/overlays/bunker/secrets.env
 **/tactical-glass.key
 **/tactical-glass.crt
 **/dhparam.pem
+
+# Warhead Build Artifacts (built on CI/CD pipeline)
+packages/dashboard/src-tauri/resources/payloads/*
+!packages/dashboard/src-tauri/resources/payloads/.gitkeep

@@ -191,7 +191,7 @@ export function validateConfig(config: RalphieConfig): void {
   
   // Logging validation
   const validLogLevels = ['error', 'warn', 'info', 'debug', 'trace'];
-  if (!validLogLevels.includes(config.security.fail_visible_mode) {
+  if (typeof config.security.fail_visible_mode !== 'boolean') {
     throw new ConfigValidationError('security.fail_visible_mode must be boolean');
   }
   
