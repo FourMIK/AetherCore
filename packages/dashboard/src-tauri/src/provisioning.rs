@@ -34,7 +34,34 @@ pub struct SerialDeviceInfo {
 pub struct GenesisMessage {
     pub r#type: String,        // Must be "GENESIS"
     pub root: String,           // BLAKE3 hash of device identity
-    pub pub_key: String,        // Ed25519 public key (base64)
+    pub pub_key: String,        // ECDSA P-256 public key (hex encoded, 64 bytes uncompressed)
+}
+
+/// ENROLL command sent to device with challenge
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnrollCommand {
+    pub command: String,        // Must be "ENROLL"
+    pub bundle: EnrollBundle,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnrollBundle {
+    pub challenge: String,      // 32-byte random challenge (hex encoded)
+}
+
+/// ENROLL_PROOF response from device
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnrollProof {
+    pub r#type: String,         // Must be "ENROLL_PROOF"
+    pub proof: String,          // ECDSA P-256 signature (hex encoded)
+    pub timestamp: u64,         // Unix timestamp
+}
+
+/// PROVISION_CONFIRM command to unlock radio
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProvisionConfirm {
+    pub command: String,        // Must be "PROVISION_CONFIRM"
+    pub node_id: String,        // Assigned node identifier
 }
 
 /// Progress event for firmware flashing
@@ -456,6 +483,230 @@ pub async fn listen_for_genesis(port: String) -> Result<GenesisMessage, String> 
             }
         }
     }
+}
+
+/// Inject Genesis Bundle with Challenge-Response Provisioning
+///
+/// Implements the hardware-rooted challenge-response protocol for device enrollment.
+/// This replaces the legacy API key approach with cryptographic attestation.
+///
+/// Protocol Flow:
+/// 1. Device broadcasts GENESIS message with public key
+/// 2. We generate and send a 32-byte random challenge
+/// 3. Device signs (Challenge || Timestamp) with its private key
+/// 4. We verify the ECDSA P-256 signature
+/// 5. If valid, we send PROVISION_CONFIRM to unlock the radio
+///
+/// # Arguments
+/// * `port` - Serial port name
+/// * `genesis` - GenesisMessage received from device
+/// * `node_id` - Assigned node identifier for provisioning
+///
+/// # Returns
+/// Success message on valid attestation
+///
+/// # Errors
+/// - "Device Attestation Failed" if signature verification fails
+/// - "Timeout waiting for ENROLL_PROOF" if device doesn't respond within 5 seconds
+/// - "Invalid ENROLL_PROOF format" if response is malformed
+///
+/// # Fail-Visible Philosophy
+/// If cryptographic verification fails, the device is considered an adversary.
+/// No graceful degradation - security failures must abort immediately.
+#[tauri::command]
+pub async fn inject_genesis_bundle(
+    port: String,
+    genesis: GenesisMessage,
+    node_id: String,
+) -> Result<String, String> {
+    use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
+    use rand::rngs::OsRng;
+    use rand::RngCore;
+    
+    log::info!("Starting challenge-response provisioning for node: {}", node_id);
+    log::info!("Port: {}, Genesis root: {}", port, genesis.root);
+    
+    // STEP 1: Generate 32-byte cryptographically secure random challenge
+    let mut challenge_bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut challenge_bytes);
+    let challenge_hex = hex::encode(&challenge_bytes);
+    
+    log::info!("Generated challenge: {}...", &challenge_hex[..16]);
+    
+    // STEP 2: Parse and validate device public key (ECDSA P-256)
+    // Expected format: 64-byte uncompressed public key (hex encoded)
+    let pub_key_bytes = hex::decode(&genesis.pub_key)
+        .map_err(|e| {
+            format!("FAIL-VISIBLE: Invalid public key format in GENESIS message. \
+                     Expected hex-encoded P-256 key: {}", e)
+        })?;
+    
+    if pub_key_bytes.len() != 64 {
+        return Err(format!(
+            "FAIL-VISIBLE: Invalid P-256 public key length. \
+             Expected 64 bytes (uncompressed), got {}. \
+             This is a CRITICAL security failure.",
+            pub_key_bytes.len()
+        ));
+    }
+    
+    // Construct uncompressed P-256 point (0x04 prefix + 64 bytes)
+    let mut pub_key_point = vec![0x04];
+    pub_key_point.extend_from_slice(&pub_key_bytes);
+    
+    let verifying_key = VerifyingKey::from_sec1_bytes(&pub_key_point)
+        .map_err(|e| {
+            format!("FAIL-VISIBLE: Failed to parse P-256 public key from GENESIS message: {}. \
+                     This is a CRITICAL security failure.", e)
+        })?;
+    
+    log::info!("Device public key validated");
+    
+    // STEP 3: Open serial port for challenge-response exchange
+    let mut serial = serialport::new(&port, 115200)
+        .timeout(Duration::from_secs(5))
+        .open()
+        .map_err(|e| {
+            format!("FAIL-VISIBLE: Failed to open serial port {}: {}", port, e)
+        })?;
+    
+    log::info!("Serial port opened for challenge-response");
+    
+    // STEP 4: Send ENROLL command with challenge
+    let enroll_cmd = EnrollCommand {
+        command: "ENROLL".to_string(),
+        bundle: EnrollBundle {
+            challenge: challenge_hex.clone(),
+        },
+    };
+    
+    let enroll_json = serde_json::to_string(&enroll_cmd)
+        .map_err(|e| format!("FAIL-VISIBLE: Failed to serialize ENROLL command: {}", e))?;
+    
+    use std::io::Write;
+    writeln!(serial, "{}", enroll_json)
+        .map_err(|e| format!("FAIL-VISIBLE: Failed to send ENROLL command: {}", e))?;
+    
+    log::info!("ENROLL command sent with challenge");
+    
+    // STEP 5: Listen for ENROLL_PROOF response (5 second timeout)
+    let mut buffer = String::new();
+    let mut reader = BufReader::new(serial.try_clone()
+        .map_err(|e| format!("FAIL-VISIBLE: Failed to clone serial port: {}", e))?);
+    
+    let start_time = std::time::Instant::now();
+    let timeout = Duration::from_secs(5);
+    
+    let enroll_proof = loop {
+        if start_time.elapsed() > timeout {
+            let err = format!(
+                "FAIL-VISIBLE: Timeout waiting for ENROLL_PROOF from {}. \
+                 Device failed to respond within 5 seconds. \
+                 Assuming device is hung or malicious. \
+                 This is a CRITICAL security failure.",
+                port
+            );
+            log::error!("{}", err);
+            return Err(err);
+        }
+        
+        buffer.clear();
+        match reader.read_line(&mut buffer) {
+            Ok(0) => {
+                // EOF reached
+                thread::sleep(Duration::from_millis(100));
+                continue;
+            }
+            Ok(_) => {
+                let line = buffer.trim();
+                log::debug!("Received line: {}", line);
+                
+                // Try to parse as ENROLL_PROOF
+                if let Ok(proof) = serde_json::from_str::<EnrollProof>(line) {
+                    if proof.r#type != "ENROLL_PROOF" {
+                        log::warn!("Received JSON but type is not ENROLL_PROOF: {}", proof.r#type);
+                        continue;
+                    }
+                    
+                    log::info!("ENROLL_PROOF received from device");
+                    break proof;
+                }
+            }
+            Err(e) => {
+                if e.kind() == std::io::ErrorKind::TimedOut {
+                    continue;
+                } else {
+                    let err = format!("FAIL-VISIBLE: Error reading from serial port: {}", e);
+                    log::error!("{}", err);
+                    return Err(err);
+                }
+            }
+        }
+    };
+    
+    log::info!("Received ENROLL_PROOF at timestamp: {}", enroll_proof.timestamp);
+    
+    // STEP 6: Verify the ECDSA P-256 signature
+    // Data to verify: ChallengeBytes || TimestampBytes (big-endian u64)
+    let mut message = Vec::new();
+    message.extend_from_slice(&challenge_bytes);
+    message.extend_from_slice(&enroll_proof.timestamp.to_be_bytes());
+    
+    log::debug!("Verifying signature over {} bytes", message.len());
+    
+    let signature_bytes = hex::decode(&enroll_proof.proof)
+        .map_err(|e| {
+            format!("FAIL-VISIBLE: Invalid signature format in ENROLL_PROOF. \
+                     Expected hex-encoded ECDSA signature: {}", e)
+        })?;
+    
+    let signature = Signature::from_der(&signature_bytes)
+        .or_else(|_| {
+            // Try raw 64-byte signature if DER parsing fails
+            if signature_bytes.len() == 64 {
+                Signature::from_slice(&signature_bytes)
+            } else {
+                Err(p256::ecdsa::Error::new())
+            }
+        })
+        .map_err(|e| {
+            format!("FAIL-VISIBLE: Failed to parse ECDSA signature from ENROLL_PROOF: {}. \
+                     This is a CRITICAL security failure.", e)
+        })?;
+    
+    // CRITICAL: Verify the signature
+    if let Err(e) = verifying_key.verify(&message, &signature) {
+        let err = format!(
+            "FAIL-VISIBLE: Device Attestation Failed. \
+             Signature verification failed: {}. \
+             The device at {} is considered an ADVERSARY. \
+             This is a CRITICAL security failure.",
+            e, port
+        );
+        log::error!("{}", err);
+        return Err("Device Attestation Failed".to_string());
+    }
+    
+    log::info!("✓ Signature verification PASSED - Device attestation successful");
+    
+    // STEP 7: Send PROVISION_CONFIRM to unlock the radio
+    let confirm_cmd = ProvisionConfirm {
+        command: "PROVISION_CONFIRM".to_string(),
+        node_id: node_id.clone(),
+    };
+    
+    let confirm_json = serde_json::to_string(&confirm_cmd)
+        .map_err(|e| format!("FAIL-VISIBLE: Failed to serialize PROVISION_CONFIRM: {}", e))?;
+    
+    writeln!(serial, "{}", confirm_json)
+        .map_err(|e| format!("FAIL-VISIBLE: Failed to send PROVISION_CONFIRM: {}", e))?;
+    
+    log::info!("PROVISION_CONFIRM sent - Radio unlocked");
+    
+    Ok(format!(
+        "Device attestation successful. Node {} provisioned and radio unlocked.",
+        node_id
+    ))
 }
 
 #[cfg(test)]

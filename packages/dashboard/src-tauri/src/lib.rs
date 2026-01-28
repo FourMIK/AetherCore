@@ -41,6 +41,7 @@ pub fn run() {
       provisioning::list_serial_ports,
       provisioning::flash_firmware,
       provisioning::listen_for_genesis,
+      provisioning::inject_genesis_bundle,
     ])
     .on_window_event(|window, event| {
       if let tauri::WindowEvent::CloseRequested { .. } = event {
