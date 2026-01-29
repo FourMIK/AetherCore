@@ -122,7 +122,7 @@ export const DeploymentManagementView: React.FC = () => {
       case 'running':
         return 'text-verified-green';
       case 'stopped':
-        return 'text-tungsten/50';
+        return 'text-tungsten/70';
       case 'failed':
         return 'text-jamming';
       default:
