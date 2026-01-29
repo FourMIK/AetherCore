@@ -1,51 +1,101 @@
-# 4MIK AetherCore™: The Sovereign Trust Fabric
+# AetherCore™ Tactical Glass
 
-> **Status:** TRL-9 (Operational Transition)  
-> **Doctrine:** Truth as a Weapon  
-> **Classification:** UNCLASSIFIED // PROPRIETARY
+<img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg">
+<img src="https://img.shields.io/badge/version-0.1.0--alpha-orange.svg">
+<img src="https://img.shields.io/badge/build-passing-brightgreen.svg">
 
----
-
-## Executive Summary
-
-**AetherCore** is the foundational operating system for contested environments. It replaces "trust by policy" with **Cryptographic Certainty**, binding every data packet to physical silicon at the source.
-
-Designed for the **Kill Web**, AetherCore provides a decentralized, hardware-rooted trust layer that enables autonomous swarms, manned-unmanned teaming (MUM-T), and critical infrastructure to operate reliably in the face of sophisticated spoofing, jamming, and Byzantine attacks.
-
-## Core Capabilities
-
-### 1. Hardware-Rooted Truth
-AetherCore does not trust software. Every node (**CodeRalphie**) must prove its identity via a **TPM 2.0 / Secure Enclave** attestation before joining the mesh. Private keys never leave the silicon.
-
-### 2. Merkle Vine™ Integrity
-Data is not just encrypted; it is historically anchored. The **Merkle Vine** streaming protocol ensures that every telemetry frame is cryptographically linked to the previous one. Any injection of "ghost data" breaks the chain, triggering an immediate **Fail-Visible** alert.
-
-### 3. The Aetheric Sweep
-The network actively hunts for compromise. Using gossip-based consensus and Byzantine fault detection, the **Trust Mesh** automatically identifies and isolates lying nodes. This "sweep" visually fractures the feed on the operator's display, ensuring no commander ever acts on false intelligence.
-
-### 4. Tactical Glass
-The operator interface (`packages/dashboard`) is a high-performance, GPU-accelerated visualization tool. It provides a real-time common operating picture (COP) where "verified" is the only status that matters.
+> **AetherCore** is a hardware-rooted trust fabric for contested environments. 
+> **Tactical Glass** is the operator's window into that truth.
 
 ---
 
-## System Architecture
+## ⚠️ Alpha Release Notice
+This is a **Developer Preview (v0.1.0)**. While the cryptographic core is verified, this software is intended for evaluation and testing in controlled environments. 
+* **Dev Mode:** The desktop application currently runs in "Dev Mode" by default, simulating hardware roots of trust.
+* **Compatibility:** Hardware pairing requires Firmware v0.1.0+.
 
-AetherCore is a high-performance monorepo integrating systems-level Rust with scalable TypeScript microservices.
+---
 
-```mermaid
-graph TD
-    Hardware[CodeRalphie Edge Node] -->|Signed Telemetry| Stream[Stream Service]
-    Stream -->|Merkle Vine| Ingest[H2 Ingest]
-    Ingest -->|Verification| TrustMesh[Trust Mesh Consensus]
-    TrustMesh -->|Verified State| Gateway[API Gateway]
-    Gateway -->|Live Feed| Glass[Tactical Glass Dashboard]
-    
-    subgraph "The Bunker (Command)"
-    TrustMesh
-    Gateway
-    end
-    
-    subgraph "The Edge (Contested)"
-    Hardware
-    Stream
-    end
+## Overview
+
+AetherCore replaces "trust by policy" with **Cryptographic Certainty**. It is designed for autonomous swarms, critical infrastructure, and edge operations where network integrity is paramount.
+
+### Key Capabilities
+
+* **🛡️ Hardware-Rooted Identity:** Every node is cryptographically bound to physical silicon (TPM 2.0 / Secure Enclave).
+* **🔗 Merkle Vine™ Integrity:** Telemetry streams are historically anchored; data cannot be injected retroactively.
+* **⚡ The Aetheric Sweep:** Automated gossip protocols actively hunt and isolate compromised or "lying" nodes.
+* **🖥️ Tactical Glass:** A GPU-accelerated desktop dashboard for real-time fleet command and mesh visualization.
+
+## Quick Start
+
+### Download Binaries
+For the latest installers (macOS .dmg, Windows .msi, Linux .AppImage), please visit our [Releases Page](https://github.com/FourMIK/AetherCore/releases).
+
+### Installation
+See the [Installation Guide](INSTALLATION.md) for detailed setup instructions.
+
+### Running from Source
+
+**Prerequisites:**
+* Node.js 18+
+* Rust 1.75+ (Stable)
+* pnpm
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/FourMIK/AetherCore.git
+cd AetherCore
+
+# 2. Install dependencies
+pnpm install
+
+# 3. Build & Run Desktop App (Dev Mode)
+cd packages/dashboard
+pnpm tauri dev
+```
+
+---
+
+## Documentation
+* [Installation Guide](INSTALLATION.md): Setup for Windows, macOS, and Linux.
+* [Architecture](ARCHITECTURE.md): System design and data flow.
+* [Security](SECURITY.md): Threat models and reporting vulnerabilities.
+* [Protocol Overview](PROTOCOL_OVERVIEW.md): Deep dive into the consensus mechanism.
+
+## Contributing
+We welcome contributions from the community. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting Pull Requests.
+
+## License
+Copyright © 2026 FourMIK. Released under the Apache 2.0 License. See [LICENSE](LICENSE) for details.
+
+---
+
+## First Run & Configuration
+
+Upon launching Tactical Glass, you will enter the Command Dashboard.
+
+### Node Deployment (Local)
+1. Navigate to the **Deployments** tab in the sidebar.
+2. Click **Add Node**.
+3. Select **Local Process** to spawn a node on your machine.
+4. The node will automatically connect to the local mesh loopback.
+
+### Hardware Pairing (ESP32)
+Requires Firmware v0.1.0 flashed to device.
+
+1. Ensure your computer and ESP32 are on the same Wi-Fi network.
+2. In Dashboard, click **Add Node > Hardware Scan**.
+3. Point your webcam at the QR code generated by the device (if applicable) or enter the Pairing Code.
+
+---
+
+## Troubleshooting
+
+### "Developer Mode" Warning
+You will see a "DEV MODE" banner at the top of the application. This is normal for the Alpha release and indicates that hardware security modules (TPM) are being emulated in software for compatibility.
+
+### Connection Failed
+If you cannot deploy nodes:
+* Ensure ports 8080 and 9000-9100 are not blocked by your firewall.
+* Check the logs in the Deployments view for specific error messages.
