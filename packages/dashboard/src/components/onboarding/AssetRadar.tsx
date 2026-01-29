@@ -17,19 +17,19 @@ interface CandidateNode {
 interface AssetRadarProps {
   onActivate: (asset: CandidateNode) => void;
   scanning: boolean;
-  setScanninig: (scanning: boolean) => void;
+  setScanning: (scanning: boolean) => void;
 }
 
 export const AssetRadar: React.FC<AssetRadarProps> = ({
   onActivate,
   scanning,
-  setScanninig,
+  setScanning,
 }) => {
   const [assets, setAssets] = useState<CandidateNode[]>([]);
   const [error, setError] = useState<string>('');
 
   const scanAssets = async () => {
-    setScanninig(true);
+    setScanning(true);
     setError('');
     try {
       const discovered = await invoke<CandidateNode[]>('scan_for_assets');
@@ -38,7 +38,7 @@ export const AssetRadar: React.FC<AssetRadarProps> = ({
       setError(err instanceof Error ? err.message : String(err));
       setAssets([]);
     } finally {
-      setScanninig(false);
+      setScanning(false);
     }
   };
 

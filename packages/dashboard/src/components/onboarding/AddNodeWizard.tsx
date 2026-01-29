@@ -132,7 +132,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
             <AssetRadar
               onActivate={handleActivate}
               scanning={scanning}
-              setScanninig={setScanning}
+              setScanning={setScanning}
             />
           )}
 
