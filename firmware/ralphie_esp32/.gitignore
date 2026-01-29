@@ -1,0 +1,12 @@
+# Test binaries
+test_blake3
+test_identity
+
+# Build artifacts
+*.o
+*.elf
+*.hex
+*.bin
+
+# Arduino build
+build/

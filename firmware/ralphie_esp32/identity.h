@@ -17,9 +17,8 @@
 
 #include <Arduino.h>
 
-// BLAKE3 will need to be installed as a library
-// For now, we define the interface that matches the protocol
-// In production, use: https://github.com/BLAKE3-team/BLAKE3/tree/master/c
+// BLAKE3 C library integration
+#include "blake3.h"
 
 /**
  * Platform types
@@ -60,33 +59,17 @@ void bytesToHex(const uint8_t* data, size_t len, char* hex_out) {
 /**
  * BLAKE3 Hash Wrapper
  * 
- * This is a placeholder for the BLAKE3 implementation.
- * In production, replace with actual BLAKE3 library call.
- * 
- * Reference implementation uses: blake3_hasher_init, blake3_hasher_update, blake3_hasher_finalize
+ * Production implementation using official BLAKE3 C library.
  * 
  * @param input Input string to hash
  * @param input_len Length of input
  * @param output Output buffer (32 bytes)
  */
 void blake3_hash(const char* input, size_t input_len, uint8_t* output) {
-  // PRODUCTION CODE:
-  // blake3_hasher hasher;
-  // blake3_hasher_init(&hasher);
-  // blake3_hasher_update(&hasher, input, input_len);
-  // blake3_hasher_finalize(&hasher, output, 32);
-  
-  // PLACEHOLDER for testing - DO NOT USE IN PRODUCTION
-  // This is just to demonstrate the interface
-  // In real deployment, install BLAKE3 C library
-  #warning "Using placeholder hash - INSTALL BLAKE3 LIBRARY FOR PRODUCTION"
-  
-  // For testing purposes, we'll create a deterministic but fake hash
-  // Real implementation MUST use actual BLAKE3
-  for (int i = 0; i < 32; i++) {
-    output[i] = 0;
-  }
-  // This will be replaced with real BLAKE3 hash
+  blake3_hasher hasher;
+  blake3_hasher_init(&hasher);
+  blake3_hasher_update(&hasher, input, input_len);
+  blake3_hasher_finalize(&hasher, output, BLAKE3_OUT_LEN);
 }
 
 /**
