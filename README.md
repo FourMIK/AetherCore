@@ -1,7 +1,7 @@
 # AetherCore™ Tactical Glass
 
 <img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg">
-<img src="https://img.shields.io/badge/version-0.1.0_alpha-orange.svg">
+<img src="https://img.shields.io/badge/version-0.1.0--alpha-orange.svg">
 <img src="https://img.shields.io/badge/build-passing-brightgreen.svg">
 
 > **AetherCore** is a hardware-rooted trust fabric for contested environments. 
