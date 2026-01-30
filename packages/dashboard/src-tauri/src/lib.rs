@@ -26,10 +26,10 @@ fn sentinel_boot() -> Result<(), String> {
         // Initialize TPM Manager in hardware mode (enforces real TPM)
         let tpm = TpmManager::new(true);
         
-        // Generate a sentinel nonce for this boot sequence
-        let sentinel_nonce: Vec<u8> = (0..32)
-            .map(|_| rand::random::<u8>())
-            .collect();
+        // Generate a cryptographically secure sentinel nonce for this boot sequence
+        use rand::RngCore;
+        let mut sentinel_nonce = vec![0u8; 32];
+        rand::thread_rng().fill_bytes(&mut sentinel_nonce);
         
         // Request quote for PCRs 0-7 (boot sequence integrity)
         let pcr_selection: Vec<u8> = (0..8).collect();
@@ -38,13 +38,9 @@ fn sentinel_boot() -> Result<(), String> {
     });
     
     match boot_result {
-        Ok(Ok(quote)) => {
+        Ok(Ok(_quote)) => {
             // Success: TPM hardware confirmed
-            let digest_hex = quote.pcrs.iter()
-                .map(|pcr| format!("PCR{}: {}", pcr.index, hex::encode(&pcr.value)))
-                .collect::<Vec<_>>()
-                .join(", ");
-            log::info!("[SENTINEL] Identity Confirmed - Hardware Digest: {}", digest_hex);
+            // Note: Logging happens after logger initialization in setup()
             Ok(())
         }
         Ok(Err(e)) => {
@@ -127,7 +123,6 @@ pub fn run() {
         });
         
         // Terminate the application - do not allow WebView to render
-        log::error!("[SENTINEL] Boot verification failed. Terminating application.");
         std::process::exit(1);
       }
       
@@ -139,6 +134,10 @@ pub fn run() {
             .build(),
         )?;
       }
+      
+      // Log successful sentinel boot after logger is initialized
+      log::info!("[SENTINEL] Boot verification successful - Hardware identity confirmed");
+      
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
