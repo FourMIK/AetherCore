@@ -29,6 +29,7 @@ aethercore-trust-mesh = { path = "../../../crates/trust_mesh" }
 # Tauri
 tauri = { version = "2.9.5", features = [] }
 tauri-plugin-log = "2"
+tauri-plugin-dialog = "2"
 
 # Common dependencies
 serde = { version = "1.0", features = ["derive"] }
