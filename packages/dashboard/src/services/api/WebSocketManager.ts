@@ -126,6 +126,11 @@ export class WebSocketManager {
 
   private async sendHeartbeat(): Promise<void> {
     try {
+        // Fail-Visible: deviceId must be set before sending heartbeat
+        if (!this.deviceId) {
+            throw new Error('Device ID not initialized');
+        }
+
         const timestamp = new Date().toISOString();
         // Create the string to sign: DeviceID + Timestamp ensures uniqueness
         const signablePayload = `${this.deviceId}:${timestamp}`;
@@ -137,7 +142,7 @@ export class WebSocketManager {
         });
 
         const payload: HeartbeatPayload = {
-            deviceId: this.deviceId!,
+            deviceId: this.deviceId,
             signature: signature,
             timestamp: timestamp
         };
@@ -155,13 +160,6 @@ export class WebSocketManager {
   private setConnectionStatus(status: ConnectionStatus): void {
     this.connectionStatus = status;
     useCommStore.getState().setConnectionStatus(status);
-  }
-
-  // Singleton pattern...
-  static instance: WebSocketManager;
-  static getInstance(url?: string): WebSocketManager {
-      if (!this.instance && url) this.instance = new WebSocketManager(url);
-      return this.instance;
   }
 
   /**
