@@ -8,6 +8,7 @@ use aethercore_trust_mesh::ComplianceProof;
 use ed25519_dalek::VerifyingKey;
 use crate::process_manager::{NodeProcessManager, NodeProcessInfo, ProcessStatus};
 use std::path::PathBuf;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 /// Genesis Bundle for Zero-Touch Enrollment
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +27,7 @@ pub struct AppState {
     pub stream_tracker: Arc<Mutex<StreamIntegrityTracker>>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub process_manager: Arc<Mutex<NodeProcessManager>>,
+    pub tpm_manager: Arc<Mutex<aethercore_identity::TpmManager>>,
 }
 
 /// Connect to Production C2 Mesh
@@ -911,6 +913,59 @@ fn locate_node_binary() -> Result<String> {
     Err(anyhow::anyhow!(
         "Node binary not found. Set NODE_BINARY_PATH environment variable or ensure 'aethercore-node' is in PATH"
     ))
+}
+
+/// Sign Heartbeat Payload (Aetheric Link Protocol)
+/// 
+/// This command implements cryptographic authentication for the C2 heartbeat
+/// protocol. Every 5 seconds, the client must prove its identity by signing
+/// a nonce (timestamp + random UUID) using TPM-backed Ed25519.
+/// 
+/// # Fail-Visible Doctrine
+/// 
+/// If the TPM fails to sign (hardware error, tampered device), this command
+/// MUST return an error. The frontend will interpret TPM signing failure as
+/// a "Broken Link" and immediately sever the connection.
+/// 
+/// # Security Model
+/// 
+/// - Private keys NEVER enter system memory (TPM hardware enforcement)
+/// - Each signature is unique (nonce includes timestamp + UUID)
+/// - Backend verifies freshness (reject payloads > 3s old)
+/// - Missing 2 heartbeats (10s) triggers Dead Man's Switch
+/// 
+/// # Arguments
+/// 
+/// * `nonce` - The payload to sign (JSON string with timestamp + nonce)
+/// 
+/// # Returns
+/// 
+/// Base64-encoded signature bytes, or error if TPM signing fails
+#[tauri::command]
+pub async fn sign_heartbeat_payload(
+    nonce: String,
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<String, String> {
+    log::debug!("[AETHERIC LINK] Signing heartbeat payload");
+    
+    // Access TPM Manager from app state
+    let app_state = state.lock().await;
+    let mut tpm = app_state.tpm_manager.lock().await;
+    
+    // Sign the nonce using TPM
+    // In production with hardware-tpm feature, this uses real TPM
+    // In development/testing, uses stub BLAKE3 signing
+    let signature = tpm.sign(nonce.as_bytes())
+        .map_err(|e| {
+            log::error!("[CRITICAL] TPM signing failed: {}", e);
+            format!("TPM Link not initialized: {}", e)
+        })?;
+    
+    // Encode signature as base64 for transmission
+    let signature_b64 = BASE64.encode(&signature);
+    
+    log::debug!("[AETHERIC LINK] Heartbeat signed successfully");
+    Ok(signature_b64)
 }
 
 #[cfg(test)]
