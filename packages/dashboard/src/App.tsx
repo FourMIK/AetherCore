@@ -41,7 +41,11 @@ export const App: React.FC = () => {
       const gatewayUrl = import.meta.env.VITE_GATEWAY_URL || 'ws://localhost:8080';
       try {
         const wsManager = getWebSocketManager(gatewayUrl);
-        wsManager.connect();
+        // SignalR connect is async, but we don't need to await here
+        // Connection will establish in background
+        wsManager.connect().catch(err => {
+          console.error('[AETHERIC LINK] Connection failed:', err);
+        });
         console.log('[AETHERIC LINK] WebSocket manager initialized');
       } catch (err) {
         console.error('[AETHERIC LINK] Failed to initialize WebSocket manager:', err);
