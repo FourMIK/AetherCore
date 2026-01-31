@@ -155,6 +155,7 @@ pub fn run() {
       commands::stop_node,
       commands::get_deployment_status,
       commands::get_node_logs,
+      commands::sign_heartbeat_payload,
       // New unified provisioning commands
       provisioning::scan_for_assets,
       provisioning::provision_target,
