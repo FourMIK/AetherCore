@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 
 export type OperatorRole = 'operator' | 'commander' | 'admin';
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'unverified' | 'severed';
 
 export interface Operator {
   id: string;
@@ -45,6 +46,7 @@ interface CommState {
   conversations: Map<string, Message[]>;
   activeCall: VideoCall | null;
   incomingCall: VideoCall | null;
+  connectionStatus: ConnectionStatus;
   
   // Actions
   setCurrentOperator: (operator: Operator) => void;
@@ -57,6 +59,7 @@ interface CommState {
   rejectCall: (callId: string) => void;
   endCall: () => void;
   getConversation: (operatorId: string) => Message[];
+  setConnectionStatus: (status: ConnectionStatus) => void;
 }
 
 export const useCommStore = create<CommState>((set, get) => ({
@@ -65,6 +68,7 @@ export const useCommStore = create<CommState>((set, get) => ({
   conversations: new Map(),
   activeCall: null,
   incomingCall: null,
+  connectionStatus: 'disconnected',
 
   setCurrentOperator: (operator) => set({ currentOperator: operator }),
 
@@ -166,4 +170,6 @@ export const useCommStore = create<CommState>((set, get) => ({
     const state = get();
     return state.conversations.get(operatorId) || [];
   },
+
+  setConnectionStatus: (status) => set({ connectionStatus: status }),
 }));

@@ -41,11 +41,16 @@ export default {
           '0%': { transform: 'translateY(100%)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
         },
+        pulseFast: {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.5' },
+        },
       },
       animation: {
         fadeIn: 'fadeIn 0.3s ease-in',
         slideInDown: 'slideInDown 0.3s ease-out',
         slideInUp: 'slideInUp 0.3s ease-out',
+        'pulse-fast': 'pulseFast 1s ease-in-out infinite',
       },
     },
   },
