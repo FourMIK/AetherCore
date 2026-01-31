@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, Activity, Shield } from 'lucide-react';
 import { GlassPanel } from './GlassPanel';
+import { ConnectionIndicator } from '../health/ConnectionIndicator';
 
 interface TopBarProps {
   systemStatus?: 'operational' | 'degraded' | 'offline';
@@ -68,6 +69,9 @@ export const TopBar: React.FC<TopBarProps> = ({
       </div>
 
       <div className="flex items-center gap-4 ml-4">
+        {/* Aetheric Link Status */}
+        <ConnectionIndicator />
+        <div className="h-6 w-px bg-tungsten/20 flex-shrink-0" />
         <div className="text-sm text-tungsten/70 whitespace-nowrap">
           <span className="font-semibold text-verified-green">{verifiedNodes}</span>
           <span className="mx-1">/</span>

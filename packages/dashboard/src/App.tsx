@@ -9,6 +9,7 @@ import { DashboardLayout } from './components/layout/DashboardLayout';
 import { useTacticalStore } from './store/useTacticalStore';
 import { initializeComms } from './store/initComms';
 import { initDummyData } from './store/initDummyData';
+import { getWebSocketManager } from './services/api/WebSocketManager';
 import './index.css';
 
 export const App: React.FC = () => {
@@ -34,7 +35,28 @@ export const App: React.FC = () => {
       } catch (err) {
         console.error('Failed to initialize dummy data:', err);
       }
+
+      // Initialize Aetheric Link (signed heartbeat protocol)
+      // In production, use wss:// endpoint from environment or config
+      const gatewayUrl = import.meta.env.VITE_GATEWAY_URL || 'ws://localhost:8080';
+      try {
+        const wsManager = getWebSocketManager(gatewayUrl);
+        wsManager.connect();
+        console.log('[AETHERIC LINK] WebSocket manager initialized');
+      } catch (err) {
+        console.error('[AETHERIC LINK] Failed to initialize WebSocket manager:', err);
+      }
     }, 100);
+
+    // Cleanup on unmount
+    return () => {
+      try {
+        const wsManager = getWebSocketManager();
+        wsManager.disconnect();
+      } catch (err) {
+        // Ignore errors during cleanup
+      }
+    };
   }, []);
 
   return (
