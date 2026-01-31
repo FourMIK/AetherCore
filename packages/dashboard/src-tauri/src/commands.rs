@@ -8,6 +8,7 @@ use aethercore_trust_mesh::ComplianceProof;
 use ed25519_dalek::VerifyingKey;
 use crate::process_manager::{NodeProcessManager, NodeProcessInfo, ProcessStatus};
 use std::path::PathBuf;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 /// Genesis Bundle for Zero-Touch Enrollment
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -961,7 +962,7 @@ pub async fn sign_heartbeat_payload(
         })?;
     
     // Encode signature as base64 for transmission
-    let signature_b64 = base64::encode(&signature);
+    let signature_b64 = BASE64.encode(&signature);
     
     log::debug!("[AETHERIC LINK] Heartbeat signed successfully");
     Ok(signature_b64)

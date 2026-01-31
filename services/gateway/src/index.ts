@@ -254,7 +254,7 @@ export class Gateway {
    * Generate unique connection ID
    */
   private generateConnectionId(): string {
-    return `conn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `conn-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
 
   /**

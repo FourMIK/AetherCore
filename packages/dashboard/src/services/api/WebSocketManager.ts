@@ -35,6 +35,7 @@ export class WebSocketManager {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 2000;
+  private heartbeatInProgress = false;
 
   constructor(url: string) {
     this.url = url;
@@ -114,9 +115,12 @@ export class WebSocketManager {
     // Send first heartbeat immediately
     this.sendHeartbeat();
 
-    // Then send every 5 seconds
-    this.heartbeatInterval = setInterval(async () => {
-      await this.sendHeartbeat();
+    // Then send every 5 seconds (with overlap protection)
+    this.heartbeatInterval = setInterval(() => {
+      // Skip if previous heartbeat still in progress
+      if (!this.heartbeatInProgress) {
+        this.sendHeartbeat();
+      }
     }, 5000);
   }
 
@@ -134,6 +138,9 @@ export class WebSocketManager {
    * Send a signed heartbeat to the backend
    */
   private async sendHeartbeat(): Promise<void> {
+    // Set in-progress flag to prevent overlapping calls
+    this.heartbeatInProgress = true;
+
     try {
       // Generate nonce payload
       const payload: HeartbeatPayload = {
@@ -171,6 +178,9 @@ export class WebSocketManager {
       
       // Dispatch global event for UI
       this.dispatchAethericLinkSevered('TPM signing failure');
+    } finally {
+      // Clear in-progress flag
+      this.heartbeatInProgress = false;
     }
   }
 
