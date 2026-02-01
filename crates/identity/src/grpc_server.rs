@@ -344,6 +344,7 @@ impl IdentityRegistry for IdentityRegistryService {
                 signature: req.tpm_quote.clone(),
                 nonce: vec![], // Nonce would be from challenge-response
                 timestamp: req.timestamp_ms,
+                attestation_data: vec![],
             };
 
             // Create attestation key from AK cert

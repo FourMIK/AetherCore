@@ -365,6 +365,7 @@ impl AttestationManager {
                     signature: vec![],
                     nonce: request.challenge.clone(),
                     timestamp: now,
+                    attestation_data: vec![],
                 })
             }
             _ => None,

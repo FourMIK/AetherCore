@@ -25,6 +25,9 @@ pub struct TpmQuote {
     pub nonce: Vec<u8>,
     /// Timestamp
     pub timestamp: u64,
+    /// Raw TPMS_ATTEST structure (serialized attestation data)
+    /// This contains the signed data including nonce and PCR digest
+    pub attestation_data: Vec<u8>,
 }
 
 /// Platform Configuration Register value.
@@ -518,6 +521,15 @@ impl TpmManager {
                 crate::Error::Identity(format!("Failed to convert signature: {:?}", e))
             })?;
 
+        // Serialize the attest structure (TPMS_ATTEST) for verification
+        let attestation_data: Vec<u8> = attest.try_into()
+            .map_err(|e| {
+                // Cleanup on error
+                let _ = context.flush_context(ak_handle.into());
+                let _ = context.flush_context(srk_handle.into());
+                crate::Error::Identity(format!("Failed to serialize attest structure: {:?}", e))
+            })?;
+
         // Proper resource cleanup before success return
         context.flush_context(ak_handle.into())
             .map_err(|e| crate::Error::Identity(format!("Failed to flush AK handle: {}", e)))?;
@@ -529,6 +541,7 @@ impl TpmManager {
             signature: signature_bytes,
             nonce,
             timestamp: current_timestamp(),
+            attestation_data,
         })
     }
 
@@ -545,29 +558,23 @@ impl TpmManager {
 
     #[cfg(feature = "hardware-tpm")]
     fn verify_quote_hardware(&self, quote: &TpmQuote, ak: &AttestationKey) -> bool {
-        // ============================================================================
-        // WARNING: STRUCTURAL VALIDATION ONLY - CRYPTOGRAPHIC VERIFICATION INCOMPLETE
-        // ============================================================================
-        // This function currently performs only structural validation of TPM quotes.
-        // Full cryptographic signature verification using the Attestation Key (AK)
-        // is NOT yet implemented. This is a known security limitation.
-        //
-        // PRODUCTION RISK: This function will accept quotes with invalid signatures.
-        // An adversary could forge quotes that would pass this validation.
-        //
-        // TODO: Implement full cryptographic verification:
-        //   1. Parse the ECC public key from ak.public_key (DER-encoded)
-        //   2. Reconstruct the digest that was signed (PCR composite + nonce)
-        //   3. Verify the ECDSA signature against the reconstructed digest
-        //
-        // This must be addressed before production deployment. Until then, quote
-        // verification provides structural validation only and should not be relied
-        // upon for security-critical decisions.
-        // ============================================================================
-        
+        use p256::ecdsa::{Signature as EcdsaSignature, VerifyingKey, signature::Verifier};
+        use sha2::{Sha256, Digest};
+        use tss_esapi::structures::Attest;
+
         // Basic structural validation
-        if quote.pcrs.is_empty() || quote.signature.is_empty() {
-            tracing::error!("Quote validation failed: empty PCRs or signature");
+        if quote.pcrs.is_empty() {
+            tracing::error!("Quote validation failed: empty PCRs");
+            return false;
+        }
+
+        if quote.signature.is_empty() {
+            tracing::error!("Quote validation failed: empty signature");
+            return false;
+        }
+
+        if quote.attestation_data.is_empty() {
+            tracing::error!("Quote validation failed: empty attestation data");
             return false;
         }
 
@@ -579,20 +586,94 @@ impl TpmManager {
             }
         }
 
-        // In a full implementation, we would:
-        // 1. Parse the public key from ak.public_key
-        // 2. Reconstruct the digest that was signed (PCR composite + nonce)
-        // 3. Verify the ECC signature using the public key
-        // 
-        // This requires additional cryptographic operations that depend on
-        // the exact format of the quote signature and attestation data.
-        // For now, we perform structural validation.
-        
-        tracing::warn!(
-            "Hardware TPM quote structural validation passed: {} PCRs, signature length {}. \
-             WARNING: Cryptographic signature verification not implemented.",
-            quote.pcrs.len(),
-            quote.signature.len()
+        // Step 1: Parse the ECC public key from ak.public_key (DER-encoded)
+        let verifying_key = match VerifyingKey::from_sec1_bytes(&ak.public_key) {
+            Ok(key) => key,
+            Err(e) => {
+                tracing::error!("Signature Invalid: Failed to parse public key: {}", e);
+                return false;
+            }
+        };
+
+        // Step 2: Parse the signature (ECDSA signature in DER or raw format)
+        let signature = match EcdsaSignature::from_der(&quote.signature) {
+            Ok(sig) => sig,
+            Err(_) => {
+                // Try raw format (r || s, 64 bytes for P-256)
+                match EcdsaSignature::from_bytes(&quote.signature.as_slice().into()) {
+                    Ok(sig) => sig,
+                    Err(e) => {
+                        tracing::error!("Signature Invalid: Failed to parse signature: {}", e);
+                        return false;
+                    }
+                }
+            }
+        };
+
+        // Step 3: Verify the signature against the attestation_data
+        if let Err(e) = verifying_key.verify(&quote.attestation_data, &signature) {
+            tracing::error!("Signature Invalid: ECDSA signature verification failed: {}", e);
+            return false;
+        }
+
+        // Step 4: Parse the attestation_data to extract and validate nonce and PCR digest
+        let attest_struct = match Attest::try_from(quote.attestation_data.clone()) {
+            Ok(attest) => attest,
+            Err(e) => {
+                tracing::error!("Ghost Data Detected: Failed to parse attestation structure: {:?}", e);
+                return false;
+            }
+        };
+
+        // Step 5: Validate nonce integrity
+        // Extract extraData from the attest structure
+        let extra_data = match attest_struct.extra_data() {
+            Some(data) => data.as_slice(),
+            None => {
+                tracing::error!("Nonce Mismatch: No extraData in attestation structure");
+                return false;
+            }
+        };
+
+        if extra_data != quote.nonce.as_slice() {
+            tracing::error!(
+                "Nonce Mismatch: Expected nonce length {}, got {}",
+                quote.nonce.len(),
+                extra_data.len()
+            );
+            return false;
+        }
+
+        // Step 6: Validate PCR integrity
+        // Hash the provided PCRs (SHA-256) and compare with pcrDigest in attestation
+        let mut hasher = Sha256::new();
+        for pcr in &quote.pcrs {
+            hasher.update(&pcr.value);
+        }
+        let computed_pcr_digest = hasher.finalize();
+
+        // Extract the quote info and PCR digest from attestation
+        let attest_info = match attest_struct.attested() {
+            tss_esapi::structures::AttestInfo::Quote { info } => info,
+            _ => {
+                tracing::error!("Ghost Data Detected: Attestation is not a quote");
+                return false;
+            }
+        };
+
+        let pcr_digest = attest_info.pcr_digest().as_bytes();
+        if computed_pcr_digest.as_slice() != pcr_digest {
+            tracing::error!(
+                "Ghost Data Detected: PCR digest mismatch. Computed: {}, Expected: {}",
+                hex::encode(computed_pcr_digest),
+                hex::encode(pcr_digest)
+            );
+            return false;
+        }
+
+        tracing::info!(
+            "Hardware TPM quote cryptographically verified: {} PCRs, signature valid",
+            quote.pcrs.len()
         );
         
         true
@@ -880,6 +961,7 @@ impl TpmManager {
             signature: vec![0xAA; 64], // Stub signature
             nonce,
             timestamp: current_timestamp(),
+            attestation_data: vec![0xBB; 64], // Stub attestation data
         })
     }
 
