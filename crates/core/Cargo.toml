@@ -17,12 +17,12 @@ field = ["minimal", "merkle"]
 
 [dependencies]
 serde = { workspace = true }
-serde_json = { workspace = true }
-anyhow = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 blake3 = { workspace = true }
 hex = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
 ed25519-dalek = { workspace = true }
 rusqlite = { workspace = true, optional = true }
 toml = { workspace = true, optional = true }

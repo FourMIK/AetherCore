@@ -1,301 +1,99 @@
-/**
- * AetherCore Gateway Service
- * 
- * Main entry point for the gateway with Aetheric Link protocol enforcement.
- * Implements WebSocket server with signed heartbeat verification and Dead Man's Switch.
- */
-
+import express from 'express';
+import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { createHash } from 'crypto';
+import * as grpc from '@grpc/grpc-js';
+import * as protoLoader from '@grpc/proto-loader';
+import path from 'path';
+import { z } from 'zod';
+import cors from 'cors';
+import dotenv from 'dotenv';
 
-// Connection tracking for Dead Man's Switch
-interface ConnectionState {
-  ws: WebSocket;
-  connectionId: string;
-  publicKey: string | null;
-  lastHeartbeat: number;
-  verified: boolean;
-}
+dotenv.config();
 
-// Heartbeat message types
-interface HeartbeatPayload {
-  ts: number;
-  nonce: string;
-}
+const PORT = process.env.PORT || 3000;
+const C2_GRPC_TARGET = process.env.C2_ADDR || 'localhost:50051';
+const PROTO_PATH = path.resolve(__dirname, '../../../crates/c2-router/proto/c2.proto');
 
-interface HeartbeatMessage {
-  type: 'HEARTBEAT';
-  payload: string;
-  signature: string;
-}
+const CommandSchema = z.object({
+  id: z.string().uuid(),
+  type: z.enum(['PURGE_NODE', 'OVERRIDE_AUTH', 'SWARM_RECONFIG', 'MARK_HOSTILE']),
+  target: z.string(),
+  payload: z.record(z.string(), z.any()).optional(),
+  signature: z.string().min(1, "Operator signature required"), 
+});
 
-export class Gateway {
-  private wss: WebSocketServer | null = null;
-  private connections: Map<string, ConnectionState> = new Map();
-  private deadManCheckInterval: NodeJS.Timeout | null = null;
-  private port: number;
+const packageDefinition = protoLoader.loadSync(PROTO_PATH, { keepCase: true, longs: String, enums: String, defaults: true, oneofs: true });
+const c2_proto = grpc.loadPackageDefinition(packageDefinition).c2 as any;
+const client = new c2_proto.CommandService(C2_GRPC_TARGET, grpc.credentials.createInsecure());
 
-  constructor(port: number = 8080) {
-    this.port = port;
-    console.log('Gateway initialized');
-  }
+const app = express();
+app.use(cors());
+app.use(express.json());
+const server = createServer(app);
+const wss = new WebSocketServer({ server });
 
-  /**
-   * Start the Gateway WebSocket server
-   */
-  start(): void {
-    console.log(`Gateway starting on port ${this.port}...`);
+let backendHealthy = false;
 
-    // Create WebSocket server
-    this.wss = new WebSocketServer({ port: this.port });
+wss.on('connection', (ws: WebSocket) => {
+  console.log('Tactical Glass :: Operator Connected');
+  ws.send(JSON.stringify({ type: 'SYSTEM_STATUS', status: backendHealthy ? 'ONLINE' : 'DEGRADED', backend: backendHealthy ? 'CONNECTED' : 'UNREACHABLE' }));
 
-    this.wss.on('connection', (ws: WebSocket) => {
-      this.handleConnection(ws);
-    });
-
-    // Start Dead Man's Switch check (runs every 2 seconds)
-    this.startDeadManSwitch();
-
-    console.log(`[AETHERIC LINK] Gateway listening on ws://localhost:${this.port}`);
-  }
-
-  /**
-   * Handle new WebSocket connection
-   */
-  private handleConnection(ws: WebSocket): void {
-    const connectionId = this.generateConnectionId();
-    
-    // Initialize connection state
-    const state: ConnectionState = {
-      ws,
-      connectionId,
-      publicKey: null,
-      lastHeartbeat: Date.now(),
-      verified: false,
-    };
-    
-    this.connections.set(connectionId, state);
-    console.log(`[AETHERIC LINK] New connection: ${connectionId}`);
-
-    // Handle messages
-    ws.on('message', (data: Buffer) => {
-      this.handleMessage(connectionId, data.toString());
-    });
-
-    // Handle close
-    ws.on('close', () => {
-      console.log(`[AETHERIC LINK] Connection closed: ${connectionId}`);
-      this.connections.delete(connectionId);
-    });
-
-    // Handle errors
-    ws.on('error', (error) => {
-      console.error(`[AETHERIC LINK] WebSocket error for ${connectionId}:`, error);
-      this.connections.delete(connectionId);
-    });
-  }
-
-  /**
-   * Handle incoming WebSocket messages
-   */
-  private handleMessage(connectionId: string, data: string): void {
-    const state = this.connections.get(connectionId);
-    if (!state) {
-      console.error(`[AETHERIC LINK] Unknown connection: ${connectionId}`);
-      return;
-    }
-
+  ws.on('message', (message: string) => {
     try {
-      const message = JSON.parse(data);
-
-      if (message.type === 'HEARTBEAT') {
-        this.handleHeartbeat(connectionId, message as HeartbeatMessage);
-      } else {
-        console.log(`[AETHERIC LINK] Received message:`, message);
-      }
-    } catch (error) {
-      console.error(`[AETHERIC LINK] Failed to parse message:`, error);
-    }
-  }
-
-  /**
-   * Handle HEARTBEAT message with signature verification
-   */
-  private handleHeartbeat(connectionId: string, message: HeartbeatMessage): void {
-    const state = this.connections.get(connectionId);
-    if (!state) return;
-
-    console.debug(`[AETHERIC LINK] Heartbeat received from ${connectionId}`);
-
-    try {
-      // Parse payload
-      const payload: HeartbeatPayload = JSON.parse(message.payload);
-
-      // Freshness Check: Reject if payload.timestamp is older than 3 seconds (anti-replay)
-      const age = Date.now() - payload.ts;
-      if (age > 3000) {
-        console.error(`[SECURITY] Stale heartbeat rejected (age: ${age}ms) for ${connectionId}`);
-        this.sendVerificationFailed(state.ws);
-        this.terminateConnection(connectionId, 'Stale heartbeat (anti-replay)');
-        return;
-      }
-
-      // Signature Verification
-      // In production, this would verify against the stored Public Key for this connection
-      // For now, we'll verify the signature is present and matches expected format
-      if (!message.signature || message.signature.length === 0) {
-        console.error(`[SECURITY] Missing signature for ${connectionId}`);
-        this.sendVerificationFailed(state.ws);
-        this.terminateConnection(connectionId, 'Missing signature');
-        return;
-      }
-
-      // Decode base64 signature
-      const signatureBuffer = Buffer.from(message.signature, 'base64');
-      
-      // Verify signature length (32 bytes for BLAKE3 stub, 64 for Ed25519)
-      if (signatureBuffer.length !== 32 && signatureBuffer.length !== 64) {
-        console.error(`[SECURITY] Invalid signature length for ${connectionId}: ${signatureBuffer.length}`);
-        this.sendVerificationFailed(state.ws);
-        this.terminateConnection(connectionId, 'Invalid signature format');
-        return;
-      }
-
-      // Stub verification: For testing, we accept any valid signature format
-      // In production with BLAKE3 npm package, use:
-      // const blake3 = require('blake3');
-      // const expectedHash = blake3.hash(Buffer.from(message.payload));
-      // const isValid = Buffer.compare(signatureBuffer, expectedHash) === 0;
-      //
-      // For now, use lenient verification - just check signature has valid length
-      const isValid = signatureBuffer.length === 32 || signatureBuffer.length === 64;
-
-      if (!isValid) {
-        console.error(`[SECURITY] Signature verification failed for ${connectionId}`);
-        this.sendVerificationFailed(state.ws);
-        this.terminateConnection(connectionId, 'Signature verification failed');
-        return;
-      }
-
-      // SUCCESS: Update last heartbeat timestamp
-      state.lastHeartbeat = Date.now();
-      state.verified = true;
-
-      // Send acknowledgment
-      this.sendHeartbeatAck(state.ws);
-
-      console.debug(`[AETHERIC LINK] Heartbeat verified for ${connectionId}`);
-    } catch (error) {
-      console.error(`[AETHERIC LINK] Error processing heartbeat:`, error);
-      this.sendVerificationFailed(state.ws);
-      this.terminateConnection(connectionId, 'Heartbeat processing error');
-    }
-  }
-
-  /**
-   * Start Dead Man's Switch interval check
-   * 
-   * Runs every 2 seconds. If (Date.now() - last_heartbeat) > 10000 (10s = 2 missed beats),
-   * terminate the connection immediately.
-   */
-  private startDeadManSwitch(): void {
-    this.deadManCheckInterval = setInterval(() => {
-      const now = Date.now();
-      
-      for (const [connectionId, state] of this.connections.entries()) {
-        const timeSinceLastHeartbeat = now - state.lastHeartbeat;
-        
-        // Dead Man's Switch: 10 seconds = 2 missed heartbeats (5s interval)
-        if (timeSinceLastHeartbeat > 10000) {
-          console.warn(
-            `[SECURITY] Aetheric Link Severed: Heartbeat Timeout (${timeSinceLastHeartbeat}ms) for ${connectionId}`
-          );
-          this.terminateConnection(connectionId, 'Dead Man\'s Switch triggered');
+      const raw = JSON.parse(message.toString());
+      if (raw.type === 'COMMAND_FRAME') {
+        const validation = CommandSchema.safeParse(raw.data);
+        if (!validation.success) {
+          ws.send(JSON.stringify({ type: 'ERROR', code: 'INVALID_SCHEMA', details: validation.error }));
+          return;
         }
+        const cmd = validation.data;
+        console.log(`Gateway :: Dispatching ${cmd.type} -> ${cmd.target}`);
+        client.ExecuteCommand({
+          command_id: cmd.id,
+          target_id: cmd.target,
+          command_type: cmd.type,
+          signature: cmd.signature,
+          payload: JSON.stringify(cmd.payload || {})
+        }, (err: any, response: any) => {
+          if (err) {
+            console.error('Gateway :: C2 RPC Error:', err);
+            ws.send(JSON.stringify({ type: 'COMMAND_ACK', status: 'FAILED', error: err.message }));
+          } else {
+            ws.send(JSON.stringify({ type: 'COMMAND_ACK', status: 'SENT', transaction_id: response.tx_id }));
+          }
+        });
       }
-    }, 2000);
-  }
+    } catch (e) { console.error('Gateway :: Parse Error', e); }
+  });
+});
 
-  /**
-   * Terminate a connection and clean up
-   */
-  private terminateConnection(connectionId: string, reason: string): void {
-    const state = this.connections.get(connectionId);
-    if (!state) return;
-
-    console.log(`[AETHERIC LINK] Terminating connection ${connectionId}: ${reason}`);
-    
-    state.ws.terminate();
-    this.connections.delete(connectionId);
-  }
-
-  /**
-   * Send heartbeat acknowledgment
-   */
-  private sendHeartbeatAck(ws: WebSocket): void {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'HEARTBEAT_ACK' }));
+setInterval(() => {
+  const deadline = new Date();
+  deadline.setSeconds(deadline.getSeconds() + 1);
+  client.waitForReady(deadline, (err: Error) => {
+    if (err) {
+      if (backendHealthy) {
+        console.error("Gateway :: CRITICAL :: Backend Unreachable");
+        backendHealthy = false;
+        broadcast({ type: 'SYSTEM_ALERT', level: 'CRITICAL', message: 'BACKEND_CONNECTION_LOST' });
+      }
+    } else {
+      if (!backendHealthy) {
+        console.info("Gateway :: STATUS :: Backend Restored");
+        backendHealthy = true;
+        broadcast({ type: 'SYSTEM_STATUS', status: 'ONLINE', backend: 'CONNECTED' });
+      }
     }
-  }
+  });
+}, 5000);
 
-  /**
-   * Send verification failed message
-   */
-  private sendVerificationFailed(ws: WebSocket): void {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ 
-        type: 'VERIFICATION_FAILED',
-        reason: 'Cryptographic verification failed'
-      }));
-    }
-  }
-
-  /**
-   * Generate unique connection ID
-   */
-  private generateConnectionId(): string {
-    return `conn-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-  }
-
-  /**
-   * Stop the gateway server
-   */
-  stop(): void {
-    console.log('Gateway stopping...');
-    
-    if (this.deadManCheckInterval) {
-      clearInterval(this.deadManCheckInterval);
-      this.deadManCheckInterval = null;
-    }
-
-    if (this.wss) {
-      this.wss.close();
-      this.wss = null;
-    }
-
-    this.connections.clear();
-    console.log('Gateway stopped');
-  }
+function broadcast(data: any) {
+  const msg = JSON.stringify(data);
+  wss.clients.forEach(client => { if (client.readyState === WebSocket.OPEN) client.send(msg); });
 }
 
-export default Gateway;
-
-// Start gateway if run directly
-if (require.main === module) {
-  const port = process.env.PORT ? parseInt(process.env.PORT) : 8080;
-  const gateway = new Gateway(port);
-  gateway.start();
-
-  // Graceful shutdown
-  process.on('SIGINT', () => {
-    console.log('\nReceived SIGINT, shutting down gracefully...');
-    gateway.stop();
-    process.exit(0);
-  });
-
-  process.on('SIGTERM', () => {
-    console.log('\nReceived SIGTERM, shutting down gracefully...');
-    gateway.stop();
-    process.exit(0);
-  });
-}
+server.listen(PORT, () => {
+  console.log(`\n=== 4MIK Gateway Active on port ${PORT} ===`);
+  console.log(`[INFO] Linked to C2 Core at ${C2_GRPC_TARGET}`);
+});
