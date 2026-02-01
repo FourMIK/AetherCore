@@ -24,12 +24,12 @@ fn bench_vine_add_leaf_single(c: &mut Criterion) {
         let mut index = 0u64;
         
         b.iter(|| {
-            let (data, hash) = generate_test_leaf(index);
+            let (data, _hash) = generate_test_leaf(index);
             let timestamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u64;
-            black_box(vine.add_leaf(data, hash, timestamp).unwrap());
+            black_box(vine.add_leaf(data, timestamp).unwrap());
             index += 1;
         })
     });
@@ -52,8 +52,8 @@ fn bench_vine_add_leaf_batch(c: &mut Criterion) {
                         .as_millis() as u64;
                     
                     for i in 0..size {
-                        let (data, hash) = generate_test_leaf(i);
-                        black_box(vine.add_leaf(data, hash, timestamp + i).unwrap());
+                        let (data, _hash) = generate_test_leaf(i);
+                        black_box(vine.add_leaf(data, timestamp + i).unwrap());
                     }
                 });
             },
@@ -74,8 +74,8 @@ fn bench_vine_get_root(c: &mut Criterion) {
             .as_millis() as u64;
         
         for i in 0..size {
-            let (data, hash) = generate_test_leaf(i);
-            vine.add_leaf(data, hash, timestamp + i).unwrap();
+            let (data, _hash) = generate_test_leaf(i);
+            vine.add_leaf(data, timestamp + i).unwrap();
         }
         
         c.bench_with_input(
@@ -102,8 +102,8 @@ fn bench_vine_generate_proof(c: &mut Criterion) {
             .as_millis() as u64;
         
         for i in 0..size {
-            let (data, hash) = generate_test_leaf(i);
-            vine.add_leaf(data, hash.clone(), timestamp + i).unwrap();
+            let (data, _hash) = generate_test_leaf(i);
+            vine.add_leaf(data, timestamp + i).unwrap();
         }
         
         c.bench_with_input(
@@ -130,8 +130,8 @@ fn bench_vine_verify_proof(c: &mut Criterion) {
         .as_millis() as u64;
     
     for i in 0..100 {
-        let (data, hash) = generate_test_leaf(i);
-        vine.add_leaf(data, hash.clone(), timestamp + i).unwrap();
+        let (data, _hash) = generate_test_leaf(i);
+        vine.add_leaf(data, timestamp + i).unwrap();
     }
     
     let proof = vine.generate_proof(50).ok();
@@ -176,8 +176,8 @@ fn bench_vine_streaming_updates(c: &mut Criterion) {
             
             // Simulate 100 sequential updates
             for i in 0..100 {
-                let (data, hash) = generate_test_leaf(i);
-                black_box(vine.add_leaf(data, hash, base_timestamp + i).unwrap());
+                let (data, _hash) = generate_test_leaf(i);
+                black_box(vine.add_leaf(data, base_timestamp + i).unwrap());
             }
         });
     });
@@ -193,8 +193,8 @@ fn bench_vine_serialization(c: &mut Criterion) {
         .as_millis() as u64;
     
     for i in 0..100 {
-        let (data, hash) = generate_test_leaf(i);
-        vine.add_leaf(data, hash, timestamp + i).unwrap();
+        let (data, _hash) = generate_test_leaf(i);
+        vine.add_leaf(data, timestamp + i).unwrap();
     }
     
     // Skip serialization as MerkleVine may not be serializable

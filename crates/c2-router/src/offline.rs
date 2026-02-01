@@ -323,7 +323,6 @@ impl OfflineMateriaBuffer {
         let timestamp = event.timestamp_ns / NANOS_TO_MILLIS;
         self.merkle_vine.add_leaf(
             event.encrypted_payload.clone(),
-            event.event_hash.clone(),
             timestamp,
         )?;
 

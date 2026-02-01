@@ -23,7 +23,7 @@ pub use merkle_aggregator::{
     preprocess_leaves, AggregationBatch, AggregationConfig, Hash as MerkleHash, MerkleAggregator,
     MerkleError, MerkleProof, MerkleTree,
 };
-pub use merkle_vine::{InclusionProof, MerkleVine, VineNode};
+pub use merkle_vine::{MerkleVine, VineNode};
 pub use slashing::{
     ByzantineFaultType, NodeState, SlashingEngine, SlashingError, SlashingEvent,
 };
