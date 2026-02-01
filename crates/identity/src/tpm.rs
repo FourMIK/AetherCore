@@ -147,13 +147,22 @@ impl TpmManager {
         let signature: Signature = signature::Signer::sign(&signing_key, &attestation_data);
 
         let mut pcrs = Vec::new();
-        for &index in pcr_selection { if index < 24 { pcrs.push(PcrValue { index, value: vec![0xFF; 32] }); } }
+        for &index in pcr_selection {
+            if index < 24 {
+                pcrs.push(PcrValue { index, value: vec![0xFF; 32] });
+            }
+        }
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
 
         Ok(TpmQuote {
             pcrs,
             signature: signature.to_der().as_bytes().to_vec(),
             nonce,
-            timestamp: 0,
+            timestamp,
             attestation_data,
         })
     }

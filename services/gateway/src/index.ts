@@ -64,13 +64,16 @@ wss.on('connection', (ws: WebSocket) => {
           }
         });
       }
-    } catch (e) { console.error('Gateway :: Parse Error', e); }
+    } catch (e) { 
+      console.error('Gateway :: Parse Error', e);
+      ws.send(JSON.stringify({ type: 'ERROR', code: 'PARSE_ERROR', message: 'Invalid JSON format' }));
+    }
   });
 });
 
 setInterval(() => {
   const deadline = new Date();
-  deadline.setSeconds(deadline.getSeconds() + 1);
+  deadline.setSeconds(deadline.getSeconds() + 5);
   client.waitForReady(deadline, (err: Error) => {
     if (err) {
       if (backendHealthy) {
