@@ -27,9 +27,15 @@
 //! - Certificates must be within their validity period
 //! - TPM operations have 10 second timeout
 
+use rand::rngs::OsRng;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use ed25519_dalek::SigningKey as Ed25519SigningKey;
+use ed25519_dalek::Verifier as _;
+use p256::ecdsa::{signature::Signer as _, Signature, SigningKey};
 
 use crate::{Attestation, Certificate, PlatformIdentity};
 
@@ -772,21 +778,10 @@ impl AttestationManager {
     }
 
     fn generate_nonce(&mut self, size: usize) -> Vec<u8> {
-        // Increment counter for uniqueness
         self.nonce_counter += 1;
 
-        // Combine timestamp + counter + identity for uniqueness
-        let now = current_timestamp();
-        let mut nonce = Vec::new();
-        nonce.extend_from_slice(&now.to_le_bytes());
-        nonce.extend_from_slice(&self.nonce_counter.to_le_bytes());
-        nonce.extend_from_slice(self.identity.id.as_bytes());
-
-        // Pad or truncate to desired size
-        while nonce.len() < size {
-            nonce.push((nonce.len() as u8).wrapping_mul(17).wrapping_add(31));
-        }
-        nonce.truncate(size);
+        let mut nonce = vec![0u8; size];
+        OsRng.fill_bytes(&mut nonce);
         nonce
     }
 }
@@ -796,38 +791,153 @@ impl AttestationManager {
 /// Generate a cryptographic nonce (deprecated - use manager's generate_nonce).
 #[allow(dead_code)]
 fn generate_nonce(size: usize) -> Vec<u8> {
-    // In production, use a CSPRNG like rand::rngs::OsRng
-    // For now, use timestamp-based generation
-    let now = current_timestamp();
-    let mut nonce = now.to_le_bytes().to_vec();
-    while nonce.len() < size {
-        nonce.push((nonce.len() as u8).wrapping_mul(17).wrapping_add(31));
-    }
-    nonce.truncate(size);
+    let mut nonce = vec![0u8; size];
+    OsRng.fill_bytes(&mut nonce);
     nonce
 }
 
 /// Sign data with platform identity.
 fn sign_data(data: &[u8], identity: &PlatformIdentity) -> Vec<u8> {
-    // In production: use Ed25519 or ECDSA with identity's private key
-    // For now, return a stub signature
-    let mut sig = data.to_vec();
-    sig.extend_from_slice(&identity.public_key[..std::cmp::min(32, identity.public_key.len())]);
-    sig
+    let private_key = match identity.metadata.get("private_key_hex") {
+        Some(hex_value) => match hex::decode(hex_value) {
+            Ok(bytes) => bytes,
+            Err(_) => return Vec::new(),
+        },
+        None => return Vec::new(),
+    };
+
+    match resolve_signature_algorithm(identity) {
+        SignatureAlgorithm::Ed25519 => {
+            if private_key.len() != 32 {
+                return Vec::new();
+            }
+            let mut key_bytes = [0u8; 32];
+            key_bytes.copy_from_slice(&private_key);
+            let signing_key = Ed25519SigningKey::from_bytes(&key_bytes);
+            let signature = signing_key.sign(data);
+            signature.to_bytes().to_vec()
+        }
+        SignatureAlgorithm::P256 => {
+            if private_key.len() != 32 {
+                return Vec::new();
+            }
+            let secret_key = match p256::SecretKey::from_slice(&private_key) {
+                Ok(key) => key,
+                Err(_) => return Vec::new(),
+            };
+            let signing_key = SigningKey::from(secret_key);
+            let signature: Signature = signing_key.sign(data);
+            signature.to_der().as_bytes().to_vec()
+        }
+    }
 }
 
 /// Verify signature with platform identity.
-fn verify_signature(data: &[u8], signature: &[u8], _identity: &PlatformIdentity) -> bool {
-    // In production: use Ed25519 or ECDSA verification with public key
-    // For now, perform basic validation
-    !signature.is_empty() && signature.len() >= data.len()
+fn verify_signature(data: &[u8], signature: &[u8], identity: &PlatformIdentity) -> bool {
+    match resolve_signature_algorithm(identity) {
+        SignatureAlgorithm::Ed25519 => {
+            if identity.public_key.len() != 32 || signature.len() != 64 {
+                return false;
+            }
+            let mut key_bytes = [0u8; 32];
+            key_bytes.copy_from_slice(&identity.public_key);
+            let verifying_key = match ed25519_dalek::VerifyingKey::from_bytes(&key_bytes) {
+                Ok(key) => key,
+                Err(_) => return false,
+            };
+            let signature_bytes: [u8; 64] = match signature.try_into() {
+                Ok(bytes) => bytes,
+                Err(_) => return false,
+            };
+            let signature = ed25519_dalek::Signature::from_bytes(&signature_bytes);
+            verifying_key.verify(data, &signature).is_ok()
+        }
+        SignatureAlgorithm::P256 => {
+            let verifying_key = match p256::ecdsa::VerifyingKey::from_sec1_bytes(
+                &identity.public_key,
+            ) {
+                Ok(key) => key,
+                Err(_) => return false,
+            };
+            let signature = match Signature::from_der(signature) {
+                Ok(sig) => sig,
+                Err(_) => return false,
+            };
+            verifying_key.verify(data, &signature).is_ok()
+        }
+    }
 }
 
 /// Verify TPM quote.
-fn verify_tpm_quote(quote: &crate::TpmQuote, _identity: &PlatformIdentity) -> bool {
-    // In production: verify TPM quote signature and PCR values
-    // For now, check basic structure (allow empty for stubs)
-    !quote.nonce.is_empty()
+fn verify_tpm_quote(quote: &crate::TpmQuote, identity: &PlatformIdentity) -> bool {
+    if quote.nonce.is_empty() {
+        return false;
+    }
+
+    let verifying_key =
+        match p256::ecdsa::VerifyingKey::from_sec1_bytes(&identity.public_key) {
+            Ok(key) => key,
+            Err(_) => return false,
+        };
+    let signature = match Signature::from_der(&quote.signature) {
+        Ok(sig) => sig,
+        Err(_) => return false,
+    };
+
+    if verifying_key
+        .verify(&quote.attestation_data, &signature)
+        .is_err()
+    {
+        return false;
+    }
+
+    if !quote
+        .attestation_data
+        .windows(quote.nonce.len())
+        .any(|window| window == quote.nonce)
+    {
+        return false;
+    }
+
+    let expected_pcrs = match &identity.attestation {
+        Attestation::Tpm { pcrs, .. } if !pcrs.is_empty() => {
+            serde_json::from_slice::<Vec<crate::PcrValue>>(pcrs).ok()
+        }
+        _ => None,
+    };
+
+    if let Some(expected_pcrs) = expected_pcrs {
+        for expected in expected_pcrs {
+            match quote.pcrs.iter().find(|pcr| pcr.index == expected.index) {
+                Some(actual) if actual.value == expected.value => {}
+                _ => return false,
+            }
+        }
+    }
+
+    true
+}
+
+#[derive(Debug, Clone, Copy)]
+enum SignatureAlgorithm {
+    Ed25519,
+    P256,
+}
+
+fn resolve_signature_algorithm(identity: &PlatformIdentity) -> SignatureAlgorithm {
+    if let Some(key_type) = identity.metadata.get("key_type") {
+        match key_type.as_str() {
+            "ed25519" => return SignatureAlgorithm::Ed25519,
+            "p256" => return SignatureAlgorithm::P256,
+            _ => {}
+        }
+    }
+
+    match identity.public_key.len() {
+        32 => SignatureAlgorithm::Ed25519,
+        33 | 65 => SignatureAlgorithm::P256,
+        _ => SignatureAlgorithm::Ed25519,
+    }
 }
 
 /// Validate certificate chain.
@@ -877,12 +987,21 @@ mod tests {
     use super::*;
 
     fn create_test_identity(id: &str, attestation: Attestation) -> PlatformIdentity {
+        let private_key = blake3::hash(id.as_bytes()).as_bytes().to_vec();
+        let mut key_bytes = [0u8; 32];
+        key_bytes.copy_from_slice(&private_key);
+        let signing_key = Ed25519SigningKey::from_bytes(&key_bytes);
+        let public_key = signing_key.verifying_key().to_bytes().to_vec();
+        let mut metadata = HashMap::new();
+        metadata.insert("private_key_hex".to_string(), hex::encode(private_key));
+        metadata.insert("key_type".to_string(), "ed25519".to_string());
+
         PlatformIdentity {
             id: id.to_string(),
-            public_key: vec![1, 2, 3, 4, 5, 6, 7, 8],
+            public_key,
             attestation,
             created_at: current_timestamp(),
-            metadata: HashMap::new(),
+            metadata,
         }
     }
 
@@ -929,6 +1048,26 @@ mod tests {
         assert_eq!(request.version, PROTOCOL_VERSION);
         assert_eq!(request.challenge.len(), 32);
         assert!(manager.is_nonce_seen(&request.challenge));
+    }
+
+    #[test]
+    fn test_nonce_generation_is_randomized() {
+        let identity = create_test_identity(
+            "node-1",
+            Attestation::Software {
+                certificate: vec![1, 2, 3],
+            },
+        );
+        let cert_chain = vec![create_test_cert("node-1")];
+
+        let mut manager = AttestationManager::new(identity, cert_chain);
+        let nonce_a = manager.generate_nonce(32);
+        let nonce_b = manager.generate_nonce(32);
+
+        assert_eq!(nonce_a.len(), 32);
+        assert_eq!(nonce_b.len(), 32);
+        assert_ne!(nonce_a, nonce_b);
+        assert!(nonce_a.iter().any(|byte| *byte != 0));
     }
 
     #[test]
@@ -1090,6 +1229,48 @@ mod tests {
         );
 
         assert_eq!(calculate_trust_score(&Attestation::None), 0.0);
+    }
+
+    #[test]
+    fn test_real_signature_verification() {
+        let identity = create_test_identity(
+            "node-1",
+            Attestation::Software {
+                certificate: vec![1, 2, 3],
+            },
+        );
+        let data = b"attestation-challenge";
+
+        let signature = sign_data(data, &identity);
+        assert!(verify_signature(data, &signature, &identity));
+        assert!(!verify_signature(b"tampered", &signature, &identity));
+    }
+
+    #[test]
+    fn test_verify_tpm_quote_with_pcrs() {
+        let mut tpm = crate::TpmManager::new(false);
+        let ak = tpm
+            .generate_attestation_key("node-1-ak".to_string())
+            .unwrap();
+        let quote = tpm.generate_quote(generate_nonce(32), &[0, 1]).unwrap();
+
+        let identity = PlatformIdentity {
+            id: "node-1".to_string(),
+            public_key: ak.public_key,
+            attestation: Attestation::Tpm {
+                quote: Vec::new(),
+                pcrs: serde_json::to_vec(&quote.pcrs).unwrap(),
+                ak_cert: Vec::new(),
+            },
+            created_at: current_timestamp(),
+            metadata: HashMap::new(),
+        };
+
+        assert!(verify_tpm_quote(&quote, &identity));
+
+        let mut bad_quote = quote.clone();
+        bad_quote.pcrs[0].value = vec![0u8; bad_quote.pcrs[0].value.len()];
+        assert!(!verify_tpm_quote(&bad_quote, &identity));
     }
 
     #[test]

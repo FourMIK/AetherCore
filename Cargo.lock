@@ -141,6 +141,7 @@ dependencies = [
  "aethercore-crypto",
  "anyhow",
  "blake3",
+ "ed25519-dalek",
  "hex",
  "p256 0.13.2",
  "prost",
