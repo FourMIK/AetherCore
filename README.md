@@ -38,7 +38,7 @@ See the [Installation Guide](INSTALLATION.md) for detailed setup instructions.
 ### Running from Source
 
 **Prerequisites:**
-* Node.js 18+
+* Node.js 20+
 * Rust 1.75+ (Stable)
 * pnpm
 

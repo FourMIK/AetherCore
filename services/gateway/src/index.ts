@@ -26,6 +26,7 @@ const logger = pino({
 
 const PORT = process.env.PORT || 3000;
 const C2_GRPC_TARGET = process.env.C2_ADDR || 'localhost:50051';
+// Backend endpoint for future integration with AetherBunker services
 const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || process.env.C2_ADDR || 'localhost:50051';
 const PROTO_PATH = path.resolve(__dirname, '../../../crates/c2-router/proto/c2.proto');
 
