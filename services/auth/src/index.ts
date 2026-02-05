@@ -28,7 +28,7 @@ export class AuthService {
   }
 
   authenticate(token: string): boolean {
-    logger.debug({ token_length: token.length }, 'Authenticating token');
+    logger.debug('Authenticating token');
     // TODO: Implement actual authentication logic
     return true;
   }

@@ -43,7 +43,7 @@ impl Default for BackendConfig {
     fn default() -> Self {
         Self {
             endpoint: std::env::var("AETHER_BUNKER_ENDPOINT")
-                .unwrap_or_else(|_| "http://localhost:50051".to_string()),
+                .unwrap_or_else(|_| "localhost:50051".to_string()),
         }
     }
 }

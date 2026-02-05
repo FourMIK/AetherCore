@@ -88,7 +88,7 @@ wss.on('connection', (ws: WebSocket) => {
         });
       }
     } catch (e) { 
-      logger.error({ error: e }, 'Message parse error');
+      logger.error({ error: e instanceof Error ? e.message : String(e) }, 'Message parse error');
       ws.send(JSON.stringify({ type: 'ERROR', code: 'PARSE_ERROR', message: 'Invalid JSON format' }));
     }
   });

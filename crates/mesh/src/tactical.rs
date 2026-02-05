@@ -51,7 +51,7 @@ impl TacticalMesh {
     }
 
     /// Add or update a peer
-    #[tracing::instrument(skip(self, peer), fields(peer_id = %peer.node_id))]
+    #[tracing::instrument(skip(self, peer), fields(peer_id = %peer.node_id, trust_score = %peer.trust_score))]
     pub fn add_peer(&mut self, peer: PeerInfo) -> Result<(), String> {
         debug!("Adding peer to mesh");
         
