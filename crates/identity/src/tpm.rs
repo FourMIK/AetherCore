@@ -85,6 +85,15 @@ impl TpmManager {
         }
     }
 
+    /// Sign data with the TPM-resident attestation key.
+    pub fn sign_with_attestation_key(&self, key_id: &str, data: &[u8]) -> crate::Result<Vec<u8>> {
+        if self.hardware_available {
+            self.sign_with_ak_hardware(key_id, data)
+        } else {
+            self.sign_with_ak_stub(key_id, data)
+        }
+    }
+
     /// Core Cryptographic Verification Logic
     fn perform_verification(&self, quote: &TpmQuote, ak: &AttestationKey) -> crate::Result<bool> {
         // 1. Reconstruct Public Key
@@ -129,6 +138,16 @@ impl TpmManager {
         Err(crate::Error::Identity("Hardware TPM disabled".to_string()))
     }
 
+    #[cfg(feature = "hardware-tpm")]
+    fn sign_with_ak_hardware(&self, _key_id: &str, _data: &[u8]) -> crate::Result<Vec<u8>> {
+        Err(crate::Error::Identity("Hardware TPM sign pending environment setup".to_string()))
+    }
+
+    #[cfg(not(feature = "hardware-tpm"))]
+    fn sign_with_ak_hardware(&self, _key_id: &str, _data: &[u8]) -> crate::Result<Vec<u8>> {
+        Err(crate::Error::Identity("Hardware TPM disabled".to_string()))
+    }
+
     // --- Stub Implementation ---
     fn generate_ak_stub(&mut self, key_id: String) -> crate::Result<AttestationKey> {
         let secret_key = p256::SecretKey::random(&mut rand::thread_rng());
@@ -165,5 +184,17 @@ impl TpmManager {
             timestamp,
             attestation_data,
         })
+    }
+
+    fn sign_with_ak_stub(&self, key_id: &str, data: &[u8]) -> crate::Result<Vec<u8>> {
+        let key_bytes = self
+            .stub_keys
+            .get(key_id)
+            .ok_or(crate::Error::Identity("Unknown attestation key".into()))?;
+        let secret_key =
+            p256::SecretKey::from_slice(key_bytes).map_err(|_| crate::Error::Identity("Invalid stub key".into()))?;
+        let signing_key = p256::ecdsa::SigningKey::from(secret_key);
+        let signature: Signature = signature::Signer::sign(&signing_key, data);
+        Ok(signature.to_der().as_bytes().to_vec())
     }
 }
