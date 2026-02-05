@@ -3,7 +3,11 @@
 //! Integrates with aethercore-crypto for TPM-based signing and verification
 
 use aethercore_crypto::signing::EventSigningService;
-use aethercore_identity::{Attestation, PlatformIdentity};
+use aethercore_identity::{
+    Attestation, AttestationKey, Certificate, PlatformIdentity, TpmManager, TpmQuote,
+    TrustChainValidator,
+};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
 /// Security context for mesh operations
@@ -33,62 +37,105 @@ impl MeshSecurity {
     /// Sign a routing update
     ///
     /// # Security Note
-    /// **STUB IMPLEMENTATION**: This currently returns a placeholder signature.
-    /// In production, this MUST be replaced with actual TPM-based signing.
-    pub fn sign_routing_update(&self, _update: &[u8]) -> Result<Vec<u8>, String> {
-        if let Some(_service) = &self.signing_service {
-            // TODO: Implement actual Ed25519 signing via TPM
-            // Production implementation should:
-            // 1. Hash the update with BLAKE3
-            // 2. Sign the hash with TPM-backed Ed25519 key
-            // 3. Return the signature
-            #[cfg(debug_assertions)]
-            eprintln!("WARNING: Using stub signature implementation. DO NOT USE IN PRODUCTION!");
-            
-            Ok(vec![0u8; 64]) // Ed25519 signature size
-        } else {
-            Err("No signing service configured".to_string())
-        }
+    /// Hashes the update with BLAKE3 and signs it with the TPM-backed Ed25519 key.
+    pub fn sign_routing_update(&mut self, update: &[u8]) -> Result<Vec<u8>, String> {
+        let service = self
+            .signing_service
+            .as_mut()
+            .ok_or_else(|| "No signing service configured".to_string())?;
+
+        let hash = blake3::hash(update);
+        service
+            .sign_message(hash.as_bytes())
+            .map_err(|e| format!("Signing error: {}", e))
     }
 
     /// Verify a routing update signature
     ///
     /// # Security Note
-    /// **STUB IMPLEMENTATION**: This currently accepts all signatures.
-    /// In production, this MUST be replaced with actual Ed25519 verification.
-    pub fn verify_routing_update(&self, _update: &[u8], signature: &[u8], _public_key: &[u8]) -> Result<bool, String> {
+    /// Hashes the update with BLAKE3 and verifies the Ed25519 signature.
+    pub fn verify_routing_update(
+        &self,
+        update: &[u8],
+        signature: &[u8],
+        public_key: &[u8],
+    ) -> Result<bool, String> {
         if signature.len() != 64 {
             return Err("Invalid signature length".to_string());
         }
-        
-        // TODO: Implement actual Ed25519 verification
-        // Production implementation should:
-        // 1. Hash the update with BLAKE3
-        // 2. Verify signature against public key
-        // 3. Return verification result
-        #[cfg(debug_assertions)]
-        eprintln!("WARNING: Accepting all signatures. DO NOT USE IN PRODUCTION!");
-        
-        Ok(true)
+        if public_key.len() != 32 {
+            return Err("Invalid public key length".to_string());
+        }
+
+        let hash = blake3::hash(update);
+
+        let mut key_array = [0u8; 32];
+        key_array.copy_from_slice(public_key);
+        let verifying_key = VerifyingKey::from_bytes(&key_array)
+            .map_err(|e| format!("Invalid public key: {}", e))?;
+
+        let signature = Signature::from_bytes(&signature.try_into().unwrap());
+        Ok(verifying_key.verify(hash.as_bytes(), &signature).is_ok())
     }
 
     /// Verify TPM attestation for a peer
     ///
     /// # Security Note
-    /// **STUB IMPLEMENTATION**: Returns hardcoded trust scores without verification.
-    /// In production, this MUST perform actual TPM attestation verification.
+    /// Validates AK certificate chain, TPM quote signatures, and PCR policy.
     pub fn verify_attestation(&self, attestation: &Attestation) -> Result<f64, String> {
         match attestation {
-            Attestation::Tpm { quote: _, pcrs: _, ak_cert: _ } => {
-                // TODO: Implement actual TPM attestation verification
-                // Production implementation should:
-                // 1. Verify AK certificate chain against trusted roots
-                // 2. Verify TPM quote signature using AK
-                // 3. Check PCR values against security policy
-                // 4. Return trust score based on verification results
-                #[cfg(debug_assertions)]
-                eprintln!("WARNING: Skipping TPM attestation verification. DO NOT USE IN PRODUCTION!");
-                
+            Attestation::Tpm { quote, pcrs, ak_cert } => {
+                let cert_chain: Vec<Certificate> = serde_json::from_slice(ak_cert)
+                    .map_err(|e| format!("Invalid AK certificate chain: {}", e))?;
+                if cert_chain.is_empty() {
+                    return Err("AK certificate chain is empty".to_string());
+                }
+
+                let root = cert_chain
+                    .last()
+                    .ok_or_else(|| "Missing root certificate".to_string())?;
+                let mut validator = TrustChainValidator::new();
+                validator.add_trusted_root(root.issuer.clone(), root.public_key.clone());
+                if !validator.verify_chain(&cert_chain) {
+                    return Err("AK certificate chain validation failed".to_string());
+                }
+
+                let ak_public_key = cert_chain
+                    .first()
+                    .ok_or_else(|| "Missing AK certificate".to_string())?
+                    .public_key
+                    .clone();
+                if ak_public_key.is_empty() {
+                    return Err("AK public key missing".to_string());
+                }
+
+                let tpm_quote: TpmQuote = serde_json::from_slice(quote)
+                    .map_err(|e| format!("Invalid TPM quote: {}", e))?;
+
+                let ak = AttestationKey {
+                    key_id: cert_chain
+                        .first()
+                        .map(|cert| cert.subject.clone())
+                        .unwrap_or_else(|| "ak".to_string()),
+                    public_key: ak_public_key,
+                    certificate: Some(ak_cert.clone()),
+                };
+
+                let tpm_manager = TpmManager::new(false);
+                if !tpm_manager.verify_quote(&tpm_quote, &ak) {
+                    return Err("TPM quote signature verification failed".to_string());
+                }
+
+                let attestation_pcrs = parse_pcrs(pcrs)?;
+                let quote_pcrs = extract_quote_pcrs(&tpm_quote)?;
+
+                validate_pcr_policy(&attestation_pcrs)?;
+                validate_pcr_policy(&quote_pcrs)?;
+
+                if attestation_pcrs != quote_pcrs {
+                    return Err("PCR values do not match TPM quote".to_string());
+                }
+
                 Ok(1.0)
             }
             Attestation::Software { certificate: _ } => {
@@ -156,7 +203,7 @@ pub struct SignedMessage {
 
 impl SignedMessage {
     /// Create a new signed message
-    pub fn new(payload: Vec<u8>, security: &MeshSecurity) -> Result<Self, String> {
+    pub fn new(payload: Vec<u8>, security: &mut MeshSecurity) -> Result<Self, String> {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -192,10 +239,92 @@ impl SignedMessage {
     }
 }
 
+fn parse_pcrs(pcrs: &[u8]) -> Result<Vec<Vec<u8>>, String> {
+    if pcrs.is_empty() {
+        return Err("PCR values are required".to_string());
+    }
+    if pcrs.len() % 32 != 0 {
+        return Err("PCR values must be 32-byte aligned".to_string());
+    }
+
+    Ok(pcrs.chunks(32).map(|chunk| chunk.to_vec()).collect())
+}
+
+fn extract_quote_pcrs(quote: &TpmQuote) -> Result<Vec<Vec<u8>>, String> {
+    if quote.pcrs.is_empty() {
+        return Err("TPM quote missing PCR values".to_string());
+    }
+
+    let mut sorted = quote.pcrs.clone();
+    sorted.sort_by_key(|pcr| pcr.index);
+    Ok(sorted.into_iter().map(|pcr| pcr.value).collect())
+}
+
+fn validate_pcr_policy(pcrs: &[Vec<u8>]) -> Result<(), String> {
+    for (index, value) in pcrs.iter().enumerate() {
+        if value.len() != 32 {
+            return Err(format!("PCR {} has invalid length {}", index, value.len()));
+        }
+        if value.iter().all(|byte| *byte == 0) {
+            return Err(format!("PCR {} value fails policy", index));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aethercore_identity::PcrValue;
     use std::collections::HashMap;
+
+    fn build_cert_chain(ak_public_key: Vec<u8>) -> Vec<u8> {
+        let ak_cert = Certificate {
+            serial: "ak-serial".to_string(),
+            subject: "ak-cert".to_string(),
+            issuer: "root-ca".to_string(),
+            public_key: ak_public_key,
+            not_before: 0,
+            not_after: u64::MAX,
+            signature: vec![1, 2, 3],
+            extensions: HashMap::new(),
+        };
+
+        let root_cert = Certificate {
+            serial: "root-serial".to_string(),
+            subject: "root-ca".to_string(),
+            issuer: "root-ca".to_string(),
+            public_key: vec![9, 9, 9],
+            not_before: 0,
+            not_after: u64::MAX,
+            signature: vec![4, 5, 6],
+            extensions: HashMap::new(),
+        };
+
+        serde_json::to_vec(&vec![ak_cert, root_cert]).expect("serialize cert chain")
+    }
+
+    fn build_tpm_attestation() -> (Attestation, Vec<Vec<u8>>) {
+        let mut tpm_manager = TpmManager::new(false);
+        let ak = tpm_manager
+            .generate_attestation_key("node-1".to_string())
+            .expect("ak");
+        let nonce = vec![1, 2, 3, 4];
+        let quote = tpm_manager
+            .generate_quote(nonce, &[0])
+            .expect("quote");
+
+        let quote_pcrs: Vec<Vec<u8>> = quote.pcrs.iter().map(|pcr| pcr.value.clone()).collect();
+        let pcrs_bytes: Vec<u8> = quote_pcrs.iter().flatten().copied().collect();
+
+        let attestation = Attestation::Tpm {
+            quote: serde_json::to_vec(&quote).expect("serialize quote"),
+            pcrs: pcrs_bytes,
+            ak_cert: build_cert_chain(ak.public_key.clone()),
+        };
+
+        (attestation, quote_pcrs)
+    }
 
     #[test]
     fn test_mesh_security_creation() {
@@ -206,11 +335,7 @@ mod tests {
     #[test]
     fn test_verify_tpm_attestation() {
         let security = MeshSecurity::new();
-        let attestation = Attestation::Tpm {
-            quote: vec![1, 2, 3],
-            pcrs: vec![4, 5, 6],
-            ak_cert: vec![7, 8, 9],
-        };
+        let (attestation, _) = build_tpm_attestation();
 
         let trust = security.verify_attestation(&attestation).unwrap();
         assert_eq!(trust, 1.0);
@@ -239,11 +364,7 @@ mod tests {
     #[test]
     fn test_calculate_trust_score() {
         let security = MeshSecurity::new();
-        let attestation = Attestation::Tpm {
-            quote: vec![],
-            pcrs: vec![],
-            ak_cert: vec![],
-        };
+        let (attestation, _) = build_tpm_attestation();
 
         // Good behavior: high success rate, no failures
         let trust = security.calculate_trust_score(&attestation, 0, 100, 10);
@@ -276,9 +397,10 @@ mod tests {
     #[test]
     fn test_signed_message_stale_detection() {
         let security = MeshSecurity::new();
+        let signing_service = EventSigningService::new();
         let identity = PlatformIdentity {
             id: "test".to_string(),
-            public_key: vec![1, 2, 3, 4],
+            public_key: signing_service.public_key(),
             attestation: Attestation::Software {
                 certificate: vec![],
             },
@@ -286,12 +408,9 @@ mod tests {
             metadata: HashMap::new(),
         };
 
-        let security = security.with_signing(
-            EventSigningService::new(),
-            identity,
-        );
+        let mut security = security.with_signing(signing_service, identity);
 
-        let message = SignedMessage::new(vec![1, 2, 3], &security).unwrap();
+        let message = SignedMessage::new(vec![1, 2, 3], &mut security).unwrap();
 
         // Fresh message
         assert!(!message.is_stale(60000));
@@ -305,5 +424,85 @@ mod tests {
         };
 
         assert!(old_message.is_stale(60000));
+    }
+
+    #[test]
+    fn test_routing_update_signature_validates() {
+        let security = MeshSecurity::new();
+        let signing_service = EventSigningService::new();
+        let identity = PlatformIdentity {
+            id: "test".to_string(),
+            public_key: signing_service.public_key(),
+            attestation: Attestation::Software {
+                certificate: vec![1],
+            },
+            created_at: 1000,
+            metadata: HashMap::new(),
+        };
+        let mut security = security.with_signing(signing_service, identity);
+
+        let payload = vec![10, 20, 30];
+        let signature = security.sign_routing_update(&payload).unwrap();
+        let public_key = security.identity().unwrap().public_key.clone();
+
+        let is_valid = security
+            .verify_routing_update(&payload, &signature, &public_key)
+            .unwrap();
+        assert!(is_valid);
+    }
+
+    #[test]
+    fn test_routing_update_signature_invalid_length() {
+        let security = MeshSecurity::new();
+        let result = security.verify_routing_update(&[1, 2, 3], &[0u8; 10], &[0u8; 32]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_routing_update_signature_wrong_key() {
+        let security = MeshSecurity::new();
+        let signing_service = EventSigningService::new();
+        let identity = PlatformIdentity {
+            id: "test".to_string(),
+            public_key: signing_service.public_key(),
+            attestation: Attestation::Software {
+                certificate: vec![1],
+            },
+            created_at: 1000,
+            metadata: HashMap::new(),
+        };
+        let mut security = security.with_signing(signing_service, identity);
+
+        let payload = vec![10, 20, 30];
+        let signature = security.sign_routing_update(&payload).unwrap();
+
+        let wrong_service = EventSigningService::new();
+        let wrong_key = wrong_service.public_key();
+
+        let is_valid = security
+            .verify_routing_update(&payload, &signature, &wrong_key)
+            .unwrap();
+        assert!(!is_valid);
+    }
+
+    #[test]
+    fn test_tpm_attestation_rejects_bad_pcrs() {
+        let security = MeshSecurity::new();
+        let (mut attestation, mut quote_pcrs) = build_tpm_attestation();
+        quote_pcrs[0] = vec![0; 32];
+
+        if let Attestation::Tpm { quote, pcrs, .. } = &mut attestation {
+            let mut quote_struct: TpmQuote =
+                serde_json::from_slice(quote).expect("parse quote");
+            quote_struct.pcrs = vec![PcrValue {
+                index: 0,
+                value: vec![0; 32],
+            }];
+            *quote = serde_json::to_vec(&quote_struct).expect("serialize quote");
+            *pcrs = vec![0; 32];
+        }
+
+        let result = security.verify_attestation(&attestation);
+        assert!(result.is_err());
     }
 }

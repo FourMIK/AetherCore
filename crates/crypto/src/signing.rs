@@ -280,6 +280,16 @@ impl EventSigningService {
         })
     }
 
+    /// Signs an arbitrary message and returns the raw Ed25519 signature bytes.
+    ///
+    /// This is intended for cases where the caller already canonicalized or
+    /// hashed the message (e.g., BLAKE3 routing updates).
+    pub fn sign_message(&mut self, message: &[u8]) -> Result<Vec<u8>, SigningError> {
+        let signature = self.signing_key.sign(message);
+        self.metrics.events_signed_total += 1;
+        Ok(signature.to_bytes().to_vec())
+    }
+
     /// Gets a snapshot of current metrics.
     pub fn metrics(&self) -> &SigningMetrics {
         &self.metrics
