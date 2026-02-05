@@ -11,3 +11,4 @@ aethercore-core = { path = "../core" }
 tokio = { workspace = true }
 serde = { workspace = true }
 anyhow = { workspace = true }
+tracing = { workspace = true }

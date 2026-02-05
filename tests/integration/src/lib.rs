@@ -24,3 +24,6 @@ mod red_cell_assault;
 
 #[cfg(test)]
 mod desktop_integration_tests;
+
+#[cfg(test)]
+mod chain_of_trust_tests;

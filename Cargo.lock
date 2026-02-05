@@ -116,6 +116,7 @@ dependencies = [
  "anyhow",
  "serde",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -186,6 +187,7 @@ dependencies = [
  "tonic-build",
  "tracing",
  "tracing-subscriber 0.3.22",
+ "uuid",
 ]
 
 [[package]]
@@ -225,6 +227,7 @@ dependencies = [
  "anyhow",
  "serde",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
