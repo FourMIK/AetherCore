@@ -31,6 +31,7 @@ pub mod attestation;
 pub mod device;
 pub mod enrollment;
 pub mod enrollment_state;
+pub mod error;
 pub mod federation;
 pub mod genesis_bundle;
 pub mod materia_slot;
@@ -51,6 +52,7 @@ pub use enrollment::{
 pub use enrollment_state::{
     EnrollmentError, EnrollmentState, EnrollmentStateMachine, StateTransition,
 };
+pub use error::{IdentityError, IdentityResult};
 pub use federation::{FederatedIdentity, FederationRegistry, TrustLevel};
 pub use genesis_bundle::{
     install_genesis_bundle, BootstrapNode, GenesisBundle, GenesisBundleGenerator,

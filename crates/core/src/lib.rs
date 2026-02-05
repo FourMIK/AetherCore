@@ -7,6 +7,7 @@ pub mod config;
 pub mod error;
 pub mod event;
 pub mod ledger;
+pub mod logging;
 pub mod merkle_aggregator;
 pub mod merkle_vine;
 pub mod slashing;

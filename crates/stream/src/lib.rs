@@ -7,6 +7,8 @@
 pub mod stream;
 pub mod processor;
 pub mod integrity;
+pub mod error;
 
 pub use processor::{StreamProcessor, MerkleEnforcer, ProcessError};
 pub use integrity::{IntegrityStatus, StreamIntegrityTracker};
+pub use error::{StreamError, StreamResult};

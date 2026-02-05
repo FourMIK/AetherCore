@@ -27,6 +27,7 @@ use blake3::Hasher;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
+use tracing::{debug, info, warn};
 
 use crate::signing::CanonicalEvent;
 
@@ -264,7 +265,9 @@ impl ChainManager {
     /// # Returns
     /// * `Ok(Blake3Hash)` - The hash of the newly added event
     /// * `Err(ChainError)` - If hashing fails
+    #[tracing::instrument(skip(self, event), fields(chain_length = self.events.len()))]
     pub fn append_to_chain(&mut self, event: CanonicalEvent) -> Result<Blake3Hash, ChainError> {
+        debug!("Appending event to chain");
         let prev_hash = self.get_chain_head();
         let chained_event = ChainedEvent::new(event, prev_hash)?;
         let event_hash = chained_event.event_hash;
@@ -272,6 +275,11 @@ impl ChainManager {
         self.events.push(chained_event);
         self.metrics.chain_events_total += 1;
 
+        info!(
+            chain_length = self.events.len(),
+            event_hash = hex::encode(event_hash),
+            "Event appended to chain"
+        );
         Ok(event_hash)
     }
 
