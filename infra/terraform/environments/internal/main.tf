@@ -1732,7 +1732,7 @@ module "grafana_service" {
   task_role_arn           = aws_iam_role.ecs_task.arn
 
   environment_variables = {
-    GF_SERVER_ROOT_URL               = "https://alb-domain/grafana/"
+    GF_SERVER_ROOT_URL               = var.grafana_root_url
     GF_SERVER_SERVE_FROM_SUB_PATH    = "true"
     GF_SECURITY_ADMIN_PASSWORD       = "admin"
     GF_INSTALL_PLUGINS               = "redis-datasource"

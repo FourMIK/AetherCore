@@ -125,3 +125,8 @@ variable "image_tag" {
   type        = string
   default     = "latest"
 }
+
+variable "grafana_root_url" {
+  description = "Grafana root URL matching the ALB DNS name or custom domain"
+  type        = string
+}
