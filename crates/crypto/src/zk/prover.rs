@@ -71,7 +71,7 @@
 //!   multi-party computation ceremony or trusted source.
 //! - **Temporal Validation**: Proofs include timestamps to prevent replay attacks. The system
 //!   enforces strict temporal bounds.
-//! - **Commitment Scheme**: Uses BLAKE3-based Poseidon hash for all commitments. SHA-256 is
+//! - **Commitment Scheme**: Uses circomlib-compatible Poseidon hash for all commitments. SHA-256 is
 //!   prohibited per system architectural invariants.
 //! - **Circuit Compatibility**: BN254 curve ensures compatibility with Ethereum and standard
 //!   Circom tooling.

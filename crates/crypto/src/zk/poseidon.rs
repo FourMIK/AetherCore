@@ -10,35 +10,31 @@
 //!
 //! Poseidon hash functions for ZK commitments.
 //!
-//! This module provides hash functions compatible with the AuthynticProof circuit.
-//! Currently uses BLAKE3 as a placeholder until circomlib-compatible Poseidon is integrated.
+//! This module provides circomlib-compatible Poseidon hash functions for the
+//! AuthynticProof circuit.
 
 use super::error::ZkResult;
-use blake3::Hasher;
+use super::error::ZkError;
+use ark_bn254::Fr;
+use light_poseidon::{Poseidon, PoseidonBytesHasher};
+
+fn poseidon_hash(inputs: &[&[u8; 32]]) -> ZkResult<[u8; 32]> {
+    let mut hasher = Poseidon::<Fr>::new_circom(inputs.len())
+        .map_err(|err| ZkError::HashError(err.to_string()))?;
+    let hash = hasher
+        .hash_bytes_be(&inputs.iter().map(|input| input.as_slice()).collect::<Vec<_>>())
+        .map_err(|err| ZkError::HashError(err.to_string()))?;
+    Ok(hash)
+}
 
 /// Hash two field elements together
-///
-/// TODO: Replace with circomlib-compatible Poseidon hash
-/// Currently uses BLAKE3 as placeholder for development
 pub fn poseidon_hash_2(a: &[u8; 32], b: &[u8; 32]) -> ZkResult<[u8; 32]> {
-    let mut hasher = Hasher::new();
-    hasher.update(a);
-    hasher.update(b);
-    let hash = hasher.finalize();
-    Ok(*hash.as_bytes())
+    poseidon_hash(&[a, b])
 }
 
 /// Hash four field elements together
-///
-/// TODO: Replace with circomlib-compatible Poseidon hash
-/// Currently uses BLAKE3 as placeholder for development
 pub fn poseidon_hash_4(inputs: &[[u8; 32]; 4]) -> ZkResult<[u8; 32]> {
-    let mut hasher = Hasher::new();
-    for input in inputs {
-        hasher.update(input);
-    }
-    let hash = hasher.finalize();
-    Ok(*hash.as_bytes())
+    poseidon_hash(&[&inputs[0], &inputs[1], &inputs[2], &inputs[3]])
 }
 
 /// Compute device commitment from secret and salt
@@ -74,20 +70,30 @@ mod tests {
         let a = [1u8; 32];
         let b = [2u8; 32];
         let hash = poseidon_hash_2(&a, &b).unwrap();
-        assert_eq!(hash.len(), 32);
-        // Hash should be deterministic
-        let hash2 = poseidon_hash_2(&a, &b).unwrap();
-        assert_eq!(hash, hash2);
+        let hash_repeat = poseidon_hash_2(&a, &b).unwrap();
+        assert_eq!(hash, hash_repeat);
+        assert_eq!(
+            hash,
+            [
+                13, 84, 225, 147, 143, 138, 140, 28, 125, 235, 94, 3, 85, 242, 99, 25, 32, 123,
+                132, 254, 156, 162, 206, 27, 38, 231, 53, 200, 41, 130, 25, 144
+            ]
+        );
     }
 
     #[test]
     fn test_poseidon_hash_4() {
         let inputs = [[1u8; 32], [2u8; 32], [3u8; 32], [4u8; 32]];
         let hash = poseidon_hash_4(&inputs).unwrap();
-        assert_eq!(hash.len(), 32);
-        // Hash should be deterministic
-        let hash2 = poseidon_hash_4(&inputs).unwrap();
-        assert_eq!(hash, hash2);
+        let hash_repeat = poseidon_hash_4(&inputs).unwrap();
+        assert_eq!(hash, hash_repeat);
+        assert_eq!(
+            hash,
+            [
+                4, 147, 140, 241, 54, 243, 173, 46, 71, 30, 224, 209, 216, 42, 247, 225, 213, 38,
+                223, 85, 82, 208, 81, 152, 148, 194, 1, 203, 167, 182, 109, 245
+            ]
+        );
     }
 
     #[test]
@@ -110,6 +116,12 @@ mod tests {
     fn test_attestation_root() {
         let attestations = [[1u8; 32], [2u8; 32], [3u8; 32], [4u8; 32]];
         let root = attestation_root(&attestations).unwrap();
-        assert_eq!(root.len(), 32);
+        assert_eq!(
+            root,
+            [
+                4, 147, 140, 241, 54, 243, 173, 46, 71, 30, 224, 209, 216, 42, 247, 225, 213, 38,
+                223, 85, 82, 208, 81, 152, 148, 194, 1, 203, 167, 182, 109, 245
+            ]
+        );
     }
 }
