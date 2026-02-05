@@ -160,18 +160,8 @@ impl EnrollmentContext {
     pub fn sign_challenge(&mut self, platform_id: &str, challenge: &[u8]) -> crate::Result<Vec<u8>> {
         tracing::debug!("Signing challenge for platform: {}", platform_id);
 
-        // In production, this would call TPM2_Sign with the attestation key handle
-        // For now, we'll create a stub signature that includes platform binding
-        
-        // Create deterministic signature for testing
-        // In production: use TPM2_Sign with the attestation key
-        let mut signature = challenge.to_vec();
-        signature.extend_from_slice(platform_id.as_bytes());
-        signature.extend_from_slice(&current_timestamp().to_le_bytes());
-        
-        // Hash the signature data
-        let hash = blake3::hash(&signature);
-        Ok(hash.as_bytes().to_vec())
+        let key_id = format!("{}-ak", platform_id);
+        self.tpm.sign_with_attestation_key(&key_id, challenge)
     }
 
     /// Generate a cryptographic nonce for challenges.
@@ -204,6 +194,7 @@ fn current_timestamp() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
 
     #[test]
     fn test_platform_types() {
@@ -260,6 +251,12 @@ mod tests {
         let signature = ctx.sign_challenge(&identity.id, challenge).unwrap();
 
         assert!(!signature.is_empty());
+
+        let verifying_key =
+            VerifyingKey::from_sec1_bytes(&identity.public_key).expect("valid public key");
+        let parsed_signature = Signature::from_der(&signature).expect("valid signature");
+        assert!(verifying_key.verify(challenge, &parsed_signature).is_ok());
+        assert!(verifying_key.verify(b"tampered-challenge", &parsed_signature).is_err());
         
         // Different challenge should produce different signature
         let challenge2 = b"different-challenge-data";
