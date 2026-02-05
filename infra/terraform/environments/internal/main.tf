@@ -1269,6 +1269,8 @@ resource "aws_secretsmanager_secret_version" "redis_url" {
   secret_id     = aws_secretsmanager_secret.redis_url.id
   secret_string = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:${aws_elasticache_replication_group.redis.port}"
 }
+
+resource "aws_secretsmanager_secret" "jwt_secret" {
   name                    = "${var.project_name}/${var.environment}/jwt-secret"
   recovery_window_in_days = 7
 
