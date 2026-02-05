@@ -887,7 +887,7 @@ resource "aws_lb_target_group" "prometheus" {
     unhealthy_threshold = 2
     timeout             = 3
     interval            = 10
-    path                = "/-/healthy"
+    path                = "/prometheus/-/healthy"
     matcher             = "200"
   }
 
@@ -1689,8 +1689,10 @@ module "prometheus_service" {
   task_role_arn           = aws_iam_role.ecs_task.arn
 
   environment_variables = {
-    PROMETHEUS_RETENTION_TIME = "15d"
-    PROMETHEUS_STORAGE_PATH   = "/prometheus"
+    PROMETHEUS_RETENTION_TIME   = "15d"
+    PROMETHEUS_STORAGE_PATH     = "/prometheus"
+    PROMETHEUS_WEB_ROUTE_PREFIX = "/prometheus"
+    PROMETHEUS_WEB_EXTERNAL_URL = "https://${aws_lb.main.dns_name}/prometheus"
   }
 
   efs_file_system_id = aws_efs_file_system.prometheus.id
@@ -1702,7 +1704,7 @@ module "prometheus_service" {
   # Prometheus health check
   health_check_command = [
     "CMD-SHELL",
-    "wget --no-verbose --tries=1 --spider http://localhost:9090/-/healthy || exit 1"
+    "wget --no-verbose --tries=1 --spider http://localhost:9090/prometheus/-/healthy || exit 1"
   ]
 }
 
