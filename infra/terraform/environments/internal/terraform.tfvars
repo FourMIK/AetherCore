@@ -44,3 +44,6 @@ db_username = "aethercore"
 
 # Docker image tag
 image_tag = "latest"
+
+# Grafana root URL (use ALB DNS name or custom domain)
+grafana_root_url = "https://alb-domain/grafana/"
