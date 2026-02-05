@@ -10,6 +10,7 @@ use crate::routing::{LinkQuality, RoutingTable};
 use crate::spectral::{FrequencyHopper, HoppingPattern};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use tracing::{debug, info, warn};
 
 /// Tactical Mesh Layer coordinator
 pub struct TacticalMesh {
@@ -29,13 +30,16 @@ pub struct TacticalMesh {
 
 impl TacticalMesh {
     /// Create a new tactical mesh instance
+    #[tracing::instrument(skip(db_path), fields(node_id = %node_id))]
     pub fn new<P: AsRef<Path>>(
         node_id: String,
         seed_peers: Vec<String>,
         db_path: P,
     ) -> Result<Self, String> {
+        info!(seed_peer_count = seed_peers.len(), "Initializing tactical mesh");
         let bunker_mode = BunkerMode::new(db_path).map_err(|e| e.to_string())?;
 
+        debug!("Tactical mesh initialized successfully");
         Ok(Self {
             node_id: node_id.clone(),
             peer_table: PeerTable::new(seed_peers),
@@ -47,7 +51,10 @@ impl TacticalMesh {
     }
 
     /// Add or update a peer
+    #[tracing::instrument(skip(self, peer), fields(peer_id = %peer.node_id, trust_score = %peer.trust_score))]
     pub fn add_peer(&mut self, peer: PeerInfo) -> Result<(), String> {
+        debug!("Adding peer to mesh");
+        
         // Update peer table
         self.peer_table.upsert_peer(peer.clone())?;
 
@@ -67,21 +74,28 @@ impl TacticalMesh {
         // Check if we need to exit bunker mode
         if self.bunker_mode.state() == &BunkerState::Isolated && self.peer_table.peer_count() > 0
         {
+            info!("Exiting bunker mode: peers available");
             self.bunker_mode.exit_bunker_mode();
         }
 
+        info!(peer_count = self.peer_table.peer_count(), "Peer added successfully");
         Ok(())
     }
 
     /// Remove a peer (link failed)
+    #[tracing::instrument(skip(self))]
     pub fn remove_peer(&mut self, node_id: &str) {
+        warn!("Removing peer from mesh");
         self.peer_table.remove_peer(node_id);
         self.routing_table.remove_neighbor(node_id);
 
         // Check if we need to enter bunker mode
         if self.peer_table.is_bunker_mode() {
+            warn!("Entering bunker mode: no peers available");
             self.bunker_mode.enter_bunker_mode();
         }
+        
+        info!(peer_count = self.peer_table.peer_count(), "Peer removed");
     }
 
     /// Process incoming gossip message

@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::{debug, error, info, warn};
 
 /// Unique platform identifier with cryptographic binding.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -75,8 +76,12 @@ impl IdentityManager {
     }
 
     /// Register a new identity.
+    #[tracing::instrument(skip(self, identity), fields(identity_id = %identity.id))]
     pub fn register(&mut self, identity: PlatformIdentity) -> crate::Result<()> {
+        debug!("Registering new identity");
+        
         if self.identities.contains_key(&identity.id) {
+            warn!("Attempted to register duplicate identity");
             return Err(crate::Error::Identity(
                 "Identity already registered".to_string(),
             ));
@@ -84,12 +89,14 @@ impl IdentityManager {
 
         // Basic validation
         if identity.public_key.is_empty() {
+            error!("Identity registration failed: empty public key");
             return Err(crate::Error::Identity(
                 "Public key cannot be empty".to_string(),
             ));
         }
 
         self.identities.insert(identity.id.clone(), identity);
+        info!("Identity registered successfully");
         Ok(())
     }
 
@@ -99,11 +106,14 @@ impl IdentityManager {
     }
 
     /// Verify an identity.
+    #[tracing::instrument(skip(self, identity), fields(identity_id = %identity.id))]
     pub fn verify(&self, identity: &PlatformIdentity) -> IdentityVerification {
+        debug!("Verifying identity");
         let now = current_timestamp();
 
         // Check if revoked
         if self.revoked.contains(&identity.id) {
+            warn!("Identity verification failed: revoked");
             return IdentityVerification {
                 verified: false,
                 identity: identity.clone(),
@@ -117,15 +127,21 @@ impl IdentityManager {
         let (verified, trust_score, details) = match &identity.attestation {
             Attestation::Tpm { .. } => {
                 // In production, verify TPM quote and PCRs
+                debug!("TPM attestation verified");
                 (true, 1.0, "TPM attestation verified".to_string())
             }
             Attestation::Software { .. } => {
                 // Software attestation has lower trust
+                debug!("Software attestation verified");
                 (true, 0.7, "Software attestation verified".to_string())
             }
-            Attestation::None => (false, 0.0, "No attestation provided".to_string()),
+            Attestation::None => {
+                warn!("No attestation provided");
+                (false, 0.0, "No attestation provided".to_string())
+            }
         };
 
+        info!(verified = verified, trust_score = trust_score, "Identity verification complete");
         IdentityVerification {
             verified,
             identity: identity.clone(),
