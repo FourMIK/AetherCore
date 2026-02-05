@@ -9,6 +9,7 @@ repository.workspace = true
 [features]
 default = []
 hardware-tpm = ["tss-esapi"]
+hardware-tpm-tests = ["hardware-tpm"]
 grpc-server = ["tonic", "tonic-build", "prost"]
 
 [dependencies]
