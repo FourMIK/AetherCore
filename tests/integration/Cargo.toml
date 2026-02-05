@@ -33,6 +33,7 @@ hex = { workspace = true }
 # Testing utilities
 tokio-stream = { version = "0.1", features = ["net"] }
 base64 = "0.21"
+uuid = { version = "1.6", features = ["v4"] }
 
 # Logging
 tracing = { workspace = true }

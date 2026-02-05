@@ -68,6 +68,11 @@ impl IntegrityStatus {
         // Update verification status
         if self.total_events > 0 && self.broken_events == 0 {
             self.verification_status = VerificationStatus::Verified;
+            tracing::info!(
+                stream_id = %self.stream_id,
+                total_events = self.total_events,
+                "Stream integrity verified"
+            );
         }
     }
 
@@ -78,7 +83,14 @@ impl IntegrityStatus {
         self.last_check_ns = current_time_ns();
         self.is_compromised = true;
         self.verification_status = VerificationStatus::Spoofed;
-        self.compromise_reason = Some(reason);
+        self.compromise_reason = Some(reason.clone());
+        
+        tracing::error!(
+            stream_id = %self.stream_id,
+            reason = %reason,
+            broken_events = self.broken_events,
+            "Stream integrity compromised"
+        );
     }
 
     /// Reset compromise status (after re-audit)

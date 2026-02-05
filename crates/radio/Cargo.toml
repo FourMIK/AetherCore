@@ -12,3 +12,4 @@ aethercore-rf = { path = "../rf" }
 tokio = { workspace = true }
 serde = { workspace = true }
 anyhow = { workspace = true }
+tracing = { workspace = true }
