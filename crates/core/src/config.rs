@@ -101,6 +101,10 @@ impl Default for StorageConfig {
 impl Config {
     /// Load configuration from a TOML file with environment variable overrides.
     ///
+    /// Note: This function is explicitly named to indicate the expected format.
+    /// The `load_with_defaults` function provides automatic format detection
+    /// based on file extension.
+    ///
     /// Environment variables take precedence over file configuration:
     /// - AETHER_BUNKER_ENDPOINT: Backend endpoint
     /// - RUST_LOG: Log level
@@ -118,6 +122,10 @@ impl Config {
     }
 
     /// Load configuration from a JSON file with environment variable overrides.
+    ///
+    /// Note: This function is explicitly named to indicate the expected format.
+    /// The `load_with_defaults` function provides automatic format detection
+    /// based on file extension.
     ///
     /// Environment variables take precedence over file configuration.
     pub fn from_json_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
@@ -236,8 +244,13 @@ mod tests {
 
     #[test]
     fn test_default_config() {
+        // Clear environment variables that affect defaults
+        std::env::remove_var("AETHER_NODE_ID");
+        std::env::remove_var("AETHER_MESH_ID");
+        
         let config = Config::default_config();
-        assert_eq!(config.network.node_id, std::env::var("AETHER_NODE_ID").unwrap_or_else(|_| "node-001".to_string()));
+        assert_eq!(config.network.node_id, "node-001");
+        assert_eq!(config.network.mesh_id, "mesh-001");
         assert!(!config.backend.endpoint.is_empty());
         assert!(!config.logging.level.is_empty());
     }
