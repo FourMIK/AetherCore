@@ -291,6 +291,14 @@ resource "aws_security_group" "ecs_services" {
     description     = "Redis to ElastiCache"
   }
 
+  egress {
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+    security_groups = [aws_security_group.efs.id]
+    description     = "NFS to EFS"
+  }
+
   tags = {
     Name = "${var.project_name}-${var.environment}-ecs-services-sg"
   }
