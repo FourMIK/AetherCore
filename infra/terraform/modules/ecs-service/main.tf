@@ -102,6 +102,29 @@ variable "health_check_command" {
   default     = null
 }
 
+variable "efs_file_system_id" {
+  description = "Optional EFS file system ID to mount into the task."
+  type        = string
+  default     = null
+}
+
+variable "efs_root_directory" {
+  description = "Root directory in the EFS file system."
+  type        = string
+  default     = "/"
+}
+
+variable "efs_mount_path" {
+  description = "Mount path inside the container for the EFS volume."
+  type        = string
+  default     = null
+}
+
+locals {
+  efs_enabled     = var.efs_file_system_id != null && var.efs_mount_path != null
+  efs_volume_name = "efs"
+}
+
 # CloudWatch Log Group
 resource "aws_cloudwatch_log_group" "service" {
   name              = "/ecs/${var.project_name}-${var.environment}/${var.service_name}"
@@ -124,8 +147,20 @@ resource "aws_ecs_task_definition" "service" {
   execution_role_arn       = var.task_execution_role_arn
   task_role_arn            = var.task_role_arn
 
+  dynamic "volume" {
+    for_each = local.efs_enabled ? [1] : []
+    content {
+      name = local.efs_volume_name
+      efs_volume_configuration {
+        file_system_id     = var.efs_file_system_id
+        root_directory     = var.efs_root_directory
+        transit_encryption = "ENABLED"
+      }
+    }
+  }
+
   container_definitions = jsonencode([
-    {
+    merge({
       name  = var.service_name
       image = "${var.ecr_repository_url}:${var.image_tag}"
 
@@ -173,7 +208,15 @@ resource "aws_ecs_task_definition" "service" {
         retries     = 3
         startPeriod = 60
       }
-    }
+    }, local.efs_enabled ? {
+      mountPoints = [
+        {
+          containerPath = var.efs_mount_path
+          sourceVolume  = local.efs_volume_name
+          readOnly      = false
+        }
+      ]
+    } : {})
   ])
 
   tags = {
