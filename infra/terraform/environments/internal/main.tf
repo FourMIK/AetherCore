@@ -80,6 +80,16 @@ resource "aws_subnet" "private" {
   }
 }
 
+resource "aws_subnet" "private_2" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_subnet_2_cidr
+  availability_zone = data.aws_availability_zones.available.names[1]
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-private-subnet-2"
+  }
+}
+
 resource "aws_subnet" "database" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = var.database_subnet_cidr
@@ -167,6 +177,11 @@ resource "aws_route_table_association" "public_2" {
 
 resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.private.id
+  route_table_id = aws_route_table.private.id
+}
+
+resource "aws_route_table_association" "private_2" {
+  subnet_id      = aws_subnet.private_2.id
   route_table_id = aws_route_table.private.id
 }
 
@@ -619,7 +634,7 @@ resource "aws_db_instance" "postgres" {
 
 resource "aws_elasticache_subnet_group" "main" {
   name       = "${var.project_name}-${var.environment}-redis-subnet-group"
-  subnet_ids = [aws_subnet.private.id]
+  subnet_ids = [aws_subnet.private.id, aws_subnet.private_2.id]
 
   tags = {
     Name = "${var.project_name}-${var.environment}-redis-subnet-group"
