@@ -1685,6 +1685,10 @@ module "prometheus_service" {
     PROMETHEUS_STORAGE_PATH   = "/prometheus"
   }
 
+  efs_file_system_id = aws_efs_file_system.prometheus.id
+  efs_root_directory = "/"
+  efs_mount_path     = "/prometheus"
+
   secrets = {}
 
   # Prometheus health check
