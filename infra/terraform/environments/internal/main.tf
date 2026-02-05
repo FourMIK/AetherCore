@@ -32,6 +32,8 @@ data "aws_availability_zones" "available" {
 
 data "aws_caller_identity" "current" {}
 
+data "aws_elb_service_account" "current" {}
+
 ###################
 # VPC Configuration
 ###################
@@ -711,7 +713,7 @@ resource "aws_s3_bucket_policy" "alb_logs" {
       {
         Effect = "Allow"
         Principal = {
-          AWS = "arn:aws:iam::127311923021:root"  # ELB service account for us-east-1
+          AWS = data.aws_elb_service_account.current.arn
         }
         Action   = "s3:PutObject"
         Resource = "${aws_s3_bucket.alb_logs.arn}/*"
