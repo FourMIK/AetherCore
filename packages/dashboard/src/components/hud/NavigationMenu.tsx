@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { GlassPanel } from './GlassPanel';
 
-export type WorkspaceView = 'tactical' | 'fleet' | 'isr' | 'comms' | 'guardian' | 'mesh' | 'admin' | 'deployments' | 'provisioning';
+export type WorkspaceView = 'tactical' | 'fleet' | 'isr' | 'comms' | 'guardian' | 'mesh' | 'admin' | 'deployments' | 'provisioning' | 'settings';
 
 interface NavigationMenuProps {
   currentView: WorkspaceView;
@@ -76,8 +76,14 @@ const workspaceItems = [
   {
     id: 'admin' as WorkspaceView,
     label: 'System Admin',
+    icon: Database,
+    description: 'System diagnostics and administrative tools'
+  },
+  {
+    id: 'settings' as WorkspaceView,
+    label: 'Settings',
     icon: Settings,
-    description: 'Configuration and system management'
+    description: 'Application configuration and security settings'
   },
 ];
 

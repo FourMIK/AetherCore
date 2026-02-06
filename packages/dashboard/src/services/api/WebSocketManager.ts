@@ -12,7 +12,7 @@
  */
 
 import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr';
-import { invoke } from '@tauri-apps/api/core';
+import { TauriCommands } from '../../api/tauri-commands';
 import { useCommStore } from '../../store/useCommStore';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'unverified' | 'severed';
@@ -27,9 +27,14 @@ export interface HeartbeatPayload {
 export class WebSocketManager {
   private connection: HubConnection | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
   private url: string;
   private connectionStatus: ConnectionStatus = 'disconnected';
   private deviceId: string | null = null; // Cached hardware ID
+  private reconnectAttempts: number = 0;
+  private readonly maxReconnectAttempts: number = 10;
+  private readonly initialRetryDelay: number = 1000; // 1 second
+  private readonly maxRetryDelay: number = 30000; // 30 seconds
 
   constructor(url: string) {
     this.url = url; // e.g., "http://localhost:5000/h2-tactical"
@@ -52,16 +57,46 @@ export class WebSocketManager {
             .withAutomaticReconnect({
                 nextRetryDelayInMilliseconds: retryContext => {
                     if (this.connectionStatus === 'severed') return null; // No auto-reconnect if severed
-                    return Math.min(1000 * retryContext.previousRetryCount, 10000);
+                    
+                    // Exponential backoff with jitter
+                    const exponentialDelay = Math.min(
+                        this.initialRetryDelay * Math.pow(2, retryContext.previousRetryCount),
+                        this.maxRetryDelay
+                    );
+                    const jitter = Math.random() * 1000; // Add up to 1 second of jitter
+                    return exponentialDelay + jitter;
                 }
             })
             .configureLogging(LogLevel.Warning)
             .build();
 
-        // 2. Setup Listeners (Receive from Bunker)
+        // 2. Setup event handlers
+        this.connection.onreconnecting(() => {
+            console.log('[AETHERIC LINK] Connection lost. Attempting to reconnect...');
+            this.setConnectionStatus('connecting');
+        });
+
+        this.connection.onreconnected(() => {
+            console.log('[AETHERIC LINK] Connection restored');
+            this.reconnectAttempts = 0; // Reset counter on successful reconnect
+            this.setConnectionStatus('unverified');
+            this.startAethericLink(); // Restart heartbeat
+        });
+
+        this.connection.onclose((error) => {
+            console.error('[AETHERIC LINK] Connection closed:', error);
+            this.stopAethericLink();
+            
+            if (this.connectionStatus !== 'severed') {
+                this.handleDisconnection();
+            }
+        });
+
+        // 3. Setup Listeners (Receive from Bunker)
         this.connection.on("HeartbeatAck", (data) => {
             console.debug('[AETHERIC LINK] Pulse confirmed by Bunker:', data);
             if (this.connectionStatus !== 'connected') this.setConnectionStatus('connected');
+            this.reconnectAttempts = 0; // Reset on successful heartbeat
         });
 
         this.connection.on("HeartbeatRejected", (error) => {
@@ -74,30 +109,86 @@ export class WebSocketManager {
             this.severLink(`Remote Command: ${reason}`);
         });
 
-        // 3. Establish Physical Link
+        // 4. Establish Physical Link
         await this.connection.start();
         console.log('[AETHERIC LINK] Carrier signal established. Initiating handshake...');
         this.setConnectionStatus('unverified');
+        this.reconnectAttempts = 0; // Reset on successful connection
         
-        // 4. Start Cryptographic Pulse
+        // 5. Start Cryptographic Pulse
         this.startAethericLink();
 
     } catch (error) {
         console.error('[AETHERIC LINK] Connection failed:', error);
         this.setConnectionStatus('disconnected');
+        this.handleDisconnection();
     }
   }
 
   public disconnect(): void {
     this.stopAethericLink();
+    this.clearReconnectTimeout();
     if (this.connection) {
         this.connection.stop();
     }
     this.setConnectionStatus('disconnected');
+    this.reconnectAttempts = 0;
+  }
+
+  /**
+   * Handle disconnection with exponential backoff retry
+   */
+  private handleDisconnection(): void {
+    // Don't retry if severed or if exceeded max attempts
+    if (this.connectionStatus === 'severed') {
+      console.log('[AETHERIC LINK] Connection severed - no retry');
+      return;
+    }
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('[AETHERIC LINK] Max reconnection attempts reached');
+      this.setConnectionStatus('disconnected');
+      return;
+    }
+
+    // Calculate exponential backoff delay
+    const exponentialDelay = Math.min(
+      this.initialRetryDelay * Math.pow(2, this.reconnectAttempts),
+      this.maxRetryDelay
+    );
+    const jitter = Math.random() * 1000; // Add up to 1 second of jitter
+    const delay = exponentialDelay + jitter;
+
+    this.reconnectAttempts++;
+    console.log(
+      `[AETHERIC LINK] Scheduling reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${Math.round(delay)}ms`
+    );
+
+    this.clearReconnectTimeout();
+    this.reconnectTimeout = setTimeout(() => {
+      console.log('[AETHERIC LINK] Attempting to reconnect...');
+      this.connect().catch(err => {
+        console.error('[AETHERIC LINK] Reconnection attempt failed:', err);
+      });
+    }, delay);
+  }
+
+  /**
+   * Clear any pending reconnect timeout
+   */
+  private clearReconnectTimeout(): void {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
   }
 
   private severLink(reason: string): void {
-      this.disconnect();
+      this.stopAethericLink();
+      this.clearReconnectTimeout();
+      if (this.connection) {
+          this.connection.stop();
+      }
       this.setConnectionStatus('severed');
       // Dispatch global event for UI Red-Flash
       window.dispatchEvent(new CustomEvent('AETHER_LINK_SEVERED', { detail: { reason } }));
@@ -136,14 +227,15 @@ export class WebSocketManager {
         const signablePayload = `${this.deviceId}:${timestamp}`;
 
         // Hardware Signing (Fail-Visible point)
-        // If this fails, the code naturally throws, catching below.
-        const signature = await invoke<string>('sign_heartbeat_payload', { 
-            nonce: signablePayload 
-        });
+        const result = await TauriCommands.signHeartbeatPayload(signablePayload);
+        
+        if (!result.success) {
+            throw new Error(`TPM signing failed: ${result.error}`);
+        }
 
         const payload: HeartbeatPayload = {
             deviceId: this.deviceId,
-            signature: signature,
+            signature: result.data,
             timestamp: timestamp
         };
 

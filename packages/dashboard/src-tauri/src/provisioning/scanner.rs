@@ -48,9 +48,9 @@ pub struct Credentials {
 #[tauri::command]
 pub async fn scan_for_assets() -> Result<Vec<CandidateNode>, String> {
     log::info!("Starting unified asset discovery scan");
-    
+
     let mut candidates = Vec::new();
-    
+
     // PHASE 1: Scan USB Serial Devices
     match scan_usb_devices().await {
         Ok(usb_nodes) => {
@@ -62,7 +62,7 @@ pub async fn scan_for_assets() -> Result<Vec<CandidateNode>, String> {
             // Non-fatal: continue to network scan
         }
     }
-    
+
     // PHASE 2: Scan Network Devices via mDNS
     match scan_network_devices().await {
         Ok(net_nodes) => {
@@ -74,21 +74,21 @@ pub async fn scan_for_assets() -> Result<Vec<CandidateNode>, String> {
             // Non-fatal: return USB results if available
         }
     }
-    
+
     log::info!("Asset scan complete: {} total candidates", candidates.len());
-    
+
     Ok(candidates)
 }
 
 /// Scan for USB serial devices
 async fn scan_usb_devices() -> Result<Vec<CandidateNode>, String> {
     use serialport::SerialPortType;
-    
+
     let ports = serialport::available_ports()
         .map_err(|e| format!("Failed to enumerate serial ports: {}", e))?;
-    
+
     let mut usb_nodes = Vec::new();
-    
+
     for port in ports {
         let label = match &port.port_type {
             SerialPortType::UsbPort(info) => {
@@ -115,50 +115,53 @@ async fn scan_usb_devices() -> Result<Vec<CandidateNode>, String> {
             }
             _ => continue, // Skip non-USB ports
         };
-        
+
         usb_nodes.push(CandidateNode {
             r#type: "USB".to_string(),
             id: port.port_name.clone(),
             label,
         });
     }
-    
+
     Ok(usb_nodes)
 }
 
 /// Scan for network devices via mDNS
 async fn scan_network_devices() -> Result<Vec<CandidateNode>, String> {
     use mdns_sd::{ServiceDaemon, ServiceEvent};
-    
+
     log::info!("Starting mDNS discovery for _aethercore._tcp.local");
-    
+
     // Create mDNS daemon
-    let mdns = ServiceDaemon::new()
-        .map_err(|e| format!("Failed to create mDNS daemon: {}", e))?;
-    
+    let mdns = ServiceDaemon::new().map_err(|e| format!("Failed to create mDNS daemon: {}", e))?;
+
     // Browse for AetherCore services
     let service_type = "_aethercore._tcp.local.";
     let receiver = mdns
         .browse(service_type)
         .map_err(|e| format!("Failed to start mDNS browse: {}", e))?;
-    
+
     let mut net_nodes = Vec::new();
     let timeout = Duration::from_secs(3); // 3 second scan window
     let start = std::time::Instant::now();
-    
+
     // Collect discovered services within timeout
     while start.elapsed() < timeout {
         match receiver.recv_timeout(Duration::from_millis(500)) {
             Ok(event) => {
                 match event {
                     ServiceEvent::ServiceResolved(info) => {
-                        log::info!("Discovered service: {} at {:?}", info.get_fullname(), info.get_addresses());
-                        
+                        log::info!(
+                            "Discovered service: {} at {:?}",
+                            info.get_fullname(),
+                            info.get_addresses()
+                        );
+
                         // Extract IP address
                         if let Some(addr) = info.get_addresses().iter().next() {
                             let ip = addr.to_string();
                             let label = format!("Raspberry Pi ({})", info.get_hostname());
-                            
+
                             net_nodes.push(CandidateNode {
                                 r#type: "NET".to_string(),
                                 id: ip,
@@ -185,14 +188,14 @@ async fn scan_network_devices() -> Result<Vec<CandidateNode>, String> {
             }
         }
     }
-    
+
     // Shutdown mDNS daemon
     if let Err(e) = mdns.shutdown() {
         log::warn!("Failed to shutdown mDNS daemon: {}", e);
     }
-    
+
     log::info!("mDNS scan complete: {} devices found", net_nodes.len());
-    
+
     Ok(net_nodes)
 }
 
@@ -207,7 +210,7 @@ mod tests {
             id: "COM3".to_string(),
             label: "Heltec V3".to_string(),
         };
-        
+
         let json = serde_json::to_string(&node).unwrap();
         assert!(json.contains("USB"));
         assert!(json.contains("COM3"));
@@ -218,7 +221,7 @@ mod tests {
     fn test_candidate_node_deserialization() {
         let json = r#"{"type":"NET","id":"192.168.1.50","label":"Raspberry Pi"}"#;
         let node: CandidateNode = serde_json::from_str(json).unwrap();
-        
+
         assert_eq!(node.r#type, "NET");
         assert_eq!(node.id, "192.168.1.50");
         assert!(node.label.contains("Pi"));
