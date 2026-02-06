@@ -46,28 +46,21 @@ pub struct AppState {
 pub async fn connect_to_mesh(
     endpoint: String,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
-) -> Result<String, String> {
+) -> Result<String> {
     log::info!("Connecting to production C2 mesh endpoint: {}", endpoint);
 
-    // PRODUCTION GUARD: Reject non-WSS endpoints (fail-visible)
-    if !endpoint.starts_with("wss://") {
-        log::error!(
-            "SECURITY VIOLATION: Attempted connection to non-WSS endpoint: {}",
-            endpoint
-        );
-        return Err(
-            "SECURITY VIOLATION: Production mode requires WSS (secure WebSocket). \
-             Non-encrypted endpoints are rejected per fail-visible doctrine."
-                .to_string(),
-        );
-    }
+    // Validate endpoint format and security requirements
+    validation::require_non_empty(&endpoint, "endpoint")?;
+    validation::validate_ws_url(&endpoint, true)?;
 
     // Parse and validate endpoint URL
-    let url = url::Url::parse(&endpoint).map_err(|e| format!("Invalid endpoint URL: {}", e))?;
+    let url = url::Url::parse(&endpoint)?;
 
     // Validate host is present
     if url.host_str().is_none() {
-        return Err("Endpoint must have a valid host".to_string());
+        return Err(AppError::Validation(
+            "Endpoint must have a valid host".to_string(),
+        ));
     }
 
     // Store the endpoint in state
@@ -112,17 +105,16 @@ pub async fn connect_to_mesh(
 pub async fn connect_to_testnet(
     endpoint: String,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
-) -> Result<String, String> {
+) -> Result<String> {
     log::warn!(
         "connect_to_testnet is deprecated. Use connect_to_mesh for production. \
          Endpoint: {}",
         endpoint
     );
 
-    // Validate endpoint format (allow both ws:// and wss:// for backward compatibility)
-    if !endpoint.starts_with("ws://") && !endpoint.starts_with("wss://") {
-        return Err("Invalid endpoint format. Must start with ws:// or wss://".to_string());
-    }
+    // Validate endpoint format
+    validation::require_non_empty(&endpoint, "endpoint")?;
+    validation::validate_ws_url(&endpoint, false)?; // Allow both ws:// and wss://
 
     // Log security warning if using non-secure connection
     if endpoint.starts_with("ws://") {
@@ -133,11 +125,13 @@ pub async fn connect_to_testnet(
     }
 
     // Parse and validate endpoint URL
-    let url = url::Url::parse(&endpoint).map_err(|e| format!("Invalid endpoint URL: {}", e))?;
+    let url = url::Url::parse(&endpoint)?;
 
     // Validate host is present
     if url.host_str().is_none() {
-        return Err("Endpoint must have a valid host".to_string());
+        return Err(AppError::Validation(
+            "Endpoint must have a valid host".to_string(),
+        ));
     }
 
     // Store the endpoint in state
@@ -160,7 +154,13 @@ pub async fn connect_to_testnet(
 pub async fn generate_genesis_bundle(
     user_identity: String,
     squad_id: String,
-) -> Result<GenesisBundle, String> {
+) -> Result<GenesisBundle> {
+    // Validate inputs
+    validation::require_non_empty(&user_identity, "user_identity")?;
+    validation::require_non_empty(&squad_id, "squad_id")?;
+    validation::validate_alphanumeric(&user_identity, "user_identity")?;
+    validation::validate_alphanumeric(&squad_id, "squad_id")?;
+
     log::info!(
         "Generating Genesis Bundle for user: {}, squad: {}",
         user_identity,
@@ -169,14 +169,12 @@ pub async fn generate_genesis_bundle(
 
     // Generate ephemeral Ed25519 keypair for this bundle
     // In production, this should use TPM-backed keys (CodeRalphie)
-    let (public_key, signature) = match generate_signature(&user_identity, &squad_id) {
-        Ok(keys) => keys,
-        Err(e) => return Err(format!("Failed to generate signature: {}", e)),
-    };
+    let (public_key, signature) = generate_signature(&user_identity, &squad_id)
+        .map_err(|e| AppError::Crypto(format!("Failed to generate signature: {}", e)))?;
 
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| format!("System time error: {}", e))?
+        .map_err(|e| AppError::Generic(format!("System time error: {}", e)))?
         .as_secs();
 
     let bundle = GenesisBundle {
@@ -196,8 +194,8 @@ pub async fn generate_genesis_bundle(
 /// Converts the Genesis Bundle into a QR-encodable string that can be
 /// scanned by edge devices.
 #[tauri::command]
-pub fn bundle_to_qr_data(bundle: GenesisBundle) -> Result<String, String> {
-    serde_json::to_string(&bundle).map_err(|e| format!("Failed to serialize bundle: {}", e))
+pub fn bundle_to_qr_data(bundle: GenesisBundle) -> Result<String> {
+    Ok(serde_json::to_string(&bundle)?)
 }
 
 /// Telemetry Payload for verification
