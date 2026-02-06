@@ -12,7 +12,7 @@
  */
 
 import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr';
-import { TauriCommands } from '../tauri-commands';
+import { TauriCommands } from '../../api/tauri-commands';
 import { useCommStore } from '../../store/useCommStore';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'unverified' | 'severed';

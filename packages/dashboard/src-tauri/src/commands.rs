@@ -46,46 +46,53 @@ pub struct AppState {
 pub async fn connect_to_mesh(
     endpoint: String,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
-) -> Result<String> {
-    log::info!("Connecting to production C2 mesh endpoint: {}", endpoint);
+) -> Result<String, String> {
+    async fn inner(
+        endpoint: String,
+        state: tauri::State<'_, Arc<Mutex<AppState>>>,
+    ) -> Result<String> {
+        log::info!("Connecting to production C2 mesh endpoint: {}", endpoint);
 
-    // Validate endpoint format and security requirements
-    validation::require_non_empty(&endpoint, "endpoint")?;
-    validation::validate_ws_url(&endpoint, true)?;
+        // Validate endpoint format and security requirements
+        validation::require_non_empty(&endpoint, "endpoint")?;
+        validation::validate_ws_url(&endpoint, true)?;
 
-    // Parse and validate endpoint URL
-    let url = url::Url::parse(&endpoint)?;
+        // Parse and validate endpoint URL
+        let url = url::Url::parse(&endpoint)?;
 
-    // Validate host is present
-    if url.host_str().is_none() {
-        return Err(AppError::Validation(
-            "Endpoint must have a valid host".to_string(),
-        ));
+        // Validate host is present
+        if url.host_str().is_none() {
+            return Err(AppError::Validation(
+                "Endpoint must have a valid host".to_string(),
+            ));
+        }
+
+        // Store the endpoint in state
+        let app_state = state.lock().await;
+        *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
+
+        // In production, this would:
+        // 1. Initialize TacticalMesh with the endpoint as a seed peer
+        // 2. Establish secure WebSocket connection (WSS with TLS 1.3)
+        // 3. Perform mutual TPM attestation handshake
+        // 4. Verify cryptographic identity via EK certificate chain
+        // 5. Start authenticated gossip protocol for mesh coordination
+        // 6. Initialize Merkle Vine stream tracking
+        //
+        // For now, we validate and store the endpoint for future connection attempts
+
+        log::info!(
+            "Production C2 mesh endpoint validated and stored: {}",
+            endpoint
+        );
+
+        Ok(format!(
+            "Connected to C2 mesh at {} (validation successful, TPM attestation pending)",
+            endpoint
+        ))
     }
 
-    // Store the endpoint in state
-    let app_state = state.lock().await;
-    *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
-
-    // In production, this would:
-    // 1. Initialize TacticalMesh with the endpoint as a seed peer
-    // 2. Establish secure WebSocket connection (WSS with TLS 1.3)
-    // 3. Perform mutual TPM attestation handshake
-    // 4. Verify cryptographic identity via EK certificate chain
-    // 5. Start authenticated gossip protocol for mesh coordination
-    // 6. Initialize Merkle Vine stream tracking
-    //
-    // For now, we validate and store the endpoint for future connection attempts
-
-    log::info!(
-        "Production C2 mesh endpoint validated and stored: {}",
-        endpoint
-    );
-
-    Ok(format!(
-        "Connected to C2 mesh at {} (validation successful, TPM attestation pending)",
-        endpoint
-    ))
+    inner(endpoint, state).await.map_err(|e| e.to_string())
 }
 
 /// Connect to Testnet P2P Network (DEPRECATED - Use connect_to_mesh)
@@ -105,45 +112,52 @@ pub async fn connect_to_mesh(
 pub async fn connect_to_testnet(
     endpoint: String,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
-) -> Result<String> {
-    log::warn!(
-        "connect_to_testnet is deprecated. Use connect_to_mesh for production. \
-         Endpoint: {}",
-        endpoint
-    );
-
-    // Validate endpoint format
-    validation::require_non_empty(&endpoint, "endpoint")?;
-    validation::validate_ws_url(&endpoint, false)?; // Allow both ws:// and wss://
-
-    // Log security warning if using non-secure connection
-    if endpoint.starts_with("ws://") {
+) -> Result<String, String> {
+    async fn inner(
+        endpoint: String,
+        state: tauri::State<'_, Arc<Mutex<AppState>>>,
+    ) -> Result<String> {
         log::warn!(
-            "SECURITY WARNING: Using non-encrypted ws:// connection. \
-             This should only be used in isolated test environments."
+            "connect_to_testnet is deprecated. Use connect_to_mesh for production. \
+             Endpoint: {}",
+            endpoint
         );
+
+        // Validate endpoint format
+        validation::require_non_empty(&endpoint, "endpoint")?;
+        validation::validate_ws_url(&endpoint, false)?; // Allow both ws:// and wss://
+
+        // Log security warning if using non-secure connection
+        if endpoint.starts_with("ws://") {
+            log::warn!(
+                "SECURITY WARNING: Using non-encrypted ws:// connection. \
+                 This should only be used in isolated test environments."
+            );
+        }
+
+        // Parse and validate endpoint URL
+        let url = url::Url::parse(&endpoint)?;
+
+        // Validate host is present
+        if url.host_str().is_none() {
+            return Err(AppError::Validation(
+                "Endpoint must have a valid host".to_string(),
+            ));
+        }
+
+        // Store the endpoint in state
+        let app_state = state.lock().await;
+        *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
+
+        log::info!("Testnet endpoint validated and stored: {}", endpoint);
+
+        Ok(format!(
+            "Connected to testnet at {} (validation successful)",
+            endpoint
+        ))
     }
 
-    // Parse and validate endpoint URL
-    let url = url::Url::parse(&endpoint)?;
-
-    // Validate host is present
-    if url.host_str().is_none() {
-        return Err(AppError::Validation(
-            "Endpoint must have a valid host".to_string(),
-        ));
-    }
-
-    // Store the endpoint in state
-    let app_state = state.lock().await;
-    *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
-
-    log::info!("Testnet endpoint validated and stored: {}", endpoint);
-
-    Ok(format!(
-        "Connected to testnet at {} (validation successful)",
-        endpoint
-    ))
+    inner(endpoint, state).await.map_err(|e| e.to_string())
 }
 
 /// Generate Genesis Bundle for Zero-Touch Enrollment
@@ -154,39 +168,43 @@ pub async fn connect_to_testnet(
 pub async fn generate_genesis_bundle(
     user_identity: String,
     squad_id: String,
-) -> Result<GenesisBundle> {
-    // Validate inputs
-    validation::require_non_empty(&user_identity, "user_identity")?;
-    validation::require_non_empty(&squad_id, "squad_id")?;
-    validation::validate_alphanumeric(&user_identity, "user_identity")?;
-    validation::validate_alphanumeric(&squad_id, "squad_id")?;
+) -> Result<GenesisBundle, String> {
+    async fn inner(user_identity: String, squad_id: String) -> Result<GenesisBundle> {
+        // Validate inputs
+        validation::require_non_empty(&user_identity, "user_identity")?;
+        validation::require_non_empty(&squad_id, "squad_id")?;
+        validation::validate_alphanumeric(&user_identity, "user_identity")?;
+        validation::validate_alphanumeric(&squad_id, "squad_id")?;
 
-    log::info!(
-        "Generating Genesis Bundle for user: {}, squad: {}",
-        user_identity,
-        squad_id
-    );
+        log::info!(
+            "Generating Genesis Bundle for user: {}, squad: {}",
+            user_identity,
+            squad_id
+        );
 
-    // Generate ephemeral Ed25519 keypair for this bundle
-    // In production, this should use TPM-backed keys (CodeRalphie)
-    let (public_key, signature) = generate_signature(&user_identity, &squad_id)
-        .map_err(|e| AppError::Crypto(format!("Failed to generate signature: {}", e)))?;
+        // Generate ephemeral Ed25519 keypair for this bundle
+        // In production, this should use TPM-backed keys (CodeRalphie)
+        let (public_key, signature) = generate_signature(&user_identity, &squad_id)
+            .map_err(|e| AppError::Crypto(format!("Failed to generate signature: {}", e)))?;
 
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| AppError::Generic(format!("System time error: {}", e)))?
-        .as_secs();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| AppError::Generic(format!("System time error: {}", e)))?
+            .as_secs();
 
-    let bundle = GenesisBundle {
-        user_identity,
-        squad_id,
-        public_key,
-        signature,
-        timestamp,
-    };
+        let bundle = GenesisBundle {
+            user_identity,
+            squad_id,
+            public_key,
+            signature,
+            timestamp,
+        };
 
-    log::info!("Genesis Bundle generated successfully");
-    Ok(bundle)
+        log::info!("Genesis Bundle generated successfully");
+        Ok(bundle)
+    }
+
+    inner(user_identity, squad_id).await.map_err(|e| e.to_string())
 }
 
 /// Generate QR Code Data from Genesis Bundle
@@ -194,8 +212,8 @@ pub async fn generate_genesis_bundle(
 /// Converts the Genesis Bundle into a QR-encodable string that can be
 /// scanned by edge devices.
 #[tauri::command]
-pub fn bundle_to_qr_data(bundle: GenesisBundle) -> Result<String> {
-    Ok(serde_json::to_string(&bundle)?)
+pub fn bundle_to_qr_data(bundle: GenesisBundle) -> Result<String, String> {
+    serde_json::to_string(&bundle).map_err(|e| e.to_string())
 }
 
 /// Telemetry Payload for verification

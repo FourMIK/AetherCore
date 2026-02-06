@@ -183,30 +183,33 @@ impl ConfigManager {
     fn validate(&self, config: &AppConfig) -> Result<(), ConfigError> {
         // Validate mesh endpoint if provided
         if let Some(endpoint) = &config.mesh_endpoint {
-            if !endpoint.starts_with("wss://") {
+            // Parse URL first to validate structure
+            let url = url::Url::parse(endpoint).map_err(|e| {
+                ConfigError::ValidationError(format!("Invalid mesh endpoint URL: {}", e))
+            })?;
+
+            // Check scheme is wss
+            if url.scheme() != "wss" {
                 return Err(ConfigError::ValidationError(
                     "Production mesh endpoint must use WSS (secure WebSocket) protocol"
                         .to_string(),
                 ));
             }
-
-            // Validate URL format
-            url::Url::parse(endpoint).map_err(|e| {
-                ConfigError::ValidationError(format!("Invalid mesh endpoint URL: {}", e))
-            })?;
         }
 
         // Validate testnet endpoint if provided
         if let Some(endpoint) = &config.testnet_endpoint {
-            if !endpoint.starts_with("ws://") && !endpoint.starts_with("wss://") {
+            // Parse URL first to validate structure
+            let url = url::Url::parse(endpoint).map_err(|e| {
+                ConfigError::ValidationError(format!("Invalid testnet endpoint URL: {}", e))
+            })?;
+
+            // Check scheme is ws or wss
+            if url.scheme() != "ws" && url.scheme() != "wss" {
                 return Err(ConfigError::ValidationError(
                     "Testnet endpoint must use ws:// or wss:// protocol".to_string(),
                 ));
             }
-
-            url::Url::parse(endpoint).map_err(|e| {
-                ConfigError::ValidationError(format!("Invalid testnet endpoint URL: {}", e))
-            })?;
         }
 
         // Validate retry configuration

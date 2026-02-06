@@ -9,7 +9,22 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
 /**
  * Error toast notification function type
- * Can be replaced with your UI library's notification system
+ * 
+ * This function is called whenever a Tauri command fails with an error.
+ * Implement this to integrate with your UI library's notification/toast system.
+ * 
+ * @param title - The error title (e.g., "Configuration Error", "Connection Failed")
+ * @param message - The detailed error message from the backend
+ * 
+ * @example
+ * ```typescript
+ * import { setErrorNotifier } from './api/tauri-commands';
+ * import { toast } from 'your-toast-library';
+ * 
+ * setErrorNotifier((title, message) => {
+ *   toast.error(message, { title });
+ * });
+ * ```
  */
 type ErrorNotifier = (title: string, message: string) => void;
 
