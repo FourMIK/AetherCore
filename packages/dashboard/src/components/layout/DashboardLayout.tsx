@@ -22,6 +22,8 @@ import { DeploymentManagementView } from '../workspaces/DeploymentManagementView
 import { RalphieNodeProvisioning } from '../RalphieNodeProvisioning';
 import { VideoCallPanel } from '../comms/VideoCallPanel';
 import { DevModeBanner } from './DevModeBanner';
+import { SettingsPanel } from '../SettingsPanel';
+import { ConnectionStatusIndicator } from '../ConnectionStatus';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { useCommStore } from '../../store/useCommStore';
 import { Plus } from 'lucide-react';
@@ -88,6 +90,8 @@ export const DashboardLayout: React.FC = () => {
         return <RalphieNodeProvisioning />;
       case 'admin':
         return <SystemAdminView />;
+      case 'settings':
+        return <SettingsPanel />;
       default:
         return null;
     }
@@ -114,6 +118,7 @@ export const DashboardLayout: React.FC = () => {
             totalNodes={totalCount}
           />
         </div>
+        <ConnectionStatusIndicator />
       </div>
 
       {/* Main Content - Dynamic Workspace with proper flex */}
