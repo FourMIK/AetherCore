@@ -138,9 +138,22 @@ impl MeshSecurity {
 
                 Ok(1.0)
             }
-            Attestation::Software { certificate: _ } => {
-                // Software attestation has lower trust
-                // TODO: Verify software certificate
+            Attestation::Software { certificate } => {
+                let cert_chain = parse_certificate_chain(certificate)?;
+                if cert_chain.is_empty() {
+                    return Err("Software attestation certificate chain is empty".to_string());
+                }
+
+                let root = cert_chain
+                    .last()
+                    .ok_or_else(|| "Missing software attestation root certificate".to_string())?;
+                let mut validator = TrustChainValidator::new();
+                validator.add_trusted_root(root.issuer.clone(), root.public_key.clone());
+
+                if !validator.verify_chain(&cert_chain) {
+                    return Err("Software attestation certificate validation failed".to_string());
+                }
+
                 Ok(0.7)
             }
             Attestation::None => {
@@ -272,36 +285,109 @@ fn validate_pcr_policy(pcrs: &[Vec<u8>]) -> Result<(), String> {
     Ok(())
 }
 
+fn parse_certificate_chain(certificate: &[u8]) -> Result<Vec<Certificate>, String> {
+    if certificate.is_empty() {
+        return Err("Certificate payload is empty".to_string());
+    }
+
+    if let Ok(chain) = serde_json::from_slice::<Vec<Certificate>>(certificate) {
+        return Ok(chain);
+    }
+
+    if let Ok(cert) = serde_json::from_slice::<Certificate>(certificate) {
+        return Ok(vec![cert]);
+    }
+
+    Err("Certificate payload is not valid JSON".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use aethercore_identity::PcrValue;
+    use ed25519_dalek::{Signer, SigningKey};
     use std::collections::HashMap;
 
+    fn signing_key_from_seed(seed: u8) -> SigningKey {
+        SigningKey::from_bytes(&[seed; 32])
+    }
+
+    fn certificate_tbs_bytes(cert: &Certificate) -> Vec<u8> {
+        let mut data = Vec::new();
+        let mut write_bytes = |bytes: &[u8]| {
+            let len = bytes.len() as u32;
+            data.extend_from_slice(&len.to_be_bytes());
+            data.extend_from_slice(bytes);
+        };
+
+        write_bytes(cert.serial.as_bytes());
+        write_bytes(cert.subject.as_bytes());
+        write_bytes(cert.issuer.as_bytes());
+        write_bytes(&cert.public_key);
+        data.extend_from_slice(&cert.not_before.to_be_bytes());
+        data.extend_from_slice(&cert.not_after.to_be_bytes());
+
+        let mut extensions: Vec<(&String, &Vec<u8>)> = cert.extensions.iter().collect();
+        extensions.sort_by(|a, b| a.0.cmp(b.0));
+        for (key, value) in extensions {
+            write_bytes(key.as_bytes());
+            write_bytes(value);
+        }
+
+        data
+    }
+
+    fn sign_certificate(cert: &Certificate, signing_key: &SigningKey) -> Vec<u8> {
+        let tbs = certificate_tbs_bytes(cert);
+        signing_key.sign(&tbs).to_bytes().to_vec()
+    }
+
     fn build_cert_chain(ak_public_key: Vec<u8>) -> Vec<u8> {
-        let ak_cert = Certificate {
+        let root_key = signing_key_from_seed(7);
+
+        let mut root_cert = Certificate {
+            serial: "root-serial".to_string(),
+            subject: "root-ca".to_string(),
+            issuer: "root-ca".to_string(),
+            public_key: root_key.verifying_key().to_bytes().to_vec(),
+            not_before: 0,
+            not_after: u64::MAX,
+            signature: Vec::new(),
+            extensions: HashMap::new(),
+        };
+        root_cert.signature = sign_certificate(&root_cert, &root_key);
+
+        let mut ak_cert = Certificate {
             serial: "ak-serial".to_string(),
             subject: "ak-cert".to_string(),
             issuer: "root-ca".to_string(),
             public_key: ak_public_key,
             not_before: 0,
             not_after: u64::MAX,
-            signature: vec![1, 2, 3],
+            signature: Vec::new(),
             extensions: HashMap::new(),
         };
-
-        let root_cert = Certificate {
-            serial: "root-serial".to_string(),
-            subject: "root-ca".to_string(),
-            issuer: "root-ca".to_string(),
-            public_key: vec![9, 9, 9],
-            not_before: 0,
-            not_after: u64::MAX,
-            signature: vec![4, 5, 6],
-            extensions: HashMap::new(),
-        };
+        ak_cert.signature = sign_certificate(&ak_cert, &root_key);
 
         serde_json::to_vec(&vec![ak_cert, root_cert]).expect("serialize cert chain")
+    }
+
+    fn build_software_attestation() -> Attestation {
+        let signing_key = signing_key_from_seed(11);
+        let mut cert = Certificate {
+            serial: "software-serial".to_string(),
+            subject: "software-node".to_string(),
+            issuer: "software-node".to_string(),
+            public_key: signing_key.verifying_key().to_bytes().to_vec(),
+            not_before: 0,
+            not_after: u64::MAX,
+            signature: Vec::new(),
+            extensions: HashMap::new(),
+        };
+        cert.signature = sign_certificate(&cert, &signing_key);
+        let certificate = serde_json::to_vec(&cert).expect("serialize software cert");
+
+        Attestation::Software { certificate }
     }
 
     fn build_tpm_attestation() -> (Attestation, Vec<Vec<u8>>) {
@@ -344,9 +430,7 @@ mod tests {
     #[test]
     fn test_verify_software_attestation() {
         let security = MeshSecurity::new();
-        let attestation = Attestation::Software {
-            certificate: vec![1, 2, 3],
-        };
+        let attestation = build_software_attestation();
 
         let trust = security.verify_attestation(&attestation).unwrap();
         assert_eq!(trust, 0.7);
@@ -401,9 +485,7 @@ mod tests {
         let identity = PlatformIdentity {
             id: "test".to_string(),
             public_key: signing_service.public_key(),
-            attestation: Attestation::Software {
-                certificate: vec![],
-            },
+            attestation: build_software_attestation(),
             created_at: 1000,
             metadata: HashMap::new(),
         };
@@ -433,9 +515,7 @@ mod tests {
         let identity = PlatformIdentity {
             id: "test".to_string(),
             public_key: signing_service.public_key(),
-            attestation: Attestation::Software {
-                certificate: vec![1],
-            },
+            attestation: build_software_attestation(),
             created_at: 1000,
             metadata: HashMap::new(),
         };
@@ -465,9 +545,7 @@ mod tests {
         let identity = PlatformIdentity {
             id: "test".to_string(),
             public_key: signing_service.public_key(),
-            attestation: Attestation::Software {
-                certificate: vec![1],
-            },
+            attestation: build_software_attestation(),
             created_at: 1000,
             metadata: HashMap::new(),
         };

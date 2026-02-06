@@ -357,10 +357,14 @@ mod tests {
         struct MockVerifier;
         impl ZkProverService for MockVerifier {
             fn generate(&self, _request: &ZkProofRequest) -> crate::Result<ZkProofResult> {
-                unimplemented!()
+                Ok(ZkProofResult {
+                    proof_bytes: Vec::new(),
+                    public_inputs_hash: [0u8; 32],
+                    generated_at: 0,
+                })
             }
             fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
-                unimplemented!()
+                Ok(true)
             }
         }
         impl ZkPhysicsVerifier for MockVerifier {}
@@ -384,10 +388,14 @@ mod tests {
         struct MockVerifier;
         impl ZkProverService for MockVerifier {
             fn generate(&self, _request: &ZkProofRequest) -> crate::Result<ZkProofResult> {
-                unimplemented!()
+                Ok(ZkProofResult {
+                    proof_bytes: Vec::new(),
+                    public_inputs_hash: [0u8; 32],
+                    generated_at: 0,
+                })
             }
             fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
-                unimplemented!()
+                Ok(true)
             }
         }
         impl ZkPhysicsVerifier for MockVerifier {}
@@ -410,10 +418,14 @@ mod tests {
         struct MockVerifier;
         impl ZkProverService for MockVerifier {
             fn generate(&self, _request: &ZkProofRequest) -> crate::Result<ZkProofResult> {
-                unimplemented!()
+                Ok(ZkProofResult {
+                    proof_bytes: Vec::new(),
+                    public_inputs_hash: [0u8; 32],
+                    generated_at: 0,
+                })
             }
             fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
-                unimplemented!()
+                Ok(true)
             }
         }
         impl ZkPhysicsVerifier for MockVerifier {}
@@ -441,10 +453,14 @@ mod tests {
         struct MockVerifier;
         impl ZkProverService for MockVerifier {
             fn generate(&self, _request: &ZkProofRequest) -> crate::Result<ZkProofResult> {
-                unimplemented!()
+                Ok(ZkProofResult {
+                    proof_bytes: Vec::new(),
+                    public_inputs_hash: [0u8; 32],
+                    generated_at: 0,
+                })
             }
             fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
-                unimplemented!()
+                Ok(true)
             }
         }
         impl ZkPhysicsVerifier for MockVerifier {}
@@ -464,10 +480,14 @@ mod tests {
         struct MockVerifier;
         impl ZkProverService for MockVerifier {
             fn generate(&self, _request: &ZkProofRequest) -> crate::Result<ZkProofResult> {
-                unimplemented!()
+                Ok(ZkProofResult {
+                    proof_bytes: Vec::new(),
+                    public_inputs_hash: [0u8; 32],
+                    generated_at: 0,
+                })
             }
             fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
-                unimplemented!()
+                Ok(true)
             }
         }
         impl ZkPhysicsVerifier for MockVerifier {}
@@ -491,10 +511,14 @@ mod tests {
         struct MockVerifier;
         impl ZkProverService for MockVerifier {
             fn generate(&self, _request: &ZkProofRequest) -> crate::Result<ZkProofResult> {
-                unimplemented!()
+                Ok(ZkProofResult {
+                    proof_bytes: Vec::new(),
+                    public_inputs_hash: [0u8; 32],
+                    generated_at: 0,
+                })
             }
             fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
-                unimplemented!()
+                Ok(true)
             }
         }
         impl ZkPhysicsVerifier for MockVerifier {}
