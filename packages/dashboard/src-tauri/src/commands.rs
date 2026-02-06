@@ -1,14 +1,15 @@
-use anyhow::Result;
+use crate::config::{AppConfig, ConfigManager};
+use crate::error::{validation, AppError, Result};
+use crate::process_manager::{NodeProcessInfo, NodeProcessManager, ProcessStatus};
+use aethercore_identity::IdentityManager;
+use aethercore_stream::StreamIntegrityTracker;
+use aethercore_trust_mesh::ComplianceProof;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use aethercore_stream::StreamIntegrityTracker;
-use aethercore_identity::IdentityManager;
-use aethercore_trust_mesh::ComplianceProof;
-use ed25519_dalek::VerifyingKey;
-use crate::process_manager::{NodeProcessManager, NodeProcessInfo, ProcessStatus};
-use std::path::PathBuf;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 /// Genesis Bundle for Zero-Touch Enrollment
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,14 +32,14 @@ pub struct AppState {
 }
 
 /// Connect to Production C2 Mesh
-/// 
+///
 /// This command initiates a secure connection to the production C2 mesh with
 /// hardware-rooted authentication. All connections use TLS 1.3 / WSS and
 /// require valid TPM attestation per the "Fail-Visible" doctrine.
-/// 
+///
 /// PRODUCTION MODE: Only WSS (secure WebSocket) connections are permitted.
 /// Non-encrypted endpoints are rejected per security policy.
-/// 
+///
 /// NOTE: Full mesh integration requires async runtime setup. This validates
 /// the endpoint and stores it for later connection establishment.
 #[tauri::command]
@@ -47,7 +48,7 @@ pub async fn connect_to_mesh(
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<String, String> {
     log::info!("Connecting to production C2 mesh endpoint: {}", endpoint);
-    
+
     // PRODUCTION GUARD: Reject non-WSS endpoints (fail-visible)
     if !endpoint.starts_with("wss://") {
         log::error!(
@@ -60,20 +61,19 @@ pub async fn connect_to_mesh(
                 .to_string(),
         );
     }
-    
+
     // Parse and validate endpoint URL
-    let url = url::Url::parse(&endpoint)
-        .map_err(|e| format!("Invalid endpoint URL: {}", e))?;
-    
+    let url = url::Url::parse(&endpoint).map_err(|e| format!("Invalid endpoint URL: {}", e))?;
+
     // Validate host is present
     if url.host_str().is_none() {
         return Err("Endpoint must have a valid host".to_string());
     }
-    
+
     // Store the endpoint in state
     let app_state = state.lock().await;
     *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
-    
+
     // In production, this would:
     // 1. Initialize TacticalMesh with the endpoint as a seed peer
     // 2. Establish secure WebSocket connection (WSS with TLS 1.3)
@@ -81,14 +81,14 @@ pub async fn connect_to_mesh(
     // 4. Verify cryptographic identity via EK certificate chain
     // 5. Start authenticated gossip protocol for mesh coordination
     // 6. Initialize Merkle Vine stream tracking
-    // 
+    //
     // For now, we validate and store the endpoint for future connection attempts
-    
+
     log::info!(
         "Production C2 mesh endpoint validated and stored: {}",
         endpoint
     );
-    
+
     Ok(format!(
         "Connected to C2 mesh at {} (validation successful, TPM attestation pending)",
         endpoint
@@ -96,16 +96,16 @@ pub async fn connect_to_mesh(
 }
 
 /// Connect to Testnet P2P Network (DEPRECATED - Use connect_to_mesh)
-/// 
+///
 /// This command initiates a P2P handshake with the specified testnet endpoint.
 /// The connection is managed through the AetherCore mesh protocol.
-/// 
+///
 /// DEPRECATED: This function is maintained for backward compatibility only.
 /// Use `connect_to_mesh` for production deployments.
-/// 
+///
 /// NOTE: Unlike connect_to_mesh, this function allows both ws:// and wss://
 /// connections for backward compatibility with existing testnet configurations.
-/// 
+///
 /// SECURITY WARNING: ws:// (non-encrypted) connections should only be used
 /// in isolated test environments. Production deployments must use connect_to_mesh.
 #[tauri::command]
@@ -118,12 +118,12 @@ pub async fn connect_to_testnet(
          Endpoint: {}",
         endpoint
     );
-    
+
     // Validate endpoint format (allow both ws:// and wss:// for backward compatibility)
     if !endpoint.starts_with("ws://") && !endpoint.starts_with("wss://") {
         return Err("Invalid endpoint format. Must start with ws:// or wss://".to_string());
     }
-    
+
     // Log security warning if using non-secure connection
     if endpoint.starts_with("ws://") {
         log::warn!(
@@ -131,22 +131,21 @@ pub async fn connect_to_testnet(
              This should only be used in isolated test environments."
         );
     }
-    
+
     // Parse and validate endpoint URL
-    let url = url::Url::parse(&endpoint)
-        .map_err(|e| format!("Invalid endpoint URL: {}", e))?;
-    
+    let url = url::Url::parse(&endpoint).map_err(|e| format!("Invalid endpoint URL: {}", e))?;
+
     // Validate host is present
     if url.host_str().is_none() {
         return Err("Endpoint must have a valid host".to_string());
     }
-    
+
     // Store the endpoint in state
     let app_state = state.lock().await;
     *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
-    
+
     log::info!("Testnet endpoint validated and stored: {}", endpoint);
-    
+
     Ok(format!(
         "Connected to testnet at {} (validation successful)",
         endpoint
@@ -154,7 +153,7 @@ pub async fn connect_to_testnet(
 }
 
 /// Generate Genesis Bundle for Zero-Touch Enrollment
-/// 
+///
 /// This generates a signed bundle containing user identity and squad information
 /// that can be scanned by IoT devices for automated provisioning.
 #[tauri::command]
@@ -167,19 +166,19 @@ pub async fn generate_genesis_bundle(
         user_identity,
         squad_id
     );
-    
+
     // Generate ephemeral Ed25519 keypair for this bundle
     // In production, this should use TPM-backed keys (CodeRalphie)
     let (public_key, signature) = match generate_signature(&user_identity, &squad_id) {
         Ok(keys) => keys,
         Err(e) => return Err(format!("Failed to generate signature: {}", e)),
     };
-    
+
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| format!("System time error: {}", e))?
         .as_secs();
-    
+
     let bundle = GenesisBundle {
         user_identity,
         squad_id,
@@ -187,19 +186,18 @@ pub async fn generate_genesis_bundle(
         signature,
         timestamp,
     };
-    
+
     log::info!("Genesis Bundle generated successfully");
     Ok(bundle)
 }
 
 /// Generate QR Code Data from Genesis Bundle
-/// 
+///
 /// Converts the Genesis Bundle into a QR-encodable string that can be
 /// scanned by edge devices.
 #[tauri::command]
 pub fn bundle_to_qr_data(bundle: GenesisBundle) -> Result<String, String> {
-    serde_json::to_string(&bundle)
-        .map_err(|e| format!("Failed to serialize bundle: {}", e))
+    serde_json::to_string(&bundle).map_err(|e| format!("Failed to serialize bundle: {}", e))
 }
 
 /// Telemetry Payload for verification
@@ -212,10 +210,10 @@ pub struct TelemetryPayload {
 }
 
 /// Verify Telemetry Signature
-/// 
+///
 /// Verifies the cryptographic signature of incoming telemetry data using Ed25519.
 /// Returns true if signature is valid, false otherwise.
-/// 
+///
 /// Integration: Uses Ed25519 signature verification with BLAKE3 hashing.
 /// In production, public keys are retrieved from the IdentityManager.
 #[tauri::command]
@@ -223,21 +221,24 @@ pub async fn verify_telemetry_signature(
     payload: TelemetryPayload,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<bool, String> {
-    use base64::{Engine as _, engine::general_purpose};
+    use base64::{engine::general_purpose, Engine as _};
     use ed25519_dalek::{Signature, Verifier};
-    
-    log::info!("Verifying telemetry signature for node: {}", payload.node_id);
-    
+
+    log::info!(
+        "Verifying telemetry signature for node: {}",
+        payload.node_id
+    );
+
     // Basic validation
     if payload.signature.is_empty() {
         log::warn!("Empty signature for node: {}", payload.node_id);
         return Ok(false);
     }
-    
+
     // Get identity manager to look up public key
     let app_state = state.lock().await;
     let identity_mgr = app_state.identity_manager.lock().await;
-    
+
     // Look up node identity
     let identity = identity_mgr.get(&payload.node_id);
     if identity.is_none() {
@@ -245,37 +246,47 @@ pub async fn verify_telemetry_signature(
         // In fail-visible mode, unknown nodes are treated as unverified
         return Ok(false);
     }
-    
+
     let identity = identity.unwrap();
-    
+
     // Validate public key length for Ed25519 (must be exactly 32 bytes)
     if identity.public_key.len() != 32 {
-        log::error!("Invalid public key length for node {}: expected 32 bytes, got {}", 
-            payload.node_id, identity.public_key.len());
+        log::error!(
+            "Invalid public key length for node {}: expected 32 bytes, got {}",
+            payload.node_id,
+            identity.public_key.len()
+        );
         return Ok(false);
     }
-    
+
     // Parse public key from identity
-    let public_key_bytes: [u8; 32] = identity.public_key.as_slice()
+    let public_key_bytes: [u8; 32] = identity
+        .public_key
+        .as_slice()
         .try_into()
         .expect("Length already validated as 32 bytes");
-    
+
     let verifying_key = match VerifyingKey::from_bytes(&public_key_bytes) {
         Ok(key) => key,
         Err(e) => {
-            log::error!("Failed to parse public key for node {}: {}", payload.node_id, e);
+            log::error!(
+                "Failed to parse public key for node {}: {}",
+                payload.node_id,
+                e
+            );
             return Ok(false);
         }
     };
-    
+
     // Create message to verify using BLAKE3
-    let message = format!("{}:{}:{}", 
-        payload.node_id, 
+    let message = format!(
+        "{}:{}:{}",
+        payload.node_id,
         serde_json::to_string(&payload.data).map_err(|e| e.to_string())?,
         payload.timestamp
     );
     let message_hash = blake3::hash(message.as_bytes());
-    
+
     // Decode signature from base64
     let signature_bytes = match general_purpose::STANDARD.decode(&payload.signature) {
         Ok(bytes) => bytes,
@@ -284,7 +295,7 @@ pub async fn verify_telemetry_signature(
             return Ok(false);
         }
     };
-    
+
     // Parse signature
     let signature = match Signature::from_slice(&signature_bytes) {
         Ok(sig) => sig,
@@ -293,7 +304,7 @@ pub async fn verify_telemetry_signature(
             return Ok(false);
         }
     };
-    
+
     // Verify signature
     match verifying_key.verify(message_hash.as_bytes(), &signature) {
         Ok(()) => {
@@ -301,51 +312,52 @@ pub async fn verify_telemetry_signature(
             Ok(true)
         }
         Err(e) => {
-            log::warn!("Telemetry signature VERIFICATION FAILED for node {}: {}", payload.node_id, e);
+            log::warn!(
+                "Telemetry signature VERIFICATION FAILED for node {}: {}",
+                payload.node_id,
+                e
+            );
             Ok(false)
         }
     }
 }
 
 /// Internal function to generate Ed25519 signature
-/// 
+///
 /// Uses TPM-backed Ed25519 signing (CodeRalphie) in production.
 /// This is a simplified version for the initial implementation.
-fn generate_signature(
-    user_identity: &str,
-    squad_id: &str,
-) -> Result<(String, String)> {
+fn generate_signature(user_identity: &str, squad_id: &str) -> Result<(String, String)> {
+    use base64::{engine::general_purpose, Engine as _};
     use ed25519_dalek::{Signer, SigningKey as EdSigningKey};
-    use base64::{Engine as _, engine::general_purpose};
-    
+
     // Generate ephemeral keypair
     // TODO: Replace with TPM-backed key generation in production (CodeRalphie)
     let mut csprng = rand::thread_rng();
     let signing_key = EdSigningKey::from_bytes(&rand::Rng::gen::<[u8; 32]>(&mut csprng));
-    
+
     // Create message to sign using BLAKE3
     let message = format!("{}:{}", user_identity, squad_id);
     let message_hash = blake3::hash(message.as_bytes());
-    
+
     // Get public key
     let verifying_key = signing_key.verifying_key();
     let public_key_bytes = verifying_key.to_bytes();
-    
+
     // Sign the message
     let signature = signing_key.sign(message_hash.as_bytes());
-    
+
     // Encode to base64 for transport
     let public_key_b64 = general_purpose::STANDARD.encode(&public_key_bytes);
     let signature_b64 = general_purpose::STANDARD.encode(&signature.to_bytes());
-    
+
     Ok((public_key_b64, signature_b64))
 }
 
 /// Create Node in Mesh
-/// 
+///
 /// Provisions a new node in the AetherCore mesh with cryptographic identity.
 /// Integrates with the Identity Manager to register the node.
-/// 
+///
 /// NOTE: In production, this should use TPM-backed key generation (CodeRalphie).
 /// Currently uses ephemeral Ed25519 keys for development/testing.
 #[tauri::command]
@@ -354,41 +366,40 @@ pub async fn create_node(
     domain: String,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<String, String> {
-    use aethercore_identity::{PlatformIdentity, Attestation};
+    use aethercore_identity::{Attestation, PlatformIdentity};
     use std::collections::HashMap;
-    
+
     log::info!("Creating node: {} in domain: {}", node_id, domain);
-    
+
     // Validate node_id format
     if node_id.is_empty() || node_id.len() > 255 {
         return Err("Invalid node_id: must be 1-255 characters".to_string());
     }
-    
+
     // Validate domain format
     if domain.is_empty() || domain.len() > 255 {
         return Err("Invalid domain: must be 1-255 characters".to_string());
     }
-    
+
     // Generate Ed25519 keypair for this node
     // In production, replace with TPM-backed key generation (CodeRalphie)
     let public_key_bytes = {
         let mut csprng = rand::thread_rng();
-        let signing_key = ed25519_dalek::SigningKey::from_bytes(
-            &rand::Rng::gen::<[u8; 32]>(&mut csprng)
-        );
+        let signing_key =
+            ed25519_dalek::SigningKey::from_bytes(&rand::Rng::gen::<[u8; 32]>(&mut csprng));
         let verifying_key = signing_key.verifying_key();
         verifying_key.to_bytes()
     };
-    
+
     // Create platform identity
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| format!("System time error: {}", e))?
         .as_millis() as u64;
-    
+
     let mut metadata = HashMap::new();
     metadata.insert("domain".to_string(), domain.clone());
-    
+
     let identity = PlatformIdentity {
         id: node_id.clone(),
         public_key: public_key_bytes.to_vec(),
@@ -398,20 +409,28 @@ pub async fn create_node(
         created_at: now_ms,
         metadata,
     };
-    
+
     // Register with identity manager
     let app_state = state.lock().await;
     let mut identity_mgr = app_state.identity_manager.lock().await;
-    
-    identity_mgr.register(identity)
+
+    identity_mgr
+        .register(identity)
         .map_err(|e| format!("Failed to register identity: {}", e))?;
-    
+
     // Initialize stream integrity tracker for this node
     let mut stream_tracker = app_state.stream_tracker.lock().await;
     let _status = stream_tracker.get_or_create(&node_id);
-    
-    log::info!("Node {} provisioned in domain {} with identity registered", node_id, domain);
-    Ok(format!("Node {} successfully created and registered", node_id))
+
+    log::info!(
+        "Node {} provisioned in domain {} with identity registered",
+        node_id,
+        domain
+    );
+    Ok(format!(
+        "Node {} successfully created and registered",
+        node_id
+    ))
 }
 
 /// Stream Integrity Status
@@ -427,10 +446,10 @@ pub struct StreamIntegrityStatus {
 }
 
 /// Check Stream Integrity
-/// 
+///
 /// Checks the Merkle-Vine integrity status for a given stream/node.
 /// Returns the current integrity state including chain verification status.
-/// 
+///
 /// Integration: Uses StreamIntegrityTracker from crates/stream for real-time
 /// integrity monitoring.
 #[tauri::command]
@@ -439,22 +458,24 @@ pub async fn check_stream_integrity(
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<StreamIntegrityStatus, String> {
     log::info!("Checking stream integrity for: {}", stream_id);
-    
+
     // Get stream tracker
     let app_state = state.lock().await;
     let stream_tracker = app_state.stream_tracker.lock().await;
-    
+
     // Query integrity status
     let integrity_status = stream_tracker.get(&stream_id);
-    
+
     if let Some(status) = integrity_status {
         // Convert from internal IntegrityStatus to API response
         let verification_status = match status.verification_status {
             aethercore_stream::integrity::VerificationStatus::Verified => "VERIFIED",
-            aethercore_stream::integrity::VerificationStatus::StatusUnverified => "STATUS_UNVERIFIED",
+            aethercore_stream::integrity::VerificationStatus::StatusUnverified => {
+                "STATUS_UNVERIFIED"
+            }
             aethercore_stream::integrity::VerificationStatus::Spoofed => "SPOOFED",
         };
-        
+
         let response = StreamIntegrityStatus {
             stream_id: status.stream_id.clone(),
             is_compromised: status.is_compromised,
@@ -464,7 +485,7 @@ pub async fn check_stream_integrity(
             verification_status: verification_status.to_string(),
             compromise_reason: status.compromise_reason.clone(),
         };
-        
+
         log::info!("Stream {} integrity: {:?}", stream_id, verification_status);
         Ok(response)
     } else {
@@ -483,27 +504,27 @@ pub async fn check_stream_integrity(
 }
 
 /// Get All Compromised Streams
-/// 
+///
 /// Returns a list of all streams with broken Merkle-Vine chains.
-/// 
+///
 /// Integration: Queries StreamIntegrityTracker for all compromised streams.
 #[tauri::command]
 pub async fn get_compromised_streams(
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<Vec<String>, String> {
     log::info!("Fetching all compromised streams");
-    
+
     // Get stream tracker
     let app_state = state.lock().await;
     let stream_tracker = app_state.stream_tracker.lock().await;
-    
+
     // Get all compromised streams
     let compromised = stream_tracker.get_compromised_streams();
     let stream_ids: Vec<String> = compromised
         .iter()
         .map(|status| status.stream_id.clone())
         .collect();
-    
+
     log::info!("Found {} compromised stream(s)", stream_ids.len());
     Ok(stream_ids)
 }
@@ -515,7 +536,7 @@ pub struct LicenseInventoryEntry {
     pub version: String,
     pub license: String,
     pub license_hash: Option<String>,
-    pub ecosystem: String, // "rust" or "npm"
+    pub ecosystem: String,         // "rust" or "npm"
     pub compliance_status: String, // "APPROVED", "FLAGGED", "UNKNOWN"
 }
 
@@ -532,16 +553,16 @@ pub struct LicenseInventory {
 }
 
 /// Get License Inventory
-/// 
+///
 /// Returns the current license compliance status for all dependencies.
 /// Integrates with cargo-deny output and LICENSE_MANIFEST.txt for
 /// cryptographic verification of license provenance.
-/// 
+///
 /// This command powers the Compliance HUD in the System Admin View.
 #[tauri::command]
 pub async fn get_license_inventory() -> Result<LicenseInventory, String> {
     log::info!("Fetching license inventory for compliance HUD");
-    
+
     // In a full implementation, this would:
     // 1. Read sbom-artifacts/tauri-sbom.json and frontend-sbom.json
     // 2. Parse LICENSE_MANIFEST.txt for license hashes
@@ -549,9 +570,9 @@ pub async fn get_license_inventory() -> Result<LicenseInventory, String> {
     // 4. Return aggregated compliance status
     //
     // For now, return a placeholder that demonstrates the structure
-    
+
     let mut entries = Vec::new();
-    
+
     // Example approved entry
     entries.push(LicenseInventoryEntry {
         package_name: "tokio".to_string(),
@@ -561,7 +582,7 @@ pub async fn get_license_inventory() -> Result<LicenseInventory, String> {
         ecosystem: "rust".to_string(),
         compliance_status: "APPROVED".to_string(),
     });
-    
+
     // Example flagged entry (for demonstration)
     entries.push(LicenseInventoryEntry {
         package_name: "example-gpl-crate".to_string(),
@@ -571,11 +592,20 @@ pub async fn get_license_inventory() -> Result<LicenseInventory, String> {
         ecosystem: "rust".to_string(),
         compliance_status: "FLAGGED".to_string(),
     });
-    
-    let approved_count = entries.iter().filter(|e| e.compliance_status == "APPROVED").count() as u64;
-    let flagged_count = entries.iter().filter(|e| e.compliance_status == "FLAGGED").count() as u64;
-    let unknown_count = entries.iter().filter(|e| e.compliance_status == "UNKNOWN").count() as u64;
-    
+
+    let approved_count = entries
+        .iter()
+        .filter(|e| e.compliance_status == "APPROVED")
+        .count() as u64;
+    let flagged_count = entries
+        .iter()
+        .filter(|e| e.compliance_status == "FLAGGED")
+        .count() as u64;
+    let unknown_count = entries
+        .iter()
+        .filter(|e| e.compliance_status == "UNKNOWN")
+        .count() as u64;
+
     let inventory = LicenseInventory {
         total_dependencies: entries.len() as u64,
         approved_count,
@@ -587,22 +617,22 @@ pub async fn get_license_inventory() -> Result<LicenseInventory, String> {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_err(|e| format!("System time error: {}", e))?
-                .as_millis() as u64
+                .as_millis() as u64,
         ),
     };
-    
+
     log::info!(
         "License inventory: {} total, {} approved, {} flagged",
         inventory.total_dependencies,
         inventory.approved_count,
         inventory.flagged_count
     );
-    
+
     Ok(inventory)
 }
 
 /// Record License Compliance Proof
-/// 
+///
 /// Records a compliance verification event in The Great Gospel ledger.
 /// Called after successful license audits during build/release processes.
 #[tauri::command]
@@ -620,7 +650,7 @@ pub async fn record_license_compliance(
         approved,
         violations.len()
     );
-    
+
     let proof = if violations.is_empty() {
         ComplianceProof::compliant(verifier_id, total_deps, approved, manifest_hash)
     } else {
@@ -633,11 +663,11 @@ pub async fn record_license_compliance(
             Some(format!("{} license violations detected", violations.len())),
         )
     };
-    
+
     // In production, this would be persisted to the distributed ledger
     // For now, just log the event
     log::info!("Compliance proof created: status={}", proof.status);
-    
+
     Ok(format!(
         "Compliance proof recorded: {} (status: {})",
         proof.verifier_id, proof.status
@@ -665,15 +695,15 @@ pub struct DeploymentStatus {
 }
 
 /// Deploy a node process locally
-/// 
+///
 /// This command spawns a node binary as a child process with the provided configuration.
 /// It validates all inputs rigorously and handles security considerations.
-/// 
+///
 /// # Security Considerations
 /// - All inputs are validated (ports, paths, URLs)
 /// - Config files are written to sanitized paths
 /// - Binary location is checked in secure order (env var -> bundled -> PATH)
-/// 
+///
 /// # Integration
 /// Uses NodeProcessManager to track and manage the spawned process lifecycle.
 #[tauri::command]
@@ -716,15 +746,16 @@ pub async fn deploy_node(
 
     // Sanitize and validate data_dir path
     let data_dir = PathBuf::from(&config.data_dir);
-    
+
     // Canonicalize the path to resolve any .. or symlinks
     // First create the directory if it doesn't exist
     std::fs::create_dir_all(&data_dir)
         .map_err(|e| format!("Failed to create data directory: {}", e))?;
-    
-    let canonical_data_dir = data_dir.canonicalize()
+
+    let canonical_data_dir = data_dir
+        .canonicalize()
         .map_err(|e| format!("Failed to canonicalize data directory path: {}", e))?;
-    
+
     // Basic security check: ensure the canonical path doesn't contain suspicious patterns
     let path_str = canonical_data_dir.to_string_lossy();
     if path_str.contains("..") {
@@ -732,8 +763,8 @@ pub async fn deploy_node(
     }
 
     // Locate node binary
-    let binary_path = locate_node_binary()
-        .map_err(|e| format!("Failed to locate node binary: {}", e))?;
+    let binary_path =
+        locate_node_binary().map_err(|e| format!("Failed to locate node binary: {}", e))?;
 
     log::info!("Using node binary: {}", binary_path);
 
@@ -747,8 +778,11 @@ pub async fn deploy_node(
         "log_level": config.log_level,
     });
 
-    std::fs::write(&config_path, serde_json::to_string_pretty(&config_json).unwrap())
-        .map_err(|e| format!("Failed to write config file: {}", e))?;
+    std::fs::write(
+        &config_path,
+        serde_json::to_string_pretty(&config_json).unwrap(),
+    )
+    .map_err(|e| format!("Failed to write config file: {}", e))?;
 
     log::info!("Config file written to: {}", config_path.display());
 
@@ -782,7 +816,7 @@ pub async fn deploy_node(
 }
 
 /// Stop a running node process
-/// 
+///
 /// This command stops a node that was previously deployed via deploy_node.
 #[tauri::command]
 pub async fn stop_node(
@@ -808,7 +842,7 @@ pub async fn stop_node(
 }
 
 /// Get deployment status for all locally deployed nodes
-/// 
+///
 /// Returns a list of all nodes currently managed by the NodeProcessManager.
 #[tauri::command]
 pub async fn get_deployment_status(
@@ -839,9 +873,9 @@ pub async fn get_deployment_status(
 }
 
 /// Get logs for a specific node
-/// 
+///
 /// Retrieves the captured stdout/stderr logs from a running or stopped node.
-/// 
+///
 /// # Arguments
 /// * `node_id` - The node identifier
 /// * `tail` - Number of lines to retrieve from the end (0 = all lines)
@@ -916,30 +950,30 @@ fn locate_node_binary() -> Result<String> {
 }
 
 /// Sign Heartbeat Payload (Aetheric Link Protocol)
-/// 
+///
 /// This command implements cryptographic authentication for the C2 heartbeat
 /// protocol. Every 5 seconds, the client must prove its identity by signing
 /// a nonce (timestamp + random UUID) using TPM-backed Ed25519.
-/// 
+///
 /// # Fail-Visible Doctrine
-/// 
+///
 /// If the TPM fails to sign (hardware error, tampered device), this command
 /// MUST return an error. The frontend will interpret TPM signing failure as
 /// a "Broken Link" and immediately sever the connection.
-/// 
+///
 /// # Security Model
-/// 
+///
 /// - Private keys NEVER enter system memory (TPM hardware enforcement)
 /// - Each signature is unique (nonce includes timestamp + UUID)
 /// - Backend verifies freshness (reject payloads > 3s old)
 /// - Missing 2 heartbeats (10s) triggers Dead Man's Switch
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `nonce` - The payload to sign (JSON string with timestamp + nonce)
-/// 
+///
 /// # Returns
-/// 
+///
 /// Base64-encoded signature bytes, or error if TPM signing fails
 #[tauri::command]
 pub async fn sign_heartbeat_payload(
@@ -947,39 +981,103 @@ pub async fn sign_heartbeat_payload(
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<String, String> {
     log::debug!("[AETHERIC LINK] Signing heartbeat payload");
-    
+
     // Access TPM Manager from app state
     let app_state = state.lock().await;
     let mut tpm = app_state.tpm_manager.lock().await;
-    
+
     // Sign the nonce using TPM
     // In production with hardware-tpm feature, this uses real TPM
     // In development/testing, uses stub BLAKE3 signing
-    let signature = tpm.sign(nonce.as_bytes())
-        .map_err(|e| {
-            log::error!("[CRITICAL] TPM signing failed: {}", e);
-            format!("TPM Link not initialized: {}", e)
-        })?;
-    
+    let signature = tpm.sign(nonce.as_bytes()).map_err(|e| {
+        log::error!("[CRITICAL] TPM signing failed: {}", e);
+        format!("TPM Link not initialized: {}", e)
+    })?;
+
     // Encode signature as base64 for transmission
     let signature_b64 = BASE64.encode(&signature);
-    
+
     log::debug!("[AETHERIC LINK] Heartbeat signed successfully");
     Ok(signature_b64)
+}
+
+// ============================================================
+// Configuration Management Commands
+// ============================================================
+
+/// Load application configuration
+///
+/// Returns the current configuration loaded from the user's app data directory.
+/// If no configuration file exists, returns default configuration.
+#[tauri::command]
+pub async fn get_config(app_handle: tauri::AppHandle) -> Result<AppConfig, String> {
+    log::info!("Loading application configuration");
+
+    let config_manager = ConfigManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize config manager: {}", e))?;
+
+    let config = config_manager
+        .load()
+        .map_err(|e| format!("Failed to load configuration: {}", e))?;
+
+    Ok(config)
+}
+
+/// Update application configuration
+///
+/// Validates and saves the provided configuration to the user's app data directory.
+/// All validation is performed server-side per security policy.
+///
+/// # Validation Rules
+/// - mesh_endpoint must use wss:// protocol (production requirement)
+/// - testnet_endpoint must use ws:// or wss:// protocol
+/// - Retry configuration values must be positive and logical
+///
+/// # Arguments
+/// * `config` - The new configuration to save
+///
+/// # Returns
+/// Success message or validation error
+#[tauri::command]
+pub async fn update_config(
+    config: AppConfig,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    log::info!("Updating application configuration");
+
+    let config_manager = ConfigManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize config manager: {}", e))?;
+
+    config_manager
+        .save(&config)
+        .map_err(|e| format!("Failed to save configuration: {}", e))?;
+
+    Ok("Configuration updated successfully".to_string())
+}
+
+/// Get configuration file path
+///
+/// Returns the absolute path to the configuration file for debugging purposes.
+#[tauri::command]
+pub async fn get_config_path(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let config_manager = ConfigManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize config manager: {}", e))?;
+
+    Ok(config_manager
+        .get_config_path()
+        .to_string_lossy()
+        .to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_generate_genesis_bundle() {
-        let result = generate_genesis_bundle(
-            "test_user".to_string(),
-            "squad_alpha".to_string(),
-        )
-        .await;
-        
+        let result =
+            generate_genesis_bundle("test_user".to_string(), "squad_alpha".to_string()).await;
+
         assert!(result.is_ok());
         let bundle = result.unwrap();
         assert_eq!(bundle.user_identity, "test_user");
@@ -987,10 +1085,8 @@ mod tests {
         assert!(!bundle.public_key.is_empty());
         assert!(!bundle.signature.is_empty());
     }
-    
+
     // Note: Tauri command tests require a full Tauri context which is not available in unit tests
     // These commands should be tested via integration tests or manual testing
     // Keeping basic validation tests only
-    
-
 }

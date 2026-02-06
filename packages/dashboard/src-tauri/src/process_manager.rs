@@ -1,10 +1,10 @@
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::io::{BufRead, BufReader};
 use std::thread;
 
 /// Maximum number of log lines to keep in the ring buffer per process
@@ -55,13 +55,13 @@ impl NodeProcessManager {
     }
 
     /// Spawn a new node process
-    /// 
+    ///
     /// # Arguments
     /// * `node_id` - Unique identifier for the node
     /// * `binary_path` - Path to the node binary executable
     /// * `config_path` - Path to the configuration file
     /// * `port` - Listen port for the node
-    /// 
+    ///
     /// # Returns
     /// Result containing the PID of the spawned process
     pub fn spawn(
@@ -75,7 +75,9 @@ impl NodeProcessManager {
 
         // Check if node already exists
         {
-            let processes = self.processes.lock()
+            let processes = self
+                .processes
+                .lock()
                 .map_err(|e| anyhow::anyhow!("Failed to acquire lock: {}", e))?;
             if processes.contains_key(&node_id) {
                 return Err(anyhow::anyhow!("Node {} already exists", node_id));
@@ -89,7 +91,10 @@ impl NodeProcessManager {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .context(format!("Failed to spawn node process from binary: {}", binary_path))?;
+            .context(format!(
+                "Failed to spawn node process from binary: {}",
+                binary_path
+            ))?;
 
         let pid = child.id();
         log::info!("Node {} spawned with PID: {}", node_id, pid);
@@ -150,7 +155,9 @@ impl NodeProcessManager {
         };
 
         // Store the process
-        let mut processes = self.processes.lock()
+        let mut processes = self
+            .processes
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire lock: {}", e))?;
         processes.insert(node_id, process);
 
@@ -158,23 +165,28 @@ impl NodeProcessManager {
     }
 
     /// Stop a running node process
-    /// 
+    ///
     /// # Arguments
     /// * `node_id` - Unique identifier for the node to stop
-    /// 
+    ///
     /// # Returns
     /// Result indicating success or failure
     pub fn stop(&self, node_id: &str) -> Result<()> {
         log::info!("Stopping node process: {}", node_id);
 
-        let mut processes = self.processes.lock()
+        let mut processes = self
+            .processes
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire lock: {}", e))?;
 
-        let process = processes.get_mut(node_id)
+        let process = processes
+            .get_mut(node_id)
             .ok_or_else(|| anyhow::anyhow!("Node {} not found", node_id))?;
 
         // Kill the process
-        process.child.kill()
+        process
+            .child
+            .kill()
             .context(format!("Failed to kill process for node {}", node_id))?;
 
         // Wait for the process to exit
@@ -187,7 +199,11 @@ impl NodeProcessManager {
         let config_path = process.config_path.clone();
         if config_path.exists() {
             if let Err(e) = std::fs::remove_file(&config_path) {
-                log::warn!("Failed to remove config file {}: {}", config_path.display(), e);
+                log::warn!(
+                    "Failed to remove config file {}: {}",
+                    config_path.display(),
+                    e
+                );
             } else {
                 log::info!("Removed config file: {}", config_path.display());
             }
@@ -200,14 +216,16 @@ impl NodeProcessManager {
     }
 
     /// Get the status of a specific node
-    /// 
+    ///
     /// # Arguments
     /// * `node_id` - Unique identifier for the node
-    /// 
+    ///
     /// # Returns
     /// Option containing the NodeProcessInfo if found
     pub fn get_status(&self, node_id: &str) -> Result<Option<NodeProcessInfo>> {
-        let mut processes = self.processes.lock()
+        let mut processes = self
+            .processes
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire lock: {}", e))?;
 
         if let Some(process) = processes.get_mut(node_id) {
@@ -240,11 +258,13 @@ impl NodeProcessManager {
     }
 
     /// Get the status of all nodes
-    /// 
+    ///
     /// # Returns
     /// Vector of NodeProcessInfo for all managed processes
     pub fn get_all_statuses(&self) -> Result<Vec<NodeProcessInfo>> {
-        let mut processes = self.processes.lock()
+        let mut processes = self
+            .processes
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire lock: {}", e))?;
 
         let mut statuses = Vec::new();
@@ -277,30 +297,30 @@ impl NodeProcessManager {
     }
 
     /// Get logs for a specific node
-    /// 
+    ///
     /// # Arguments
     /// * `node_id` - Unique identifier for the node
     /// * `tail` - Number of lines to retrieve from the end (0 = all)
-    /// 
+    ///
     /// # Returns
     /// Vector of log lines
     pub fn get_logs(&self, node_id: &str, tail: usize) -> Result<Vec<String>> {
-        let processes = self.processes.lock()
+        let processes = self
+            .processes
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire lock: {}", e))?;
 
-        let process = processes.get(node_id)
+        let process = processes
+            .get(node_id)
             .ok_or_else(|| anyhow::anyhow!("Node {} not found", node_id))?;
 
-        let logs = process.logs.lock()
+        let logs = process
+            .logs
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire log lock: {}", e))?;
 
         let log_lines: Vec<String> = if tail > 0 {
-            logs.iter()
-                .rev()
-                .take(tail)
-                .rev()
-                .cloned()
-                .collect()
+            logs.iter().rev().take(tail).rev().cloned().collect()
         } else {
             logs.iter().cloned().collect()
         };
@@ -309,13 +329,15 @@ impl NodeProcessManager {
     }
 
     /// Shutdown all running node processes
-    /// 
+    ///
     /// This should be called when the application is exiting to ensure
     /// all child processes are properly terminated.
     pub fn shutdown_all(&self) -> Result<()> {
         log::info!("Shutting down all node processes");
 
-        let mut processes = self.processes.lock()
+        let mut processes = self
+            .processes
+            .lock()
             .map_err(|e| anyhow::anyhow!("Failed to acquire lock: {}", e))?;
 
         let node_ids: Vec<String> = processes.keys().cloned().collect();
@@ -325,11 +347,15 @@ impl NodeProcessManager {
                 log::info!("Stopping node: {}", node_id);
                 let _ = process.child.kill();
                 let _ = process.child.wait();
-                
+
                 // Clean up config file
                 if process.config_path.exists() {
                     if let Err(e) = std::fs::remove_file(&process.config_path) {
-                        log::warn!("Failed to remove config file {}: {}", process.config_path.display(), e);
+                        log::warn!(
+                            "Failed to remove config file {}: {}",
+                            process.config_path.display(),
+                            e
+                        );
                     }
                 }
             }

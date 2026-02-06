@@ -1,6 +1,6 @@
 //! Unified Provisioning Module
 //!
-//! Provides a single entry point for provisioning both Tethered (USB/Arduino) 
+//! Provides a single entry point for provisioning both Tethered (USB/Arduino)
 //! and Remote (Network/Pi) assets with consistent interface and response format.
 //!
 //! This module implements the "provision_node" command that handles:
@@ -16,19 +16,19 @@
 //! - "Device Busy" for port contention
 //! - "Attestation Failed" for cryptographic verification failures
 
-pub mod scanner;
-pub mod injector;
 pub mod flasher;
+pub mod injector;
+pub mod scanner;
 
-use serde::{Deserialize, Serialize};
-pub use scanner::{CandidateNode, Credentials};
 pub use injector::GenesisIdentity;
+pub use scanner::{CandidateNode, Credentials};
+use serde::{Deserialize, Serialize};
 
 /// Unified provisioning response
 /// This structure is returned regardless of hardware type (USB or Network)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProvisioningResult {
-    pub status: String,           // "SUCCESS" or "FAILURE"
+    pub status: String, // "SUCCESS" or "FAILURE"
     pub identity: IdentityBlock,
 }
 
@@ -39,7 +39,7 @@ pub struct IdentityBlock {
     pub public_key: String,
     pub root_hash: String,
     pub timestamp: u64,
-    pub device_type: String,      // "USB" or "NET"
+    pub device_type: String, // "USB" or "NET"
 }
 
 /// Provision a target device (unified command)
@@ -75,14 +75,14 @@ pub async fn provision_target(
     window: tauri::Window,
 ) -> Result<ProvisioningResult, String> {
     log::info!("Starting unified provisioning for target: {:?}", target);
-    
+
     match target.r#type.as_str() {
         "USB" => {
             // USB device: requires firmware_path
             let fw_path = firmware_path.ok_or_else(|| {
                 "FAIL-VISIBLE: Missing firmware_path for USB device provisioning".to_string()
             })?;
-            
+
             provision_usb_device(&target, &fw_path, window).await
         }
         "NET" => {
@@ -90,16 +90,14 @@ pub async fn provision_target(
             let creds = credentials.ok_or_else(|| {
                 "FAIL-VISIBLE: Missing credentials for network device provisioning".to_string()
             })?;
-            
+
             provision_network_device(&target, creds).await
         }
-        _ => {
-            Err(format!(
-                "FAIL-VISIBLE: Unsupported device type: {}. \
+        _ => Err(format!(
+            "FAIL-VISIBLE: Unsupported device type: {}. \
                  Expected 'USB' or 'NET'.",
-                target.r#type
-            ))
-        }
+            target.r#type
+        )),
     }
 }
 
@@ -110,14 +108,11 @@ async fn provision_usb_device(
     window: tauri::Window,
 ) -> Result<ProvisioningResult, String> {
     log::info!("Provisioning USB device: {} ({})", target.label, target.id);
-    
+
     // Use flasher module to flash and provision
-    let identity = flasher::flash_and_provision(
-        target.id.clone(),
-        firmware_path.to_string(),
-        window,
-    ).await?;
-    
+    let identity =
+        flasher::flash_and_provision(target.id.clone(), firmware_path.to_string(), window).await?;
+
     // Convert to unified response format
     Ok(ProvisioningResult {
         status: "SUCCESS".to_string(),
@@ -136,15 +131,20 @@ async fn provision_network_device(
     target: &CandidateNode,
     credentials: Credentials,
 ) -> Result<ProvisioningResult, String> {
-    log::info!("Provisioning network device: {} ({})", target.label, target.id);
-    
+    log::info!(
+        "Provisioning network device: {} ({})",
+        target.label,
+        target.id
+    );
+
     // Use injector module to SSH and provision
     let identity = injector::inject_pi(
         target.id.clone(),
         credentials.username,
         credentials.password,
-    ).await?;
-    
+    )
+    .await?;
+
     // Convert to unified response format
     Ok(ProvisioningResult {
         status: "SUCCESS".to_string(),
@@ -164,18 +164,11 @@ pub use scanner::scan_for_assets;
 // Re-export legacy commands for backwards compatibility
 // These will be deprecated in favor of unified provision_target
 pub use crate::provisioning_legacy::{
-    list_serial_ports,
-    flash_firmware,
-    listen_for_genesis,
-    inject_genesis_bundle,
+    flash_firmware, inject_genesis_bundle, list_serial_ports, listen_for_genesis,
 };
 
 // Also export legacy types that may be used by frontend
-pub use crate::provisioning_legacy::{
-    SerialDeviceInfo,
-    GenesisMessage,
-    FlashProgress,
-};
+pub use crate::provisioning_legacy::{FlashProgress, GenesisMessage, SerialDeviceInfo};
 
 #[cfg(test)]
 mod tests {
@@ -193,7 +186,7 @@ mod tests {
                 device_type: "USB".to_string(),
             },
         };
-        
+
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("SUCCESS"));
         assert!(json.contains("node_abc123"));
@@ -209,7 +202,7 @@ mod tests {
             "timestamp": 9876543210,
             "device_type": "NET"
         }"#;
-        
+
         let identity: IdentityBlock = serde_json::from_str(json).unwrap();
         assert_eq!(identity.node_id, "node_xyz789");
         assert_eq!(identity.device_type, "NET");
