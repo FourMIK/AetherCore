@@ -11,19 +11,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { Settings, Save, AlertCircle, CheckCircle, Info } from 'lucide-react';
-
-interface AppConfig {
-  mesh_endpoint: string | null;
-  testnet_endpoint: string | null;
-  enforce_tpm: boolean;
-  connection_retry: {
-    max_retries: number;
-    initial_delay_ms: number;
-    max_delay_ms: number;
-  };
-}
+import { TauriCommands, type AppConfig } from '../api/tauri-commands';
 
 export function SettingsPanel() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -43,8 +32,12 @@ export function SettingsPanel() {
     try {
       setLoading(true);
       setError(null);
-      const loadedConfig = await invoke<AppConfig>('get_config');
-      setConfig(loadedConfig);
+      const result = await TauriCommands.getConfig();
+      if (result.success) {
+        setConfig(result.data);
+      } else {
+        setError(`Failed to load configuration: ${result.error}`);
+      }
     } catch (err) {
       setError(`Failed to load configuration: ${err}`);
       console.error('Failed to load config:', err);
@@ -55,8 +48,10 @@ export function SettingsPanel() {
 
   const loadConfigPath = async () => {
     try {
-      const path = await invoke<string>('get_config_path');
-      setConfigPath(path);
+      const result = await TauriCommands.getConfigPath();
+      if (result.success) {
+        setConfigPath(result.data);
+      }
     } catch (err) {
       console.error('Failed to get config path:', err);
     }
@@ -70,11 +65,15 @@ export function SettingsPanel() {
       setError(null);
       setSuccess(null);
 
-      await invoke('update_config', { config });
-      setSuccess('Configuration saved successfully');
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccess(null), 3000);
+      const result = await TauriCommands.updateConfig(config);
+      if (result.success) {
+        setSuccess('Configuration saved successfully');
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        setError(`Failed to save configuration: ${result.error}`);
+      }
     } catch (err) {
       setError(`Failed to save configuration: ${err}`);
       console.error('Failed to save config:', err);
