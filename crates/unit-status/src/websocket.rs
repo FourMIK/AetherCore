@@ -15,6 +15,7 @@ use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{error, info, warn};
 
+use aethercore_trust_mesh::node_health::NodeHealthComputer;
 use crate::types::UnitStatus;
 
 /// WebSocket message types
@@ -101,6 +102,9 @@ pub struct WsServer {
     /// Active node statuses
     node_statuses: Arc<RwLock<HashMap<String, UnitStatus>>>,
 
+    /// Node health computer for real-time integrity metrics
+    health_computer: Arc<NodeHealthComputer>,
+
     /// Server address
     addr: SocketAddr,
 }
@@ -113,6 +117,19 @@ impl WsServer {
         Self {
             health_tx,
             node_statuses: Arc::new(RwLock::new(HashMap::new())),
+            health_computer: Arc::new(NodeHealthComputer::new()),
+            addr,
+        }
+    }
+
+    /// Create new WebSocket server with custom health computer
+    pub fn with_health_computer(addr: SocketAddr, health_computer: NodeHealthComputer) -> Self {
+        let (health_tx, _) = broadcast::channel(1000);
+
+        Self {
+            health_tx,
+            node_statuses: Arc::new(RwLock::new(HashMap::new())),
+            health_computer: Arc::new(health_computer),
             addr,
         }
     }
@@ -197,23 +214,27 @@ impl WsServer {
 
     /// Update node status and broadcast to all connected clients
     pub async fn update_node_status(&self, status: UnitStatus) {
+        let node_id = status.platform_id.id.clone();
+
         // Store status
         {
             let mut statuses = self.node_statuses.write().await;
-            statuses.insert(status.platform_id.id.clone(), status.clone());
+            statuses.insert(node_id.clone(), status.clone());
         }
 
-        // Broadcast health update
-        // TODO: Integrate with trust_mesh NodeHealthComputer to get real metrics
+        // Get real integrity metrics from NodeHealthComputer
+        let node_health = self.health_computer.get_node_health(&node_id);
+
+        // Broadcast health update with real metrics
         let health_msg = WsMessage::MeshHealth(MeshHealthMessage {
-            node_id: status.platform_id.id.clone(),
-            status: format!("{:?}", Self::map_trust_to_health(status.trust_score)),
+            node_id: node_id.clone(),
+            status: format!("{:?}", node_health.status),
             trust_score: status.trust_score,
             last_seen_ns: status.last_seen_ns,
             metrics: HealthMetrics {
-                root_agreement_ratio: 0.95, // TODO: Get from trust_mesh::NodeHealthComputer
-                chain_break_count: 0,       // TODO: Get from trust_mesh::NodeHealthComputer
-                signature_failure_count: 0, // TODO: Get from trust_mesh::NodeHealthComputer
+                root_agreement_ratio: node_health.metrics.root_agreement_ratio,
+                chain_break_count: node_health.metrics.chain_break_count,
+                signature_failure_count: node_health.metrics.signature_failure_count,
             },
         });
 
@@ -229,22 +250,14 @@ impl WsServer {
         let _ = self.health_tx.send(revocation_msg);
     }
 
-    /// Map trust score to health status
-    fn map_trust_to_health(trust_score: f32) -> &'static str {
-        if trust_score > 0.8 {
-            "HEALTHY"
-        } else if trust_score > 0.5 {
-            "DEGRADED"
-        } else if trust_score > 0.1 {
-            "COMPROMISED"
-        } else {
-            "UNKNOWN"
-        }
-    }
-
     /// Get all active node statuses
     pub async fn get_all_statuses(&self) -> HashMap<String, UnitStatus> {
         self.node_statuses.read().await.clone()
+    }
+
+    /// Get the health computer for recording integrity events
+    pub fn health_computer(&self) -> &Arc<NodeHealthComputer> {
+        &self.health_computer
     }
 }
 
@@ -254,17 +267,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_ws_server_creation() {
-        let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+        let addr: SocketAddr = "127.0.0.1:8080".parse().expect("Failed to parse address");
         let server = WsServer::new(addr);
 
         assert_eq!(server.addr, addr);
-    }
-
-    #[tokio::test]
-    async fn test_map_trust_to_health() {
-        assert_eq!(WsServer::map_trust_to_health(0.9), "HEALTHY");
-        assert_eq!(WsServer::map_trust_to_health(0.6), "DEGRADED");
-        assert_eq!(WsServer::map_trust_to_health(0.3), "COMPROMISED");
-        assert_eq!(WsServer::map_trust_to_health(0.05), "UNKNOWN");
     }
 }
