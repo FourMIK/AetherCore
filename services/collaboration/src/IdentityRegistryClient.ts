@@ -12,6 +12,7 @@
 
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
+import * as fs from 'fs';
 import path from 'path';
 import { NodeID } from '@aethercore/shared';
 
@@ -41,6 +42,14 @@ export interface IdentityRegistryConfig {
   maxRetries?: number;
   /** Retry delay in milliseconds (default: 1000ms) */
   retryDelay?: number;
+  /** Use TLS for gRPC connection (default: true in production) */
+  useTls?: boolean;
+  /** Path to CA certificate file (required if useTls is true) */
+  caCertPath?: string;
+  /** Path to client key file (optional for mTLS) */
+  clientKeyPath?: string;
+  /** Path to client certificate file (optional for mTLS) */
+  clientCertPath?: string;
 }
 
 /**
@@ -58,23 +67,55 @@ export class IdentityRegistryClient {
       timeout: 5000,
       maxRetries: 3,
       retryDelay: 1000,
+      useTls: process.env.NODE_ENV === 'production', // Enable TLS in production by default
       ...config,
     };
 
-    // Create gRPC client
-    // TODO: In production, use TLS credentials:
-    // const credentials = grpc.credentials.createSsl(
-    //   fs.readFileSync('ca.pem'),
-    //   fs.readFileSync('key.pem'),
-    //   fs.readFileSync('cert.pem')
-    // );
+    // Create gRPC credentials
+    let credentials: grpc.ChannelCredentials;
+    
+    if (this.config.useTls) {
+      // Production mode: Use TLS credentials
+      if (!this.config.caCertPath) {
+        throw new Error(
+          'TLS enabled but no CA certificate path provided. Set caCertPath or disable TLS for development.',
+        );
+      }
+
+      try {
+        const rootCert = fs.readFileSync(this.config.caCertPath);
+        
+        if (this.config.clientKeyPath && this.config.clientCertPath) {
+          // mTLS: mutual authentication
+          const clientKey = fs.readFileSync(this.config.clientKeyPath);
+          const clientCert = fs.readFileSync(this.config.clientCertPath);
+          credentials = grpc.credentials.createSsl(rootCert, clientKey, clientCert);
+          console.log('[IdentityRegistryClient] Using mTLS credentials');
+        } else {
+          // Server-only TLS
+          credentials = grpc.credentials.createSsl(rootCert);
+          console.log('[IdentityRegistryClient] Using TLS credentials');
+        }
+      } catch (error) {
+        throw new Error(
+          `Failed to load TLS certificates: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+      }
+    } else {
+      // Development mode: Insecure connection
+      credentials = grpc.credentials.createInsecure();
+      console.warn(
+        '[IdentityRegistryClient] WARNING: Using insecure connection. This is NOT suitable for production.',
+      );
+    }
+
     this.client = new identityProto.IdentityRegistry(
       this.config.serverAddress,
-      grpc.credentials.createInsecure(),
+      credentials,
     );
 
     console.log(
-      `[IdentityRegistryClient] Connected to ${this.config.serverAddress}`,
+      `[IdentityRegistryClient] Connected to ${this.config.serverAddress} (TLS: ${this.config.useTls ? 'enabled' : 'disabled'})`,
     );
   }
 
