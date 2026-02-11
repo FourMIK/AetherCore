@@ -7,7 +7,17 @@ on:
     branches: [ main, develop, internal ]
 
 jobs:
+  network-prerequisites:
+    name: Validate Runner Network Prerequisites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required network endpoints
+        run: ./scripts/check-network-prereqs.sh
+
   verify-documentation:
+    needs: [network-prerequisites]
     name: Verify Documentation Completeness
     runs-on: ubuntu-latest
     steps:
@@ -19,6 +29,7 @@ jobs:
           ./scripts/verify-docs.sh
 
   verify-structure:
+    needs: [network-prerequisites]
     name: Verify MonoRepo Structure
     runs-on: ubuntu-latest
     steps:
@@ -30,6 +41,7 @@ jobs:
           ./verify-monorepo.sh
 
   rust-workspace:
+    needs: [network-prerequisites]
     name: Rust Workspace
     runs-on: ubuntu-latest
     steps:
@@ -71,6 +83,7 @@ jobs:
         run: cargo clippy --workspace -- -D warnings
 
   license-compliance:
+    needs: [network-prerequisites]
     name: "Operation Legal Shield: License Compliance"
     runs-on: ubuntu-latest
     steps:
@@ -102,6 +115,7 @@ jobs:
           echo "✅ License compliance configuration verified"
 
   typescript-workspace:
+    needs: [network-prerequisites]
     name: TypeScript Workspace
     runs-on: ubuntu-latest
     steps:
@@ -129,6 +143,7 @@ jobs:
         run: pnpm run test
 
   legacy-isolation:
+    needs: [network-prerequisites]
     name: Check Legacy Isolation
     runs-on: ubuntu-latest
     steps:
@@ -167,6 +182,7 @@ jobs:
           fi
 
   check-workspace-config:
+    needs: [network-prerequisites]
     name: Validate Workspace Configuration
     runs-on: ubuntu-latest
     steps:
@@ -213,7 +229,7 @@ jobs:
     name: Build and Push Docker Images (Internal)
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/internal'
-    needs: [rust-workspace, typescript-workspace, license-compliance]
+    needs: [network-prerequisites, rust-workspace, typescript-workspace, license-compliance]
     permissions:
       contents: read
       id-token: write  # For OIDC authentication with AWS
