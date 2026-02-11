@@ -7,7 +7,13 @@
 import { create } from 'zustand';
 
 export type OperatorRole = 'operator' | 'commander' | 'admin';
-export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'unverified' | 'severed';
+export type ConnectionStatus =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'unverified'
+  | 'severed';
+export type ConnectionState = 'connected' | 'intermittent' | 'disconnected';
 
 export interface Operator {
   id: string;
@@ -47,7 +53,8 @@ interface CommState {
   activeCall: VideoCall | null;
   incomingCall: VideoCall | null;
   connectionStatus: ConnectionStatus;
-  
+  connectionState: ConnectionState; // For UI degradation (Heartbeat Sentinel)
+
   // Actions
   setCurrentOperator: (operator: Operator) => void;
   addOperator: (operator: Operator) => void;
@@ -60,6 +67,7 @@ interface CommState {
   endCall: () => void;
   getConversation: (operatorId: string) => Message[];
   setConnectionStatus: (status: ConnectionStatus) => void;
+  setConnectionState: (state: ConnectionState) => void;
 }
 
 export const useCommStore = create<CommState>((set, get) => ({
@@ -69,6 +77,7 @@ export const useCommStore = create<CommState>((set, get) => ({
   activeCall: null,
   incomingCall: null,
   connectionStatus: 'disconnected',
+  connectionState: 'disconnected',
 
   setCurrentOperator: (operator) => set({ currentOperator: operator }),
 
@@ -172,4 +181,6 @@ export const useCommStore = create<CommState>((set, get) => ({
   },
 
   setConnectionStatus: (status) => set({ connectionStatus: status }),
+
+  setConnectionState: (state) => set({ connectionState: state }),
 }));

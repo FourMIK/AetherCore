@@ -102,10 +102,7 @@ pub mod validation {
     /// Validate a non-empty string
     pub fn require_non_empty(value: &str, field: &str) -> Result<(), AppError> {
         if value.trim().is_empty() {
-            return Err(AppError::Validation(format!(
-                "{} cannot be empty",
-                field
-            )));
+            return Err(AppError::Validation(format!("{} cannot be empty", field)));
         }
         Ok(())
     }
@@ -125,9 +122,8 @@ pub mod validation {
         }
 
         // Parse URL to ensure it's well-formed
-        url::Url::parse(url).map_err(|e| {
-            AppError::Validation(format!("Invalid WebSocket URL format: {}", e))
-        })?;
+        url::Url::parse(url)
+            .map_err(|e| AppError::Validation(format!("Invalid WebSocket URL format: {}", e)))?;
 
         Ok(())
     }

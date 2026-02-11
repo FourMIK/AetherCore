@@ -22,7 +22,15 @@ export interface MateriaSlotConfig {
   /** Custom CSS classes */
   className?: string;
   /** Slot-specific data */
-  data?: Record<string, any>;
+  data?: {
+    /** Data payload */
+    payload?: any;
+    /** Merkle signature for integrity verification */
+    signature?: string;
+    /** Connection state for fail-visible display */
+    connectionState?: 'connected' | 'intermittent' | 'disconnected';
+    [key: string]: any;
+  };
 }
 
 export interface MateriaSlotProps {
@@ -44,6 +52,11 @@ export const MateriaSlot: React.FC<MateriaSlotProps> = ({
   onMinimize,
   onExpand,
 }) => {
+  // Check signature validity for Fail-Visible doctrine
+  const hasValidSignature = config.data?.signature && config.data.signature !== '';
+  const isSignatureRequired = config.type !== 'identity'; // Identity slots don't require signatures
+  const signatureInvalid = isSignatureRequired && !hasValidSignature;
+
   return (
     <GlassPanel
       variant="heavy"
@@ -52,9 +65,7 @@ export const MateriaSlot: React.FC<MateriaSlotProps> = ({
       {/* Slot Header */}
       <div className="flex items-center justify-between p-4 border-b border-tungsten/10">
         <div className="flex-1">
-          <h3 className="font-display text-lg font-semibold text-tungsten">
-            {config.title}
-          </h3>
+          <h3 className="font-display text-lg font-semibold text-tungsten">{config.title}</h3>
           {config.description && (
             <p className="text-xs text-tungsten/50 mt-1">{config.description}</p>
           )}
@@ -83,21 +94,42 @@ export const MateriaSlot: React.FC<MateriaSlotProps> = ({
         </div>
       </div>
 
-      {/* Slot Content */}
-      <div className="flex-1 overflow-auto p-4">
-        {children}
-      </div>
+      {/* Signature Invalid Error State - Fail-Visible */}
+      {signatureInvalid ? (
+        <div className="flex-1 flex items-center justify-center p-8 bg-jamming/10">
+          <div className="text-center">
+            <div className="text-6xl mb-4">🚫</div>
+            <h4 className="text-xl font-display font-bold text-jamming mb-2">SIG INVALID</h4>
+            <p className="text-sm text-tungsten/70">Data stream lacks valid Merkle signature</p>
+            <p className="text-xs text-tungsten/50 mt-2">Refusing to display unverified payload</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Slot Content */}
+          <div className="flex-1 overflow-auto p-4">{children}</div>
 
-      {/* Slot Footer - Status Indicator */}
-      <div className="border-t border-tungsten/10 p-3 flex justify-between items-center text-xs">
-        <div className="text-tungsten/50">
-          Slot ID: <span className="font-mono text-tungsten/70">{config.id}</span>
-        </div>
-        <div className="flex gap-2">
-          <div className="w-2 h-2 bg-verified-green rounded-full animate-pulse" />
-          <span className="text-tungsten/50">Active</span>
-        </div>
-      </div>
+          {/* Slot Footer - Status Indicator */}
+          <div className="border-t border-tungsten/10 p-3 flex justify-between items-center text-xs">
+            <div className="text-tungsten/50">
+              Slot ID: <span className="font-mono text-tungsten/70">{config.id}</span>
+            </div>
+            <div className="flex gap-2">
+              {hasValidSignature ? (
+                <>
+                  <div className="w-2 h-2 bg-verified-green rounded-full animate-pulse" />
+                  <span className="text-tungsten/50">Verified</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 bg-tungsten/30 rounded-full" />
+                  <span className="text-tungsten/50">Active</span>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </GlassPanel>
   );
 };

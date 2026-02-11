@@ -6,13 +6,13 @@
 //! - Authority signature verification with Ed25519
 //! - Command serialization overhead
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use aethercore_c2_router::{
+    authority::{AuthoritySignature, AuthorityVerifier},
+    command_types::{Coordinate, FormationType, ScanType, SwarmCommand, UnitCommand},
     dispatcher::CommandDispatcher,
-    command_types::{UnitCommand, SwarmCommand, Coordinate, FormationType, ScanType},
-    authority::{AuthorityVerifier, AuthoritySignature},
 };
-use ed25519_dalek::{SigningKey, Signer};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use ed25519_dalek::{Signer, SigningKey};
 use rand::RngCore;
 
 /// Generate a test Ed25519 keypair
@@ -37,7 +37,7 @@ fn create_test_signature(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos() as u64;
-    
+
     AuthoritySignature::new(
         authority_id.to_string(),
         signature.to_bytes().to_vec(),
@@ -50,18 +50,26 @@ fn create_test_signature(
 fn bench_unit_command_dispatch(c: &mut Criterion) {
     let dispatcher = CommandDispatcher::new();
     let command = UnitCommand::Navigate {
-        waypoint: Coordinate { lat: 45.0, lon: -122.0, alt: Some(100.0) },
+        waypoint: Coordinate {
+            lat: 45.0,
+            lon: -122.0,
+            alt: Some(100.0),
+        },
         speed: Some(10.0),
         altitude: Some(100.0),
     };
-    
+
     c.bench_function("unit_command_dispatch", |b| {
         b.iter(|| {
             let timestamp_ns = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos() as u64;
-            black_box(dispatcher.dispatch_unit_command("unit-1", &command, timestamp_ns).unwrap())
+            black_box(
+                dispatcher
+                    .dispatch_unit_command("unit-1", &command, timestamp_ns)
+                    .unwrap(),
+            )
         })
     });
 }
@@ -71,17 +79,19 @@ fn bench_swarm_command_fanout(c: &mut Criterion) {
     let dispatcher = CommandDispatcher::new();
     let command = SwarmCommand::FormationMove {
         formation: FormationType::Line,
-        destination: Coordinate { lat: 45.0, lon: -122.0, alt: Some(100.0) },
+        destination: Coordinate {
+            lat: 45.0,
+            lon: -122.0,
+            alt: Some(100.0),
+        },
         speed: 10.0,
     };
-    
+
     let unit_counts = vec![5, 10, 25, 50, 100];
-    
+
     for count in unit_counts {
-        let unit_ids: Vec<String> = (0..count)
-            .map(|i| format!("unit-{}", i))
-            .collect();
-        
+        let unit_ids: Vec<String> = (0..count).map(|i| format!("unit-{}", i)).collect();
+
         c.bench_with_input(
             BenchmarkId::new("swarm_command_fanout", count),
             &count,
@@ -91,12 +101,16 @@ fn bench_swarm_command_fanout(c: &mut Criterion) {
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_nanos() as u64;
-                    black_box(dispatcher.dispatch_swarm_command(
-                        format!("swarm-cmd-{}", timestamp_ns),
-                        &command,
-                        &unit_ids,
-                        timestamp_ns,
-                    ).unwrap())
+                    black_box(
+                        dispatcher
+                            .dispatch_swarm_command(
+                                format!("swarm-cmd-{}", timestamp_ns),
+                                &command,
+                                &unit_ids,
+                                timestamp_ns,
+                            )
+                            .unwrap(),
+                    )
                 });
             },
         );
@@ -108,23 +122,21 @@ fn bench_authority_verification(c: &mut Criterion) {
     let mut verifier = AuthorityVerifier::new();
     let (signing_key, public_key) = generate_test_keypair();
     verifier.register_authority("operator-1".to_string(), public_key);
-    
+
     let mut command_hash = [0u8; 32];
     command_hash.copy_from_slice(blake3::hash(b"test command payload for verification").as_bytes());
-    
+
     let signature = create_test_signature("operator-1", &command_hash, &signing_key, public_key);
-    
+
     c.bench_function("authority_verification_single", |b| {
-        b.iter(|| {
-            black_box(verifier.verify(&command_hash, &signature).unwrap())
-        })
+        b.iter(|| black_box(verifier.verify(&command_hash, &signature).unwrap()))
     });
 }
 
 /// Benchmark: Authority verification with multiple signatures (quorum)
 fn bench_authority_verification_quorum(c: &mut Criterion) {
     let mut verifier = AuthorityVerifier::new();
-    
+
     // Create 3 authorities
     let mut authorities = Vec::new();
     for i in 0..3 {
@@ -133,20 +145,24 @@ fn bench_authority_verification_quorum(c: &mut Criterion) {
         verifier.register_authority(authority_id.clone(), public_key);
         authorities.push((authority_id, signing_key, public_key));
     }
-    
+
     let mut command_hash = [0u8; 32];
     command_hash.copy_from_slice(blake3::hash(b"test command payload requiring quorum").as_bytes());
-    
+
     let signatures: Vec<AuthoritySignature> = authorities
         .iter()
         .map(|(authority_id, signing_key, public_key)| {
             create_test_signature(authority_id, &command_hash, signing_key, *public_key)
         })
         .collect();
-    
+
     c.bench_function("authority_verification_quorum_3", |b| {
         b.iter(|| {
-            black_box(verifier.verify_multiple(&command_hash, &signatures).unwrap());
+            black_box(
+                verifier
+                    .verify_multiple(&command_hash, &signatures)
+                    .unwrap(),
+            );
         })
     });
 }
@@ -154,46 +170,60 @@ fn bench_authority_verification_quorum(c: &mut Criterion) {
 /// Benchmark: BLAKE3 hash computation for command signing
 fn bench_command_hashing(c: &mut Criterion) {
     let command_data = b"Navigate {lat: 45.0, lon: -122.0, alt: 100.0, speed: 10.0}";
-    
+
     c.bench_function("command_hash_blake3", |b| {
-        b.iter(|| {
-            black_box(blake3::hash(command_data))
-        })
+        b.iter(|| black_box(blake3::hash(command_data)))
     });
 }
 
 /// Benchmark: Command serialization overhead
 fn bench_command_serialization(c: &mut Criterion) {
     let unit_command = UnitCommand::Navigate {
-        waypoint: Coordinate { lat: 45.0, lon: -122.0, alt: Some(100.0) },
+        waypoint: Coordinate {
+            lat: 45.0,
+            lon: -122.0,
+            alt: Some(100.0),
+        },
         speed: Some(10.0),
         altitude: Some(100.0),
     };
-    
+
     c.bench_function("command_serialize_unit", |b| {
-        b.iter(|| {
-            black_box(serde_json::to_string(&unit_command).unwrap())
-        })
+        b.iter(|| black_box(serde_json::to_string(&unit_command).unwrap()))
     });
-    
+
     use aethercore_c2_router::command_types::GeoBoundary;
     let swarm_command = SwarmCommand::AreaScan {
         boundary: GeoBoundary {
             vertices: vec![
-                Coordinate { lat: 45.0, lon: -122.0, alt: Some(100.0) },
-                Coordinate { lat: 45.1, lon: -122.0, alt: Some(100.0) },
-                Coordinate { lat: 45.1, lon: -122.1, alt: Some(100.0) },
-                Coordinate { lat: 45.0, lon: -122.1, alt: Some(100.0) },
+                Coordinate {
+                    lat: 45.0,
+                    lon: -122.0,
+                    alt: Some(100.0),
+                },
+                Coordinate {
+                    lat: 45.1,
+                    lon: -122.0,
+                    alt: Some(100.0),
+                },
+                Coordinate {
+                    lat: 45.1,
+                    lon: -122.1,
+                    alt: Some(100.0),
+                },
+                Coordinate {
+                    lat: 45.0,
+                    lon: -122.1,
+                    alt: Some(100.0),
+                },
             ],
         },
         scan_type: ScanType::Visual,
         overlap_percent: 30,
     };
-    
+
     c.bench_function("command_serialize_swarm", |b| {
-        b.iter(|| {
-            black_box(serde_json::to_string(&swarm_command).unwrap())
-        })
+        b.iter(|| black_box(serde_json::to_string(&swarm_command).unwrap()))
     });
 }
 
@@ -208,4 +238,3 @@ criterion_group!(
 );
 
 criterion_main!(benches);
-

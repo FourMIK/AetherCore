@@ -18,8 +18,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 /// tracing::info!("Application started");
 /// ```
 pub fn init() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     tracing_subscriber::registry()
         .with(filter)
@@ -40,8 +39,7 @@ pub fn init() {
 /// tracing::info!(service = "gateway", "Service started");
 /// ```
 pub fn init_json() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     tracing_subscriber::registry()
         .with(filter)
@@ -57,7 +55,6 @@ mod tests {
     fn test_init_doesnt_panic() {
         // Note: Can only initialize once per process, so we test that it doesn't panic
         // Actual initialization is tested in integration tests
-        let _ = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("info"));
+        let _ = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     }
 }

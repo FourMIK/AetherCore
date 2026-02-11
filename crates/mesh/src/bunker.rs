@@ -127,7 +127,13 @@ impl BunkerMode {
         self.db.execute(
             "INSERT OR REPLACE INTO chain_store (hash, height, data, timestamp, synced) 
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![block.hash, block.height, block.data, block.timestamp, block.synced as i32],
+            rusqlite::params![
+                block.hash,
+                block.height,
+                block.data,
+                block.timestamp,
+                block.synced as i32
+            ],
         )?;
         Ok(())
     }
@@ -192,39 +198,31 @@ impl BunkerMode {
 
     /// Mark a block as synced
     pub fn mark_block_synced(&mut self, hash: &[u8]) -> SqliteResult<()> {
-        self.db.execute(
-            "UPDATE chain_store SET synced = 1 WHERE hash = ?1",
-            [hash],
-        )?;
+        self.db
+            .execute("UPDATE chain_store SET synced = 1 WHERE hash = ?1", [hash])?;
         Ok(())
     }
 
     /// Mark an event as synced
     pub fn mark_event_synced(&mut self, id: &str) -> SqliteResult<()> {
-        self.db.execute(
-            "UPDATE event_store SET synced = 1 WHERE id = ?1",
-            [id],
-        )?;
+        self.db
+            .execute("UPDATE event_store SET synced = 1 WHERE id = ?1", [id])?;
         Ok(())
     }
 
     /// Get total number of unsynced items
     pub fn get_unsynced_count(&self) -> SqliteResult<(usize, usize)> {
-        let block_count: i64 = self
-            .db
-            .query_row(
-                "SELECT COUNT(*) FROM chain_store WHERE synced = 0",
-                [],
-                |row| row.get(0),
-            )?;
+        let block_count: i64 = self.db.query_row(
+            "SELECT COUNT(*) FROM chain_store WHERE synced = 0",
+            [],
+            |row| row.get(0),
+        )?;
 
-        let event_count: i64 = self
-            .db
-            .query_row(
-                "SELECT COUNT(*) FROM event_store WHERE synced = 0",
-                [],
-                |row| row.get(0),
-            )?;
+        let event_count: i64 = self.db.query_row(
+            "SELECT COUNT(*) FROM event_store WHERE synced = 0",
+            [],
+            |row| row.get(0),
+        )?;
 
         Ok((block_count as usize, event_count as usize))
     }
@@ -233,11 +231,7 @@ impl BunkerMode {
     pub fn get_latest_height(&self) -> SqliteResult<Option<u64>> {
         let result: Option<u64> = self
             .db
-            .query_row(
-                "SELECT MAX(height) FROM chain_store",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT MAX(height) FROM chain_store", [], |row| row.get(0))
             .ok();
 
         Ok(result)

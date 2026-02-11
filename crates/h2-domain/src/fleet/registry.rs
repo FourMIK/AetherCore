@@ -65,29 +65,25 @@ impl FleetRegistry {
     /// Register a mobile asset
     pub fn register_mobile(&mut self, asset: MobileAsset) {
         let asset_id = asset.asset_id.clone();
-        self.assets
-            .insert(asset_id, FleetAssetType::Mobile(asset));
+        self.assets.insert(asset_id, FleetAssetType::Mobile(asset));
     }
 
     /// Register a towable asset
     pub fn register_towable(&mut self, asset: TowableAsset) {
         let asset_id = asset.asset_id.clone();
-        self.assets
-            .insert(asset_id, FleetAssetType::Towable(asset));
+        self.assets.insert(asset_id, FleetAssetType::Towable(asset));
     }
 
     /// Register a fixed installation
     pub fn register_fixed(&mut self, asset: FixedInstallation) {
         let asset_id = asset.asset_id.clone();
-        self.assets
-            .insert(asset_id, FleetAssetType::Fixed(asset));
+        self.assets.insert(asset_id, FleetAssetType::Fixed(asset));
     }
 
     /// Register a sensor node
     pub fn register_sensor(&mut self, asset: SensorNode) {
         let asset_id = asset.asset_id.clone();
-        self.assets
-            .insert(asset_id, FleetAssetType::Sensor(asset));
+        self.assets.insert(asset_id, FleetAssetType::Sensor(asset));
     }
 
     /// Get an asset by ID
@@ -280,10 +276,7 @@ mod tests {
 
         let retrieved = registry.get("truck-001");
         assert!(retrieved.is_some());
-        assert_eq!(
-            retrieved.unwrap().as_fleet_asset().asset_id(),
-            "truck-001"
-        );
+        assert_eq!(retrieved.unwrap().as_fleet_asset().asset_id(), "truck-001");
     }
 
     #[test]

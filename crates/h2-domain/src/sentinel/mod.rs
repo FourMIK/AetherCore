@@ -116,7 +116,9 @@ impl EscalationWorkflow {
         alert_count: usize,
         age_minutes: u64,
     ) -> bool {
-        if let Some(&(threshold_count, threshold_time)) = self.thresholds.get(current_level as usize) {
+        if let Some(&(threshold_count, threshold_time)) =
+            self.thresholds.get(current_level as usize)
+        {
             alert_count >= threshold_count || age_minutes >= threshold_time
         } else {
             false
@@ -169,7 +171,8 @@ impl SentinelEngine {
         // Add alert to group
         if let Some(group) = self.groups.get_mut(&group_id) {
             group.add_alert(alert.alert_id.clone(), alert.severity, alert.timestamp_ms);
-            self.alert_to_group.insert(alert.alert_id.clone(), group_id.clone());
+            self.alert_to_group
+                .insert(alert.alert_id.clone(), group_id.clone());
         }
 
         Some(group_id)
@@ -204,8 +207,7 @@ impl SentinelEngine {
 
         for (group_id, group) in &mut self.groups {
             if let Some(workflow) = self.workflows.get(&group.category) {
-                let age_minutes =
-                    current_time_ms.saturating_sub(group.created_at) / (60 * 1000);
+                let age_minutes = current_time_ms.saturating_sub(group.created_at) / (60 * 1000);
 
                 if workflow.should_escalate(
                     group.escalation_level,
@@ -257,11 +259,7 @@ mod tests {
 
     #[test]
     fn test_alert_group_creation() {
-        let group = AlertGroup::new(
-            "group-001".to_string(),
-            AlertCategory::AssetDegraded,
-            1000,
-        );
+        let group = AlertGroup::new("group-001".to_string(), AlertCategory::AssetDegraded, 1000);
 
         assert_eq!(group.group_id, "group-001");
         assert_eq!(group.escalation_level, 0);
@@ -270,11 +268,8 @@ mod tests {
 
     #[test]
     fn test_alert_group_add_alert() {
-        let mut group = AlertGroup::new(
-            "group-001".to_string(),
-            AlertCategory::AssetDegraded,
-            1000,
-        );
+        let mut group =
+            AlertGroup::new("group-001".to_string(), AlertCategory::AssetDegraded, 1000);
 
         group.add_alert("alert-001".to_string(), AlertSeverity::Warning, 2000);
         assert_eq!(group.alert_ids.len(), 1);
@@ -283,11 +278,8 @@ mod tests {
 
     #[test]
     fn test_alert_group_escalate() {
-        let mut group = AlertGroup::new(
-            "group-001".to_string(),
-            AlertCategory::AssetDegraded,
-            1000,
-        );
+        let mut group =
+            AlertGroup::new("group-001".to_string(), AlertCategory::AssetDegraded, 1000);
 
         group.escalate(2000);
         assert_eq!(group.escalation_level, 1);
@@ -296,11 +288,8 @@ mod tests {
 
     #[test]
     fn test_alert_group_needs_escalation() {
-        let mut group = AlertGroup::new(
-            "group-001".to_string(),
-            AlertCategory::AssetDegraded,
-            1000,
-        );
+        let mut group =
+            AlertGroup::new("group-001".to_string(), AlertCategory::AssetDegraded, 1000);
 
         assert!(!group.needs_escalation(3));
 
@@ -313,10 +302,8 @@ mod tests {
 
     #[test]
     fn test_escalation_workflow_creation() {
-        let workflow = EscalationWorkflow::new(
-            "workflow-001".to_string(),
-            AlertCategory::AssetDegraded,
-        );
+        let workflow =
+            EscalationWorkflow::new("workflow-001".to_string(), AlertCategory::AssetDegraded);
 
         assert_eq!(workflow.workflow_id, "workflow-001");
         assert!(workflow.thresholds.is_empty());
@@ -324,10 +311,8 @@ mod tests {
 
     #[test]
     fn test_escalation_workflow_add_threshold() {
-        let mut workflow = EscalationWorkflow::new(
-            "workflow-001".to_string(),
-            AlertCategory::AssetDegraded,
-        );
+        let mut workflow =
+            EscalationWorkflow::new("workflow-001".to_string(), AlertCategory::AssetDegraded);
 
         workflow.add_threshold(3, 5);
         assert_eq!(workflow.thresholds.len(), 1);
@@ -335,10 +320,8 @@ mod tests {
 
     #[test]
     fn test_escalation_workflow_should_escalate() {
-        let mut workflow = EscalationWorkflow::new(
-            "workflow-001".to_string(),
-            AlertCategory::AssetDegraded,
-        );
+        let mut workflow =
+            EscalationWorkflow::new("workflow-001".to_string(), AlertCategory::AssetDegraded);
 
         workflow.add_threshold(3, 5);
 
@@ -408,10 +391,8 @@ mod tests {
     fn test_sentinel_engine_process_escalations() {
         let mut engine = SentinelEngine::new();
 
-        let mut workflow = EscalationWorkflow::new(
-            "workflow-001".to_string(),
-            AlertCategory::AssetDegraded,
-        );
+        let mut workflow =
+            EscalationWorkflow::new("workflow-001".to_string(), AlertCategory::AssetDegraded);
         workflow.add_threshold(2, 5);
         engine.register_workflow(workflow);
 

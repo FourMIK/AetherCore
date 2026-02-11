@@ -97,9 +97,7 @@ impl PeerTable {
         let now = current_timestamp();
         self.peers
             .values()
-            .filter(|p| {
-                p.trust_score >= self.min_trust_score && (now - p.last_seen) <= max_age_ms
-            })
+            .filter(|p| p.trust_score >= self.min_trust_score && (now - p.last_seen) <= max_age_ms)
             .collect()
     }
 

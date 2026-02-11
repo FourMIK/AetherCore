@@ -79,7 +79,7 @@ impl IdentityManager {
     #[tracing::instrument(skip(self, identity), fields(identity_id = %identity.id))]
     pub fn register(&mut self, identity: PlatformIdentity) -> crate::Result<()> {
         debug!("Registering new identity");
-        
+
         if self.identities.contains_key(&identity.id) {
             warn!("Attempted to register duplicate identity");
             return Err(crate::Error::Identity(
@@ -141,7 +141,11 @@ impl IdentityManager {
             }
         };
 
-        info!(verified = verified, trust_score = trust_score, "Identity verification complete");
+        info!(
+            verified = verified,
+            trust_score = trust_score,
+            "Identity verification complete"
+        );
         IdentityVerification {
             verified,
             identity: identity.clone(),

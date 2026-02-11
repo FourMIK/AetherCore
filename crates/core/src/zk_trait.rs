@@ -287,7 +287,10 @@ pub trait ZkPhysicsVerifier: ZkProverService {
     /// - Spatial validation requires historical coordinate data and is not yet implemented
     ///   in this method. It should be performed separately using `verify_spatial_bounds`
     ///   with tracked coordinate history.
-    fn validate_physics(&self, request: &ZkProofRequest) -> Result<PhysicsValidation, ZkVerificationError> {
+    fn validate_physics(
+        &self,
+        request: &ZkProofRequest,
+    ) -> Result<PhysicsValidation, ZkVerificationError> {
         let mut validation = PhysicsValidation {
             temporal_valid: true,
             spatial_valid: true,
@@ -363,7 +366,11 @@ mod tests {
                     generated_at: 0,
                 })
             }
-            fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
+            fn verify(
+                &self,
+                _proof_bytes: &[u8],
+                _public_inputs_hash: &[u8; 32],
+            ) -> crate::Result<bool> {
                 Ok(true)
             }
         }
@@ -394,7 +401,11 @@ mod tests {
                     generated_at: 0,
                 })
             }
-            fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
+            fn verify(
+                &self,
+                _proof_bytes: &[u8],
+                _public_inputs_hash: &[u8; 32],
+            ) -> crate::Result<bool> {
                 Ok(true)
             }
         }
@@ -424,7 +435,11 @@ mod tests {
                     generated_at: 0,
                 })
             }
-            fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
+            fn verify(
+                &self,
+                _proof_bytes: &[u8],
+                _public_inputs_hash: &[u8; 32],
+            ) -> crate::Result<bool> {
                 Ok(true)
             }
         }
@@ -459,7 +474,11 @@ mod tests {
                     generated_at: 0,
                 })
             }
-            fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
+            fn verify(
+                &self,
+                _proof_bytes: &[u8],
+                _public_inputs_hash: &[u8; 32],
+            ) -> crate::Result<bool> {
                 Ok(true)
             }
         }
@@ -486,7 +505,11 @@ mod tests {
                     generated_at: 0,
                 })
             }
-            fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
+            fn verify(
+                &self,
+                _proof_bytes: &[u8],
+                _public_inputs_hash: &[u8; 32],
+            ) -> crate::Result<bool> {
                 Ok(true)
             }
         }
@@ -517,7 +540,11 @@ mod tests {
                     generated_at: 0,
                 })
             }
-            fn verify(&self, _proof_bytes: &[u8], _public_inputs_hash: &[u8; 32]) -> crate::Result<bool> {
+            fn verify(
+                &self,
+                _proof_bytes: &[u8],
+                _public_inputs_hash: &[u8; 32],
+            ) -> crate::Result<bool> {
                 Ok(true)
             }
         }
@@ -533,4 +560,3 @@ mod tests {
         assert!(result.is_ok());
     }
 }
-

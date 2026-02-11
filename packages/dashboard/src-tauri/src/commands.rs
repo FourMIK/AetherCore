@@ -204,7 +204,9 @@ pub async fn generate_genesis_bundle(
         Ok(bundle)
     }
 
-    inner(user_identity, squad_id).await.map_err(|e| e.to_string())
+    inner(user_identity, squad_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Generate QR Code Data from Genesis Bundle

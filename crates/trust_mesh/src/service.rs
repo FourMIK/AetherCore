@@ -28,9 +28,9 @@ impl TrustMeshConfig {
     pub fn desktop_grid(node_id: String) -> Self {
         Self {
             node_id,
-            checkpoint_window_size: 500,  // Increased from 100 to handle high-throughput streams
+            checkpoint_window_size: 500, // Increased from 100 to handle high-throughput streams
             checkpoint_interval_ms: 30000, // 30 seconds - balanced for RF jitter tolerance
-            gossip_interval_ms: 10,        // 10ms - optimized for high-speed desktop bus
+            gossip_interval_ms: 10,      // 10ms - optimized for high-speed desktop bus
         }
     }
 }

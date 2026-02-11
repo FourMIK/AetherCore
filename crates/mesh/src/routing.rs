@@ -81,7 +81,8 @@ impl RoutingTable {
 
     /// Update or add a neighbor with link quality
     pub fn update_neighbor(&mut self, neighbor_id: String, link_quality: LinkQuality) {
-        self.neighbors.insert(neighbor_id.clone(), link_quality.clone());
+        self.neighbors
+            .insert(neighbor_id.clone(), link_quality.clone());
 
         // Update direct route
         let cost = link_quality.compute_cost();
@@ -103,8 +104,7 @@ impl RoutingTable {
         // Remove direct route
         self.routes.remove(neighbor_id);
         // Remove routes through this neighbor
-        self.routes
-            .retain(|_, route| route.next_hop != neighbor_id);
+        self.routes.retain(|_, route| route.next_hop != neighbor_id);
     }
 
     /// Update route from routing advertisement

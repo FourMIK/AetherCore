@@ -4,13 +4,13 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use chrono::Utc;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tracing::info;
 use tracing_subscriber::fmt::init;
-use chrono::Utc;
 
 mod config;
 mod handlers;

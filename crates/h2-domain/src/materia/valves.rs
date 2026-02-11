@@ -1,9 +1,9 @@
 //! Solenoid valve types with quorum proof support
-//! 
+//!
 //! Ported from H2OS DeviceControls.cs SOV* fields
 
-use serde::{Deserialize, Serialize};
 use super::traits::{MateriaSlot, MerkleVineLink, TpmAttestation};
+use serde::{Deserialize, Serialize};
 
 /// Valve state enumeration
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -41,15 +41,15 @@ impl MateriaSlot for SolenoidValve {
     fn slot_id(&self) -> u16 {
         self.slot_id
     }
-    
+
     fn vine_link(&self) -> &MerkleVineLink {
         &self.vine
     }
-    
+
     fn attestation(&self) -> &TpmAttestation {
         &self.attestation
     }
-    
+
     fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());

@@ -80,7 +80,12 @@ mod grpc_tests {
         let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
         let tpm_manager = Arc::new(Mutex::new(TpmManager::new(false))); // Use stub TPM
 
-        let server_url = start_test_server_with_tpm_mode(identity_manager.clone(), tpm_manager.clone(), Some(true)).await;
+        let server_url = start_test_server_with_tpm_mode(
+            identity_manager.clone(),
+            tpm_manager.clone(),
+            Some(true),
+        )
+        .await;
 
         let mut client = IdentityRegistryClient::connect(server_url)
             .await
@@ -118,7 +123,12 @@ mod grpc_tests {
         let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
         let tpm_manager = Arc::new(Mutex::new(TpmManager::new(false)));
 
-        let server_url = start_test_server_with_tpm_mode(identity_manager.clone(), tpm_manager.clone(), Some(true)).await;
+        let server_url = start_test_server_with_tpm_mode(
+            identity_manager.clone(),
+            tpm_manager.clone(),
+            Some(true),
+        )
+        .await;
 
         let mut client = IdentityRegistryClient::connect(server_url)
             .await
@@ -197,11 +207,7 @@ mod grpc_tests {
             metadata: HashMap::new(),
         };
 
-        identity_manager
-            .lock()
-            .unwrap()
-            .register(identity)
-            .unwrap();
+        identity_manager.lock().unwrap().register(identity).unwrap();
 
         let server_url = start_test_server(identity_manager.clone(), tpm_manager.clone()).await;
 
@@ -237,11 +243,7 @@ mod grpc_tests {
             metadata: HashMap::new(),
         };
 
-        identity_manager
-            .lock()
-            .unwrap()
-            .register(identity)
-            .unwrap();
+        identity_manager.lock().unwrap().register(identity).unwrap();
 
         let server_url = start_test_server(identity_manager.clone(), tpm_manager.clone()).await;
 
@@ -277,11 +279,7 @@ mod grpc_tests {
             metadata: HashMap::new(),
         };
 
-        identity_manager
-            .lock()
-            .unwrap()
-            .register(identity)
-            .unwrap();
+        identity_manager.lock().unwrap().register(identity).unwrap();
 
         let server_url = start_test_server(identity_manager.clone(), tpm_manager.clone()).await;
 
@@ -301,11 +299,7 @@ mod grpc_tests {
             nonce_hex: hex::encode(b"test_nonce"),
         });
 
-        let response = client
-            .verify_signature(request)
-            .await
-            .unwrap()
-            .into_inner();
+        let response = client.verify_signature(request).await.unwrap().into_inner();
 
         // Signature should fail verification (dummy signature)
         assert!(!response.is_valid);
@@ -334,11 +328,7 @@ mod grpc_tests {
             metadata: HashMap::new(),
         };
 
-        identity_manager
-            .lock()
-            .unwrap()
-            .register(identity)
-            .unwrap();
+        identity_manager.lock().unwrap().register(identity).unwrap();
 
         let server_url = start_test_server(identity_manager.clone(), tpm_manager.clone()).await;
 
@@ -367,7 +357,12 @@ mod grpc_tests {
         let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
         let tpm_manager = Arc::new(Mutex::new(TpmManager::new(false)));
 
-        let server_url = start_test_server_with_tpm_mode(identity_manager.clone(), tpm_manager.clone(), Some(false)).await;
+        let server_url = start_test_server_with_tpm_mode(
+            identity_manager.clone(),
+            tpm_manager.clone(),
+            Some(false),
+        )
+        .await;
 
         let mut client = IdentityRegistryClient::connect(server_url)
             .await
@@ -411,7 +406,12 @@ mod grpc_tests {
         let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
         let tpm_manager = Arc::new(Mutex::new(TpmManager::new(false)));
 
-        let server_url = start_test_server_with_tpm_mode(identity_manager.clone(), tpm_manager.clone(), Some(false)).await;
+        let server_url = start_test_server_with_tpm_mode(
+            identity_manager.clone(),
+            tpm_manager.clone(),
+            Some(false),
+        )
+        .await;
 
         let mut client = IdentityRegistryClient::connect(server_url)
             .await
@@ -425,8 +425,8 @@ mod grpc_tests {
             node_id: node_id.clone(),
             public_key_hex: hex::encode(&public_key),
             tpm_quote: vec![0xAA; 64], // Provided but won't be validated
-            pcrs: vec![],               // Missing
-            ak_cert: vec![],            // Missing
+            pcrs: vec![],              // Missing
+            ak_cert: vec![],           // Missing
             timestamp_ms: current_timestamp_ms(),
         });
 
@@ -459,17 +459,17 @@ mod grpc_tests {
             std::env::set_var("TPM_ENABLED", value);
             let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
             let tpm_manager = Arc::new(Mutex::new(TpmManager::new(false)));
-            
+
             // Create service which will parse TPM_ENABLED
             let _service = aethercore_identity::grpc_server::IdentityRegistryService::new(
                 identity_manager,
                 tpm_manager,
             );
-            
+
             // If we got here without panic, the parsing worked
             // The actual value is checked in the service constructor logs
         }
-        
+
         // Clean up
         std::env::remove_var("TPM_ENABLED");
     }

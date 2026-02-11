@@ -251,8 +251,9 @@ pub fn install_genesis_bundle(
     for (i, cert) in bundle.intermediate_certificates.iter().enumerate() {
         let path = base_dir.join(format!("intermediate-{}.crt", i));
         let pem = certificate_to_pem(cert);
-        std::fs::write(&path, pem)
-            .map_err(|e| crate::Error::Identity(format!("Failed to write intermediate cert: {}", e)))?;
+        std::fs::write(&path, pem).map_err(|e| {
+            crate::Error::Identity(format!("Failed to write intermediate cert: {}", e))
+        })?;
 
         #[cfg(unix)]
         {
@@ -268,8 +269,10 @@ pub fn install_genesis_bundle(
 
     // Write bootstrap nodes configuration
     let bootstrap_path = base_dir.join("bootstrap-nodes.json");
-    let bootstrap_json = serde_json::to_string_pretty(&bundle.mesh_bootstrap_nodes)
-        .map_err(|e| crate::Error::Identity(format!("Failed to serialize bootstrap nodes: {}", e)))?;
+    let bootstrap_json =
+        serde_json::to_string_pretty(&bundle.mesh_bootstrap_nodes).map_err(|e| {
+            crate::Error::Identity(format!("Failed to serialize bootstrap nodes: {}", e))
+        })?;
     std::fs::write(&bootstrap_path, bootstrap_json)
         .map_err(|e| crate::Error::Identity(format!("Failed to write bootstrap nodes: {}", e)))?;
 
@@ -452,11 +455,7 @@ mod tests {
             365,
         );
 
-        let result = generator.generate(
-            create_test_cert("device-004"),
-            &Attestation::None,
-            1.0,
-        );
+        let result = generator.generate(create_test_cert("device-004"), &Attestation::None, 1.0);
 
         assert!(result.is_err());
     }
@@ -567,10 +566,7 @@ mod tests {
             .unwrap();
 
         let expected_validity = 365 * 24 * 60 * 60 * 1000; // milliseconds
-        assert_eq!(
-            bundle.expires_at - bundle.created_at,
-            expected_validity
-        );
+        assert_eq!(bundle.expires_at - bundle.created_at, expected_validity);
     }
 
     #[test]

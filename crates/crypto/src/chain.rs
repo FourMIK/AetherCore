@@ -418,13 +418,13 @@ impl ChainProof {
             signature: None,
         }
     }
-    
+
     /// Create a proof with signature
     pub fn with_signature(mut self, signature: Vec<u8>) -> Self {
         self.signature = Some(signature);
         self
     }
-    
+
     /// Verify this proof matches another proof (for consensus)
     pub fn matches(&self, other: &ChainProof) -> bool {
         self.chain_id == other.chain_id
@@ -438,7 +438,7 @@ impl ChainManager {
     pub fn generate_proof(&self, chain_id: String) -> ChainProof {
         ChainProof::new(chain_id, self.get_chain_head(), self.len())
     }
-    
+
     /// Verify a chain proof against local state
     ///
     /// Returns true if the proof matches the local chain head and length.
@@ -712,14 +712,14 @@ mod tests {
     #[test]
     fn test_chain_proof_creation() {
         let mut manager = ChainManager::new();
-        
+
         for i in 0..5 {
             let event = create_test_event("test.event", i);
             manager.append_to_chain(event).unwrap();
         }
-        
+
         let proof = manager.generate_proof("test-chain".to_string());
-        
+
         assert_eq!(proof.chain_id, "test-chain");
         assert_eq!(proof.chain_length, 5);
         assert_eq!(proof.head_hash, manager.get_chain_head());
@@ -728,21 +728,21 @@ mod tests {
     #[test]
     fn test_chain_proof_verification() {
         let mut manager = ChainManager::new();
-        
+
         for i in 0..3 {
             let event = create_test_event("test.event", i);
             manager.append_to_chain(event).unwrap();
         }
-        
+
         let proof = manager.generate_proof("test-chain".to_string());
-        
+
         // Proof should verify against current state
         assert!(manager.verify_proof(&proof));
-        
+
         // Add another event
         let event = create_test_event("test.event", 3);
         manager.append_to_chain(event).unwrap();
-        
+
         // Old proof should no longer verify
         assert!(!manager.verify_proof(&proof));
     }
@@ -752,7 +752,7 @@ mod tests {
         let proof1 = ChainProof::new("chain-1".to_string(), [1u8; 32], 10);
         let proof2 = ChainProof::new("chain-1".to_string(), [1u8; 32], 10);
         let proof3 = ChainProof::new("chain-1".to_string(), [2u8; 32], 10);
-        
+
         assert!(proof1.matches(&proof2));
         assert!(!proof1.matches(&proof3));
     }
@@ -760,9 +760,9 @@ mod tests {
     #[test]
     fn test_chain_proof_with_signature() {
         let signature = vec![0x42u8; 64];
-        let proof = ChainProof::new("chain-1".to_string(), [1u8; 32], 5)
-            .with_signature(signature.clone());
-        
+        let proof =
+            ChainProof::new("chain-1".to_string(), [1u8; 32], 5).with_signature(signature.clone());
+
         assert_eq!(proof.signature, Some(signature));
     }
 }

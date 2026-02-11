@@ -31,10 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Server address - listen on all interfaces, port 50051
     let addr = "0.0.0.0:50051".parse()?;
 
-    tracing::info!(
-        "Identity Registry gRPC server starting on {}",
-        addr
-    );
+    tracing::info!("Identity Registry gRPC server starting on {}", addr);
     tracing::info!("Security Model: NO GRACEFUL DEGRADATION for TPM attestation failures");
     tracing::info!("Hardware-rooted trust required for all node registrations");
 

@@ -6,8 +6,7 @@
 //! Run with: cargo run --example coderalphie_client
 
 use aethercore_mesh::{
-    TacticalMesh, PeerInfo, GossipMessage, StoredBlock, StoredEvent,
-    generate_hopping_pattern,
+    generate_hopping_pattern, GossipMessage, PeerInfo, StoredBlock, StoredEvent, TacticalMesh,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -55,7 +54,10 @@ impl CodeRalphieClient {
         ];
 
         for peer in peers {
-            println!("  - Discovered peer: {} (trust: {:.2})", peer.node_id, peer.trust_score);
+            println!(
+                "  - Discovered peer: {} (trust: {:.2})",
+                peer.node_id, peer.trust_score
+            );
             self.mesh.add_peer(peer)?;
         }
 
@@ -63,14 +65,25 @@ impl CodeRalphieClient {
     }
 
     /// Update local state and gossip to swarm
-    fn publish_state_update(&mut self, merkle_root: Vec<u8>, block_height: u64) -> Result<(), String> {
-        println!("[{}] Publishing state update (height: {}, root: {:?}...)", 
-                 self.node_id, block_height, &merkle_root[..4]);
+    fn publish_state_update(
+        &mut self,
+        merkle_root: Vec<u8>,
+        block_height: u64,
+    ) -> Result<(), String> {
+        println!(
+            "[{}] Publishing state update (height: {}, root: {:?}...)",
+            self.node_id,
+            block_height,
+            &merkle_root[..4]
+        );
 
         // Sign with dummy signature (in production, use TPM)
         let signature = vec![0u8; 64];
 
-        if let Some(message) = self.mesh.update_local_state(merkle_root, block_height, signature) {
+        if let Some(message) = self
+            .mesh
+            .update_local_state(merkle_root, block_height, signature)
+        {
             println!("  - Gossip message created: {}", message.msg_id);
             // In production, broadcast to peers
         }
@@ -80,21 +93,41 @@ impl CodeRalphieClient {
 
     /// Process incoming gossip message
     fn handle_gossip(&mut self, message: GossipMessage) {
-        println!("[{}] Received gossip from {}", self.node_id, message.source_node);
+        println!(
+            "[{}] Received gossip from {}",
+            self.node_id, message.source_node
+        );
 
         match self.mesh.process_gossip(message) {
-            aethercore_mesh::GossipResult::Accepted { should_forward, message } => {
+            aethercore_mesh::GossipResult::Accepted {
+                should_forward,
+                message,
+            } => {
                 println!("  - Message accepted (height: {})", message.block_height);
                 if should_forward {
                     println!("  - Forwarding to peers...");
                 }
             }
-            aethercore_mesh::GossipResult::ConflictDetected { peer_node, peer_height, .. } => {
-                println!("  - ⚠️  FORK DETECTED from {} at height {}", peer_node, peer_height);
+            aethercore_mesh::GossipResult::ConflictDetected {
+                peer_node,
+                peer_height,
+                ..
+            } => {
+                println!(
+                    "  - ⚠️  FORK DETECTED from {} at height {}",
+                    peer_node, peer_height
+                );
                 println!("  - Initiating branch sync...");
             }
-            aethercore_mesh::GossipResult::PeerAhead { peer_node, peer_height, .. } => {
-                println!("  - Peer {} is ahead at height {}, syncing...", peer_node, peer_height);
+            aethercore_mesh::GossipResult::PeerAhead {
+                peer_node,
+                peer_height,
+                ..
+            } => {
+                println!(
+                    "  - Peer {} is ahead at height {}, syncing...",
+                    peer_node, peer_height
+                );
             }
             aethercore_mesh::GossipResult::Duplicate => {
                 println!("  - Duplicate message, ignoring");
@@ -113,9 +146,9 @@ impl CodeRalphieClient {
         let seed = vec![42, 43, 44, 45]; // In production, derive from shared secret
         let pattern = generate_hopping_pattern(
             seed,
-            10,              // 10 channels
-            (2400, 2480),    // 2.4 GHz ISM band (MHz)
-            100,             // 100ms dwell time
+            10,           // 10 channels
+            (2400, 2480), // 2.4 GHz ISM band (MHz)
+            100,          // 100ms dwell time
         );
 
         println!("  - Pattern: {:?}", pattern.channels);
@@ -125,22 +158,30 @@ impl CodeRalphieClient {
     /// Simulate jamming scenario
     fn simulate_jamming(&mut self) {
         println!("[{}] ⚠️  Jamming detected! PER = 0.35", self.node_id);
-        
+
         // Update link metrics with high PER
         self.mesh.update_link_metrics(0.35);
 
         let status = self.mesh.get_mesh_status();
         if status.jamming_detected {
-            println!("  - Frequency hop triggered to channel {:?}", status.current_channel);
+            println!(
+                "  - Frequency hop triggered to channel {:?}",
+                status.current_channel
+            );
         }
     }
 
     /// Enter bunker mode (network isolation)
     fn enter_bunker_mode(&mut self) -> Result<(), String> {
-        println!("[{}] 🏰 ENTERING BUNKER MODE - All links severed", self.node_id);
+        println!(
+            "[{}] 🏰 ENTERING BUNKER MODE - All links severed",
+            self.node_id
+        );
 
         // Remove all peers to trigger bunker mode
-        let peers: Vec<String> = self.mesh.get_all_peers()
+        let peers: Vec<String> = self
+            .mesh
+            .get_all_peers()
             .iter()
             .map(|p| p.node_id.clone())
             .collect();
@@ -193,11 +234,18 @@ impl CodeRalphieClient {
         self.discover_peers()?;
 
         let status = self.mesh.get_mesh_status();
-        println!("  - Peers: {}, Bunker: {}", status.peer_count, status.bunker_mode);
+        println!(
+            "  - Peers: {}, Bunker: {}",
+            status.peer_count, status.bunker_mode
+        );
 
         // Get unsynced data
         let (blocks, events) = self.mesh.get_unsynced_data()?;
-        println!("  - Unsynced data: {} blocks, {} events", blocks.len(), events.len());
+        println!(
+            "  - Unsynced data: {} blocks, {} events",
+            blocks.len(),
+            events.len()
+        );
 
         // Simulate uploading data
         println!("  - Uploading to swarm...");

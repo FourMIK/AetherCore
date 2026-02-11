@@ -1,11 +1,11 @@
 //! Trusted Platform Module (TPM) integration.
 //! Enforces "Hardware-Rooted Truth" via ECDSA signature verification.
 
-use serde::{Deserialize, Serialize};
-use tracing::{error, info, warn};
 use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "hardware-tpm")]
 use sha2::{Digest as ShaDigestTrait, Sha256, Sha384, Sha512};
+use tracing::{error, info, warn};
 
 #[cfg(feature = "hardware-tpm")]
 use tss_esapi::{
@@ -86,7 +86,9 @@ impl TpmManager {
     }
 
     #[cfg(not(feature = "hardware-tpm"))]
-    fn detect_hardware() -> bool { false }
+    fn detect_hardware() -> bool {
+        false
+    }
 
     pub fn generate_attestation_key(&mut self, key_id: String) -> crate::Result<AttestationKey> {
         if self.hardware_available {
@@ -156,8 +158,8 @@ impl TpmManager {
 
         // 3. Verify Signature against Raw Data
         if let Err(_) = verifying_key.verify(&quote.attestation_data, &signature) {
-             error!("TrustGate :: FAIL :: Signature Mismatch");
-             return Ok(false);
+            error!("TrustGate :: FAIL :: Signature Mismatch");
+            return Ok(false);
         }
 
         self.verify_attestation_contents(quote)
@@ -167,12 +169,11 @@ impl TpmManager {
     #[cfg(feature = "hardware-tpm")]
     fn generate_ak_hardware(&mut self, key_id: String) -> crate::Result<AttestationKey> {
         let persistent_handle_value = persistent_handle_for_key(&key_id);
-        let persistent = PersistentTpmHandle::new(persistent_handle_value).map_err(to_identity_error)?;
+        let persistent =
+            PersistentTpmHandle::new(persistent_handle_value).map_err(to_identity_error)?;
         let mut context = create_tpm_context()?;
 
-        if let Ok(existing_handle) =
-            context.tr_from_tpm_public(TpmHandle::Persistent(persistent))
-        {
+        if let Ok(existing_handle) = context.tr_from_tpm_public(TpmHandle::Persistent(persistent)) {
             let _ = context.execute_with_session(Some(AuthSession::Password), |ctx| {
                 ctx.evict_control(
                     tss_esapi::interface_types::resource_handles::Provision::Owner,
@@ -196,7 +197,9 @@ impl TpmManager {
             })
             .map_err(to_identity_error)?;
         let ak_handle = context
-            .execute_with_nullauth_session(|ctx| ctx.load(primary.key_handle, ak.out_private, ak.out_public.clone()))
+            .execute_with_nullauth_session(|ctx| {
+                ctx.load(primary.key_handle, ak.out_private, ak.out_public.clone())
+            })
             .map_err(to_identity_error)?;
 
         context
@@ -223,12 +226,14 @@ impl TpmManager {
         Err(crate::Error::Identity("Hardware TPM disabled".to_string()))
     }
     #[cfg(feature = "hardware-tpm")]
-    fn generate_quote_hardware(&self, nonce: Vec<u8>, pcr_selection: &[u8]) -> crate::Result<TpmQuote> {
-        let key_handle_value = self
-            .hardware_keys
-            .values()
-            .next()
-            .ok_or_else(|| crate::Error::Identity("No hardware attestation keys available".into()))?;
+    fn generate_quote_hardware(
+        &self,
+        nonce: Vec<u8>,
+        pcr_selection: &[u8],
+    ) -> crate::Result<TpmQuote> {
+        let key_handle_value = self.hardware_keys.values().next().ok_or_else(|| {
+            crate::Error::Identity("No hardware attestation keys available".into())
+        })?;
         let persistent = PersistentTpmHandle::new(*key_handle_value).map_err(to_identity_error)?;
         let mut context = create_tpm_context()?;
         let key_handle = context
@@ -264,7 +269,11 @@ impl TpmManager {
         })
     }
     #[cfg(not(feature = "hardware-tpm"))]
-    fn generate_quote_hardware(&self, _nonce: Vec<u8>, _pcr_selection: &[u8]) -> crate::Result<TpmQuote> {
+    fn generate_quote_hardware(
+        &self,
+        _nonce: Vec<u8>,
+        _pcr_selection: &[u8],
+    ) -> crate::Result<TpmQuote> {
         Err(crate::Error::Identity("Hardware TPM disabled".to_string()))
     }
 
@@ -293,7 +302,9 @@ impl TpmManager {
                     key_handle.into(),
                     digest,
                     SignatureScheme::EcDsa {
-                        hash_scheme: tss_esapi::structures::HashScheme::new(HashingAlgorithm::Sha256),
+                        hash_scheme: tss_esapi::structures::HashScheme::new(
+                            HashingAlgorithm::Sha256,
+                        ),
                     },
                     ticket,
                 )
@@ -311,23 +322,36 @@ impl TpmManager {
     fn generate_ak_stub(&mut self, key_id: String) -> crate::Result<AttestationKey> {
         let secret_key = p256::SecretKey::random(&mut rand::thread_rng());
         let public_key = secret_key.public_key().to_sec1_bytes().to_vec();
-        self.stub_keys.insert(key_id.clone(), secret_key.to_bytes().to_vec());
-        Ok(AttestationKey { key_id, public_key, certificate: None })
+        self.stub_keys
+            .insert(key_id.clone(), secret_key.to_bytes().to_vec());
+        Ok(AttestationKey {
+            key_id,
+            public_key,
+            certificate: None,
+        })
     }
 
     fn generate_quote_stub(&self, nonce: Vec<u8>, pcr_selection: &[u8]) -> crate::Result<TpmQuote> {
         let mut attestation_data = b"TPM_DATA_STUB_".to_vec();
         attestation_data.extend_from_slice(&nonce);
-        
-        let key_bytes = self.stub_keys.values().next().ok_or(crate::Error::Identity("No stub keys".into()))?;
-        let secret_key = p256::SecretKey::from_slice(key_bytes).map_err(|_| crate::Error::Identity("Invalid stub key".into()))?;
+
+        let key_bytes = self
+            .stub_keys
+            .values()
+            .next()
+            .ok_or(crate::Error::Identity("No stub keys".into()))?;
+        let secret_key = p256::SecretKey::from_slice(key_bytes)
+            .map_err(|_| crate::Error::Identity("Invalid stub key".into()))?;
         let signing_key = p256::ecdsa::SigningKey::from(secret_key);
         let signature: Signature = signature::Signer::sign(&signing_key, &attestation_data);
 
         let mut pcrs = Vec::new();
         for &index in pcr_selection {
             if index < 24 {
-                pcrs.push(PcrValue { index, value: vec![0xFF; 32] });
+                pcrs.push(PcrValue {
+                    index,
+                    value: vec![0xFF; 32],
+                });
             }
         }
 
@@ -350,8 +374,8 @@ impl TpmManager {
             .stub_keys
             .get(key_id)
             .ok_or(crate::Error::Identity("Unknown attestation key".into()))?;
-        let secret_key =
-            p256::SecretKey::from_slice(key_bytes).map_err(|_| crate::Error::Identity("Invalid stub key".into()))?;
+        let secret_key = p256::SecretKey::from_slice(key_bytes)
+            .map_err(|_| crate::Error::Identity("Invalid stub key".into()))?;
         let signing_key = p256::ecdsa::SigningKey::from(secret_key);
         let signature: Signature = signature::Signer::sign(&signing_key, data);
         Ok(signature.to_der().as_bytes().to_vec())
@@ -362,8 +386,7 @@ impl TpmManager {
     fn verify_attestation_contents(&self, quote: &TpmQuote) -> crate::Result<bool> {
         #[cfg(feature = "hardware-tpm")]
         {
-            let attest = Attest::unmarshall(&quote.attestation_data)
-                .map_err(to_identity_error)?;
+            let attest = Attest::unmarshall(&quote.attestation_data).map_err(to_identity_error)?;
             if attest.attestation_type() != AttestationType::Quote {
                 error!("TrustGate :: FAIL :: Attestation type is not quote");
                 return Ok(false);
@@ -387,8 +410,7 @@ impl TpmManager {
                 return Ok(false);
             }
 
-            let expected_digest =
-                compute_pcr_digest(quote_info.pcr_selection(), &quote.pcrs)?;
+            let expected_digest = compute_pcr_digest(quote_info.pcr_selection(), &quote.pcrs)?;
             if quote_info.pcr_digest().value() != expected_digest.as_slice() {
                 error!("TrustGate :: FAIL :: PCR digest mismatch");
                 return Ok(false);
@@ -399,7 +421,11 @@ impl TpmManager {
 
         #[cfg(not(feature = "hardware-tpm"))]
         {
-            if !quote.attestation_data.windows(quote.nonce.len()).any(|w| w == quote.nonce) {
+            if !quote
+                .attestation_data
+                .windows(quote.nonce.len())
+                .any(|w| w == quote.nonce)
+            {
                 error!("TrustGate :: FAIL :: Nonce not found in signed data");
                 return Ok(false);
             }
@@ -483,7 +509,9 @@ fn build_attestation_public() -> crate::Result<Public> {
 }
 
 #[cfg(feature = "hardware-tpm")]
-fn build_pcr_selection_list(pcr_selection: &[u8]) -> crate::Result<tss_esapi::structures::PcrSelectionList> {
+fn build_pcr_selection_list(
+    pcr_selection: &[u8],
+) -> crate::Result<tss_esapi::structures::PcrSelectionList> {
     let slots: Vec<PcrSlot> = pcr_selection
         .iter()
         .filter(|&&index| index < 24)
@@ -501,8 +529,9 @@ fn read_pcr_values(
     context: &mut Context,
     selection_list: tss_esapi::structures::PcrSelectionList,
 ) -> crate::Result<Vec<PcrValue>> {
-    let (_update_counter, read_selection, digest_list) =
-        context.pcr_read(selection_list.clone()).map_err(to_identity_error)?;
+    let (_update_counter, read_selection, digest_list) = context
+        .pcr_read(selection_list.clone())
+        .map_err(to_identity_error)?;
     let selections = read_selection.get_selections();
     if selections.len() != 1 {
         return Err(crate::Error::Identity(
@@ -548,8 +577,7 @@ fn ecc_public_to_sec1(public: &Public) -> crate::Result<Vec<u8>> {
         Public::Ecc { unique, .. } => {
             let x = pad_left(unique.x().value(), 32);
             let y = pad_left(unique.y().value(), 32);
-            let encoded =
-                p256::EncodedPoint::from_affine_coordinates(&x.into(), &y.into(), false);
+            let encoded = p256::EncodedPoint::from_affine_coordinates(&x.into(), &y.into(), false);
             Ok(encoded.as_bytes().to_vec())
         }
         _ => Err(crate::Error::Identity(

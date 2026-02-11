@@ -37,14 +37,49 @@ export const DashboardLayout: React.FC = () => {
   const clearByzantineAlert = useTacticalStore((s) => s.clearByzantineAlert);
   const clearVerificationFailure = useTacticalStore((s) => s.clearVerificationFailure);
   const activeCall = useCommStore((s) => s.activeCall);
+  const connectionState = useCommStore((s) => s.connectionState);
 
   const [showWizard, setShowWizard] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>('tactical');
-  
+
   const { tpmEnabled } = getRuntimeConfig();
 
   const verifiedCount = Array.from(nodes.values()).filter((n) => n.verified).length;
   const totalCount = nodes.size;
+
+  // Calculate visual degradation based on connection state
+  const getVisualDegradation = () => {
+    switch (connectionState) {
+      case 'intermittent':
+        return {
+          filter: 'grayscale(0.5) blur(1px)',
+          banner: {
+            show: true,
+            color: 'bg-amber-500/90',
+            text: '⚠ SIGNAL UNSTABLE',
+            description: 'Heartbeat latency detected',
+          },
+        };
+      case 'disconnected':
+        return {
+          filter: 'grayscale(1) blur(4px)',
+          banner: {
+            show: true,
+            color: 'bg-jamming/90',
+            text: '🔴 SIGNAL LOST - DATA UNVERIFIED',
+            description: 'Connection to backend severed',
+          },
+        };
+      case 'connected':
+      default:
+        return {
+          filter: 'none',
+          banner: { show: false },
+        };
+    }
+  };
+
+  const visualDegradation = getVisualDegradation();
 
   const renderWorkspaceContent = () => {
     switch (currentView) {
@@ -108,64 +143,72 @@ export const DashboardLayout: React.FC = () => {
 
       {/* Dev Mode Banner */}
       <DevModeBanner />
-      
+
       {/* TPM Disabled Banner - shown when TPM is disabled */}
       {!tpmEnabled && <TpmDisabledBanner />}
 
-      {/* TopBar - Fixed Height */}
-      <div className="flex items-center gap-4 p-4 pb-2 flex-shrink-0">
-        <NavigationMenu
-          currentView={currentView}
-          onViewChange={setCurrentView}
-        />
-        <div className="flex-1 min-w-0">
-          <TopBar
-            systemStatus="operational"
-            verifiedNodes={verifiedCount}
-            totalNodes={totalCount}
-          />
-        </div>
-        <ConnectionStatusIndicator />
-      </div>
-
-      {/* Main Content - Dynamic Workspace with proper flex */}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {renderWorkspaceContent()}
-      </div>
-
-      {/* Floating Add Node Button (for non-tactical views) */}
-      {currentView !== 'tactical' && (
-        <button
-          onClick={() => setShowWizard(true)}
-          className="absolute bottom-6 right-6 btn-primary px-6 py-3 flex items-center gap-2 shadow-lg z-30"
+      {/* Connection State Degradation Banner */}
+      {visualDegradation.banner.show && (
+        <div
+          className={`${visualDegradation.banner.color} text-white px-4 py-2 flex items-center justify-center gap-3 z-50 animate-pulse`}
         >
-          <Plus size={20} />
-          Add Node
-        </button>
+          <span className="font-display font-bold tracking-wider">
+            {visualDegradation.banner.text}
+          </span>
+          <span className="text-xs opacity-80">{visualDegradation.banner.description}</span>
+        </div>
       )}
+
+      {/* Main Content Wrapper - Apply visual degradation filter */}
+      <div
+        className="flex-1 flex flex-col overflow-hidden"
+        style={{ filter: visualDegradation.filter }}
+      >
+        {/* TopBar - Fixed Height */}
+        <div className="flex items-center gap-4 p-4 pb-2 flex-shrink-0">
+          <NavigationMenu currentView={currentView} onViewChange={setCurrentView} />
+          <div className="flex-1 min-w-0">
+            <TopBar
+              systemStatus="operational"
+              verifiedNodes={verifiedCount}
+              totalNodes={totalCount}
+            />
+          </div>
+          <ConnectionStatusIndicator />
+        </div>
+
+        {/* Main Content - Dynamic Workspace with proper flex */}
+        <div className="flex-1 min-h-0 overflow-hidden">{renderWorkspaceContent()}</div>
+
+        {/* Floating Add Node Button (for non-tactical views) */}
+        {currentView !== 'tactical' && (
+          <button
+            onClick={() => setShowWizard(true)}
+            className="absolute bottom-6 right-6 btn-primary px-6 py-3 flex items-center gap-2 shadow-lg z-30"
+          >
+            <Plus size={20} />
+            Add Node
+          </button>
+        )}
+      </div>
 
       {/* Modals and Overlays */}
       {showWizard && <AddNodeWizard onClose={() => setShowWizard(false)} />}
 
       {/* Video Call Panel */}
-      {activeCall && activeCall.status !== 'ended' && (
-        <VideoCallPanel call={activeCall} />
-      )}
+      {activeCall && activeCall.status !== 'ended' && <VideoCallPanel call={activeCall} />}
 
       {/* Security Animations */}
       {byzantineAlert && (
         <div className="fixed inset-0 z-50">
-          <AethericSweep 
+          <AethericSweep
             websocketUrl={
-              typeof window !== 'undefined' && '__TAURI__' in window 
+              typeof window !== 'undefined' && '__TAURI__' in window
                 ? `ws://localhost:8080/mesh-health`
                 : '' // Disable WebSocket in web mode
-            } 
+            }
           />
-          <button
-            onClick={clearByzantineAlert}
-            className="absolute top-4 right-4 btn-secondary"
-          >
+          <button onClick={clearByzantineAlert} className="absolute top-4 right-4 btn-secondary">
             Close
           </button>
         </div>

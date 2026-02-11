@@ -66,7 +66,7 @@ pub enum FormationType {
     /// Custom formation with relative positions
     Custom {
         /// Relative positions for each unit
-        positions: Vec<(f32, f32)>
+        positions: Vec<(f32, f32)>,
     },
 }
 
@@ -85,14 +85,14 @@ pub enum MeshTopology {
     /// Star topology with hub
     Star {
         /// Hub unit identifier
-        hub_unit_id: String
+        hub_unit_id: String,
     },
     /// Ring topology
     Ring,
     /// Custom topology with explicit connections
     Custom {
         /// Explicit unit-to-unit connections
-        connections: Vec<(String, String)>
+        connections: Vec<(String, String)>,
     },
 }
 
@@ -205,11 +205,15 @@ mod tests {
     #[test]
     fn test_unit_command_serialization() {
         let cmd = UnitCommand::Navigate {
-            waypoint: Coordinate { lat: 45.0, lon: -122.0, alt: Some(100.0) },
+            waypoint: Coordinate {
+                lat: 45.0,
+                lon: -122.0,
+                alt: Some(100.0),
+            },
             speed: Some(10.0),
             altitude: Some(100.0),
         };
-        
+
         let json = serde_json::to_string(&cmd).unwrap();
         let deserialized: UnitCommand = serde_json::from_str(&json).unwrap();
         assert_eq!(cmd, deserialized);
@@ -220,7 +224,7 @@ mod tests {
         let cmd = SwarmCommand::RecallAll {
             base_id: "BASE-001".to_string(),
         };
-        
+
         let json = serde_json::to_string(&cmd).unwrap();
         let deserialized: SwarmCommand = serde_json::from_str(&json).unwrap();
         assert_eq!(cmd, deserialized);

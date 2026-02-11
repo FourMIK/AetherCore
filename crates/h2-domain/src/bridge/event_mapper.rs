@@ -137,11 +137,7 @@ impl EventMapper {
     /// Detect replay attack via hash chain validation
     ///
     /// Validates that the provided prev_hash matches expectations
-    pub fn validate_chain_link(
-        &self,
-        claimed_prev_hash: &[u8],
-        actual_prev_id: &str,
-    ) -> bool {
+    pub fn validate_chain_link(&self, claimed_prev_hash: &[u8], actual_prev_id: &str) -> bool {
         let computed = self.compute_prev_hash(actual_prev_id);
         claimed_prev_hash == computed.as_slice()
     }
@@ -164,7 +160,10 @@ mod tests {
 
     #[test]
     fn test_h2os_event_type_to_canonical() {
-        assert_eq!(H2OSEventType::PT100Temperature.to_canonical_type(), "TELEMETRY");
+        assert_eq!(
+            H2OSEventType::PT100Temperature.to_canonical_type(),
+            "TELEMETRY"
+        );
         assert_eq!(H2OSEventType::GPSPosition.to_canonical_type(), "GPS");
         assert_eq!(H2OSEventType::AssetStateChange.to_canonical_type(), "FLEET");
         assert_eq!(H2OSEventType::DispatchEvent.to_canonical_type(), "MISSION");
@@ -194,11 +193,7 @@ mod tests {
         let mapper = EventMapper::new();
         let mut metadata = BTreeMap::new();
 
-        mapper.inject_provenance(
-            &mut metadata,
-            "fed-001",
-            H2OSEventType::PT100Temperature,
-        );
+        mapper.inject_provenance(&mut metadata, "fed-001", H2OSEventType::PT100Temperature);
 
         assert_eq!(
             metadata.get("source"),

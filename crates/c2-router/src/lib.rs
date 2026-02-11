@@ -74,12 +74,10 @@ pub use command_types::{
     ConfigUpdate, Coordinate, FormationType, GeoBoundary, MeshTopology, ScanParameters, ScanType,
     SwarmCommand, UnitCommand,
 };
-pub use dispatcher::{
-    CommandDispatcher, DispatchError, SwarmDispatchStatus, UnitDispatchResult,
-};
+pub use dispatcher::{CommandDispatcher, DispatchError, SwarmDispatchStatus, UnitDispatchResult};
 pub use feeds::{AlertFeed, FleetFeed, MissionFeed};
 pub use grpc::{
-    c2_proto, C2GrpcServer, C2Router, C2RouterServer, AbortRequest, AbortResponse,
+    c2_proto, AbortRequest, AbortResponse, C2GrpcServer, C2Router, C2RouterServer,
     CommandStatusRequest, CommandStatusResponse, SwarmCommandRequest, SwarmCommandResponse,
     UnitCommandRequest, UnitCommandResponse,
 };

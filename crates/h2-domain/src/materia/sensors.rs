@@ -1,9 +1,9 @@
 //! Industrial sensor types with hardware attestation
-//! 
+//!
 //! Ported from H2OS DeviceControls.cs with cryptographic binding
 
-use serde::{Deserialize, Serialize};
 use super::traits::{MateriaSlot, MerkleVineLink, TpmAttestation};
+use serde::{Deserialize, Serialize};
 
 /// PT100 - Pressure Transducer
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,15 +26,15 @@ impl MateriaSlot for PT100 {
     fn slot_id(&self) -> u16 {
         self.slot_id
     }
-    
+
     fn vine_link(&self) -> &MerkleVineLink {
         &self.vine
     }
-    
+
     fn attestation(&self) -> &TpmAttestation {
         &self.attestation
     }
-    
+
     fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());
@@ -66,15 +66,15 @@ impl MateriaSlot for PT110 {
     fn slot_id(&self) -> u16 {
         self.slot_id
     }
-    
+
     fn vine_link(&self) -> &MerkleVineLink {
         &self.vine
     }
-    
+
     fn attestation(&self) -> &TpmAttestation {
         &self.attestation
     }
-    
+
     fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());
@@ -106,15 +106,15 @@ impl MateriaSlot for PS110 {
     fn slot_id(&self) -> u16 {
         self.slot_id
     }
-    
+
     fn vine_link(&self) -> &MerkleVineLink {
         &self.vine
     }
-    
+
     fn attestation(&self) -> &TpmAttestation {
         &self.attestation
     }
-    
+
     fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());
@@ -146,15 +146,15 @@ impl MateriaSlot for H2Detect {
     fn slot_id(&self) -> u16 {
         self.slot_id
     }
-    
+
     fn vine_link(&self) -> &MerkleVineLink {
         &self.vine
     }
-    
+
     fn attestation(&self) -> &TpmAttestation {
         &self.attestation
     }
-    
+
     fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());
@@ -186,15 +186,15 @@ impl MateriaSlot for CGFLT {
     fn slot_id(&self) -> u16 {
         self.slot_id
     }
-    
+
     fn vine_link(&self) -> &MerkleVineLink {
         &self.vine
     }
-    
+
     fn attestation(&self) -> &TpmAttestation {
         &self.attestation
     }
-    
+
     fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.slot_id.to_le_bytes());

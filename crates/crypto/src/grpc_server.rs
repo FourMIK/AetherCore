@@ -58,15 +58,12 @@ impl SigningServiceImpl {
     }
 
     /// Get or create a signing service for a node
-    /// 
+    ///
     /// In production with TPM:
     /// - This would load the TPM-backed key for the node
     /// - If no key exists, it would fail (not create a new one)
     /// - Keys are hardware-resident and never leave the TPM
-    fn get_or_create_signing_service(
-        &self,
-        node_id: &str,
-    ) -> Result<EventSigningService, String> {
+    fn get_or_create_signing_service(&self, node_id: &str) -> Result<EventSigningService, String> {
         let mut services = self
             .signing_services
             .lock()
@@ -215,7 +212,7 @@ impl SigningService for SigningServiceImpl {
 
         // Sign the payload
         let payload_bytes = payload_str.as_bytes();
-        
+
         use ed25519_dalek::Signer;
         let signature = signing_service
             .sign_event(&crate::signing::CanonicalEvent {
@@ -268,9 +265,8 @@ impl SigningService for SigningServiceImpl {
         let timestamp_ms = Self::current_timestamp_ms();
 
         // Decode public key
-        let public_key_bytes = hex::decode(&req.public_key_hex).map_err(|e| {
-            Status::invalid_argument(format!("Invalid public key hex: {}", e))
-        })?;
+        let public_key_bytes = hex::decode(&req.public_key_hex)
+            .map_err(|e| Status::invalid_argument(format!("Invalid public key hex: {}", e)))?;
 
         if public_key_bytes.len() != 32 {
             return Err(Status::invalid_argument(format!(
@@ -280,9 +276,8 @@ impl SigningService for SigningServiceImpl {
         }
 
         // Decode signature
-        let signature_bytes = hex::decode(&req.signature_hex).map_err(|e| {
-            Status::invalid_argument(format!("Invalid signature hex: {}", e))
-        })?;
+        let signature_bytes = hex::decode(&req.signature_hex)
+            .map_err(|e| Status::invalid_argument(format!("Invalid signature hex: {}", e)))?;
 
         if signature_bytes.len() != 64 {
             return Err(Status::invalid_argument(format!(

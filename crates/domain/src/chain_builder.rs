@@ -226,7 +226,9 @@ impl ChainBuilder {
         let head_hash = self
             .sequence
             .last()
-            .ok_or_else(|| DomainError::ChainError("Cannot create root from empty chain".to_string()))?
+            .ok_or_else(|| {
+                DomainError::ChainError("Cannot create root from empty chain".to_string())
+            })?
             .clone();
         let length = self.sequence.len() as u64;
 
@@ -236,9 +238,7 @@ impl ChainBuilder {
             head_hash,
             updated_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|e| {
-                    DomainError::ChainError(format!("System time error: {}", e))
-                })?
+                .map_err(|e| DomainError::ChainError(format!("System time error: {}", e)))?
                 .as_millis() as u64,
         });
 
@@ -324,12 +324,9 @@ impl ChainBuilder {
     /// Verify skip links are correct
     pub fn verify_skip_links(&self) -> Result<bool> {
         for (i, hash) in self.sequence.iter().enumerate() {
-            let link = self
-                .links
-                .get(hash)
-                .ok_or_else(|| {
-                    DomainError::ChainError(format!("Missing link for hash at position {}", i))
-                })?;
+            let link = self.links.get(hash).ok_or_else(|| {
+                DomainError::ChainError(format!("Missing link for hash at position {}", i))
+            })?;
 
             for skip in &link.skip_links {
                 // Verify target exists

@@ -17,26 +17,22 @@ COPY services/h2-ingest/ ./services/h2-ingest/
 # Build release binary
 RUN cargo build --release --bin h2-ingest
 
-# Runtime stage
-FROM debian:bookworm-slim
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user
-RUN useradd -r -s /bin/false aether
+# Runtime stage - distroless for minimal attack surface
+FROM gcr.io/distroless/cc-debian12
 
 # Copy binary
 COPY --from=builder /app/target/release/h2-ingest /usr/local/bin/h2-ingest
 
-# Set ownership and permissions
-RUN chown aether:aether /usr/local/bin/h2-ingest
-
-USER aether
+# Run as non-root user (distroless nonroot user UID 65532)
+USER 65532:65532
 
 EXPOSE 8090
 
-CMD ["h2-ingest"]
+# Note: Distroless doesn't support HEALTHCHECK with shell commands
+# Use Kubernetes liveness/readiness probes or external monitoring instead:
+# livenessProbe:
+#   tcpSocket:
+#     port: 8090
+#   initialDelaySeconds: 10
+
+CMD ["/usr/local/bin/h2-ingest"]

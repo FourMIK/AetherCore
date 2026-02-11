@@ -36,7 +36,10 @@ impl TacticalMesh {
         seed_peers: Vec<String>,
         db_path: P,
     ) -> Result<Self, String> {
-        info!(seed_peer_count = seed_peers.len(), "Initializing tactical mesh");
+        info!(
+            seed_peer_count = seed_peers.len(),
+            "Initializing tactical mesh"
+        );
         let bunker_mode = BunkerMode::new(db_path).map_err(|e| e.to_string())?;
 
         debug!("Tactical mesh initialized successfully");
@@ -54,7 +57,7 @@ impl TacticalMesh {
     #[tracing::instrument(skip(self, peer), fields(peer_id = %peer.node_id, trust_score = %peer.trust_score))]
     pub fn add_peer(&mut self, peer: PeerInfo) -> Result<(), String> {
         debug!("Adding peer to mesh");
-        
+
         // Update peer table
         self.peer_table.upsert_peer(peer.clone())?;
 
@@ -72,13 +75,15 @@ impl TacticalMesh {
             .update_neighbor(peer.node_id.clone(), link_quality);
 
         // Check if we need to exit bunker mode
-        if self.bunker_mode.state() == &BunkerState::Isolated && self.peer_table.peer_count() > 0
-        {
+        if self.bunker_mode.state() == &BunkerState::Isolated && self.peer_table.peer_count() > 0 {
             info!("Exiting bunker mode: peers available");
             self.bunker_mode.exit_bunker_mode();
         }
 
-        info!(peer_count = self.peer_table.peer_count(), "Peer added successfully");
+        info!(
+            peer_count = self.peer_table.peer_count(),
+            "Peer added successfully"
+        );
         Ok(())
     }
 
@@ -94,7 +99,7 @@ impl TacticalMesh {
             warn!("Entering bunker mode: no peers available");
             self.bunker_mode.enter_bunker_mode();
         }
-        
+
         info!(peer_count = self.peer_table.peer_count(), "Peer removed");
     }
 
@@ -173,7 +178,11 @@ impl TacticalMesh {
     }
 
     /// Mark data as synced after successful upload
-    pub fn mark_synced(&mut self, block_hashes: Vec<Vec<u8>>, event_ids: Vec<String>) -> Result<(), String> {
+    pub fn mark_synced(
+        &mut self,
+        block_hashes: Vec<Vec<u8>>,
+        event_ids: Vec<String>,
+    ) -> Result<(), String> {
         for hash in block_hashes {
             self.bunker_mode
                 .mark_block_synced(&hash)
@@ -190,7 +199,8 @@ impl TacticalMesh {
             .bunker_mode
             .get_unsynced_count()
             .map_err(|e| e.to_string())?;
-        if block_count == 0 && event_count == 0 && self.bunker_mode.state() == &BunkerState::Syncing {
+        if block_count == 0 && event_count == 0 && self.bunker_mode.state() == &BunkerState::Syncing
+        {
             self.bunker_mode.enter_connected_state();
         }
 
@@ -244,12 +254,8 @@ mod tests {
 
     #[test]
     fn test_tactical_mesh_creation() {
-        let mesh = TacticalMesh::new(
-            "node1".to_string(),
-            vec!["seed1".to_string()],
-            ":memory:",
-        )
-        .unwrap();
+        let mesh =
+            TacticalMesh::new("node1".to_string(), vec!["seed1".to_string()], ":memory:").unwrap();
 
         let status = mesh.get_mesh_status();
         assert_eq!(status.node_id, "node1");

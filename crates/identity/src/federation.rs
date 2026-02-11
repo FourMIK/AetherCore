@@ -61,22 +61,22 @@ impl TrustLevel {
 pub struct FederatedIdentity {
     /// Unique identifier in the federated system (e.g., H2OS device ID)
     pub external_id: String,
-    
+
     /// Source system identifier (e.g., "h2os")
     pub source_system: String,
-    
+
     /// Current trust level
     pub trust_level: TrustLevel,
-    
+
     /// Timestamp of last verification (Unix epoch milliseconds)
     pub last_verified: u64,
-    
+
     /// Timestamp when identity was first ingested
     pub ingested_at: u64,
-    
+
     /// Number of successful attestation verifications
     pub attestation_count: u64,
-    
+
     /// Optional metadata from the federated system
     pub metadata: HashMap<String, String>,
 }
@@ -125,7 +125,7 @@ impl FederatedIdentity {
 pub struct FederationRegistry {
     /// Map from external ID to federated identity
     identities: HashMap<String, FederatedIdentity>,
-    
+
     /// Staleness threshold in milliseconds (default: 5 minutes)
     staleness_threshold_ms: u64,
 }
@@ -158,7 +158,8 @@ impl FederationRegistry {
         if let Some(identity) = self.identities.get_mut(&external_id) {
             identity.update_trust(trust_level, timestamp);
         } else {
-            let identity = FederatedIdentity::new(external_id.clone(), source_system, trust_level, timestamp);
+            let identity =
+                FederatedIdentity::new(external_id.clone(), source_system, trust_level, timestamp);
             self.identities.insert(external_id, identity);
         }
     }
@@ -191,12 +192,16 @@ impl FederationRegistry {
 
     /// Purge all spoofed identities
     pub fn purge_spoofed(&mut self) {
-        self.identities.retain(|_, identity| identity.trust_level != TrustLevel::Spoofed);
+        self.identities
+            .retain(|_, identity| identity.trust_level != TrustLevel::Spoofed);
     }
 
     /// Get count of identities by trust level
     pub fn count_by_trust_level(&self, level: TrustLevel) -> usize {
-        self.identities.values().filter(|i| i.trust_level == level).count()
+        self.identities
+            .values()
+            .filter(|i| i.trust_level == level)
+            .count()
     }
 
     /// Get all identities
@@ -364,12 +369,33 @@ mod tests {
     fn test_federation_registry_count_by_trust_level() {
         let mut registry = FederationRegistry::new();
 
-        registry.register("dev1".to_string(), "h2os".to_string(), TrustLevel::FederatedVerified, 1000);
-        registry.register("dev2".to_string(), "h2os".to_string(), TrustLevel::FederatedVerified, 1000);
-        registry.register("dev3".to_string(), "h2os".to_string(), TrustLevel::FederatedDegraded, 1000);
+        registry.register(
+            "dev1".to_string(),
+            "h2os".to_string(),
+            TrustLevel::FederatedVerified,
+            1000,
+        );
+        registry.register(
+            "dev2".to_string(),
+            "h2os".to_string(),
+            TrustLevel::FederatedVerified,
+            1000,
+        );
+        registry.register(
+            "dev3".to_string(),
+            "h2os".to_string(),
+            TrustLevel::FederatedDegraded,
+            1000,
+        );
 
-        assert_eq!(registry.count_by_trust_level(TrustLevel::FederatedVerified), 2);
-        assert_eq!(registry.count_by_trust_level(TrustLevel::FederatedDegraded), 1);
+        assert_eq!(
+            registry.count_by_trust_level(TrustLevel::FederatedVerified),
+            2
+        );
+        assert_eq!(
+            registry.count_by_trust_level(TrustLevel::FederatedDegraded),
+            1
+        );
         assert_eq!(registry.count_by_trust_level(TrustLevel::Spoofed), 0);
     }
 }

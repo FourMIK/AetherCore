@@ -1,13 +1,13 @@
 //! Test utilities for cross-language integration tests
 
-use aethercore_c2_router::C2GrpcServer;
 use aethercore_c2_router::authority::AuthorityVerifier;
+use aethercore_c2_router::dispatcher::CommandDispatcher;
+use aethercore_c2_router::quorum::QuorumGate;
+use aethercore_c2_router::C2GrpcServer;
 use aethercore_identity::grpc_server::proto::identity_registry_server::IdentityRegistryServer;
 use aethercore_identity::grpc_server::IdentityRegistryService;
 use aethercore_identity::{Attestation, IdentityManager, PlatformIdentity, TpmManager};
 use aethercore_trust_mesh::{TrustLevel, TrustScorer};
-use aethercore_c2_router::dispatcher::CommandDispatcher;
-use aethercore_c2_router::quorum::QuorumGate;
 use ed25519_dalek::{Signer, SigningKey};
 use rand::{rngs::OsRng, RngCore};
 use std::collections::HashMap;
@@ -44,7 +44,7 @@ impl TestDevice {
         // Generate 32 random bytes for the secret key
         let mut secret_bytes = [0u8; 32];
         OsRng.fill_bytes(&mut secret_bytes);
-        
+
         let signing_key = SigningKey::from_bytes(&secret_bytes);
         let public_key = signing_key.verifying_key().to_bytes().to_vec();
         let node_id = hex::encode(blake3::hash(&public_key).as_bytes());
@@ -125,15 +125,11 @@ pub async fn start_c2_server(
     let dispatcher = CommandDispatcher::new();
     let authority_verifier = AuthorityVerifier::new();
     let quorum_gate = QuorumGate::new(authority_verifier);
-    
-    let grpc_service = C2GrpcServer::new(
-        dispatcher,
-        quorum_gate,
-        trust_scorer,
-        identity_manager,
-    );
 
-    let c2_server = aethercore_c2_router::grpc::c2_proto::c2_router_server::C2RouterServer::new(grpc_service);
+    let grpc_service = C2GrpcServer::new(dispatcher, quorum_gate, trust_scorer, identity_manager);
+
+    let c2_server =
+        aethercore_c2_router::grpc::c2_proto::c2_router_server::C2RouterServer::new(grpc_service);
 
     tokio::spawn(async move {
         tonic::transport::Server::builder()
@@ -150,7 +146,7 @@ pub async fn start_c2_server(
 }
 
 /// Start a test C2 Router gRPC server with state
-/// 
+///
 /// Note: This creates new instances of Identity Manager and Trust Scorer for the server.
 /// Test setup should register devices and set trust scores BEFORE calling this function.
 pub async fn start_c2_server_with_state(

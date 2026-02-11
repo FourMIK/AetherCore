@@ -11,8 +11,8 @@
 use aethercore_identity::{
     install_genesis_bundle, Attestation, BootstrapNode, Certificate, CertificateAuthority,
     CertificateRequest, EnrollmentContext, EnrollmentError, EnrollmentRequest,
-    EnrollmentStateMachine, GenesisBundleGenerator, PlatformType,
-    CHALLENGE_WINDOW_MS, REQUIRED_PCRS,
+    EnrollmentStateMachine, GenesisBundleGenerator, PlatformType, CHALLENGE_WINDOW_MS,
+    REQUIRED_PCRS,
 };
 use std::collections::HashMap;
 
@@ -354,8 +354,7 @@ fn test_great_gospel_revocation() {
     sm.on_challenge_received(vec![1, 2, 3, 4]).unwrap();
     sm.on_response_sent(vec![5, 6, 7, 8]).unwrap();
     sm.on_attestation_verified(1.0).unwrap();
-    sm.on_genesis_bundle_installed(vec![9, 10, 11, 12])
-        .unwrap();
+    sm.on_genesis_bundle_installed(vec![9, 10, 11, 12]).unwrap();
     sm.on_certificate_validated("cert-final".to_string(), 1.0)
         .unwrap();
 

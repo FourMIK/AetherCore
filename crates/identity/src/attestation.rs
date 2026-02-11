@@ -853,12 +853,11 @@ fn verify_signature(data: &[u8], signature: &[u8], identity: &PlatformIdentity) 
             verifying_key.verify(data, &signature).is_ok()
         }
         SignatureAlgorithm::P256 => {
-            let verifying_key = match p256::ecdsa::VerifyingKey::from_sec1_bytes(
-                &identity.public_key,
-            ) {
-                Ok(key) => key,
-                Err(_) => return false,
-            };
+            let verifying_key =
+                match p256::ecdsa::VerifyingKey::from_sec1_bytes(&identity.public_key) {
+                    Ok(key) => key,
+                    Err(_) => return false,
+                };
             let signature = match Signature::from_der(signature) {
                 Ok(sig) => sig,
                 Err(_) => return false,
@@ -874,11 +873,10 @@ fn verify_tpm_quote(quote: &crate::TpmQuote, identity: &PlatformIdentity) -> boo
         return false;
     }
 
-    let verifying_key =
-        match p256::ecdsa::VerifyingKey::from_sec1_bytes(&identity.public_key) {
-            Ok(key) => key,
-            Err(_) => return false,
-        };
+    let verifying_key = match p256::ecdsa::VerifyingKey::from_sec1_bytes(&identity.public_key) {
+        Ok(key) => key,
+        Err(_) => return false,
+    };
     let signature = match Signature::from_der(&quote.signature) {
         Ok(sig) => sig,
         Err(_) => return false,

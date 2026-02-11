@@ -174,13 +174,13 @@ pub fn generate_hopping_pattern(
     channel_range: (ChannelId, ChannelId),
     dwell_time_ms: u64,
 ) -> HoppingPattern {
-    use rand::{Rng, SeedableRng};
     use rand::rngs::StdRng;
+    use rand::{Rng, SeedableRng};
 
     // Use BLAKE3 to properly expand seed to 32 bytes
     let seed_hash = blake3::hash(&seed);
     let seed_array = seed_hash.as_bytes();
-    
+
     let mut rng = StdRng::from_seed(*seed_array);
 
     // Generate random channel sequence

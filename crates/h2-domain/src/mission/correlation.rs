@@ -26,12 +26,7 @@ pub struct AssetMissionCorrelation {
 
 impl AssetMissionCorrelation {
     /// Create a new correlation
-    pub fn new(
-        asset_id: String,
-        mission_id: String,
-        role: String,
-        timestamp: u64,
-    ) -> Self {
+    pub fn new(asset_id: String, mission_id: String, role: String, timestamp: u64) -> Self {
         Self {
             asset_id,
             mission_id,
@@ -95,12 +90,7 @@ impl MissionCorrelator {
             .insert(asset_id.clone());
 
         // Add detailed correlation
-        let correlation = AssetMissionCorrelation::new(
-            asset_id,
-            mission_id,
-            role,
-            timestamp,
-        );
+        let correlation = AssetMissionCorrelation::new(asset_id, mission_id, role, timestamp);
         self.correlations.push(correlation);
     }
 
@@ -116,9 +106,8 @@ impl MissionCorrelator {
         }
 
         // Remove detailed correlation
-        self.correlations.retain(|c| {
-            !(c.asset_id == asset_id && c.mission_id == mission_id)
-        });
+        self.correlations
+            .retain(|c| !(c.asset_id == asset_id && c.mission_id == mission_id));
     }
 
     /// Get all missions for an asset
@@ -146,7 +135,10 @@ impl MissionCorrelator {
     }
 
     /// Get active correlations for a mission
-    pub fn active_correlations_for_mission(&self, mission_id: &str) -> Vec<&AssetMissionCorrelation> {
+    pub fn active_correlations_for_mission(
+        &self,
+        mission_id: &str,
+    ) -> Vec<&AssetMissionCorrelation> {
         self.correlations
             .iter()
             .filter(|c| c.mission_id == mission_id && c.is_active())

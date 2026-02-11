@@ -2,9 +2,9 @@
 //!
 //! Pure domain representation of canonical events with deterministic hashing
 
+use crate::error::{DomainError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use crate::error::{DomainError, Result};
 
 /// Event hash type (BLAKE3 hash as hex string)
 pub type EventHash = String;
@@ -209,41 +209,76 @@ impl CanonicalEvent {
 
         map.insert(
             "chain_height",
-            serde_json::to_value(self.chain_height)
-                .map_err(|e| DomainError::SerializationError(format!("Failed to serialize chain_height: {}", e)))?,
+            serde_json::to_value(self.chain_height).map_err(|e| {
+                DomainError::SerializationError(format!("Failed to serialize chain_height: {}", e))
+            })?,
         );
-        map.insert("device_id", serde_json::to_value(&self.device_id)
-            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize device_id: {}", e)))?);
-        map.insert("event_id", serde_json::to_value(&self.event_id)
-            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize event_id: {}", e)))?);
-        map.insert("event_type", serde_json::to_value(self.event_type)
-            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize event_type: {}", e)))?);
-        map.insert("node_id", serde_json::to_value(&self.node_id)
-            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize node_id: {}", e)))?);
-        map.insert("payload", serde_json::to_value(&self.payload)
-            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize payload: {}", e)))?);
-        map.insert("prev_hash", serde_json::to_value(&self.prev_hash)
-            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize prev_hash: {}", e)))?);
-        map.insert("sequence", serde_json::to_value(self.sequence)
-            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize sequence: {}", e)))?);
-        map.insert("timestamp", serde_json::to_value(self.timestamp)
-            .map_err(|e| DomainError::SerializationError(format!("Failed to serialize timestamp: {}", e)))?);
+        map.insert(
+            "device_id",
+            serde_json::to_value(&self.device_id).map_err(|e| {
+                DomainError::SerializationError(format!("Failed to serialize device_id: {}", e))
+            })?,
+        );
+        map.insert(
+            "event_id",
+            serde_json::to_value(&self.event_id).map_err(|e| {
+                DomainError::SerializationError(format!("Failed to serialize event_id: {}", e))
+            })?,
+        );
+        map.insert(
+            "event_type",
+            serde_json::to_value(self.event_type).map_err(|e| {
+                DomainError::SerializationError(format!("Failed to serialize event_type: {}", e))
+            })?,
+        );
+        map.insert(
+            "node_id",
+            serde_json::to_value(&self.node_id).map_err(|e| {
+                DomainError::SerializationError(format!("Failed to serialize node_id: {}", e))
+            })?,
+        );
+        map.insert(
+            "payload",
+            serde_json::to_value(&self.payload).map_err(|e| {
+                DomainError::SerializationError(format!("Failed to serialize payload: {}", e))
+            })?,
+        );
+        map.insert(
+            "prev_hash",
+            serde_json::to_value(&self.prev_hash).map_err(|e| {
+                DomainError::SerializationError(format!("Failed to serialize prev_hash: {}", e))
+            })?,
+        );
+        map.insert(
+            "sequence",
+            serde_json::to_value(self.sequence).map_err(|e| {
+                DomainError::SerializationError(format!("Failed to serialize sequence: {}", e))
+            })?,
+        );
+        map.insert(
+            "timestamp",
+            serde_json::to_value(self.timestamp).map_err(|e| {
+                DomainError::SerializationError(format!("Failed to serialize timestamp: {}", e))
+            })?,
+        );
 
         if let Some(ref metadata) = self.metadata {
-            map.insert("metadata", serde_json::to_value(metadata)
-                .map_err(|e| DomainError::SerializationError(format!("Failed to serialize metadata: {}", e)))?);
+            map.insert(
+                "metadata",
+                serde_json::to_value(metadata).map_err(|e| {
+                    DomainError::SerializationError(format!("Failed to serialize metadata: {}", e))
+                })?,
+            );
         }
 
         // Note: signature and public_key are intentionally excluded from hash computation
 
-        serde_json::to_string(&map)
-            .map_err(|e| DomainError::SerializationError(e.to_string()))
+        serde_json::to_string(&map).map_err(|e| DomainError::SerializationError(e.to_string()))
     }
 
     /// Serialize to canonical JSON including all fields
     pub fn to_canonical_json(&self) -> Result<String> {
-        serde_json::to_string(self)
-            .map_err(|e| DomainError::SerializationError(e.to_string()))
+        serde_json::to_string(self).map_err(|e| DomainError::SerializationError(e.to_string()))
     }
 
     /// Verify hash matches canonical representation
@@ -256,9 +291,8 @@ impl CanonicalEvent {
     ///
     /// Returns an error if the hash field contains invalid hex data.
     pub fn signing_bytes(&self) -> Result<Vec<u8>> {
-        hex::decode(&self.hash).map_err(|e| {
-            DomainError::ValidationError(format!("Invalid hash hex data: {}", e))
-        })
+        hex::decode(&self.hash)
+            .map_err(|e| DomainError::ValidationError(format!("Invalid hash hex data: {}", e)))
     }
 
     /// Check if event is signed

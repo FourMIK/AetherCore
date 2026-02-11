@@ -3,8 +3,8 @@
 //! Provides Ed25519 signing and verification for events in the trust mesh.
 //! Implements key management with pluggable backends.
 
-use ed25519_dalek::{Signature as Ed25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use aethercore_domain::{CanonicalEvent, PublicKey};
+use ed25519_dalek::{Signature as Ed25519Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use std::collections::HashMap;
 use thiserror::Error;
 
