@@ -3,20 +3,51 @@
  * Network topology and RF management workspace
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { GlassPanel } from '../hud/GlassPanel';
-import { Radio, Wifi, Activity, TrendingUp } from 'lucide-react';
+import { Radio, Wifi, Activity, TrendingUp, Signal } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useMeshStore } from '../../store/useMeshStore';
 
 export const MeshNetworkView: React.FC = () => {
   const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const nodeArray = Array.from(nodes.values());
+  const meshStats = useMeshStore((s) => s.meshStats);
+  const linkMetrics = useMeshStore((s) => s.linkMetrics);
+  const linkMetricsArray = Array.from(linkMetrics.values());
   
-  const meshStats = {
-    nodes: nodeArray.length,
-    connections: nodeArray.filter(n => n.status === 'online').length * 2,
-    bandwidth: '1.2 GB/s',
-    latency: '12ms',
+  // Format bandwidth for display
+  const formatBandwidth = (mbps: number): string => {
+    if (mbps >= 1000) {
+      return `${(mbps / 1000).toFixed(2)} Gb/s`;
+    }
+    return `${mbps.toFixed(1)} Mb/s`;
+  };
+
+  // Format latency for display
+  const formatLatency = (ms: number): string => {
+    if (ms < 1) {
+      return '<1ms';
+    }
+    return `${Math.round(ms)}ms`;
+  };
+
+  // Get quality color
+  const getQualityColor = (quality: string): string => {
+    switch (quality) {
+      case 'excellent':
+        return 'text-verified-green';
+      case 'good':
+        return 'text-verified-green';
+      case 'fair':
+        return 'text-overmatch';
+      case 'poor':
+        return 'text-red-500';
+      case 'critical':
+        return 'text-red-700';
+      default:
+        return 'text-tungsten';
+    }
   };
 
   return (
@@ -33,7 +64,7 @@ export const MeshNetworkView: React.FC = () => {
               <div>
                 <div className="text-tungsten/70 text-sm">Mesh Nodes</div>
                 <div className="font-display text-3xl font-bold text-tungsten mt-1">
-                  {meshStats.nodes}
+                  {nodeArray.length}
                 </div>
               </div>
               <Radio className="text-overmatch" size={24} />
@@ -45,7 +76,10 @@ export const MeshNetworkView: React.FC = () => {
               <div>
                 <div className="text-tungsten/70 text-sm">Connections</div>
                 <div className="font-display text-3xl font-bold text-verified-green mt-1">
-                  {meshStats.connections}
+                  {meshStats.connectedPeers}
+                </div>
+                <div className="text-xs text-tungsten/50 mt-1">
+                  of {meshStats.totalPeers} peers
                 </div>
               </div>
               <Wifi className="text-verified-green" size={24} />
@@ -57,7 +91,10 @@ export const MeshNetworkView: React.FC = () => {
               <div>
                 <div className="text-tungsten/70 text-sm">Throughput</div>
                 <div className="font-display text-2xl font-bold text-overmatch mt-1">
-                  {meshStats.bandwidth}
+                  {formatBandwidth(meshStats.totalBandwidthMbps)}
+                </div>
+                <div className="text-xs text-tungsten/50 mt-1">
+                  Estimated capacity
                 </div>
               </div>
               <TrendingUp className="text-overmatch" size={24} />
@@ -69,13 +106,86 @@ export const MeshNetworkView: React.FC = () => {
               <div>
                 <div className="text-tungsten/70 text-sm">Avg Latency</div>
                 <div className="font-display text-3xl font-bold text-verified-green mt-1">
-                  {meshStats.latency}
+                  {formatLatency(meshStats.averageRttMs)}
+                </div>
+                <div className="text-xs text-tungsten/50 mt-1">
+                  {(meshStats.averagePacketLoss * 100).toFixed(1)}% loss
                 </div>
               </div>
               <Activity className="text-verified-green" size={24} />
             </div>
           </GlassPanel>
         </div>
+
+        {/* Link Quality Details */}
+        {linkMetricsArray.length > 0 && (
+          <GlassPanel variant="light" className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Signal className="text-overmatch" size={24} />
+              <h2 className="font-display text-xl font-semibold text-tungsten">
+                Link Quality Metrics
+              </h2>
+            </div>
+            <div className="space-y-3">
+              {linkMetricsArray.map((link) => (
+                <div
+                  key={link.peerId}
+                  className="p-4 bg-carbon/30 border border-tungsten/10 rounded-lg"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="font-mono text-sm text-tungsten">
+                        {link.peerName || link.peerId}
+                      </div>
+                      <div className={`text-xs font-semibold uppercase ${getQualityColor(link.linkQuality)}`}>
+                        {link.linkQuality}
+                      </div>
+                    </div>
+                    <div className="text-sm text-tungsten/70">
+                      Score: {(link.linkScore * 100).toFixed(0)}%
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <div className="text-tungsten/50">RTT</div>
+                      <div className="text-tungsten font-mono">{link.rttMs}ms</div>
+                    </div>
+                    <div>
+                      <div className="text-tungsten/50">Loss</div>
+                      <div className="text-tungsten font-mono">
+                        {(link.packetLossPercent * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-tungsten/50">Trust</div>
+                      <div className="text-tungsten font-mono">
+                        {(link.trustScore * 100).toFixed(0)}%
+                      </div>
+                    </div>
+                    {link.snrDb !== undefined && (
+                      <div>
+                        <div className="text-tungsten/50">SNR</div>
+                        <div className="text-tungsten font-mono">{link.snrDb.toFixed(1)} dB</div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 h-2 bg-carbon rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-500 ${
+                        link.linkQuality === 'excellent' ? 'bg-verified-green' :
+                        link.linkQuality === 'good' ? 'bg-verified-green' :
+                        link.linkQuality === 'fair' ? 'bg-overmatch' :
+                        link.linkQuality === 'poor' ? 'bg-red-500' :
+                        'bg-red-700'
+                      }`}
+                      style={{ width: `${link.linkScore * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </GlassPanel>
+        )}
 
         {/* Mesh Topology */}
         <GlassPanel variant="light" className="p-6">
@@ -91,7 +201,7 @@ export const MeshNetworkView: React.FC = () => {
               <div>Mesh Topology Visualization</div>
               <div className="text-sm mt-1">
                 {nodeArray.length > 0 
-                  ? `${nodeArray.length} nodes in mesh network` 
+                  ? `${nodeArray.length} nodes, ${meshStats.connectedPeers} active links` 
                   : 'Add nodes to visualize mesh topology'}
               </div>
             </div>
