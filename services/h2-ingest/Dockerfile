@@ -28,9 +28,11 @@ USER 65532:65532
 
 EXPOSE 8090
 
-# Health check - Note: distroless doesn't have curl, so this needs external monitoring
-# In Kubernetes/ECS, use a liveness probe instead
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD ["/usr/local/bin/h2-ingest", "--health-check"]
+# Note: Distroless doesn't support HEALTHCHECK with shell commands
+# Use Kubernetes liveness/readiness probes or external monitoring instead:
+# livenessProbe:
+#   tcpSocket:
+#     port: 8090
+#   initialDelaySeconds: 10
 
 CMD ["/usr/local/bin/h2-ingest"]

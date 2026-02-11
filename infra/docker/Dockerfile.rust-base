@@ -69,5 +69,5 @@ COPY --from=builder /app/target/release /app/bin
 # Run as non-root user (distroless nonroot user UID 65532)
 USER 65532:65532
 
-# Default command (override in specific service images)
-CMD ["/bin/sh"]
+# Note: distroless doesn't include a shell (/bin/sh)
+# Override CMD in specific service images with actual binary paths
