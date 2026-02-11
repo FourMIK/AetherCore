@@ -27,6 +27,9 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Check required network endpoints
+        run: ./scripts/check-network-prereqs.sh
       
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
