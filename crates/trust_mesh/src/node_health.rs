@@ -321,7 +321,7 @@ impl Default for NodeHealthComputer {
 fn current_timestamp_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("System time before Unix epoch")
+        .unwrap_or(Duration::ZERO)
         .as_millis() as u64
 }
 

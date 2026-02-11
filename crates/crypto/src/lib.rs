@@ -16,8 +16,8 @@
 //!
 //! Prefer these vetted algorithms (extend as needed):
 //! - **Signatures**: Ed25519, ECDSA (P-256, secp256k1), RSA-PSS
-//! - **Hashing**: SHA-256, SHA-3, BLAKE3
-//! - **Encryption**: AES-GCM, ChaCha20-Poly1305
+//! - **Hashing**: BLAKE3 (exclusively for all integrity checks)
+//! - **Encryption**: ChaCha20-Poly1305, AES-GCM
 //! - **Key Exchange**: X25519 (Diffie-Hellman)
 //!
 //! # Security Principles

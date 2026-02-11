@@ -67,6 +67,7 @@ pub mod grpc;
 pub mod ledger;
 pub mod offline;
 pub mod quorum;
+pub mod replay_protection;
 
 // Re-export commonly used types
 pub use authority::{AuthorityError, AuthoritySignature, AuthorityVerifier};
@@ -86,3 +87,4 @@ pub use offline::{
     ConnectionState, EncryptedPacket, OfflineError, OfflineGapInfo, OfflineMateriaBuffer,
 };
 pub use quorum::{CommandScope, QuorumError, QuorumGate, QuorumProof};
+pub use replay_protection::{ReplayError, ReplayProtector, ReplayResult};
