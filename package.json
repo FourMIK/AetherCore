@@ -3,17 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "description": "AetherCore monorepo integrating H2OS/4MIK",
+  "packageManager": "pnpm@9.15.0",
   "workspaces": [
     "agent/linux",
     "packages/*",
     "services/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
-    "test": "npm run test --workspaces",
-    "lint": "npm run lint --workspaces",
+    "preinstall": "node scripts/verify-toolchain.js",
+    "build": "pnpm run build --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
+    "test": "pnpm run test --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
+    "lint": "pnpm run lint --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
     "lint:check": "eslint . --ext .ts,.tsx",
-    "clean": "npm run clean --workspaces"
+    "clean": "pnpm run clean --recursive --filter=\"./packages/*\" --filter=\"./services/*\""
   },
   "devDependencies": {
     "@types/node": "^20.10.6",
@@ -24,8 +26,8 @@
     "typescript": "^5.3.3"
   },
   "engines": {
-    "node": ">=20.0.0",
-    "npm": ">=9.0.0"
+    "node": "20.x",
+    "pnpm": "9.15.0"
   },
   "dependencies": {
     "cargo": "^0.8.0"

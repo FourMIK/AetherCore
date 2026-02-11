@@ -37,8 +37,6 @@ jobs:
       
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
       
       - name: Install system dependencies
         run: |
@@ -80,8 +78,6 @@ jobs:
       
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
       
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked
@@ -114,29 +110,20 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: '20'
+          cache: 'pnpm'
       
-      - name: Cache node_modules
-        uses: actions/cache@v3
-        with:
-          path: |
-            node_modules
-            */*/node_modules
-            packages/*/node_modules
-            services/*/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+      - name: Enable Corepack
+        run: corepack enable
       
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       
       - name: Build all packages and services
-        run: npm run build --workspaces
+        run: pnpm run build
       
       - name: Run tests
-        run: npm run test --workspaces
+        run: pnpm run test
 
   legacy-isolation:
     name: Check Legacy Isolation
@@ -316,14 +303,12 @@ jobs:
       
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: '20'
+          cache: 'pnpm'
       
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -351,23 +336,26 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-desktop-${{ hashFiles('**/Cargo.lock') }}
       
+      - name: Enable Corepack
+        run: corepack enable
+      
       - name: Install npm dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       
       - name: Install Tauri CLI
         run: |
           cd packages/dashboard
-          npm install --save-dev @tauri-apps/cli
+          pnpm add -D @tauri-apps/cli@2.9.6
       
       - name: Build Dashboard TypeScript
         run: |
           cd packages/dashboard
-          npm run build
+          pnpm run build
       
       - name: Build Tauri App
         run: |
           cd packages/dashboard
-          npx tauri build
+          pnpm tauri build
       
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -389,8 +377,6 @@ jobs:
       
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
       
       - name: Install cross
         run: cargo install cross --git https://github.com/cross-rs/cross
