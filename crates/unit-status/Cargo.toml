@@ -19,6 +19,9 @@ tokio = { workspace = true, features = ["full"] }
 tokio-tungstenite = "0.21"
 futures-util = "0.3"
 tracing = { workspace = true }
+ed25519-dalek = { workspace = true }
+base64 = "0.22"
 
 [dev-dependencies]
 tokio = { workspace = true }
+rand = { workspace = true }
