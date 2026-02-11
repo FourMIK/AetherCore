@@ -8,28 +8,9 @@ import { z } from 'zod';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import pino from 'pino';
+import { parseTpmEnabled } from './tpm';
 
 dotenv.config();
-
-// Parse TPM_ENABLED environment variable
-function parseTpmEnabled(): boolean {
-  const value = process.env.TPM_ENABLED;
-  if (value === undefined || value === '') {
-    return true; // Default: enabled
-  }
-  const normalized = value.toLowerCase().trim();
-  if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') {
-    return false;
-  }
-  if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
-    return true;
-  }
-  // Invalid value - log warning and use default
-  logger.warn({ tpm_enabled_value: value }, 'Invalid TPM_ENABLED value, defaulting to true. Valid values: true/false, 1/0, yes/no, on/off');
-  return true; // Default if invalid value
-}
-
-const TPM_ENABLED = parseTpmEnabled();
 
 // Initialize structured logger
 const logger = pino({
@@ -43,6 +24,12 @@ const logger = pino({
     ? {}
     : { transport: { target: 'pino-pretty', options: { colorize: true } } }),
 });
+
+const parsedTpmEnabled = parseTpmEnabled(process.env.TPM_ENABLED);
+if (parsedTpmEnabled.warning) {
+  logger.warn({ tpm_enabled_value: process.env.TPM_ENABLED }, parsedTpmEnabled.warning);
+}
+const TPM_ENABLED = parsedTpmEnabled.value;
 
 const PORT = process.env.PORT || 3000;
 const C2_GRPC_TARGET = process.env.C2_ADDR || 'localhost:50051';
