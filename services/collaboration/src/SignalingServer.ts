@@ -11,6 +11,7 @@
  */
 
 import { WebSocket, WebSocketServer } from 'ws';
+import { createServer, IncomingMessage, ServerResponse } from 'http';
 import {
   SignedSignal,
   SignedSignalSchema,
@@ -70,20 +71,48 @@ export class SignalingServer {
       eventHandler,
     );
 
-    // Initialize WebSocket server
-    this.wss = new WebSocketServer({ port: config.port });
+    // Create HTTP server with health check endpoint
+    const httpServer = createServer(this.handleHttpRequest.bind(this));
+
+    // Initialize WebSocket server on the same HTTP server
+    this.wss = new WebSocketServer({ server: httpServer });
+
+    // Start listening with error handling
+    httpServer.listen(config.port, () => {
+      console.log(
+        `[SignalingServer] PRODUCTION MODE - Hardware-backed signatures enabled`,
+      );
+      console.log(`[SignalingServer] Listening on port ${config.port}`);
+      console.log(
+        `[SignalingServer] Identity Registry: ${config.identityRegistryAddress}`,
+      );
+    });
+
+    httpServer.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`[SignalingServer] ERROR: Port ${config.port} is already in use`);
+      } else {
+        console.error(`[SignalingServer] ERROR: Failed to start server on port ${config.port}:`, err.message);
+      }
+      throw err;
+    });
 
     this.wss.on('connection', (ws: WebSocket) => {
       this.handleConnection(ws);
     });
+  }
 
-    console.log(
-      `[SignalingServer] PRODUCTION MODE - Hardware-backed signatures enabled`,
-    );
-    console.log(`[SignalingServer] Listening on port ${config.port}`);
-    console.log(
-      `[SignalingServer] Identity Registry: ${config.identityRegistryAddress}`,
-    );
+  /**
+   * Handle HTTP requests (health check endpoint)
+   */
+  private handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
+    if (req.url === '/health' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok' }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
   }
 
   /**

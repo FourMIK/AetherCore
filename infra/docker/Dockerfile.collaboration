@@ -28,6 +28,9 @@ COPY --from=builder /app/services/collaboration/dist ./dist
 COPY --from=builder /app/services/collaboration/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
+# Copy proto files to expected runtime location
+COPY --from=builder /app/services/collaboration/proto ./proto
+
 # Environment variables
 ENV NODE_ENV=production
 ENV PORT=8080

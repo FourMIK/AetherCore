@@ -14,6 +14,7 @@
     "build:full": "npm run build:warhead && npm run package:payloads",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
+    "test": "echo \"No tests yet\"",
     "clean": "rm -rf dist"
   },
   "keywords": ["aethercore", "identity", "linux", "pi", "coderalphie", "warhead"],

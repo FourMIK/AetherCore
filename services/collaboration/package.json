@@ -10,7 +10,7 @@
     "start": "node dist/index.js",
     "dev": "npm run build && npm start",
     "test": "echo \"No tests yet\"",
-    "lint": "echo \"No linting configured yet\""
+    "lint": "eslint src --ext .ts"
   },
   "keywords": ["aethercore", "collaboration", "guardian", "webrtc", "signaling"],
   "author": "AetherCore Team",

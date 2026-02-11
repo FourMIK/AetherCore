@@ -108,6 +108,18 @@ This starts:
 - Auth service on port 3001
 - Collaboration service on port 8080
 
+**Note**: The enrollment service is not included in the Docker Compose stack. Enrollment functionality must be added and configured separately if required.
+
+### Health Check Endpoints
+
+All services expose HTTP health check endpoints for readiness probes:
+
+- **Gateway**: `GET http://localhost:3000/health` - Returns HTTP 200 OK
+- **Auth**: `GET http://localhost:3001/health` - Returns HTTP 200 OK
+- **Collaboration**: `GET http://localhost:8080/health` - Returns HTTP 200 OK
+
+These endpoints are used by Docker Compose and Kubernetes for readiness/liveness probes.
+
 ## Service Endpoints
 
 After deployment, access services through the ALB:

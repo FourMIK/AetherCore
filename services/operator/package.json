@@ -5,7 +5,9 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "start": "ts-node src/index.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "echo \"No tests yet\"",
+    "lint": "echo \"No linting configured yet\""
   },
   "dependencies": {
     "express": "^4.18.2",
