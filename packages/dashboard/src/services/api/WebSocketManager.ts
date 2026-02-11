@@ -17,6 +17,7 @@ import { useCommStore } from '../../store/useCommStore';
 import { getRuntimeConfig } from '../../config/runtime';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'unverified' | 'severed';
+export type ConnectionState = 'connected' | 'intermittent' | 'disconnected';
 
 // Constants for TPM-disabled mode
 const UNSIGNED_TPM_SIGNATURE = 'unsigned-tpm-disabled';
@@ -32,13 +33,18 @@ export class WebSocketManager {
   private connection: HubConnection | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
+  private heartbeatTimeoutCheck: NodeJS.Timeout | null = null;
   private url: string;
   private connectionStatus: ConnectionStatus = 'disconnected';
+  private connectionState: ConnectionState = 'disconnected';
   private deviceId: string | null = null; // Cached hardware ID
   private reconnectAttempts: number = 0;
   private readonly maxReconnectAttempts: number = 10;
   private readonly initialRetryDelay: number = 1000; // 1 second
   private readonly maxRetryDelay: number = 30000; // 30 seconds
+  private lastHeartbeatAck: number = 0; // Timestamp of last successful heartbeat ack
+  private readonly intermittentThreshold: number = 500; // 500ms threshold for intermittent
+  private readonly disconnectedThreshold: number = 2000; // 2000ms threshold for disconnected
 
   constructor(url: string) {
     this.url = url; // e.g., "http://localhost:5000/h2-tactical"
@@ -99,7 +105,9 @@ export class WebSocketManager {
         // 3. Setup Listeners (Receive from Bunker)
         this.connection.on("HeartbeatAck", (data) => {
             console.debug('[AETHERIC LINK] Pulse confirmed by Bunker:', data);
+            this.lastHeartbeatAck = Date.now(); // Update last ack timestamp
             if (this.connectionStatus !== 'connected') this.setConnectionStatus('connected');
+            this.setConnectionState('connected'); // Update connection state
             this.reconnectAttempts = 0; // Reset on successful heartbeat
         });
 
@@ -200,22 +208,65 @@ export class WebSocketManager {
 
   private startAethericLink(): void {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    if (this.heartbeatTimeoutCheck) clearInterval(this.heartbeatTimeoutCheck);
 
     // Initial pulse
     this.sendHeartbeat();
+    this.lastHeartbeatAck = Date.now(); // Initialize timestamp
 
-    // 5-second cadence
+    // 5-second cadence for heartbeat
     this.heartbeatInterval = setInterval(() => {
         if (this.connection?.state === HubConnectionState.Connected) {
             this.sendHeartbeat();
         }
     }, 5000);
+
+    // 100ms check cadence for heartbeat timeout monitoring
+    this.heartbeatTimeoutCheck = setInterval(() => {
+        this.checkHeartbeatTimeout();
+    }, 100);
   }
 
   private stopAethericLink(): void {
     if (this.heartbeatInterval) {
         clearInterval(this.heartbeatInterval);
         this.heartbeatInterval = null;
+    }
+    if (this.heartbeatTimeoutCheck) {
+        clearInterval(this.heartbeatTimeoutCheck);
+        this.heartbeatTimeoutCheck = null;
+    }
+  }
+
+  /**
+   * Check heartbeat timeout and update connection state
+   * Heartbeat Sentinel: Monitors time since last heartbeat acknowledgment
+   */
+  private checkHeartbeatTimeout(): void {
+    if (this.connectionStatus !== 'connected' && this.connectionStatus !== 'unverified') {
+        // Don't check heartbeat if not in connected/unverified state
+        return;
+    }
+
+    const timeSinceLastAck = Date.now() - this.lastHeartbeatAck;
+
+    if (timeSinceLastAck > this.disconnectedThreshold) {
+        // More than 2000ms since last ack - DISCONNECTED state
+        if (this.connectionState !== 'disconnected') {
+            console.warn('[HEARTBEAT SENTINEL] Signal degraded - DISCONNECTED');
+            this.setConnectionState('disconnected');
+        }
+    } else if (timeSinceLastAck > this.intermittentThreshold) {
+        // Between 500ms and 2000ms - INTERMITTENT state
+        if (this.connectionState !== 'intermittent') {
+            console.warn('[HEARTBEAT SENTINEL] Signal degraded - INTERMITTENT');
+            this.setConnectionState('intermittent');
+        }
+    } else {
+        // Less than 500ms - CONNECTED state
+        if (this.connectionState !== 'connected') {
+            this.setConnectionState('connected');
+        }
     }
   }
 
@@ -278,11 +329,23 @@ export class WebSocketManager {
     useCommStore.getState().setConnectionStatus(status);
   }
 
+  private setConnectionState(state: ConnectionState): void {
+    this.connectionState = state;
+    useCommStore.getState().setConnectionState?.(state);
+  }
+
   /**
    * Get current connection status
    */
   public getStatus(): ConnectionStatus {
     return this.connectionStatus;
+  }
+
+  /**
+   * Get current connection state (for UI degradation)
+   */
+  public getConnectionState(): ConnectionState {
+    return this.connectionState;
   }
 }
 
