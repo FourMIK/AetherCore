@@ -11,6 +11,26 @@ import pino from 'pino';
 
 dotenv.config();
 
+// Parse TPM_ENABLED environment variable
+function parseTpmEnabled(): boolean {
+  const value = process.env.TPM_ENABLED;
+  if (value === undefined || value === '') {
+    return true; // Default: enabled
+  }
+  const normalized = value.toLowerCase().trim();
+  if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') {
+    return false;
+  }
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
+    return true;
+  }
+  // Invalid value - log warning and use default
+  logger.warn({ tpm_enabled_value: value }, 'Invalid TPM_ENABLED value, defaulting to true. Valid values: true/false, 1/0, yes/no, on/off');
+  return true; // Default if invalid value
+}
+
+const TPM_ENABLED = parseTpmEnabled();
+
 // Initialize structured logger
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
@@ -34,7 +54,12 @@ logger.info({
   port: PORT,
   c2_target: C2_GRPC_TARGET,
   bunker_endpoint: AETHER_BUNKER_ENDPOINT,
+  tpm_enabled: TPM_ENABLED,
 }, 'Gateway service configuration loaded');
+
+if (!TPM_ENABLED) {
+  logger.warn('TPM is DISABLED - Hardware-rooted trust features are not active. Security guarantees reduced.');
+}
 
 const CommandSchema = z.object({
   id: z.string().uuid(),

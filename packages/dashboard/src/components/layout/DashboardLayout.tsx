@@ -22,10 +22,12 @@ import { DeploymentManagementView } from '../workspaces/DeploymentManagementView
 import { RalphieNodeProvisioning } from '../RalphieNodeProvisioning';
 import { VideoCallPanel } from '../comms/VideoCallPanel';
 import { DevModeBanner } from './DevModeBanner';
+import { TpmDisabledBanner } from './TpmDisabledBanner';
 import { SettingsPanel } from '../SettingsPanel';
 import { ConnectionStatusIndicator } from '../ConnectionStatus';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { useCommStore } from '../../store/useCommStore';
+import { getRuntimeConfig } from '../../config/runtime';
 import { Plus } from 'lucide-react';
 
 export const DashboardLayout: React.FC = () => {
@@ -38,6 +40,8 @@ export const DashboardLayout: React.FC = () => {
 
   const [showWizard, setShowWizard] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>('tactical');
+  
+  const { tpmEnabled } = getRuntimeConfig();
 
   const verifiedCount = Array.from(nodes.values()).filter((n) => n.verified).length;
   const totalCount = nodes.size;
@@ -104,6 +108,9 @@ export const DashboardLayout: React.FC = () => {
 
       {/* Dev Mode Banner */}
       <DevModeBanner />
+      
+      {/* TPM Disabled Banner - shown when TPM is disabled */}
+      {!tpmEnabled && <TpmDisabledBanner />}
 
       {/* TopBar - Fixed Height */}
       <div className="flex items-center gap-4 p-4 pb-2 flex-shrink-0">

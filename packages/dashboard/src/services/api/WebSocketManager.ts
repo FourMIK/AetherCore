@@ -14,8 +14,12 @@
 import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr';
 import { TauriCommands } from '../../api/tauri-commands';
 import { useCommStore } from '../../store/useCommStore';
+import { getRuntimeConfig } from '../../config/runtime';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'unverified' | 'severed';
+
+// Constants for TPM-disabled mode
+const UNSIGNED_TPM_SIGNATURE = 'unsigned-tpm-disabled';
 
 // Must match AetherBunker/Models/HeartbeatPayload.cs
 export interface HeartbeatPayload {
@@ -226,16 +230,28 @@ export class WebSocketManager {
         // Create the string to sign: DeviceID + Timestamp ensures uniqueness
         const signablePayload = `${this.deviceId}:${timestamp}`;
 
-        // Hardware Signing (Fail-Visible point)
-        const result = await TauriCommands.signHeartbeatPayload(signablePayload);
+        // Check if TPM is enabled
+        const { tpmEnabled } = getRuntimeConfig();
         
-        if (!result.success) {
-            throw new Error(`TPM signing failed: ${result.error}`);
+        let signature: string;
+        if (tpmEnabled) {
+            // Hardware Signing (Fail-Visible point)
+            const result = await TauriCommands.signHeartbeatPayload(signablePayload);
+            
+            if (!result.success) {
+                throw new Error(`TPM signing failed: ${result.error}`);
+            }
+            signature = result.data;
+        } else {
+            // TPM disabled: send unsigned/placeholder signature
+            // Backend should accept this when TPM_ENABLED=false
+            console.debug('[AETHERIC LINK] TPM disabled - sending unsigned heartbeat');
+            signature = UNSIGNED_TPM_SIGNATURE;
         }
 
         const payload: HeartbeatPayload = {
             deviceId: this.deviceId,
-            signature: result.data,
+            signature: signature,
             timestamp: timestamp
         };
 
@@ -244,8 +260,16 @@ export class WebSocketManager {
 
     } catch (error) {
         console.error('[AETHERIC LINK] Pulse Generation Failed:', error);
-        // If we can't sign, we can't talk. Sever.
-        this.severLink("TPM Signing Failure");
+        
+        const { tpmEnabled } = getRuntimeConfig();
+        if (tpmEnabled) {
+            // If TPM is enabled and signing fails, we must sever (Fail-Visible)
+            this.severLink("TPM Signing Failure");
+        } else {
+            // If TPM is disabled, log error but don't sever the link
+            // This allows operation without TPM in non-production environments
+            console.warn('[AETHERIC LINK] Heartbeat failed in TPM-disabled mode, but link remains active');
+        }
     }
   }
 
