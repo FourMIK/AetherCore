@@ -24,25 +24,25 @@ pub type Result<T> = std::result::Result<T, LedgerError>;
 pub struct ComplianceProof {
     /// Timestamp of compliance verification (UNIX epoch milliseconds)
     pub timestamp: u64,
-    
+
     /// Node or build identifier performing the verification
     pub verifier_id: String,
-    
+
     /// Compliance status: "COMPLIANT", "NON_COMPLIANT", "UNVERIFIED"
     pub status: String,
-    
+
     /// Total dependencies audited
     pub total_dependencies: u64,
-    
+
     /// Dependencies with approved licenses
     pub approved_licenses: u64,
-    
+
     /// Dependencies requiring manual review
     pub flagged_dependencies: Vec<String>,
-    
+
     /// BLAKE3 hash of LICENSE_MANIFEST.txt
     pub manifest_hash: String,
-    
+
     /// Optional notes or violation details
     pub notes: Option<String>,
 }
@@ -103,7 +103,7 @@ pub struct LedgerState {
 
     /// Latest sequence number per node
     pub latest_seq: HashMap<String, u64>,
-    
+
     /// Operation Legal Shield: Compliance proof history
     pub compliance_proofs: Vec<ComplianceProof>,
 }
@@ -137,17 +137,17 @@ impl LedgerState {
         let seq_no = self.latest_seq.get(node_id)?;
         self.checkpoints.get(&(node_id.to_string(), *seq_no))
     }
-    
+
     /// Record a compliance proof in The Great Gospel
     pub fn record_compliance_proof(&mut self, proof: ComplianceProof) {
         self.compliance_proofs.push(proof);
     }
-    
+
     /// Get all compliance proofs
     pub fn get_compliance_proofs(&self) -> &[ComplianceProof] {
         &self.compliance_proofs
     }
-    
+
     /// Get the latest compliance proof for a given verifier
     pub fn get_latest_compliance_proof(&self, verifier_id: &str) -> Option<&ComplianceProof> {
         self.compliance_proofs
@@ -188,12 +188,12 @@ impl DistributedLedger {
     pub fn add_checkpoint(&mut self, checkpoint: LedgerCheckpoint) {
         self.state.add_checkpoint(checkpoint);
     }
-    
+
     /// Record a license compliance verification event
     pub fn record_compliance_proof(&mut self, proof: ComplianceProof) {
         self.state.record_compliance_proof(proof);
     }
-    
+
     /// Query compliance proofs
     pub fn get_compliance_proofs(&self) -> &[ComplianceProof] {
         self.state.get_compliance_proofs()
@@ -212,7 +212,7 @@ mod tests {
             100,
             "blake3:abc123".to_string(),
         );
-        
+
         assert_eq!(proof.status, "COMPLIANT");
         assert_eq!(proof.total_dependencies, 100);
         assert_eq!(proof.approved_licenses, 100);
@@ -230,7 +230,7 @@ mod tests {
             "blake3:def456".to_string(),
             Some("GPL violations detected".to_string()),
         );
-        
+
         assert_eq!(proof.status, "NON_COMPLIANT");
         assert_eq!(proof.flagged_dependencies.len(), 2);
         assert!(proof.notes.is_some());
@@ -239,16 +239,12 @@ mod tests {
     #[test]
     fn test_ledger_compliance_recording() {
         let mut ledger = DistributedLedger::new("test-node".to_string());
-        
-        let proof1 = ComplianceProof::compliant(
-            "build-001".to_string(),
-            50,
-            50,
-            "blake3:hash1".to_string(),
-        );
-        
+
+        let proof1 =
+            ComplianceProof::compliant("build-001".to_string(), 50, 50, "blake3:hash1".to_string());
+
         ledger.record_compliance_proof(proof1);
-        
+
         let proofs = ledger.get_compliance_proofs();
         assert_eq!(proofs.len(), 1);
         assert_eq!(proofs[0].verifier_id, "build-001");

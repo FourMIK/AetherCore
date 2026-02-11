@@ -67,7 +67,7 @@ impl IntegrityStatus {
         self.total_events += 1;
         self.valid_events += 1;
         self.last_check_ns = current_time_ns();
-        
+
         // Update verification status
         if self.total_events > 0 && self.broken_events == 0 {
             self.verification_status = VerificationStatus::Verified;
@@ -87,7 +87,7 @@ impl IntegrityStatus {
         self.is_compromised = true;
         self.verification_status = VerificationStatus::Spoofed;
         self.compromise_reason = Some(reason.clone());
-        
+
         tracing::error!(
             stream_id = %self.stream_id,
             reason = %reason,
@@ -101,7 +101,7 @@ impl IntegrityStatus {
         self.is_compromised = false;
         self.compromise_reason = None;
         self.broken_events = 0;
-        
+
         // Recalculate status
         if self.total_events > 0 && self.valid_events > 0 {
             self.verification_status = VerificationStatus::Verified;
@@ -192,10 +192,7 @@ impl StreamIntegrityTracker {
 
     /// Get all compromised streams
     pub fn get_compromised_streams(&self) -> Vec<&IntegrityStatus> {
-        self.streams
-            .values()
-            .filter(|s| s.is_compromised)
-            .collect()
+        self.streams.values().filter(|s| s.is_compromised).collect()
     }
 
     /// Reset compromise status for a stream
@@ -238,7 +235,10 @@ mod tests {
     fn test_integrity_status_new() {
         let status = IntegrityStatus::new("test-stream".to_string());
         assert_eq!(status.stream_id, "test-stream");
-        assert_eq!(status.verification_status, VerificationStatus::StatusUnverified);
+        assert_eq!(
+            status.verification_status,
+            VerificationStatus::StatusUnverified
+        );
         assert_eq!(status.total_events, 0);
         assert!(!status.is_compromised);
     }
@@ -247,7 +247,7 @@ mod tests {
     fn test_record_valid_event() {
         let mut status = IntegrityStatus::new("test-stream".to_string());
         status.record_valid_event();
-        
+
         assert_eq!(status.total_events, 1);
         assert_eq!(status.valid_events, 1);
         assert_eq!(status.verification_status, VerificationStatus::Verified);
@@ -258,7 +258,7 @@ mod tests {
     fn test_record_broken_event() {
         let mut status = IntegrityStatus::new("test-stream".to_string());
         status.record_broken_event("Hash mismatch".to_string());
-        
+
         assert_eq!(status.total_events, 1);
         assert_eq!(status.broken_events, 1);
         assert_eq!(status.verification_status, VerificationStatus::Spoofed);
@@ -271,10 +271,10 @@ mod tests {
         let mut status = IntegrityStatus::new("test-stream".to_string());
         status.record_broken_event("Hash mismatch".to_string());
         assert!(status.is_compromised);
-        
+
         status.record_valid_event();
         status.reset_compromise();
-        
+
         assert!(!status.is_compromised);
         assert_eq!(status.broken_events, 0);
         assert!(status.get_compromise_reason().is_none());
@@ -283,18 +283,18 @@ mod tests {
     #[test]
     fn test_stream_integrity_tracker() {
         let mut tracker = StreamIntegrityTracker::new();
-        
+
         // Create stream
         let status = tracker.get_or_create("stream-1");
         status.record_valid_event();
-        
+
         assert_eq!(tracker.stream_count(), 1);
         assert!(!tracker.is_stream_compromised("stream-1"));
-        
+
         // Mark as compromised
         let status = tracker.get_or_create("stream-1");
         status.record_broken_event("Test failure".to_string());
-        
+
         assert!(tracker.is_stream_compromised("stream-1"));
         assert_eq!(tracker.get_compromised_streams().len(), 1);
     }
@@ -302,11 +302,13 @@ mod tests {
     #[test]
     fn test_multiple_streams() {
         let mut tracker = StreamIntegrityTracker::new();
-        
+
         tracker.get_or_create("stream-1").record_valid_event();
         tracker.get_or_create("stream-2").record_valid_event();
-        tracker.get_or_create("stream-3").record_broken_event("Test".to_string());
-        
+        tracker
+            .get_or_create("stream-3")
+            .record_broken_event("Test".to_string());
+
         assert_eq!(tracker.stream_count(), 3);
         assert_eq!(tracker.get_compromised_streams().len(), 1);
         assert!(tracker.is_stream_compromised("stream-3"));
@@ -316,7 +318,7 @@ mod tests {
     #[test]
     fn test_sequence_validation_accepts_increasing() {
         let mut status = IntegrityStatus::new("test-stream".to_string());
-        
+
         assert!(status.validate_sequence(1).is_ok());
         assert!(status.validate_sequence(2).is_ok());
         assert!(status.validate_sequence(100).is_ok());
@@ -326,14 +328,14 @@ mod tests {
     #[test]
     fn test_sequence_validation_rejects_replay() {
         let mut status = IntegrityStatus::new("test-stream".to_string());
-        
+
         assert!(status.validate_sequence(10).is_ok());
-        
+
         // Replay with same sequence
         let result = status.validate_sequence(10);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Replay attack"));
-        
+
         // Replay with lower sequence
         let result = status.validate_sequence(5);
         assert!(result.is_err());
@@ -343,9 +345,9 @@ mod tests {
     #[test]
     fn test_sequence_validation_warns_on_large_gap() {
         let mut status = IntegrityStatus::new("test-stream".to_string());
-        
+
         assert!(status.validate_sequence(10).is_ok());
-        
+
         // Large gap should still be accepted but logged
         let result = status.validate_sequence(2000);
         assert!(result.is_ok());
@@ -355,15 +357,15 @@ mod tests {
     #[test]
     fn test_tracker_validates_sequence() {
         let mut tracker = StreamIntegrityTracker::new();
-        
+
         // First event
         assert!(tracker.validate_sequence("stream-1", 1).is_ok());
         assert!(tracker.validate_sequence("stream-1", 2).is_ok());
-        
+
         // Replay attack
         let result = tracker.validate_sequence("stream-1", 1);
         assert!(result.is_err());
-        
+
         // Different stream should work
         assert!(tracker.validate_sequence("stream-2", 1).is_ok());
     }
@@ -372,7 +374,7 @@ mod tests {
     fn test_sequence_starts_at_zero() {
         let status = IntegrityStatus::new("test-stream".to_string());
         assert_eq!(status.last_sequence_id, 0);
-        
+
         // First sequence ID of 1 should be valid
         let mut status = status;
         assert!(status.validate_sequence(1).is_ok());

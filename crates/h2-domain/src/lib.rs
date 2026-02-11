@@ -1,32 +1,34 @@
 //! AetherCore H2-Domain
-//! 
+//!
 //! H2OS domain integration layer with PowerMIK industrial standardization.
-//! 
+//!
 //! This crate provides:
 //! - Hardware-rooted sensor schemas (Materia Slots)
 //! - Byzantine-resilient actuation (quorum-based commands)
 //! - Safety systems (heartbeat monitoring, dead man's switch)
 //! - Alarm aggregation with attestation binding
-//! 
+//!
 //! **Note**: This crate is allowed to reference `/legacy` according to monorepo rules.
 
 #![warn(missing_docs)]
 
-pub mod materia;
 pub mod actuation;
-pub mod safety;
 pub mod alarms;
 pub mod bridge;
 pub mod fleet;
+pub mod materia;
 pub mod mission;
+pub mod safety;
 pub mod sentinel;
 
 // Re-export key types for convenience
-pub use materia::{MateriaSlot, MerkleVineLink, TpmAttestation};
-pub use actuation::{QuorumProof, ValveCommand, SafetyReason};
-pub use safety::{Heartbeat, DeadManSwitch, SystemMode};
-pub use alarms::{AlarmCode, AttestedAlarm, AlertSeverity, AlertCategory, AttestedAlert, AlertAcknowledgment};
+pub use actuation::{QuorumProof, SafetyReason, ValveCommand};
+pub use alarms::{
+    AlarmCode, AlertAcknowledgment, AlertCategory, AlertSeverity, AttestedAlarm, AttestedAlert,
+};
 pub use bridge::{EventMapper, H2OSTelemetryAdapter};
-pub use fleet::{FleetRegistry, MobileAsset, TowableAsset, FixedInstallation, SensorNode};
-pub use mission::{Dispatch, DispatchState, ScheduledMission, MissionCorrelator};
+pub use fleet::{FixedInstallation, FleetRegistry, MobileAsset, SensorNode, TowableAsset};
+pub use materia::{MateriaSlot, MerkleVineLink, TpmAttestation};
+pub use mission::{Dispatch, DispatchState, MissionCorrelator, ScheduledMission};
+pub use safety::{DeadManSwitch, Heartbeat, SystemMode};
 pub use sentinel::SentinelEngine;

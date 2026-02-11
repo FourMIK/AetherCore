@@ -16,25 +16,25 @@ pub type TelemetryTransform = Result<TransformedTelemetry, TelemetryError>;
 pub struct TransformedTelemetry {
     /// Event type
     pub event_type: String,
-    
+
     /// Sensor type (for telemetry)
     pub sensor_type: Option<String>,
-    
+
     /// Value (for telemetry)
     pub value: Option<f64>,
-    
+
     /// Unit of measurement (for telemetry)
     pub unit: Option<String>,
-    
+
     /// GPS data (if applicable)
     pub gps_data: Option<GPSData>,
-    
+
     /// Metadata
     pub metadata: BTreeMap<String, serde_json::Value>,
-    
+
     /// Previous hash (BLAKE3)
     pub prev_hash: Vec<u8>,
-    
+
     /// Timestamp in milliseconds
     pub timestamp_ms: u64,
 }
@@ -60,15 +60,15 @@ pub enum TelemetryError {
     /// Sensor reading failed validation
     #[error("Invalid sensor reading: {0}")]
     InvalidReading(String),
-    
+
     /// Required telemetry field is missing
     #[error("Missing required field: {0}")]
     MissingField(String),
-    
+
     /// Hash chain validation failed, possible replay
     #[error("Replay attack detected: hash chain validation failed")]
     ReplayAttack,
-    
+
     /// Timestamp was invalid or outside allowed window
     #[error("Invalid timestamp: {0}")]
     InvalidTimestamp(String),
@@ -105,10 +105,16 @@ impl H2OSTelemetryAdapter {
         federation_id: &str,
     ) -> TelemetryTransform {
         let mut metadata = self.mapper.map_sensor_metadata(sensor_id, device_id, None);
-        self.mapper.inject_provenance(&mut metadata, federation_id, H2OSEventType::PT100Temperature);
+        self.mapper.inject_provenance(
+            &mut metadata,
+            federation_id,
+            H2OSEventType::PT100Temperature,
+        );
 
         Ok(TransformedTelemetry {
-            event_type: H2OSEventType::PT100Temperature.to_canonical_type().to_string(),
+            event_type: H2OSEventType::PT100Temperature
+                .to_canonical_type()
+                .to_string(),
             sensor_type: Some("PT100".to_string()),
             value: Some(temperature_c),
             unit: Some("celsius".to_string()),
@@ -130,10 +136,16 @@ impl H2OSTelemetryAdapter {
         federation_id: &str,
     ) -> TelemetryTransform {
         let mut metadata = self.mapper.map_sensor_metadata(sensor_id, device_id, None);
-        self.mapper.inject_provenance(&mut metadata, federation_id, H2OSEventType::PT110Temperature);
+        self.mapper.inject_provenance(
+            &mut metadata,
+            federation_id,
+            H2OSEventType::PT110Temperature,
+        );
 
         Ok(TransformedTelemetry {
-            event_type: H2OSEventType::PT110Temperature.to_canonical_type().to_string(),
+            event_type: H2OSEventType::PT110Temperature
+                .to_canonical_type()
+                .to_string(),
             sensor_type: Some("PT110".to_string()),
             value: Some(temperature_c),
             unit: Some("celsius".to_string()),
@@ -155,7 +167,8 @@ impl H2OSTelemetryAdapter {
         federation_id: &str,
     ) -> TelemetryTransform {
         let mut metadata = self.mapper.map_sensor_metadata(sensor_id, device_id, None);
-        self.mapper.inject_provenance(&mut metadata, federation_id, H2OSEventType::PS110Pressure);
+        self.mapper
+            .inject_provenance(&mut metadata, federation_id, H2OSEventType::PS110Pressure);
 
         Ok(TransformedTelemetry {
             event_type: H2OSEventType::PS110Pressure.to_canonical_type().to_string(),
@@ -181,12 +194,10 @@ impl H2OSTelemetryAdapter {
         federation_id: &str,
     ) -> TelemetryTransform {
         let mut metadata = self.mapper.map_sensor_metadata(sensor_id, device_id, None);
-        self.mapper.inject_provenance(&mut metadata, federation_id, H2OSEventType::H2Detection);
-        
-        metadata.insert(
-            "h2_detected".to_string(),
-            serde_json::Value::Bool(detected),
-        );
+        self.mapper
+            .inject_provenance(&mut metadata, federation_id, H2OSEventType::H2Detection);
+
+        metadata.insert("h2_detected".to_string(), serde_json::Value::Bool(detected));
 
         // Default to 1.0 PPM when H2 is detected but concentration not specified
         // This indicates detection occurred but quantification was not available
@@ -222,7 +233,8 @@ impl H2OSTelemetryAdapter {
         federation_id: &str,
     ) -> TelemetryTransform {
         let mut metadata = self.mapper.map_sensor_metadata("gps", device_id, None);
-        self.mapper.inject_provenance(&mut metadata, federation_id, H2OSEventType::GPSPosition);
+        self.mapper
+            .inject_provenance(&mut metadata, federation_id, H2OSEventType::GPSPosition);
 
         Ok(TransformedTelemetry {
             event_type: H2OSEventType::GPSPosition.to_canonical_type().to_string(),
@@ -248,7 +260,10 @@ impl H2OSTelemetryAdapter {
         claimed_prev_hash: &[u8],
         actual_prev_id: &str,
     ) -> Result<(), TelemetryError> {
-        if self.mapper.validate_chain_link(claimed_prev_hash, actual_prev_id) {
+        if self
+            .mapper
+            .validate_chain_link(claimed_prev_hash, actual_prev_id)
+        {
             Ok(())
         } else {
             Err(TelemetryError::ReplayAttack)
@@ -332,7 +347,7 @@ mod tests {
     #[test]
     fn test_transform_h2detect() {
         let adapter = H2OSTelemetryAdapter::new();
-        
+
         // No detection
         let result = adapter.transform_h2detect(
             "device-001",
@@ -385,7 +400,7 @@ mod tests {
         let telemetry = result.unwrap();
         assert_eq!(telemetry.event_type, "GPS");
         assert!(telemetry.gps_data.is_some());
-        
+
         let gps = telemetry.gps_data.unwrap();
         assert_eq!(gps.latitude, 45.0);
         assert_eq!(gps.longitude, -122.0);
@@ -409,24 +424,28 @@ mod tests {
     #[test]
     fn test_prev_hash_deterministic() {
         let adapter = H2OSTelemetryAdapter::new();
-        
-        let result1 = adapter.transform_pt100(
-            "device-001",
-            "pt100-001",
-            25.5,
-            "event-000",
-            1000,
-            "fed-001",
-        ).unwrap();
 
-        let result2 = adapter.transform_pt100(
-            "device-001",
-            "pt100-001",
-            25.5,
-            "event-000",
-            1000,
-            "fed-001",
-        ).unwrap();
+        let result1 = adapter
+            .transform_pt100(
+                "device-001",
+                "pt100-001",
+                25.5,
+                "event-000",
+                1000,
+                "fed-001",
+            )
+            .unwrap();
+
+        let result2 = adapter
+            .transform_pt100(
+                "device-001",
+                "pt100-001",
+                25.5,
+                "event-000",
+                1000,
+                "fed-001",
+            )
+            .unwrap();
 
         // Same previous_id should produce same prev_hash
         assert_eq!(result1.prev_hash, result2.prev_hash);
@@ -435,14 +454,16 @@ mod tests {
     #[test]
     fn test_genesis_event_prev_hash() {
         let adapter = H2OSTelemetryAdapter::new();
-        let result = adapter.transform_pt100(
-            "device-001",
-            "pt100-001",
-            25.5,
-            "", // Genesis event
-            1000,
-            "fed-001",
-        ).unwrap();
+        let result = adapter
+            .transform_pt100(
+                "device-001",
+                "pt100-001",
+                25.5,
+                "", // Genesis event
+                1000,
+                "fed-001",
+            )
+            .unwrap();
 
         // Genesis event should have zero hash
         assert_eq!(result.prev_hash, vec![0u8; 32]);

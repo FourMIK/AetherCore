@@ -17,11 +17,11 @@ pub enum RecorderError {
     /// Ledger operation failed
     #[error("Ledger error: {0}")]
     LedgerError(#[from] LedgerError),
-    
+
     /// Serialization error
     #[error("Serialization error: {0}")]
     SerializationError(String),
-    
+
     /// Invalid command hash
     #[error("Invalid command hash")]
     InvalidHash,
@@ -88,7 +88,7 @@ impl TruthChainRecorder {
         let ledger = EventLedger::open(ledger_path, node_id.clone())?;
         Ok(Self { ledger, node_id })
     }
-    
+
     /// Record a command in the Truth-Chain
     ///
     /// # Arguments
@@ -107,16 +107,16 @@ impl TruthChainRecorder {
         // Serialize command record
         let payload_json = serde_json::to_string(record)
             .map_err(|e| RecorderError::SerializationError(format!("{}", e)))?;
-        
+
         // Compute event hash
         let event_hash = Self::compute_event_hash(&record.command_id, &payload_json);
-        
+
         // Get previous event hash for chain binding
         let prev_event_hash = match self.ledger.get_latest_event() {
             Ok(Some((_, event))) => event.event_hash,
             _ => vec![0u8; 32], // Genesis event uses all zeros
         };
-        
+
         // Create signed event
         let signed_event = SignedEvent {
             event_id: record.command_id.clone(),
@@ -128,13 +128,13 @@ impl TruthChainRecorder {
             event_type: Some(record.command_type.clone()),
             payload_ref: Some(payload_json),
         };
-        
+
         // Append to ledger
         let seq_no = self.ledger.append_signed_event(signed_event)?;
-        
+
         Ok(seq_no)
     }
-    
+
     /// Compute BLAKE3 hash for an event
     fn compute_event_hash(event_id: &str, payload: &str) -> [u8; 32] {
         let mut hasher = Hasher::new();
@@ -142,15 +142,16 @@ impl TruthChainRecorder {
         hasher.update(payload.as_bytes());
         *hasher.finalize().as_bytes()
     }
-    
+
     /// Get the last event hash (for chaining)
     pub fn get_last_event_hash(&self) -> Option<Vec<u8>> {
-        self.ledger.get_latest_event()
+        self.ledger
+            .get_latest_event()
             .ok()
             .flatten()
             .map(|(_, event)| event.event_hash)
     }
-    
+
     /// Verify chain integrity
     pub fn verify_chain(&self) -> Result<bool, RecorderError> {
         // EventLedger performs startup integrity checks
@@ -162,7 +163,7 @@ impl TruthChainRecorder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_command_record_creation() {
         let record = CommandRecord::new(
@@ -174,27 +175,25 @@ mod tests {
             vec!["unit-1".to_string()],
             1000,
         );
-        
+
         assert_eq!(record.command_id, "cmd-001");
         assert_eq!(record.target_units.len(), 1);
     }
-    
+
     #[test]
     fn test_truth_chain_recorder() {
         use std::fs;
-        
+
         // Create temporary ledger path
         let temp_dir = std::env::temp_dir();
         let ledger_path = temp_dir.join("test_truth_chain.db");
-        
+
         // Clean up if exists
         let _ = fs::remove_file(&ledger_path);
-        
-        let mut recorder = TruthChainRecorder::new(
-            ledger_path.clone(),
-            "node-1".to_string(),
-        ).unwrap();
-        
+
+        let mut recorder =
+            TruthChainRecorder::new(ledger_path.clone(), "node-1".to_string()).unwrap();
+
         let record = CommandRecord::new(
             "cmd-001".to_string(),
             "UnitCommand::Navigate".to_string(),
@@ -204,16 +203,12 @@ mod tests {
             vec!["unit-1".to_string()],
             1000,
         );
-        
-        let result = recorder.record_command(
-            &record,
-            vec![0u8; 64],
-            "pubkey-1".to_string(),
-        );
-        
+
+        let result = recorder.record_command(&record, vec![0u8; 64], "pubkey-1".to_string());
+
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1);
-        
+
         // Clean up
         let _ = fs::remove_file(&ledger_path);
     }

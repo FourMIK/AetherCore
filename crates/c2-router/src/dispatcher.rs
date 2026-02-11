@@ -15,15 +15,15 @@ pub enum DispatchError {
     /// Invalid unit identifier
     #[error("Invalid unit ID: {0}")]
     InvalidUnitId(String),
-    
+
     /// Unit not reachable
     #[error("Unit not reachable: {0}")]
     UnitUnreachable(String),
-    
+
     /// Command dispatch timeout
     #[error("Command dispatch timeout for unit {0}")]
     Timeout(String),
-    
+
     /// Swarm batch exceeds limit
     #[error("Swarm batch size {got} exceeds limit {limit}")]
     BatchSizeExceeded {
@@ -32,7 +32,7 @@ pub enum DispatchError {
         /// Maximum allowed batch size
         limit: usize,
     },
-    
+
     /// Data integrity compromised - chain discontinuity detected
     #[error("Identity Collapse: Chain Discontinuity Detected for unit {unit_id}: {reason}")]
     DataLoss {
@@ -76,7 +76,7 @@ impl UnitDispatchResult {
     pub fn is_success(&self) -> bool {
         matches!(self, UnitDispatchResult::Success { .. })
     }
-    
+
     /// Get the unit ID
     pub fn unit_id(&self) -> &str {
         match self {
@@ -108,12 +108,22 @@ pub struct SwarmDispatchStatus {
 
 impl SwarmDispatchStatus {
     /// Create a new swarm dispatch status
-    pub fn new(swarm_command_id: String, unit_results: Vec<UnitDispatchResult>, timestamp_ns: u64) -> Self {
+    pub fn new(
+        swarm_command_id: String,
+        unit_results: Vec<UnitDispatchResult>,
+        timestamp_ns: u64,
+    ) -> Self {
         let success_count = unit_results.iter().filter(|r| r.is_success()).count();
-        let failure_count = unit_results.iter().filter(|r| matches!(r, UnitDispatchResult::Failed { .. })).count();
-        let timeout_count = unit_results.iter().filter(|r| matches!(r, UnitDispatchResult::Timeout { .. })).count();
+        let failure_count = unit_results
+            .iter()
+            .filter(|r| matches!(r, UnitDispatchResult::Failed { .. }))
+            .count();
+        let timeout_count = unit_results
+            .iter()
+            .filter(|r| matches!(r, UnitDispatchResult::Timeout { .. }))
+            .count();
         let total_units = unit_results.len();
-        
+
         Self {
             swarm_command_id,
             unit_results,
@@ -124,7 +134,7 @@ impl SwarmDispatchStatus {
             timestamp_ns,
         }
     }
-    
+
     /// Get completion percentage
     pub fn completion_percent(&self) -> f32 {
         if self.total_units == 0 {
@@ -132,7 +142,7 @@ impl SwarmDispatchStatus {
         }
         (self.success_count as f32 / self.total_units as f32) * 100.0
     }
-    
+
     /// Check if all units succeeded
     pub fn all_success(&self) -> bool {
         self.success_count == self.total_units
@@ -145,13 +155,14 @@ pub struct CommandDispatcher {
     /// Maximum batch size for swarm commands
     max_batch_size: usize,
     /// Integrity status tracker (optional - if None, integrity checks are disabled)
-    integrity_tracker: Option<std::sync::Arc<std::sync::Mutex<aethercore_stream::StreamIntegrityTracker>>>,
+    integrity_tracker:
+        Option<std::sync::Arc<std::sync::Mutex<aethercore_stream::StreamIntegrityTracker>>>,
 }
 
 impl CommandDispatcher {
     /// Maximum allowed batch size (from spec: ≤ 100 units per batch)
     pub const DEFAULT_MAX_BATCH_SIZE: usize = 100;
-    
+
     /// Create a new command dispatcher without integrity checking
     pub fn new() -> Self {
         Self {
@@ -159,15 +170,15 @@ impl CommandDispatcher {
             integrity_tracker: None,
         }
     }
-    
+
     /// Create a dispatcher with custom max batch size
     pub fn with_max_batch_size(max_batch_size: usize) -> Self {
-        Self { 
+        Self {
             max_batch_size,
             integrity_tracker: None,
         }
     }
-    
+
     /// Create a dispatcher with integrity checking enabled
     pub fn with_integrity_tracker(
         tracker: std::sync::Arc<std::sync::Mutex<aethercore_stream::StreamIntegrityTracker>>,
@@ -177,7 +188,7 @@ impl CommandDispatcher {
             integrity_tracker: Some(tracker),
         }
     }
-    
+
     /// Check if a unit's integrity is compromised
     fn check_integrity(&self, unit_id: &str) -> Result<(), DispatchError> {
         if let Some(tracker) = &self.integrity_tracker {
@@ -187,14 +198,14 @@ impl CommandDispatcher {
                     e
                 ))
             })?;
-            
+
             if tracker_lock.is_stream_compromised(unit_id) {
                 let reason = tracker_lock
                     .get(unit_id)
                     .and_then(|s| s.get_compromise_reason())
                     .unwrap_or("Unknown integrity violation")
                     .to_string();
-                
+
                 return Err(DispatchError::DataLoss {
                     unit_id: unit_id.to_string(),
                     reason,
@@ -203,7 +214,7 @@ impl CommandDispatcher {
         }
         Ok(())
     }
-    
+
     /// Dispatch a command to a single unit
     ///
     /// This is a placeholder that returns a mock result. In production, this would:
@@ -220,7 +231,7 @@ impl CommandDispatcher {
     ) -> Result<UnitDispatchResult, DispatchError> {
         // Check integrity first - block compromised nodes
         self.check_integrity(unit_id)?;
-        
+
         // Placeholder: In production, this would dispatch to the actual unit
         // For now, simulate success
         Ok(UnitDispatchResult::Success {
@@ -228,7 +239,7 @@ impl CommandDispatcher {
             timestamp_ns,
         })
     }
-    
+
     /// Fan out swarm command to multiple units
     ///
     /// # Arguments
@@ -253,7 +264,7 @@ impl CommandDispatcher {
                 limit: self.max_batch_size,
             });
         }
-        
+
         // Convert swarm command to unit commands and dispatch
         // Check integrity for each unit
         let unit_results: Vec<UnitDispatchResult> = target_unit_ids
@@ -276,24 +287,22 @@ impl CommandDispatcher {
                             timestamp_ns,
                         }
                     }
-                    Err(e) => {
-                        UnitDispatchResult::Failed {
-                            unit_id: unit_id.clone(),
-                            reason: e.to_string(),
-                            timestamp_ns,
-                        }
-                    }
+                    Err(e) => UnitDispatchResult::Failed {
+                        unit_id: unit_id.clone(),
+                        reason: e.to_string(),
+                        timestamp_ns,
+                    },
                 }
             })
             .collect();
-        
+
         Ok(SwarmDispatchStatus::new(
             swarm_command_id,
             unit_results,
             timestamp_ns,
         ))
     }
-    
+
     /// Abort a swarm command
     ///
     /// Sends abort signal to all units in the swarm operation
@@ -317,152 +326,175 @@ impl Default for CommandDispatcher {
 mod tests {
     use super::*;
     use crate::command_types::Coordinate;
-    
+
     #[test]
     fn test_unit_dispatch_result_success() {
         let result = UnitDispatchResult::Success {
             unit_id: "unit-1".to_string(),
             timestamp_ns: 1000,
         };
-        
+
         assert!(result.is_success());
         assert_eq!(result.unit_id(), "unit-1");
     }
-    
+
     #[test]
     fn test_swarm_dispatch_status_completion() {
         let results = vec![
-            UnitDispatchResult::Success { unit_id: "unit-1".to_string(), timestamp_ns: 1000 },
-            UnitDispatchResult::Success { unit_id: "unit-2".to_string(), timestamp_ns: 1000 },
-            UnitDispatchResult::Failed { unit_id: "unit-3".to_string(), reason: "timeout".to_string(), timestamp_ns: 1000 },
+            UnitDispatchResult::Success {
+                unit_id: "unit-1".to_string(),
+                timestamp_ns: 1000,
+            },
+            UnitDispatchResult::Success {
+                unit_id: "unit-2".to_string(),
+                timestamp_ns: 1000,
+            },
+            UnitDispatchResult::Failed {
+                unit_id: "unit-3".to_string(),
+                reason: "timeout".to_string(),
+                timestamp_ns: 1000,
+            },
         ];
-        
+
         let status = SwarmDispatchStatus::new("swarm-1".to_string(), results, 1000);
-        
+
         assert_eq!(status.success_count, 2);
         assert_eq!(status.failure_count, 1);
         assert_eq!(status.total_units, 3);
         assert!((status.completion_percent() - 66.666).abs() < 0.01);
         assert!(!status.all_success());
     }
-    
+
     #[test]
     fn test_batch_size_limit() {
         let dispatcher = CommandDispatcher::new();
-        let command = SwarmCommand::RecallAll { base_id: "BASE-1".to_string() };
-        
+        let command = SwarmCommand::RecallAll {
+            base_id: "BASE-1".to_string(),
+        };
+
         // Create too many units
         let unit_ids: Vec<String> = (0..101).map(|i| format!("unit-{}", i)).collect();
-        
-        let result = dispatcher.dispatch_swarm_command(
-            "swarm-1".to_string(),
-            &command,
-            &unit_ids,
-            1000,
-        );
-        
-        assert!(matches!(result, Err(DispatchError::BatchSizeExceeded { .. })));
+
+        let result =
+            dispatcher.dispatch_swarm_command("swarm-1".to_string(), &command, &unit_ids, 1000);
+
+        assert!(matches!(
+            result,
+            Err(DispatchError::BatchSizeExceeded { .. })
+        ));
     }
-    
+
     #[test]
     fn test_dispatch_unit_command() {
         let dispatcher = CommandDispatcher::new();
         let command = UnitCommand::Navigate {
-            waypoint: Coordinate { lat: 45.0, lon: -122.0, alt: None },
+            waypoint: Coordinate {
+                lat: 45.0,
+                lon: -122.0,
+                alt: None,
+            },
             speed: None,
             altitude: None,
         };
-        
+
         let result = dispatcher.dispatch_unit_command("unit-1", &command, 1000);
         assert!(result.is_ok());
         assert!(result.unwrap().is_success());
     }
-    
+
     #[test]
     fn test_dispatch_unit_command_integrity_check() {
         use aethercore_stream::StreamIntegrityTracker;
         use std::sync::{Arc, Mutex};
-        
+
         // Create tracker and mark a unit as compromised
         let mut tracker = StreamIntegrityTracker::new();
-        tracker.get_or_create("unit-compromised")
+        tracker
+            .get_or_create("unit-compromised")
             .record_broken_event("Test integrity violation".to_string());
-        
+
         let tracker_arc = Arc::new(Mutex::new(tracker));
         let dispatcher = CommandDispatcher::with_integrity_tracker(tracker_arc);
-        
+
         let command = UnitCommand::Navigate {
-            waypoint: Coordinate { lat: 0.0, lon: 0.0, alt: Some(100.0) },
+            waypoint: Coordinate {
+                lat: 0.0,
+                lon: 0.0,
+                alt: Some(100.0),
+            },
             speed: Some(10.0),
             altitude: None,
         };
-        
+
         // Compromised unit should fail
         let result = dispatcher.dispatch_unit_command("unit-compromised", &command, 1000);
         assert!(result.is_err());
         assert!(matches!(result, Err(DispatchError::DataLoss { .. })));
-        
+
         // Non-compromised unit should succeed
         let result = dispatcher.dispatch_unit_command("unit-ok", &command, 1000);
         assert!(result.is_ok());
     }
-    
+
     #[test]
     fn test_dispatch_swarm_command_integrity_check() {
         use aethercore_stream::StreamIntegrityTracker;
         use std::sync::{Arc, Mutex};
-        
+
         // Create tracker and mark one unit as compromised
         let mut tracker = StreamIntegrityTracker::new();
-        tracker.get_or_create("unit-2")
+        tracker
+            .get_or_create("unit-2")
             .record_broken_event("Chain discontinuity".to_string());
-        
+
         let tracker_arc = Arc::new(Mutex::new(tracker));
         let dispatcher = CommandDispatcher::with_integrity_tracker(tracker_arc);
-        
+
         let command = SwarmCommand::RecallAll {
             base_id: "BASE-1".to_string(),
         };
-        
+
         let target_units = vec![
             "unit-1".to_string(),
-            "unit-2".to_string(),  // Compromised
+            "unit-2".to_string(), // Compromised
             "unit-3".to_string(),
         ];
-        
-        let status = dispatcher.dispatch_swarm_command(
-            "swarm-1".to_string(),
-            &command,
-            &target_units,
-            1000,
-        ).unwrap();
-        
+
+        let status = dispatcher
+            .dispatch_swarm_command("swarm-1".to_string(), &command, &target_units, 1000)
+            .unwrap();
+
         // Should have 2 successes and 1 failure
         assert_eq!(status.total_units, 3);
         assert_eq!(status.success_count, 2);
         assert_eq!(status.failure_count, 1);
-        
+
         // Find the failed unit
-        let failed = status.unit_results.iter()
+        let failed = status
+            .unit_results
+            .iter()
             .find(|r| matches!(r, UnitDispatchResult::Failed { .. }))
             .unwrap();
-        
+
         assert_eq!(failed.unit_id(), "unit-2");
     }
-    
+
     #[test]
     fn test_dispatch_without_integrity_tracker() {
         // Dispatcher without integrity tracker should not block anything
         let dispatcher = CommandDispatcher::new();
-        
+
         let command = UnitCommand::Navigate {
-            waypoint: Coordinate { lat: 0.0, lon: 0.0, alt: Some(100.0) },
+            waypoint: Coordinate {
+                lat: 0.0,
+                lon: 0.0,
+                alt: Some(100.0),
+            },
             speed: Some(10.0),
             altitude: None,
         };
-        
+
         let result = dispatcher.dispatch_unit_command("any-unit", &command, 1000);
         assert!(result.is_ok());
     }
 }
-

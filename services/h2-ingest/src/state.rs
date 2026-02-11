@@ -15,7 +15,7 @@ pub struct AppState {
 impl AppState {
     pub async fn new(config: Config) -> Result<Self, Box<dyn std::error::Error>> {
         let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-        
+
         let redis = RedisClient::open(config.redis_url.as_str())?;
         let s3 = S3Client::new(&aws_config);
         let kms = KmsClient::new(&aws_config);

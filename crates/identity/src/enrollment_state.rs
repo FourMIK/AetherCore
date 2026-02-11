@@ -251,7 +251,10 @@ impl EnrollmentStateMachine {
                     challenge_hash,
                     received_at: now,
                 };
-                self.transition(new_state, Some("Challenge received from server".to_string()))?;
+                self.transition(
+                    new_state,
+                    Some("Challenge received from server".to_string()),
+                )?;
                 Ok(())
             }
             _ => Err(EnrollmentError::InvalidTransition(
@@ -299,7 +302,10 @@ impl EnrollmentStateMachine {
                 };
                 self.transition(
                     new_state,
-                    Some(format!("Attestation verified with trust score {}", trust_score)),
+                    Some(format!(
+                        "Attestation verified with trust score {}",
+                        trust_score
+                    )),
                 )?;
                 Ok(())
             }
@@ -346,7 +352,10 @@ impl EnrollmentStateMachine {
                     trust_score,
                     trusted_at: now,
                 };
-                self.transition(new_state, Some("Certificate validated, platform trusted".to_string()))?;
+                self.transition(
+                    new_state,
+                    Some("Certificate validated, platform trusted".to_string()),
+                )?;
                 Ok(())
             }
             _ => Err(EnrollmentError::InvalidTransition(
@@ -570,8 +579,7 @@ mod tests {
             .unwrap();
 
         // Execute Great Gospel
-        sm.revoke("Security breach detected".to_string())
-            .unwrap();
+        sm.revoke("Security breach detected".to_string()).unwrap();
 
         assert!(matches!(
             sm.current_state(),
@@ -617,13 +625,12 @@ mod tests {
             .unwrap();
 
         // Trigger failure
-        sm.on_failure(EnrollmentError::SignatureInvalid("Bad signature".to_string()))
-            .unwrap();
+        sm.on_failure(EnrollmentError::SignatureInvalid(
+            "Bad signature".to_string(),
+        ))
+        .unwrap();
 
-        assert!(matches!(
-            sm.current_state(),
-            EnrollmentState::Failed { .. }
-        ));
+        assert!(matches!(sm.current_state(), EnrollmentState::Failed { .. }));
     }
 
     #[test]

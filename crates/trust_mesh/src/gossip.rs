@@ -27,7 +27,7 @@ pub enum GossipMessage {
 
     /// Response with requested checkpoints
     CheckpointResponse { checkpoints: Vec<LedgerCheckpoint> },
-    
+
     /// Chain proof for integrity verification
     ChainProofAnnouncement {
         /// Node/stream identifier
@@ -35,7 +35,7 @@ pub enum GossipMessage {
         /// Chain proof
         proof: ChainProof,
     },
-    
+
     /// Request for chain proof from a specific node
     ChainProofRequest {
         /// Requesting node ID
@@ -43,7 +43,7 @@ pub enum GossipMessage {
         /// Target node ID
         target_node_id: String,
     },
-    
+
     /// Response with chain proof
     ChainProofResponse {
         /// Node ID providing the proof

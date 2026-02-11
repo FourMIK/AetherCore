@@ -87,11 +87,7 @@ pub struct Dispatch {
 
 impl Dispatch {
     /// Create a new dispatch
-    pub fn new(
-        dispatch_id: String,
-        dispatch_type: String,
-        timestamp: u64,
-    ) -> Self {
+    pub fn new(dispatch_id: String, dispatch_type: String, timestamp: u64) -> Self {
         Self {
             dispatch_id,
             state: DispatchState::Created,
@@ -272,11 +268,7 @@ mod tests {
 
     #[test]
     fn test_dispatch_creation() {
-        let dispatch = Dispatch::new(
-            "dispatch-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let dispatch = Dispatch::new("dispatch-001".to_string(), "delivery".to_string(), 1000);
 
         assert_eq!(dispatch.dispatch_id, "dispatch-001");
         assert_eq!(dispatch.state, DispatchState::Created);
@@ -286,17 +278,9 @@ mod tests {
 
     #[test]
     fn test_dispatch_valid_transition() {
-        let mut dispatch = Dispatch::new(
-            "dispatch-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut dispatch = Dispatch::new("dispatch-001".to_string(), "delivery".to_string(), 1000);
 
-        let result = dispatch.transition(
-            DispatchState::Assigned,
-            2000,
-            vec![0u8; 32],
-        );
+        let result = dispatch.transition(DispatchState::Assigned, 2000, vec![0u8; 32]);
 
         assert!(result.is_ok());
         assert_eq!(dispatch.state, DispatchState::Assigned);
@@ -306,17 +290,9 @@ mod tests {
 
     #[test]
     fn test_dispatch_invalid_transition() {
-        let mut dispatch = Dispatch::new(
-            "dispatch-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut dispatch = Dispatch::new("dispatch-001".to_string(), "delivery".to_string(), 1000);
 
-        let result = dispatch.transition(
-            DispatchState::InProgress,
-            2000,
-            vec![0u8; 32],
-        );
+        let result = dispatch.transition(DispatchState::InProgress, 2000, vec![0u8; 32]);
 
         assert!(result.is_err());
         assert_eq!(dispatch.state, DispatchState::Created);
@@ -324,15 +300,17 @@ mod tests {
 
     #[test]
     fn test_dispatch_terminal_state() {
-        let mut dispatch = Dispatch::new(
-            "dispatch-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut dispatch = Dispatch::new("dispatch-001".to_string(), "delivery".to_string(), 1000);
 
-        dispatch.transition(DispatchState::Assigned, 2000, vec![0u8; 32]).unwrap();
-        dispatch.transition(DispatchState::InProgress, 3000, vec![1u8; 32]).unwrap();
-        dispatch.transition(DispatchState::Completed, 4000, vec![2u8; 32]).unwrap();
+        dispatch
+            .transition(DispatchState::Assigned, 2000, vec![0u8; 32])
+            .unwrap();
+        dispatch
+            .transition(DispatchState::InProgress, 3000, vec![1u8; 32])
+            .unwrap();
+        dispatch
+            .transition(DispatchState::Completed, 4000, vec![2u8; 32])
+            .unwrap();
 
         assert!(dispatch.is_complete());
         assert_eq!(dispatch.completed_at, Some(4000));
@@ -344,13 +322,12 @@ mod tests {
 
     #[test]
     fn test_dispatch_assign_assets() {
-        let mut dispatch = Dispatch::new(
-            "dispatch-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut dispatch = Dispatch::new("dispatch-001".to_string(), "delivery".to_string(), 1000);
 
-        dispatch.assign_assets(vec!["truck-001".to_string(), "trailer-001".to_string()], 2000);
+        dispatch.assign_assets(
+            vec!["truck-001".to_string(), "trailer-001".to_string()],
+            2000,
+        );
 
         assert_eq!(dispatch.assigned_assets.len(), 2);
         assert_eq!(dispatch.updated_at, 2000);
@@ -358,11 +335,7 @@ mod tests {
 
     #[test]
     fn test_dispatch_locations() {
-        let mut dispatch = Dispatch::new(
-            "dispatch-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut dispatch = Dispatch::new("dispatch-001".to_string(), "delivery".to_string(), 1000);
 
         dispatch.set_origin(45.0, -122.0);
         dispatch.set_destination(46.0, -123.0);
@@ -416,14 +389,14 @@ mod tests {
 
     #[test]
     fn test_dispatch_last_transition() {
-        let mut dispatch = Dispatch::new(
-            "dispatch-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut dispatch = Dispatch::new("dispatch-001".to_string(), "delivery".to_string(), 1000);
 
-        dispatch.transition(DispatchState::Assigned, 2000, vec![0u8; 32]).unwrap();
-        dispatch.transition(DispatchState::InProgress, 3000, vec![1u8; 32]).unwrap();
+        dispatch
+            .transition(DispatchState::Assigned, 2000, vec![0u8; 32])
+            .unwrap();
+        dispatch
+            .transition(DispatchState::InProgress, 3000, vec![1u8; 32])
+            .unwrap();
 
         let last = dispatch.last_transition().unwrap();
         assert_eq!(last.to_state, DispatchState::InProgress);

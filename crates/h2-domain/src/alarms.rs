@@ -1,9 +1,9 @@
 //! Alarm system with Byzantine aggregation
-//! 
+//!
 //! Ported from H2OS AlarmStatus.cs with attestation binding
 
-use serde::{Deserialize, Serialize};
 use crate::materia::{MerkleVineLink, TpmAttestation};
+use serde::{Deserialize, Serialize};
 
 /// Alarm codes matching H2OS AlarmStatus enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,7 +57,7 @@ impl AlarmCode {
                 | AlarmCode::SourcePressureHighFaultPT110
         )
     }
-    
+
     /// Get human-readable description
     pub fn description(&self) -> &'static str {
         match self {
@@ -83,7 +83,7 @@ impl AlarmCode {
 }
 
 /// Attested alarm with Byzantine aggregation support
-/// 
+///
 /// Each alarm is cryptographically bound to its source sensor via TPM attestation
 /// and linked in a Merkle Vine chain for tamper detection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,7 +117,7 @@ impl AttestedAlarm {
             attestation,
         }
     }
-    
+
     /// Compute BLAKE3 hash of alarm data
     pub fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
@@ -126,7 +126,7 @@ impl AttestedAlarm {
         hasher.update(&self.timestamp_ns.to_le_bytes());
         *hasher.finalize().as_bytes()
     }
-    
+
     /// Verify alarm chain integrity
     pub fn verify_chain(&self, previous: &[u8; 32]) -> bool {
         self.vine.previous_hash == *previous
@@ -136,7 +136,7 @@ impl AttestedAlarm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_alarm_code_critical() {
         assert!(AlarmCode::H2Detected.is_critical());
@@ -145,64 +145,44 @@ mod tests {
         assert!(!AlarmCode::NoAlarms.is_critical());
         assert!(!AlarmCode::SourcePressureHighWarnPT110.is_critical());
     }
-    
+
     #[test]
     fn test_alarm_code_description() {
         assert_eq!(AlarmCode::H2Detected.description(), "Hydrogen detected");
         assert_eq!(AlarmCode::NoAlarms.description(), "No alarms");
     }
-    
+
     #[test]
     fn test_attested_alarm_hash() {
-        let vine = MerkleVineLink::new(
-            [0u8; 32],
-            [1u8; 32],
-            0,
-            1_000_000_000,
-        );
+        let vine = MerkleVineLink::new([0u8; 32], [1u8; 32], 0, 1_000_000_000);
         let attestation = TpmAttestation::new(
             vec![0xAA; 64],
             vec![0xFF; 32],
             vec![0xBB; 128],
             1_000_000_000,
         );
-        
-        let alarm = AttestedAlarm::new(
-            AlarmCode::H2Detected,
-            100,
-            1_000_000_000,
-            vine,
-            attestation,
-        );
-        
+
+        let alarm =
+            AttestedAlarm::new(AlarmCode::H2Detected, 100, 1_000_000_000, vine, attestation);
+
         let hash = alarm.compute_hash();
         assert_eq!(hash.len(), 32);
     }
-    
+
     #[test]
     fn test_attested_alarm_verify_chain() {
         let previous_hash = [0u8; 32];
-        let vine = MerkleVineLink::new(
-            previous_hash,
-            [1u8; 32],
-            0,
-            1_000_000_000,
-        );
+        let vine = MerkleVineLink::new(previous_hash, [1u8; 32], 0, 1_000_000_000);
         let attestation = TpmAttestation::new(
             vec![0xAA; 64],
             vec![0xFF; 32],
             vec![0xBB; 128],
             1_000_000_000,
         );
-        
-        let alarm = AttestedAlarm::new(
-            AlarmCode::H2Detected,
-            100,
-            1_000_000_000,
-            vine,
-            attestation,
-        );
-        
+
+        let alarm =
+            AttestedAlarm::new(AlarmCode::H2Detected, 100, 1_000_000_000, vine, attestation);
+
         assert!(alarm.verify_chain(&previous_hash));
         assert!(!alarm.verify_chain(&[1u8; 32]));
     }
@@ -349,11 +329,7 @@ pub struct AlertAcknowledgment {
 
 impl AlertAcknowledgment {
     /// Create a new acknowledgment
-    pub fn new(
-        alert_id: String,
-        acknowledged_by: String,
-        timestamp_ms: u64,
-    ) -> Self {
+    pub fn new(alert_id: String, acknowledged_by: String, timestamp_ms: u64) -> Self {
         Self {
             alert_id,
             acknowledged_by,
@@ -469,11 +445,8 @@ mod alert_tests {
 
     #[test]
     fn test_alert_acknowledgment_creation() {
-        let ack = AlertAcknowledgment::new(
-            "alert-001".to_string(),
-            "operator-001".to_string(),
-            1000,
-        );
+        let ack =
+            AlertAcknowledgment::new("alert-001".to_string(), "operator-001".to_string(), 1000);
 
         assert_eq!(ack.alert_id, "alert-001");
         assert_eq!(ack.acknowledged_by, "operator-001");
@@ -482,11 +455,8 @@ mod alert_tests {
 
     #[test]
     fn test_alert_acknowledgment_sign() {
-        let mut ack = AlertAcknowledgment::new(
-            "alert-001".to_string(),
-            "operator-001".to_string(),
-            1000,
-        );
+        let mut ack =
+            AlertAcknowledgment::new("alert-001".to_string(), "operator-001".to_string(), 1000);
 
         ack.sign(vec![1u8; 64]);
         assert!(ack.is_signed());
@@ -494,11 +464,8 @@ mod alert_tests {
 
     #[test]
     fn test_alert_acknowledgment_compute_hash() {
-        let ack = AlertAcknowledgment::new(
-            "alert-001".to_string(),
-            "operator-001".to_string(),
-            1000,
-        );
+        let ack =
+            AlertAcknowledgment::new("alert-001".to_string(), "operator-001".to_string(), 1000);
 
         let hash = ack.compute_hash();
         assert_eq!(hash.len(), 32);
@@ -506,14 +473,14 @@ mod alert_tests {
 
     #[test]
     fn test_alert_acknowledgment_set_comment() {
-        let mut ack = AlertAcknowledgment::new(
-            "alert-001".to_string(),
-            "operator-001".to_string(),
-            1000,
-        );
+        let mut ack =
+            AlertAcknowledgment::new("alert-001".to_string(), "operator-001".to_string(), 1000);
 
         ack.set_comment("Acknowledged and investigating".to_string());
-        assert_eq!(ack.comment, Some("Acknowledged and investigating".to_string()));
+        assert_eq!(
+            ack.comment,
+            Some("Acknowledged and investigating".to_string())
+        );
     }
 
     #[test]
@@ -541,4 +508,3 @@ mod alert_tests {
         assert_eq!(alert2.trust_score, 0.0);
     }
 }
-

@@ -15,11 +15,11 @@ pub enum FeedError {
     /// Connection error
     #[error("Connection error: {0}")]
     ConnectionError(String),
-    
+
     /// Deserialization error
     #[error("Deserialization error: {0}")]
     DeserializationError(String),
-    
+
     /// Subscription error
     #[error("Subscription error: {0}")]
     SubscriptionError(String),
@@ -60,24 +60,20 @@ impl CosmosDbFeedSubscriber {
     /// * `connection_string` - Azure CosmosDB connection string
     /// * `database_name` - Database name
     /// * `collection_name` - Collection name (typically "Devices")
-    pub fn new(
-        connection_string: String,
-        database_name: String,
-        collection_name: String,
-    ) -> Self {
+    pub fn new(connection_string: String, database_name: String, collection_name: String) -> Self {
         Self {
             connection_string,
             database_name,
             collection_name,
         }
     }
-    
+
     /// Connect to CosmosDB (placeholder)
     pub async fn connect(&self) -> Result<(), FeedError> {
         // Placeholder: In production, this would establish connection to CosmosDB
         Ok(())
     }
-    
+
     /// Subscribe to change feed (placeholder)
     ///
     /// In production, this would return a stream of `ChangeFeedEvent`
@@ -89,7 +85,7 @@ impl CosmosDbFeedSubscriber {
         // 4. Yield events to caller
         Ok(())
     }
-    
+
     /// Get current unit status (placeholder)
     pub async fn get_unit_status(&self, _unit_id: &str) -> Result<Option<UnitStatus>, FeedError> {
         // Placeholder: In production, this would query CosmosDB for current unit status

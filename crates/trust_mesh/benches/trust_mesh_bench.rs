@@ -6,15 +6,15 @@
 //! - Checkpoint creation and verification
 //! - Trust score computation
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use aethercore_trust_mesh::{
-    signing::{EventSigner, InMemoryKeyManager, KeyManager},
-    merkle::{CheckpointWindow, MerkleAggregator},
-    trust::{TrustScorer},
-    node_health::{NodeHealthComputer},
-};
+use aethercore_domain::canonical_event::{EventPayload, EventType};
 use aethercore_domain::CanonicalEvent;
-use aethercore_domain::canonical_event::{EventType, EventPayload};
+use aethercore_trust_mesh::{
+    merkle::{CheckpointWindow, MerkleAggregator},
+    node_health::NodeHealthComputer,
+    signing::{EventSigner, InMemoryKeyManager, KeyManager},
+    trust::TrustScorer,
+};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::collections::BTreeMap;
 
 /// Create a sample canonical event for benchmarking
@@ -55,7 +55,7 @@ fn bench_event_signing_single(c: &mut Criterion) {
     let mut key_manager = InMemoryKeyManager::new();
     key_manager.generate_key("node-1").unwrap();
     let signer = EventSigner::new(key_manager);
-    
+
     c.bench_function("event_signing_single", |b| {
         b.iter(|| {
             let event = create_test_event("node-1", 1, String::new());
@@ -71,7 +71,7 @@ fn bench_event_signing_batch(c: &mut Criterion) {
     let signer = EventSigner::new(key_manager);
 
     let sizes = vec![10, 100, 1000];
-    
+
     for size in sizes {
         c.bench_with_input(
             BenchmarkId::new("event_signing_batch", size),
@@ -99,15 +99,11 @@ fn bench_merkle_checkpoint_creation(c: &mut Criterion) {
     let mut aggregator = MerkleAggregator::new(node_id.to_string());
 
     let sizes = vec![10, 100, 1000];
-    
+
     for size in sizes {
         // Pre-generate event hashes for the window
-        let event_hashes: Vec<String> = (0..size)
-            .map(|i| format!("hash-{:08}", i))
-            .collect();
-        let timestamps: Vec<u64> = (0..size)
-            .map(|i| 1000000 + i as u64 * 1000)
-            .collect();
+        let event_hashes: Vec<String> = (0..size).map(|i| format!("hash-{:08}", i)).collect();
+        let timestamps: Vec<u64> = (0..size).map(|i| 1000000 + i as u64 * 1000).collect();
         let heights: Vec<u64> = (0..size).collect();
 
         c.bench_with_input(
@@ -121,10 +117,15 @@ fn bench_merkle_checkpoint_creation(c: &mut Criterion) {
                         event_hashes.clone(),
                         &timestamps,
                         &heights,
-                    ).unwrap();
+                    )
+                    .unwrap();
                     // Create dummy signature
                     let signature = String::new();
-                    black_box(aggregator.create_checkpoint(window, public_key.clone(), signature).unwrap())
+                    black_box(
+                        aggregator
+                            .create_checkpoint(window, public_key.clone(), signature)
+                            .unwrap(),
+                    )
                 });
             },
         );
@@ -146,18 +147,16 @@ fn bench_trust_score_computation(c: &mut Criterion) {
 /// Benchmark: Node health computation with integrity metrics
 fn bench_node_health_computation(c: &mut Criterion) {
     let computer = NodeHealthComputer::new();
-    
+
     c.bench_function("node_health_compute", |b| {
-        b.iter(|| {
-            black_box(computer.get_node_health("node-1"))
-        })
+        b.iter(|| black_box(computer.get_node_health("node-1")))
     });
 }
 
 /// Benchmark: Gossip message serialization overhead
 fn bench_gossip_serialization(c: &mut Criterion) {
     use aethercore_trust_mesh::gossip::GossipMessage;
-    
+
     let message = GossipMessage::CheckpointSummary {
         node_id: "node-1".to_string(),
         latest_seq_no: 1000,
@@ -166,16 +165,12 @@ fn bench_gossip_serialization(c: &mut Criterion) {
     };
 
     c.bench_function("gossip_serialize", |b| {
-        b.iter(|| {
-            black_box(serde_json::to_string(&message).unwrap())
-        })
+        b.iter(|| black_box(serde_json::to_string(&message).unwrap()))
     });
 
     let serialized = serde_json::to_string(&message).unwrap();
     c.bench_function("gossip_deserialize", |b| {
-        b.iter(|| {
-            black_box(serde_json::from_str::<GossipMessage>(&serialized).unwrap())
-        })
+        b.iter(|| black_box(serde_json::from_str::<GossipMessage>(&serialized).unwrap()))
     });
 }
 

@@ -24,11 +24,11 @@ pub enum QuorumError {
         /// Operation being authorized
         operation: String,
     },
-    
+
     /// Authority verification failed
     #[error("Authority verification failed: {0}")]
     AuthorityFailed(#[from] AuthorityError),
-    
+
     /// Invalid quorum configuration
     #[error("Invalid quorum configuration: {0}")]
     InvalidConfig(String),
@@ -60,7 +60,7 @@ impl CommandScope {
             CommandScope::Emergency => 1,
         }
     }
-    
+
     /// Get operation description for error messages
     pub fn operation_name(&self) -> &'static str {
         match self {
@@ -85,7 +85,7 @@ impl QuorumGate {
     pub fn new(verifier: AuthorityVerifier) -> Self {
         Self { verifier }
     }
-    
+
     /// Determine command scope for a unit command
     pub fn classify_unit_command(command: &UnitCommand) -> CommandScope {
         match command {
@@ -96,7 +96,7 @@ impl QuorumGate {
             _ => CommandScope::SingleUnitNormal,
         }
     }
-    
+
     /// Determine command scope for a swarm command
     pub fn classify_swarm_command(command: &SwarmCommand, unit_count: usize) -> CommandScope {
         match command {
@@ -110,7 +110,7 @@ impl QuorumGate {
             }
         }
     }
-    
+
     /// Verify authority for a unit command
     ///
     /// # Arguments
@@ -129,7 +129,7 @@ impl QuorumGate {
         let scope = Self::classify_unit_command(command);
         self.verify_quorum(scope, command_hash, signatures)
     }
-    
+
     /// Verify authority for a swarm command
     ///
     /// # Arguments
@@ -150,7 +150,7 @@ impl QuorumGate {
         let scope = Self::classify_swarm_command(command, unit_count);
         self.verify_quorum(scope, command_hash, signatures)
     }
-    
+
     /// Verify quorum for a given scope
     fn verify_quorum(
         &self,
@@ -159,7 +159,7 @@ impl QuorumGate {
         signatures: &[AuthoritySignature],
     ) -> Result<(), QuorumError> {
         let required = scope.required_signatures();
-        
+
         if signatures.len() < required {
             return Err(QuorumError::InsufficientAuthority {
                 got: signatures.len(),
@@ -167,10 +167,10 @@ impl QuorumGate {
                 operation: scope.operation_name().to_string(),
             });
         }
-        
+
         // Verify all signatures
         self.verifier.verify_multiple(command_hash, signatures)?;
-        
+
         Ok(())
     }
 }
@@ -211,8 +211,12 @@ mod tests {
     use crate::command_types::Coordinate;
     use ed25519_dalek::{Signer, SigningKey};
     use rand::RngCore;
-    
-    fn create_test_signature(signing_key: &SigningKey, command_hash: &[u8; 32], authority_id: &str) -> AuthoritySignature {
+
+    fn create_test_signature(
+        signing_key: &SigningKey,
+        command_hash: &[u8; 32],
+        authority_id: &str,
+    ) -> AuthoritySignature {
         let signature = signing_key.sign(command_hash);
         AuthoritySignature::new(
             authority_id.to_string(),
@@ -221,30 +225,43 @@ mod tests {
             1000,
         )
     }
-    
+
     #[test]
     fn test_single_unit_normal_requires_one_signature() {
         let mut csprng = rand::rngs::OsRng;
         let mut secret_key_bytes = [0u8; 32];
         csprng.fill_bytes(&mut secret_key_bytes);
         let signing_key = SigningKey::from_bytes(&secret_key_bytes);
-        
+
         let command = UnitCommand::Navigate {
-            waypoint: Coordinate { lat: 45.0, lon: -122.0, alt: None },
+            waypoint: Coordinate {
+                lat: 45.0,
+                lon: -122.0,
+                alt: None,
+            },
             speed: None,
             altitude: None,
         };
-        
+
         let command_hash = [0u8; 32];
-        let signatures = vec![create_test_signature(&signing_key, &command_hash, "operator-1")];
-        
+        let signatures = vec![create_test_signature(
+            &signing_key,
+            &command_hash,
+            "operator-1",
+        )];
+
         let mut verifier = AuthorityVerifier::new();
-        verifier.register_authority("operator-1".to_string(), signing_key.verifying_key().to_bytes());
-        
+        verifier.register_authority(
+            "operator-1".to_string(),
+            signing_key.verifying_key().to_bytes(),
+        );
+
         let gate = QuorumGate::new(verifier);
-        assert!(gate.verify_unit_command(&command, &command_hash, &signatures).is_ok());
+        assert!(gate
+            .verify_unit_command(&command, &command_hash, &signatures)
+            .is_ok());
     }
-    
+
     #[test]
     fn test_single_unit_critical_requires_two_signatures() {
         let mut csprng = rand::rngs::OsRng;
@@ -254,55 +271,66 @@ mod tests {
         csprng.fill_bytes(&mut secret_key_bytes2);
         let key1 = SigningKey::from_bytes(&secret_key_bytes1);
         let key2 = SigningKey::from_bytes(&secret_key_bytes2);
-        
+
         let command = UnitCommand::Reboot { delay_secs: 10 };
         let command_hash = [0u8; 32];
-        
+
         // Only one signature - should fail
         let signatures_one = vec![create_test_signature(&key1, &command_hash, "operator-1")];
-        
+
         let mut verifier = AuthorityVerifier::new();
         verifier.register_authority("operator-1".to_string(), key1.verifying_key().to_bytes());
         verifier.register_authority("coalition-1".to_string(), key2.verifying_key().to_bytes());
-        
+
         let gate = QuorumGate::new(verifier);
         assert!(matches!(
             gate.verify_unit_command(&command, &command_hash, &signatures_one),
             Err(QuorumError::InsufficientAuthority { .. })
         ));
-        
+
         // Two signatures - should succeed
         let signatures_two = vec![
             create_test_signature(&key1, &command_hash, "operator-1"),
             create_test_signature(&key2, &command_hash, "coalition-1"),
         ];
-        
+
         let mut verifier2 = AuthorityVerifier::new();
         verifier2.register_authority("operator-1".to_string(), key1.verifying_key().to_bytes());
         verifier2.register_authority("coalition-1".to_string(), key2.verifying_key().to_bytes());
-        
+
         let gate2 = QuorumGate::new(verifier2);
-        assert!(gate2.verify_unit_command(&command, &command_hash, &signatures_two).is_ok());
+        assert!(gate2
+            .verify_unit_command(&command, &command_hash, &signatures_two)
+            .is_ok());
     }
-    
+
     #[test]
     fn test_emergency_stop_requires_one_signature() {
         let mut csprng = rand::rngs::OsRng;
         let mut secret_key_bytes = [0u8; 32];
         csprng.fill_bytes(&mut secret_key_bytes);
         let signing_key = SigningKey::from_bytes(&secret_key_bytes);
-        
+
         let command = UnitCommand::EmergencyStop {
             reason: "Test emergency".to_string(),
         };
-        
+
         let command_hash = [0u8; 32];
-        let signatures = vec![create_test_signature(&signing_key, &command_hash, "operator-1")];
-        
+        let signatures = vec![create_test_signature(
+            &signing_key,
+            &command_hash,
+            "operator-1",
+        )];
+
         let mut verifier = AuthorityVerifier::new();
-        verifier.register_authority("operator-1".to_string(), signing_key.verifying_key().to_bytes());
-        
+        verifier.register_authority(
+            "operator-1".to_string(),
+            signing_key.verifying_key().to_bytes(),
+        );
+
         let gate = QuorumGate::new(verifier);
-        assert!(gate.verify_unit_command(&command, &command_hash, &signatures).is_ok());
+        assert!(gate
+            .verify_unit_command(&command, &command_hash, &signatures)
+            .is_ok());
     }
 }

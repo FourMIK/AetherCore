@@ -76,10 +76,7 @@ pub enum ByzantineFaultType {
         actual_hash: Vec<u8>,
     },
     /// Invalid signature on event
-    SignatureForgery {
-        seq_no: u64,
-        event_hash: Vec<u8>,
-    },
+    SignatureForgery { seq_no: u64, event_hash: Vec<u8> },
     /// Timestamp violation (proof timestamp too far in future or past)
     TemporalViolation {
         seq_no: u64,
@@ -94,7 +91,10 @@ impl ByzantineFaultType {
     pub fn description(&self) -> String {
         match self {
             ByzantineFaultType::Equivocation { seq_no, .. } => {
-                format!("Equivocation detected: two different proofs at seq_no {}", seq_no)
+                format!(
+                    "Equivocation detected: two different proofs at seq_no {}",
+                    seq_no
+                )
             }
             ByzantineFaultType::ChainBreak { seq_no, .. } => {
                 format!("Merkle chain break detected at seq_no {}", seq_no)
@@ -102,7 +102,12 @@ impl ByzantineFaultType {
             ByzantineFaultType::SignatureForgery { seq_no, .. } => {
                 format!("Signature forgery detected at seq_no {}", seq_no)
             }
-            ByzantineFaultType::TemporalViolation { seq_no, proof_timestamp, current_time, .. } => {
+            ByzantineFaultType::TemporalViolation {
+                seq_no,
+                proof_timestamp,
+                current_time,
+                ..
+            } => {
                 format!(
                     "Temporal violation at seq_no {}: proof_timestamp={}, current_time={}",
                     seq_no, proof_timestamp, current_time
@@ -207,9 +212,10 @@ impl SlashingEvent {
             ));
         }
 
-        let sig_bytes: [u8; 64] = self.signature.as_slice()
-            .try_into()
-            .map_err(|_| SlashingError::InvalidSignature("Invalid signature format".to_string()))?;
+        let sig_bytes: [u8; 64] =
+            self.signature.as_slice().try_into().map_err(|_| {
+                SlashingError::InvalidSignature("Invalid signature format".to_string())
+            })?;
 
         let signature = Signature::from_bytes(&sig_bytes);
 
@@ -315,13 +321,10 @@ impl SlashingEngine {
     /// Currently uses timestamp as a proxy for sequence number. In production deployments,
     /// this should extract the actual sequence number from event metadata to avoid false
     /// positives when events have identical timestamps.
-    pub fn detect_byzantine_fault(
-        &mut self,
-        node_id: &str,
-        event: &SignedEvent,
-    ) -> Result<bool> {
+    pub fn detect_byzantine_fault(&mut self, node_id: &str, event: &SignedEvent) -> Result<bool> {
         // Get or create event history for this node
-        let history = self.node_event_history
+        let history = self
+            .node_event_history
             .entry(node_id.to_string())
             .or_insert_with(HashMap::new);
 
@@ -378,13 +381,9 @@ impl SlashingEngine {
         }
 
         // Create slashing event
-        let slashing_event = SlashingEvent::new(
-            node_id.clone(),
-            fault_type,
-            slasher_public_key_id,
-            evidence,
-        )
-        .sign(signing_key);
+        let slashing_event =
+            SlashingEvent::new(node_id.clone(), fault_type, slasher_public_key_id, evidence)
+                .sign(signing_key);
 
         // Transition node to Revoked state
         self.set_node_state(node_id.clone(), NodeState::Revoked);
@@ -425,19 +424,22 @@ impl SlashingEngine {
         if is_byzantine {
             // Extract sequence number and hashes for evidence
             let seq_no = event.timestamp;
-            
+
             // Safely extract hashes with proper error handling
-            let history = self.node_event_history.get(&node_id)
-                .ok_or_else(|| SlashingError::InvalidEvent(
-                    format!("Node history not found for {}", node_id)
-                ))?;
-            
-            let existing_hash = history.get(&seq_no)
-                .ok_or_else(|| SlashingError::InvalidEvent(
-                    format!("Event hash not found for seq_no {}", seq_no)
-                ))?
+            let history = self.node_event_history.get(&node_id).ok_or_else(|| {
+                SlashingError::InvalidEvent(format!("Node history not found for {}", node_id))
+            })?;
+
+            let existing_hash = history
+                .get(&seq_no)
+                .ok_or_else(|| {
+                    SlashingError::InvalidEvent(format!(
+                        "Event hash not found for seq_no {}",
+                        seq_no
+                    ))
+                })?
                 .clone();
-            
+
             let new_hash = event.event_hash.clone();
 
             // Create fault type
@@ -477,10 +479,7 @@ impl SlashingEngine {
 
     /// Get the number of revoked nodes
     pub fn count_revoked_nodes(&self) -> usize {
-        self.node_states
-            .values()
-            .filter(|s| s.is_revoked())
-            .count()
+        self.node_states.values().filter(|s| s.is_revoked()).count()
     }
 }
 

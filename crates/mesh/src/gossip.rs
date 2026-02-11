@@ -111,8 +111,7 @@ impl AethericWhisper {
 
         // Check for conflict with local state
         if let Some(local_root) = &self.local_merkle_root {
-            if message.merkle_root != *local_root
-                && message.block_height == self.local_block_height
+            if message.merkle_root != *local_root && message.block_height == self.local_block_height
             {
                 // Fork detected at same height
                 return GossipResult::ConflictDetected {

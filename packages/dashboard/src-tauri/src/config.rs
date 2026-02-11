@@ -191,8 +191,7 @@ impl ConfigManager {
             // Check scheme is wss
             if url.scheme() != "wss" {
                 return Err(ConfigError::ValidationError(
-                    "Production mesh endpoint must use WSS (secure WebSocket) protocol"
-                        .to_string(),
+                    "Production mesh endpoint must use WSS (secure WebSocket) protocol".to_string(),
                 ));
             }
         }

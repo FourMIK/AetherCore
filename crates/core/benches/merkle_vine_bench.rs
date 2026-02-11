@@ -6,9 +6,9 @@
 //! - Proof generation and verification
 //! - Batch updates for streaming data
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use aethercore_core::merkle_vine::MerkleVine;
 use blake3;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 /// Generate test data with BLAKE3 hash
 fn generate_test_leaf(index: u64) -> (Vec<u8>, Vec<u8>) {
@@ -22,7 +22,7 @@ fn bench_vine_add_leaf_single(c: &mut Criterion) {
     c.bench_function("vine_add_leaf_single", |b| {
         let mut vine = MerkleVine::new("test-vine");
         let mut index = 0u64;
-        
+
         b.iter(|| {
             let (data, _hash) = generate_test_leaf(index);
             let timestamp = std::time::SystemTime::now()
@@ -38,7 +38,7 @@ fn bench_vine_add_leaf_single(c: &mut Criterion) {
 /// Benchmark: Batch leaf additions with varying sizes
 fn bench_vine_add_leaf_batch(c: &mut Criterion) {
     let batch_sizes = vec![10, 100, 1000];
-    
+
     for size in batch_sizes {
         c.bench_with_input(
             BenchmarkId::new("vine_add_leaf_batch", size),
@@ -50,7 +50,7 @@ fn bench_vine_add_leaf_batch(c: &mut Criterion) {
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_millis() as u64;
-                    
+
                     for i in 0..size {
                         let (data, _hash) = generate_test_leaf(i);
                         black_box(vine.add_leaf(data, timestamp + i).unwrap());
@@ -65,47 +65,41 @@ fn bench_vine_add_leaf_batch(c: &mut Criterion) {
 fn bench_vine_get_root(c: &mut Criterion) {
     // Pre-build vines of different sizes
     let sizes = vec![10, 100, 1000];
-    
+
     for size in sizes {
         let mut vine = MerkleVine::new("test-vine");
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis() as u64;
-        
+
         for i in 0..size {
             let (data, _hash) = generate_test_leaf(i);
             vine.add_leaf(data, timestamp + i).unwrap();
         }
-        
-        c.bench_with_input(
-            BenchmarkId::new("vine_get_root", size),
-            &size,
-            |b, _| {
-                b.iter(|| {
-                    black_box(vine.get_root())
-                });
-            },
-        );
+
+        c.bench_with_input(BenchmarkId::new("vine_get_root", size), &size, |b, _| {
+            b.iter(|| black_box(vine.get_root()));
+        });
     }
 }
 
 /// Benchmark: Proof generation for inclusion verification
 fn bench_vine_generate_proof(c: &mut Criterion) {
     let sizes = vec![100, 1000];
-    
+
     for size in sizes {
         let mut vine = MerkleVine::new("test-vine");
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis() as u64;
-        
+
         for i in 0..size {
             let (data, _hash) = generate_test_leaf(i);
             vine.add_leaf(data, timestamp + i).unwrap();
         }
-        
+
         c.bench_with_input(
             BenchmarkId::new("vine_generate_proof", size),
             &size,
@@ -128,19 +122,17 @@ fn bench_vine_verify_proof(c: &mut Criterion) {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64;
-    
+
     for i in 0..100 {
         let (data, _hash) = generate_test_leaf(i);
         vine.add_leaf(data, timestamp + i).unwrap();
     }
-    
+
     let proof = vine.generate_proof(50).ok();
-    
+
     if let Some(proof) = proof {
         c.bench_function("vine_verify_proof", |b| {
-            b.iter(|| {
-                black_box(vine.verify_proof(&proof))
-            })
+            b.iter(|| black_box(vine.verify_proof(&proof)))
         });
     }
 }
@@ -148,19 +140,13 @@ fn bench_vine_verify_proof(c: &mut Criterion) {
 /// Benchmark: BLAKE3 hashing for leaf data
 fn bench_blake3_hashing(c: &mut Criterion) {
     let data_sizes = vec![64, 256, 1024, 4096]; // bytes
-    
+
     for size in data_sizes {
         let data = vec![0u8; size];
-        
-        c.bench_with_input(
-            BenchmarkId::new("blake3_hash", size),
-            &size,
-            |b, _| {
-                b.iter(|| {
-                    black_box(blake3::hash(&data))
-                });
-            },
-        );
+
+        c.bench_with_input(BenchmarkId::new("blake3_hash", size), &size, |b, _| {
+            b.iter(|| black_box(blake3::hash(&data)));
+        });
     }
 }
 
@@ -173,7 +159,7 @@ fn bench_vine_streaming_updates(c: &mut Criterion) {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as u64;
-            
+
             // Simulate 100 sequential updates
             for i in 0..100 {
                 let (data, _hash) = generate_test_leaf(i);
@@ -191,12 +177,12 @@ fn bench_vine_serialization(c: &mut Criterion) {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64;
-    
+
     for i in 0..100 {
         let (data, _hash) = generate_test_leaf(i);
         vine.add_leaf(data, timestamp + i).unwrap();
     }
-    
+
     // Skip serialization as MerkleVine may not be serializable
     // This benchmark would measure the cost of transmitting the vine data
     // In production, only checkpoints and proofs need to be serialized

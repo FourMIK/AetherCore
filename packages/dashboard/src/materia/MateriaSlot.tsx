@@ -65,9 +65,7 @@ export const MateriaSlot: React.FC<MateriaSlotProps> = ({
       {/* Slot Header */}
       <div className="flex items-center justify-between p-4 border-b border-tungsten/10">
         <div className="flex-1">
-          <h3 className="font-display text-lg font-semibold text-tungsten">
-            {config.title}
-          </h3>
+          <h3 className="font-display text-lg font-semibold text-tungsten">{config.title}</h3>
           {config.description && (
             <p className="text-xs text-tungsten/50 mt-1">{config.description}</p>
           )}
@@ -101,23 +99,15 @@ export const MateriaSlot: React.FC<MateriaSlotProps> = ({
         <div className="flex-1 flex items-center justify-center p-8 bg-jamming/10">
           <div className="text-center">
             <div className="text-6xl mb-4">🚫</div>
-            <h4 className="text-xl font-display font-bold text-jamming mb-2">
-              SIG INVALID
-            </h4>
-            <p className="text-sm text-tungsten/70">
-              Data stream lacks valid Merkle signature
-            </p>
-            <p className="text-xs text-tungsten/50 mt-2">
-              Refusing to display unverified payload
-            </p>
+            <h4 className="text-xl font-display font-bold text-jamming mb-2">SIG INVALID</h4>
+            <p className="text-sm text-tungsten/70">Data stream lacks valid Merkle signature</p>
+            <p className="text-xs text-tungsten/50 mt-2">Refusing to display unverified payload</p>
           </div>
         </div>
       ) : (
         <>
           {/* Slot Content */}
-          <div className="flex-1 overflow-auto p-4">
-            {children}
-          </div>
+          <div className="flex-1 overflow-auto p-4">{children}</div>
 
           {/* Slot Footer - Status Indicator */}
           <div className="border-t border-tungsten/10 p-3 flex justify-between items-center text-xs">

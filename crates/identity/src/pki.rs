@@ -274,8 +274,7 @@ fn csr_tbs_bytes(request: &CertificateRequest) -> Vec<u8> {
     let mut data = Vec::new();
     write_bytes(&mut data, request.subject.as_bytes());
     write_bytes(&mut data, &request.public_key);
-    let attestation_bytes =
-        serde_json::to_vec(&request.attestation).unwrap_or_else(|_| Vec::new());
+    let attestation_bytes = serde_json::to_vec(&request.attestation).unwrap_or_else(|_| Vec::new());
     write_bytes(&mut data, &attestation_bytes);
     data
 }

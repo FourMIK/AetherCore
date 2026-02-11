@@ -108,19 +108,19 @@ impl UnitStatus {
     /// Check if unit is considered stale (> 30s since last seen)
     pub fn is_stale(&self, current_time_ns: u64) -> bool {
         const STALE_THRESHOLD_NS: u64 = 30_000_000_000; // 30 seconds
-        
+
         if current_time_ns < self.last_seen_ns {
             return false; // Clock skew - don't mark as stale
         }
-        
+
         (current_time_ns - self.last_seen_ns) > STALE_THRESHOLD_NS
     }
-    
+
     /// Check if trust score is low (< 0.5)
     pub fn is_low_trust(&self) -> bool {
         self.trust_score < 0.5
     }
-    
+
     /// Check if unit is operational
     pub fn is_operational(&self) -> bool {
         matches!(
@@ -134,11 +134,11 @@ impl UnitTelemetry {
     /// Check if telemetry is stale (> 30s)
     pub fn is_stale(&self, current_time_ns: u64) -> bool {
         const STALE_THRESHOLD_NS: u64 = 30_000_000_000; // 30 seconds
-        
+
         if current_time_ns < self.timestamp_ns {
             return false; // Clock skew
         }
-        
+
         (current_time_ns - self.timestamp_ns) > STALE_THRESHOLD_NS
     }
 }
@@ -147,7 +147,7 @@ impl UnitTelemetry {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    
+
     fn create_test_platform_id() -> PlatformIdentity {
         PlatformIdentity {
             id: "test-unit-1".to_string(),
@@ -157,7 +157,7 @@ mod tests {
             metadata: HashMap::new(),
         }
     }
-    
+
     #[test]
     fn test_unit_status_stale_detection() {
         let telemetry = UnitTelemetry {
@@ -169,7 +169,7 @@ mod tests {
             attestation_hash: [0u8; 32],
             timestamp_ns: 1000,
         };
-        
+
         let status = UnitStatus {
             platform_id: create_test_platform_id(),
             serial_number: "SN-001".to_string(),
@@ -180,15 +180,15 @@ mod tests {
             last_seen_ns: 1000,
             telemetry,
         };
-        
+
         // Not stale
         assert!(!status.is_stale(1000));
         assert!(!status.is_stale(10_000_000_000)); // 10 seconds later
-        
+
         // Stale
         assert!(status.is_stale(31_000_000_001)); // 30+ seconds later
     }
-    
+
     #[test]
     fn test_unit_status_trust_score() {
         let mut status = UnitStatus {
@@ -209,13 +209,13 @@ mod tests {
                 timestamp_ns: 1000,
             },
         };
-        
+
         assert!(!status.is_low_trust());
-        
+
         status.trust_score = 0.3;
         assert!(status.is_low_trust());
     }
-    
+
     #[test]
     fn test_operational_state_check() {
         let mut status = UnitStatus {
@@ -236,9 +236,9 @@ mod tests {
                 timestamp_ns: 1000,
             },
         };
-        
+
         assert!(status.is_operational());
-        
+
         status.operational_state = OperationalState::Fault;
         assert!(!status.is_operational());
     }

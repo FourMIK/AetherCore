@@ -35,12 +35,7 @@ pub struct Waypoint {
 
 impl Waypoint {
     /// Create a new waypoint
-    pub fn new(
-        waypoint_id: String,
-        latitude: f64,
-        longitude: f64,
-        sequence: u32,
-    ) -> Self {
+    pub fn new(waypoint_id: String, latitude: f64, longitude: f64, sequence: u32) -> Self {
         Self {
             waypoint_id,
             latitude,
@@ -106,11 +101,7 @@ pub struct ScheduledMission {
 
 impl ScheduledMission {
     /// Create a new scheduled mission
-    pub fn new(
-        mission_id: String,
-        mission_type: String,
-        start_time: u64,
-    ) -> Self {
+    pub fn new(mission_id: String, mission_type: String, start_time: u64) -> Self {
         Self {
             mission_id,
             mission_type,
@@ -245,12 +236,7 @@ mod tests {
 
     #[test]
     fn test_waypoint_creation() {
-        let waypoint = Waypoint::new(
-            "wp-001".to_string(),
-            45.0,
-            -122.0,
-            1,
-        );
+        let waypoint = Waypoint::new("wp-001".to_string(), 45.0, -122.0, 1);
 
         assert_eq!(waypoint.waypoint_id, "wp-001");
         assert_eq!(waypoint.sequence, 1);
@@ -259,12 +245,7 @@ mod tests {
 
     #[test]
     fn test_waypoint_mark_arrived() {
-        let mut waypoint = Waypoint::new(
-            "wp-001".to_string(),
-            45.0,
-            -122.0,
-            1,
-        );
+        let mut waypoint = Waypoint::new("wp-001".to_string(), 45.0, -122.0, 1);
 
         waypoint.mark_arrived(1000);
         assert!(waypoint.is_reached());
@@ -273,12 +254,7 @@ mod tests {
 
     #[test]
     fn test_waypoint_overdue() {
-        let mut waypoint = Waypoint::new(
-            "wp-001".to_string(),
-            45.0,
-            -122.0,
-            1,
-        );
+        let mut waypoint = Waypoint::new("wp-001".to_string(), 45.0, -122.0, 1);
 
         waypoint.eta = Some(1000);
 
@@ -291,11 +267,8 @@ mod tests {
 
     #[test]
     fn test_scheduled_mission_creation() {
-        let mission = ScheduledMission::new(
-            "mission-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mission =
+            ScheduledMission::new("mission-001".to_string(), "delivery".to_string(), 1000);
 
         assert_eq!(mission.mission_id, "mission-001");
         assert_eq!(mission.current_waypoint, 0);
@@ -304,11 +277,8 @@ mod tests {
 
     #[test]
     fn test_scheduled_mission_add_waypoint() {
-        let mut mission = ScheduledMission::new(
-            "mission-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut mission =
+            ScheduledMission::new("mission-001".to_string(), "delivery".to_string(), 1000);
 
         let wp1 = Waypoint::new("wp-001".to_string(), 45.0, -122.0, 1);
         let wp2 = Waypoint::new("wp-002".to_string(), 46.0, -123.0, 2);
@@ -321,11 +291,8 @@ mod tests {
 
     #[test]
     fn test_scheduled_mission_advance_waypoint() {
-        let mut mission = ScheduledMission::new(
-            "mission-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut mission =
+            ScheduledMission::new("mission-001".to_string(), "delivery".to_string(), 1000);
 
         mission.add_waypoint(Waypoint::new("wp-001".to_string(), 45.0, -122.0, 1));
         mission.add_waypoint(Waypoint::new("wp-002".to_string(), 46.0, -123.0, 2));
@@ -341,11 +308,8 @@ mod tests {
 
     #[test]
     fn test_scheduled_mission_progress() {
-        let mut mission = ScheduledMission::new(
-            "mission-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut mission =
+            ScheduledMission::new("mission-001".to_string(), "delivery".to_string(), 1000);
 
         mission.add_waypoint(Waypoint::new("wp-001".to_string(), 45.0, -122.0, 1));
         mission.add_waypoint(Waypoint::new("wp-002".to_string(), 46.0, -123.0, 2));
@@ -365,11 +329,8 @@ mod tests {
 
     #[test]
     fn test_scheduled_mission_overdue_waypoints() {
-        let mut mission = ScheduledMission::new(
-            "mission-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut mission =
+            ScheduledMission::new("mission-001".to_string(), "delivery".to_string(), 1000);
 
         let mut wp1 = Waypoint::new("wp-001".to_string(), 45.0, -122.0, 1);
         wp1.eta = Some(2000);
@@ -394,11 +355,8 @@ mod tests {
     #[test]
     fn test_schedule_add_mission() {
         let mut schedule = Schedule::new();
-        let mission = ScheduledMission::new(
-            "mission-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mission =
+            ScheduledMission::new("mission-001".to_string(), "delivery".to_string(), 1000);
 
         schedule.add_mission(mission);
         assert_eq!(schedule.total_count(), 1);
@@ -408,18 +366,12 @@ mod tests {
     fn test_schedule_active_completed() {
         let mut schedule = Schedule::new();
 
-        let mut mission1 = ScheduledMission::new(
-            "mission-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut mission1 =
+            ScheduledMission::new("mission-001".to_string(), "delivery".to_string(), 1000);
         mission1.completed_at = Some(2000);
 
-        let mission2 = ScheduledMission::new(
-            "mission-002".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mission2 =
+            ScheduledMission::new("mission-002".to_string(), "delivery".to_string(), 1000);
 
         schedule.add_mission(mission1);
         schedule.add_mission(mission2);
@@ -431,11 +383,8 @@ mod tests {
     #[test]
     fn test_schedule_remove_mission() {
         let mut schedule = Schedule::new();
-        let mission = ScheduledMission::new(
-            "mission-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mission =
+            ScheduledMission::new("mission-001".to_string(), "delivery".to_string(), 1000);
 
         schedule.add_mission(mission);
         assert_eq!(schedule.total_count(), 1);
@@ -446,11 +395,8 @@ mod tests {
 
     #[test]
     fn test_mission_associate_dispatch() {
-        let mut mission = ScheduledMission::new(
-            "mission-001".to_string(),
-            "delivery".to_string(),
-            1000,
-        );
+        let mut mission =
+            ScheduledMission::new("mission-001".to_string(), "delivery".to_string(), 1000);
 
         mission.associate_dispatch("dispatch-001".to_string());
         assert_eq!(mission.dispatch_id, Some("dispatch-001".to_string()));

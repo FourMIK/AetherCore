@@ -13,8 +13,8 @@
 //! This module provides circomlib-compatible Poseidon hash functions for the
 //! AuthynticProof circuit.
 
-use super::error::ZkResult;
 use super::error::ZkError;
+use super::error::ZkResult;
 use ark_bn254::Fr;
 use light_poseidon::{Poseidon, PoseidonBytesHasher};
 
@@ -22,7 +22,12 @@ fn poseidon_hash(inputs: &[&[u8; 32]]) -> ZkResult<[u8; 32]> {
     let mut hasher = Poseidon::<Fr>::new_circom(inputs.len())
         .map_err(|err| ZkError::HashError(err.to_string()))?;
     let hash = hasher
-        .hash_bytes_be(&inputs.iter().map(|input| input.as_slice()).collect::<Vec<_>>())
+        .hash_bytes_be(
+            &inputs
+                .iter()
+                .map(|input| input.as_slice())
+                .collect::<Vec<_>>(),
+        )
         .map_err(|err| ZkError::HashError(err.to_string()))?;
     Ok(hash)
 }

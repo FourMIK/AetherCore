@@ -45,7 +45,11 @@ impl ScenarioAlpha {
             latencies.push(duration);
         }
 
-        TopologyBenchmarkResult::from_latencies("ALPHA (2-node C2 link)", latencies, Duration::from_micros(500))
+        TopologyBenchmarkResult::from_latencies(
+            "ALPHA (2-node C2 link)",
+            latencies,
+            Duration::from_micros(500),
+        )
     }
 }
 
@@ -81,7 +85,11 @@ impl ScenarioOmega {
             latencies.push(duration);
         }
 
-        TopologyBenchmarkResult::from_latencies("OMEGA (50-node swarm)", latencies, Duration::from_millis(5))
+        TopologyBenchmarkResult::from_latencies(
+            "OMEGA (50-node swarm)",
+            latencies,
+            Duration::from_millis(5),
+        )
     }
 
     /// Inject Byzantine nodes with spoofed Merkle roots
@@ -146,7 +154,9 @@ pub fn benchmark_merkle_window_verification(window_sizes: &[usize]) -> Vec<Windo
         let event_hashes: Vec<String> = (0..window_size)
             .map(|i| format!("hash-{:08x}", i))
             .collect();
-        let timestamps: Vec<u64> = (0..window_size as u64).map(|i| 1000000 + i * 1000).collect();
+        let timestamps: Vec<u64> = (0..window_size as u64)
+            .map(|i| 1000000 + i * 1000)
+            .collect();
         let heights: Vec<u64> = (0..window_size as u64).collect();
 
         let mut latencies = Vec::new();

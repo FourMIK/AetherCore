@@ -8,7 +8,7 @@ use tactical_glass_lib::error::validation;
 #[test]
 fn test_default_config() {
     let config = AppConfig::default();
-    
+
     assert!(config.mesh_endpoint.is_none());
     assert!(config.testnet_endpoint.is_none());
     assert!(config.enforce_tpm);
@@ -28,10 +28,10 @@ fn test_config_serialization() {
 
     // Serialize to JSON
     let json = serde_json::to_string_pretty(&config).unwrap();
-    
+
     // Deserialize back
     let deserialized: AppConfig = serde_json::from_str(&json).unwrap();
-    
+
     assert_eq!(
         config.mesh_endpoint.as_ref().unwrap(),
         deserialized.mesh_endpoint.as_ref().unwrap()
@@ -46,7 +46,7 @@ fn test_config_serialization() {
 #[test]
 fn test_retry_config_defaults() {
     let retry_config = RetryConfig::default();
-    
+
     assert_eq!(retry_config.max_retries, 10);
     assert_eq!(retry_config.initial_delay_ms, 1000);
     assert_eq!(retry_config.max_delay_ms, 30000);
@@ -59,10 +59,10 @@ fn test_retry_config_serialization() {
         initial_delay_ms: 2000,
         max_delay_ms: 60000,
     };
-    
+
     let json = serde_json::to_string(&retry_config).unwrap();
     let deserialized: RetryConfig = serde_json::from_str(&json).unwrap();
-    
+
     assert_eq!(retry_config.max_retries, deserialized.max_retries);
     assert_eq!(retry_config.initial_delay_ms, deserialized.initial_delay_ms);
     assert_eq!(retry_config.max_delay_ms, deserialized.max_delay_ms);
@@ -80,7 +80,7 @@ fn test_validate_ws_url_secure_mode() {
     // Valid secure URLs
     assert!(validation::validate_ws_url("wss://example.com", true).is_ok());
     assert!(validation::validate_ws_url("wss://mesh.example.com:8443/c2", true).is_ok());
-    
+
     // Invalid for secure mode
     assert!(validation::validate_ws_url("ws://example.com", true).is_err());
 }
@@ -90,7 +90,7 @@ fn test_validate_ws_url_non_secure_mode() {
     // Valid for non-secure mode
     assert!(validation::validate_ws_url("ws://localhost:8080", false).is_ok());
     assert!(validation::validate_ws_url("wss://example.com", false).is_ok());
-    
+
     // Invalid protocols
     assert!(validation::validate_ws_url("https://example.com", false).is_err());
     assert!(validation::validate_ws_url("http://example.com", false).is_err());

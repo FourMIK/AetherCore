@@ -90,7 +90,7 @@ impl Default for StorageConfig {
                 path.push("data");
                 path
             });
-        
+
         Self {
             ledger_path: base_path.join("ledger.db"),
             trust_mesh_path: base_path.join("trust_mesh.db"),
@@ -114,10 +114,10 @@ impl Config {
     pub fn from_toml_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let mut config: Config = toml::from_str(&content)?;
-        
+
         // Apply environment variable overrides
         config.apply_env_overrides();
-        
+
         Ok(config)
     }
 
@@ -131,10 +131,10 @@ impl Config {
     pub fn from_json_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let mut config: Config = serde_json::from_str(&content)?;
-        
+
         // Apply environment variable overrides
         config.apply_env_overrides();
-        
+
         Ok(config)
     }
 
@@ -154,7 +154,7 @@ impl Config {
                         return config;
                     }
                 }
-                
+
                 // Try TOML
                 #[cfg(feature = "toml")]
                 if let Ok(config) = Self::from_toml_file(path_ref) {
@@ -162,7 +162,7 @@ impl Config {
                 }
             }
         }
-        
+
         let mut config = Self::default_config();
         config.apply_env_overrides();
         config
@@ -174,17 +174,17 @@ impl Config {
         if let Ok(endpoint) = std::env::var("AETHER_BUNKER_ENDPOINT") {
             self.backend.endpoint = endpoint;
         }
-        
+
         // Logging level
         if let Ok(level) = std::env::var("RUST_LOG") {
             self.logging.level = level;
         }
-        
+
         // JSON output
         if let Ok(json) = std::env::var("AETHER_LOG_JSON") {
             self.logging.json_output = json == "1" || json.to_lowercase() == "true";
         }
-        
+
         // Data directory (updates paths)
         if let Ok(data_dir) = std::env::var("AETHER_DATA_DIR") {
             let base = PathBuf::from(data_dir);
@@ -196,10 +196,8 @@ impl Config {
     pub fn default_config() -> Self {
         Self {
             network: NetworkConfig {
-                node_id: std::env::var("AETHER_NODE_ID")
-                    .unwrap_or_else(|_| "node-001".to_string()),
-                mesh_id: std::env::var("AETHER_MESH_ID")
-                    .unwrap_or_else(|_| "mesh-001".to_string()),
+                node_id: std::env::var("AETHER_NODE_ID").unwrap_or_else(|_| "node-001".to_string()),
+                mesh_id: std::env::var("AETHER_MESH_ID").unwrap_or_else(|_| "mesh-001".to_string()),
                 max_hops: 10,
             },
             radio: RadioConfig {
@@ -239,7 +237,10 @@ mod tests {
     fn test_default_storage_config() {
         let config = StorageConfig::default();
         assert!(config.ledger_path.to_string_lossy().contains("ledger.db"));
-        assert!(config.trust_mesh_path.to_string_lossy().contains("trust_mesh.db"));
+        assert!(config
+            .trust_mesh_path
+            .to_string_lossy()
+            .contains("trust_mesh.db"));
     }
 
     #[test]
@@ -247,7 +248,7 @@ mod tests {
         // Clear environment variables that affect defaults
         std::env::remove_var("AETHER_NODE_ID");
         std::env::remove_var("AETHER_MESH_ID");
-        
+
         let config = Config::default_config();
         assert_eq!(config.network.node_id, "node-001");
         assert_eq!(config.network.mesh_id, "mesh-001");
@@ -284,11 +285,14 @@ mod tests {
                 "trust_mesh_path": "/tmp/test_trust.db"
             }
         }"#;
-        
+
         let config: Config = serde_json::from_str(json).unwrap();
         assert_eq!(config.network.node_id, "test-node");
         assert_eq!(config.logging.level, "debug");
         assert!(config.logging.json_output);
-        assert_eq!(config.storage.ledger_path, PathBuf::from("/tmp/test_ledger.db"));
+        assert_eq!(
+            config.storage.ledger_path,
+            PathBuf::from("/tmp/test_ledger.db")
+        );
     }
 }

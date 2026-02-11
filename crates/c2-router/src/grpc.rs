@@ -51,9 +51,9 @@ pub mod c2_proto {
 
 pub use c2_proto::{
     c2_router_server::{C2Router, C2RouterServer},
-    AbortRequest, AbortResponse, CommandStatusRequest, CommandStatusResponse,
-    OfflineGapRequest, OfflineGapResponse, SwarmCommandRequest, SwarmCommandResponse,
-    SyncAuthorizationRequest, SyncAuthorizationResponse, UnitCommandRequest, UnitCommandResponse,
+    AbortRequest, AbortResponse, CommandStatusRequest, CommandStatusResponse, OfflineGapRequest,
+    OfflineGapResponse, SwarmCommandRequest, SwarmCommandResponse, SyncAuthorizationRequest,
+    SyncAuthorizationResponse, UnitCommandRequest, UnitCommandResponse,
 };
 
 const TRUST_THRESHOLD: f64 = 0.8;
@@ -107,18 +107,31 @@ impl C2GrpcServer {
     }
 
     /// Extract and verify request metadata for authentication
-    fn verify_request_metadata(&self, request: &Request<impl std::fmt::Debug>) -> Result<String, Status> {
+    fn verify_request_metadata(
+        &self,
+        request: &Request<impl std::fmt::Debug>,
+    ) -> Result<String, Status> {
         // Extract device ID from metadata
         let device_id = request
             .metadata()
             .get("x-device-id")
             .ok_or_else(|| {
-                self.audit_log("AUTH_FAILED", "None", "None", "Missing x-device-id metadata");
+                self.audit_log(
+                    "AUTH_FAILED",
+                    "None",
+                    "None",
+                    "Missing x-device-id metadata",
+                );
                 Status::unauthenticated("Missing x-device-id metadata")
             })?
             .to_str()
             .map_err(|e| {
-                self.audit_log("AUTH_FAILED", "None", "None", &format!("Invalid x-device-id: {}", e));
+                self.audit_log(
+                    "AUTH_FAILED",
+                    "None",
+                    "None",
+                    &format!("Invalid x-device-id: {}", e),
+                );
                 Status::unauthenticated("Invalid x-device-id")
             })?
             .to_string();
@@ -128,18 +141,33 @@ impl C2GrpcServer {
             .metadata()
             .get("x-signature")
             .ok_or_else(|| {
-                self.audit_log("AUTH_FAILED", &device_id, "None", "Missing x-signature metadata");
+                self.audit_log(
+                    "AUTH_FAILED",
+                    &device_id,
+                    "None",
+                    "Missing x-signature metadata",
+                );
                 Status::unauthenticated("Missing x-signature metadata")
             })?
             .to_str()
             .map_err(|e| {
-                self.audit_log("AUTH_FAILED", &device_id, "None", &format!("Invalid x-signature: {}", e));
+                self.audit_log(
+                    "AUTH_FAILED",
+                    &device_id,
+                    "None",
+                    &format!("Invalid x-signature: {}", e),
+                );
                 Status::unauthenticated("Invalid x-signature")
             })?;
 
         // Verify the device identity is registered and not revoked
         let identity_mgr = self.identity_manager.read().map_err(|e| {
-            self.audit_log("AUTH_FAILED", &device_id, "None", &format!("Lock error: {}", e));
+            self.audit_log(
+                "AUTH_FAILED",
+                &device_id,
+                "None",
+                &format!("Lock error: {}", e),
+            );
             Status::internal("Identity manager lock error")
         })?;
 
@@ -167,7 +195,12 @@ impl C2GrpcServer {
     /// Check trust score against threshold and quarantine status
     fn verify_trust_score(&self, device_id: &str) -> Result<(), Status> {
         let scorer = self.trust_scorer.read().map_err(|e| {
-            self.audit_log("TRUST_CHECK_FAILED", device_id, "None", &format!("Lock error: {}", e));
+            self.audit_log(
+                "TRUST_CHECK_FAILED",
+                device_id,
+                "None",
+                &format!("Lock error: {}", e),
+            );
             Status::internal("Trust scorer lock error")
         })?;
 
@@ -179,7 +212,12 @@ impl C2GrpcServer {
                     device_id,
                     trust_score.rejection_summary()
                 );
-                self.audit_log("TRUST_QUARANTINE_REJECT", device_id, "None", &rejection_reason);
+                self.audit_log(
+                    "TRUST_QUARANTINE_REJECT",
+                    device_id,
+                    "None",
+                    &rejection_reason,
+                );
                 return Err(Status::permission_denied(rejection_reason));
             }
 
@@ -241,7 +279,12 @@ impl C2Router for C2GrpcServer {
 
         // Step 3: Parse command from JSON
         let command: UnitCommand = serde_json::from_str(&req.command_json).map_err(|e| {
-            self.audit_log("EXECUTE_UNIT", &device_id, unit_id, &format!("Invalid command JSON: {}", e));
+            self.audit_log(
+                "EXECUTE_UNIT",
+                &device_id,
+                unit_id,
+                &format!("Invalid command JSON: {}", e),
+            );
             Status::invalid_argument(format!("Invalid command JSON: {}", e))
         })?;
 
@@ -249,7 +292,12 @@ impl C2Router for C2GrpcServer {
         // In full implementation, verify signatures against command hash
         // For now, we log the signature count
         if req.signatures.is_empty() {
-            self.audit_log("EXECUTE_UNIT", &device_id, unit_id, "No signatures provided");
+            self.audit_log(
+                "EXECUTE_UNIT",
+                &device_id,
+                unit_id,
+                "No signatures provided",
+            );
             return Err(Status::unauthenticated("No authority signatures provided"));
         }
 
@@ -258,7 +306,12 @@ impl C2Router for C2GrpcServer {
             .dispatcher
             .dispatch_unit_command(unit_id, &command, req.timestamp_ns)
             .map_err(|e| {
-                self.audit_log("EXECUTE_UNIT", &device_id, unit_id, &format!("Dispatch failed: {}", e));
+                self.audit_log(
+                    "EXECUTE_UNIT",
+                    &device_id,
+                    unit_id,
+                    &format!("Dispatch failed: {}", e),
+                );
                 Status::internal(format!("Command dispatch failed: {}", e))
             })?;
 
@@ -302,13 +355,23 @@ impl C2Router for C2GrpcServer {
 
         // Step 3: Parse command from JSON
         let command: SwarmCommand = serde_json::from_str(&req.command_json).map_err(|e| {
-            self.audit_log("EXECUTE_SWARM", &device_id, swarm_id, &format!("Invalid command JSON: {}", e));
+            self.audit_log(
+                "EXECUTE_SWARM",
+                &device_id,
+                swarm_id,
+                &format!("Invalid command JSON: {}", e),
+            );
             Status::invalid_argument(format!("Invalid command JSON: {}", e))
         })?;
 
         // Step 4: Quorum verification
         if req.signatures.is_empty() {
-            self.audit_log("EXECUTE_SWARM", &device_id, swarm_id, "No signatures provided");
+            self.audit_log(
+                "EXECUTE_SWARM",
+                &device_id,
+                swarm_id,
+                "No signatures provided",
+            );
             return Err(Status::unauthenticated("No authority signatures provided"));
         }
 
@@ -322,7 +385,12 @@ impl C2Router for C2GrpcServer {
                 req.timestamp_ns,
             )
             .map_err(|e| {
-                self.audit_log("EXECUTE_SWARM", &device_id, swarm_id, &format!("Dispatch failed: {}", e));
+                self.audit_log(
+                    "EXECUTE_SWARM",
+                    &device_id,
+                    swarm_id,
+                    &format!("Dispatch failed: {}", e),
+                );
                 Status::internal(format!("Swarm command dispatch failed: {}", e))
             })?;
 
@@ -421,18 +489,33 @@ impl C2Router for C2GrpcServer {
 
         // Check if offline buffer is configured
         let buffer = self.offline_buffer.as_ref().ok_or_else(|| {
-            self.audit_log("GET_OFFLINE_GAP", &device_id, &req.node_id, "Offline mode not enabled");
+            self.audit_log(
+                "GET_OFFLINE_GAP",
+                &device_id,
+                &req.node_id,
+                "Offline mode not enabled",
+            );
             Status::unimplemented("Offline mode not enabled on this node")
         })?;
 
         let buffer = buffer.lock().map_err(|e| {
-            self.audit_log("GET_OFFLINE_GAP", &device_id, &req.node_id, &format!("Lock error: {}", e));
+            self.audit_log(
+                "GET_OFFLINE_GAP",
+                &device_id,
+                &req.node_id,
+                &format!("Lock error: {}", e),
+            );
             Status::internal("Buffer lock error")
         })?;
 
         // Get gap information
         let gap_info = buffer.get_gap_info().map_err(|e| {
-            self.audit_log("GET_OFFLINE_GAP", &device_id, &req.node_id, &format!("Failed: {}", e));
+            self.audit_log(
+                "GET_OFFLINE_GAP",
+                &device_id,
+                &req.node_id,
+                &format!("Failed: {}", e),
+            );
             Status::internal(format!("Failed to get gap info: {}", e))
         })?;
 
@@ -466,12 +549,22 @@ impl C2Router for C2GrpcServer {
 
         // Step 3: Check if offline buffer is configured
         let buffer_arc = self.offline_buffer.as_ref().ok_or_else(|| {
-            self.audit_log("AUTHORIZE_SYNC", &device_id, &req.node_id, "Offline mode not enabled");
+            self.audit_log(
+                "AUTHORIZE_SYNC",
+                &device_id,
+                &req.node_id,
+                "Offline mode not enabled",
+            );
             Status::unimplemented("Offline mode not enabled on this node")
         })?;
 
         let buffer = buffer_arc.lock().map_err(|e| {
-            self.audit_log("AUTHORIZE_SYNC", &device_id, &req.node_id, &format!("Lock error: {}", e));
+            self.audit_log(
+                "AUTHORIZE_SYNC",
+                &device_id,
+                &req.node_id,
+                &format!("Lock error: {}", e),
+            );
             Status::internal("Buffer lock error")
         })?;
 
@@ -518,20 +611,38 @@ impl C2Router for C2GrpcServer {
 
         // Step 7: Get all queued events for sync
         let events = buffer.get_all_events().map_err(|e| {
-            self.audit_log("AUTHORIZE_SYNC", &device_id, &req.node_id, &format!("Failed to get events: {}", e));
+            self.audit_log(
+                "AUTHORIZE_SYNC",
+                &device_id,
+                &req.node_id,
+                &format!("Failed to get events: {}", e),
+            );
             Status::internal(format!("Failed to get queued events: {}", e))
         })?;
 
         let events_count = events.len();
 
         // Step 8: Verify Merkle chain integrity
-        let chain_intact = buffer.get_gap_info().map_err(|e| {
-            self.audit_log("AUTHORIZE_SYNC", &device_id, &req.node_id, &format!("Gap info error: {}", e));
-            Status::internal(format!("Failed to get gap info: {}", e))
-        })?.chain_intact;
+        let chain_intact = buffer
+            .get_gap_info()
+            .map_err(|e| {
+                self.audit_log(
+                    "AUTHORIZE_SYNC",
+                    &device_id,
+                    &req.node_id,
+                    &format!("Gap info error: {}", e),
+                );
+                Status::internal(format!("Failed to get gap info: {}", e))
+            })?
+            .chain_intact;
 
         let merkle_root = buffer.get_merkle_root().map_err(|e| {
-            self.audit_log("AUTHORIZE_SYNC", &device_id, &req.node_id, &format!("Merkle error: {}", e));
+            self.audit_log(
+                "AUTHORIZE_SYNC",
+                &device_id,
+                &req.node_id,
+                &format!("Merkle error: {}", e),
+            );
             Status::internal(format!("Failed to get merkle root: {}", e))
         })?;
 
@@ -553,18 +664,33 @@ impl C2Router for C2GrpcServer {
         // Must release read lock before acquiring write lock to avoid deadlock
         drop(buffer);
         let mut buffer = buffer_arc.lock().map_err(|e| {
-            self.audit_log("AUTHORIZE_SYNC", &device_id, &req.node_id, &format!("Lock error: {}", e));
+            self.audit_log(
+                "AUTHORIZE_SYNC",
+                &device_id,
+                &req.node_id,
+                &format!("Lock error: {}", e),
+            );
             Status::internal("Buffer lock error")
         })?;
 
         buffer.clear_buffer().map_err(|e| {
-            self.audit_log("AUTHORIZE_SYNC", &device_id, &req.node_id, &format!("Clear failed: {}", e));
+            self.audit_log(
+                "AUTHORIZE_SYNC",
+                &device_id,
+                &req.node_id,
+                &format!("Clear failed: {}", e),
+            );
             Status::internal(format!("Failed to clear buffer: {}", e))
         })?;
 
         // Step 11: Transition back to online mode
         buffer.enter_online_mode().map_err(|e| {
-            self.audit_log("AUTHORIZE_SYNC", &device_id, &req.node_id, &format!("State transition failed: {}", e));
+            self.audit_log(
+                "AUTHORIZE_SYNC",
+                &device_id,
+                &req.node_id,
+                &format!("State transition failed: {}", e),
+            );
             Status::internal(format!("Failed to enter online mode: {}", e))
         })?;
 
@@ -732,7 +858,7 @@ mod tests {
         // Set low trust score (Suspect level, not Quarantined)
         // We need score >= QUARANTINE_THRESHOLD (0.6) and < TRUST_THRESHOLD (0.8)
         const TEST_TRUST_SCORE: f64 = 0.7; // Suspect level, below operational threshold
-        // Trust scorer starts at 1.0, so we subtract to reach target score
+                                           // Trust scorer starts at 1.0, so we subtract to reach target score
         server
             .trust_scorer
             .write()

@@ -28,7 +28,11 @@ impl MeshSecurity {
     }
 
     /// Initialize with signing service and identity
-    pub fn with_signing(mut self, signing_service: EventSigningService, identity: PlatformIdentity) -> Self {
+    pub fn with_signing(
+        mut self,
+        signing_service: EventSigningService,
+        identity: PlatformIdentity,
+    ) -> Self {
         self.signing_service = Some(signing_service);
         self.identity = Some(identity);
         self
@@ -84,7 +88,11 @@ impl MeshSecurity {
     /// Validates AK certificate chain, TPM quote signatures, and PCR policy.
     pub fn verify_attestation(&self, attestation: &Attestation) -> Result<f64, String> {
         match attestation {
-            Attestation::Tpm { quote, pcrs, ak_cert } => {
+            Attestation::Tpm {
+                quote,
+                pcrs,
+                ak_cert,
+            } => {
                 let cert_chain: Vec<Certificate> = serde_json::from_slice(ak_cert)
                     .map_err(|e| format!("Invalid AK certificate chain: {}", e))?;
                 if cert_chain.is_empty() {
@@ -396,9 +404,7 @@ mod tests {
             .generate_attestation_key("node-1".to_string())
             .expect("ak");
         let nonce = vec![1, 2, 3, 4];
-        let quote = tpm_manager
-            .generate_quote(nonce, &[0])
-            .expect("quote");
+        let quote = tpm_manager.generate_quote(nonce, &[0]).expect("quote");
 
         let quote_pcrs: Vec<Vec<u8>> = quote.pcrs.iter().map(|pcr| pcr.value.clone()).collect();
         let pcrs_bytes: Vec<u8> = quote_pcrs.iter().flatten().copied().collect();
@@ -570,8 +576,7 @@ mod tests {
         quote_pcrs[0] = vec![0; 32];
 
         if let Attestation::Tpm { quote, pcrs, .. } = &mut attestation {
-            let mut quote_struct: TpmQuote =
-                serde_json::from_slice(quote).expect("parse quote");
+            let mut quote_struct: TpmQuote = serde_json::from_slice(quote).expect("parse quote");
             quote_struct.pcrs = vec![PcrValue {
                 index: 0,
                 value: vec![0; 32],

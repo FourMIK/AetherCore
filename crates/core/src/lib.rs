@@ -25,9 +25,7 @@ pub use merkle_aggregator::{
     MerkleError, MerkleProof, MerkleTree,
 };
 pub use merkle_vine::{MerkleVine, VineNode};
-pub use slashing::{
-    ByzantineFaultType, NodeState, SlashingEngine, SlashingError, SlashingEvent,
-};
+pub use slashing::{ByzantineFaultType, NodeState, SlashingEngine, SlashingError, SlashingEvent};
 pub use trust_chain::{TrustChain, TrustLink};
 pub use zk_trait::{
     GeoCoordinate, PhysicsValidation, ZkPhysicsVerifier, ZkProofRequest, ZkProofResult,

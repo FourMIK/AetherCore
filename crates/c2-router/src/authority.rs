@@ -15,11 +15,11 @@ pub enum AuthorityError {
     /// Invalid signature format
     #[error("Invalid signature format: {0}")]
     InvalidSignature(String),
-    
+
     /// Invalid public key format
     #[error("Invalid public key format: {0}")]
     InvalidPublicKey(String),
-    
+
     /// Signature verification failed
     #[error("Signature verification failed for authority {authority_id}: {reason}")]
     VerificationFailed {
@@ -28,7 +28,7 @@ pub enum AuthorityError {
         /// Reason for failure
         reason: String,
     },
-    
+
     /// Unknown authority
     #[error("Unknown authority: {0}")]
     UnknownAuthority(String),
@@ -49,7 +49,12 @@ pub struct AuthoritySignature {
 
 impl AuthoritySignature {
     /// Create a new authority signature
-    pub fn new(authority_id: String, signature: Vec<u8>, public_key: [u8; 32], timestamp_ns: u64) -> Self {
+    pub fn new(
+        authority_id: String,
+        signature: Vec<u8>,
+        public_key: [u8; 32],
+        timestamp_ns: u64,
+    ) -> Self {
         Self {
             authority_id,
             signature,
@@ -73,12 +78,12 @@ impl AuthorityVerifier {
             known_authorities: std::collections::HashMap::new(),
         }
     }
-    
+
     /// Register a known authority with their public key
     pub fn register_authority(&mut self, authority_id: String, public_key: [u8; 32]) {
         self.known_authorities.insert(authority_id, public_key);
     }
-    
+
     /// Verify a command signature
     ///
     /// # Arguments
@@ -94,11 +99,12 @@ impl AuthorityVerifier {
     ) -> Result<(), AuthorityError> {
         // Verify signature format (must be 64 bytes)
         if signature.signature.len() != 64 {
-            return Err(AuthorityError::InvalidSignature(
-                format!("Expected 64 bytes, got {}", signature.signature.len())
-            ));
+            return Err(AuthorityError::InvalidSignature(format!(
+                "Expected 64 bytes, got {}",
+                signature.signature.len()
+            )));
         }
-        
+
         // Check if authority is known (optional - can verify unknown authorities if public key provided)
         if let Some(known_pubkey) = self.known_authorities.get(&signature.authority_id) {
             if known_pubkey != &signature.public_key {
@@ -108,28 +114,28 @@ impl AuthorityVerifier {
                 });
             }
         }
-        
+
         // Parse public key
         let verifying_key = VerifyingKey::from_bytes(&signature.public_key)
             .map_err(|e| AuthorityError::InvalidPublicKey(format!("{}", e)))?;
-        
+
         // Parse signature
-        let sig_bytes: [u8; 64] = signature.signature[..64]
-            .try_into()
-            .map_err(|_| AuthorityError::InvalidSignature("Failed to convert signature".to_string()))?;
+        let sig_bytes: [u8; 64] = signature.signature[..64].try_into().map_err(|_| {
+            AuthorityError::InvalidSignature("Failed to convert signature".to_string())
+        })?;
         let sig = Signature::from_bytes(&sig_bytes);
-        
+
         // Verify signature over command hash
-        verifying_key
-            .verify(command_hash, &sig)
-            .map_err(|e| AuthorityError::VerificationFailed {
+        verifying_key.verify(command_hash, &sig).map_err(|e| {
+            AuthorityError::VerificationFailed {
                 authority_id: signature.authority_id.clone(),
                 reason: format!("{}", e),
-            })?;
-        
+            }
+        })?;
+
         Ok(())
     }
-    
+
     /// Verify multiple signatures (for quorum requirements)
     pub fn verify_multiple(
         &self,
@@ -137,12 +143,12 @@ impl AuthorityVerifier {
         signatures: &[AuthoritySignature],
     ) -> Result<Vec<String>, AuthorityError> {
         let mut verified_authorities = Vec::new();
-        
+
         for sig in signatures {
             self.verify(command_hash, sig)?;
             verified_authorities.push(sig.authority_id.clone());
         }
-        
+
         Ok(verified_authorities)
     }
 }
@@ -156,9 +162,9 @@ impl Default for AuthorityVerifier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::{SigningKey, Signer};
+    use ed25519_dalek::{Signer, SigningKey};
     use rand::RngCore;
-    
+
     #[test]
     fn test_authority_signature_verification() {
         let mut csprng = rand::rngs::OsRng;
@@ -166,35 +172,35 @@ mod tests {
         csprng.fill_bytes(&mut secret_key_bytes);
         let signing_key = SigningKey::from_bytes(&secret_key_bytes);
         let verifying_key = signing_key.verifying_key();
-        
+
         let command_hash = [0u8; 32];
         let signature = signing_key.sign(&command_hash);
-        
+
         let auth_sig = AuthoritySignature::new(
             "operator-1".to_string(),
             signature.to_bytes().to_vec(),
             verifying_key.to_bytes(),
             1000,
         );
-        
+
         let mut verifier = AuthorityVerifier::new();
         verifier.register_authority("operator-1".to_string(), verifying_key.to_bytes());
-        
+
         assert!(verifier.verify(&command_hash, &auth_sig).is_ok());
     }
-    
+
     #[test]
     fn test_invalid_signature_length() {
         let verifier = AuthorityVerifier::new();
         let command_hash = [0u8; 32];
-        
+
         let auth_sig = AuthoritySignature::new(
             "operator-1".to_string(),
             vec![0u8; 32], // Wrong length
             [0u8; 32],
             1000,
         );
-        
+
         assert!(matches!(
             verifier.verify(&command_hash, &auth_sig),
             Err(AuthorityError::InvalidSignature(_))

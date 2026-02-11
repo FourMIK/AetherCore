@@ -7,7 +7,12 @@
 import { create } from 'zustand';
 
 export type OperatorRole = 'operator' | 'commander' | 'admin';
-export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'unverified' | 'severed';
+export type ConnectionStatus =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'unverified'
+  | 'severed';
 export type ConnectionState = 'connected' | 'intermittent' | 'disconnected';
 
 export interface Operator {
@@ -49,7 +54,7 @@ interface CommState {
   incomingCall: VideoCall | null;
   connectionStatus: ConnectionStatus;
   connectionState: ConnectionState; // For UI degradation (Heartbeat Sentinel)
-  
+
   // Actions
   setCurrentOperator: (operator: Operator) => void;
   addOperator: (operator: Operator) => void;
@@ -176,6 +181,6 @@ export const useCommStore = create<CommState>((set, get) => ({
   },
 
   setConnectionStatus: (status) => set({ connectionStatus: status }),
-  
+
   setConnectionState: (state) => set({ connectionState: state }),
 }));

@@ -1,9 +1,9 @@
 //! Merkle-Vine: Cryptographic structure for streaming data.
 //! SECURITY: Uses BLAKE3 (256-bit).
 
+use blake3::Hasher;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use blake3::Hasher;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct VineNode {
@@ -57,8 +57,14 @@ impl MerkleVine {
     }
 
     fn recompute_root(&mut self) -> crate::Result<()> {
-        if self.leaves.is_empty() { self.root = None; return Ok(()); }
-        if self.leaves.len() == 1 { self.root = Some(self.leaves[0].clone()); return Ok(()); }
+        if self.leaves.is_empty() {
+            self.root = None;
+            return Ok(());
+        }
+        if self.leaves.len() == 1 {
+            self.root = Some(self.leaves[0].clone());
+            return Ok(());
+        }
 
         let mut level = self.leaves.clone();
         while level.len() > 1 {
@@ -70,7 +76,7 @@ impl MerkleVine {
                     let parent_hash = hash_parent(&left, &right);
                     let parent = VineNode {
                         hash: parent_hash.clone(),
-                        index: 0, 
+                        index: 0,
                         left: Some(left),
                         right: Some(right),
                         data: None,

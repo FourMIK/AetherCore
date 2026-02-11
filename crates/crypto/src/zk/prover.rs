@@ -13,7 +13,7 @@
 //! # Overview
 //!
 //! This module provides ZK-SNARK proof generation for device attestation and location verification.
-//! Implements Groth16 proofs over BN254 curve using the arkworks ecosystem for Ethereum/Circom 
+//! Implements Groth16 proofs over BN254 curve using the arkworks ecosystem for Ethereum/Circom
 //! compatibility.
 //!
 //! # Architecture
@@ -315,9 +315,9 @@ impl ZkProverTrait for ZkProver {
         // For now, we generate a mock proof structure that is compatible with
         // the Groth16 format but uses deterministic test values.
         // This allows the code to compile without requiring circuit artifacts.
-        
+
         let proof = self.generate_groth16_proof(private_inputs, public_inputs)?;
-        
+
         Ok(proof)
     }
 
@@ -581,7 +581,7 @@ mod tests {
             Path::new("/nonexistent/circuit.r1cs"),
             Path::new("/nonexistent/circuit.zkey"),
         );
-        
+
         // Should fail with clear error message about missing artifacts
         assert!(result.is_err());
         match result {

@@ -49,11 +49,11 @@ impl Default for TrustComputationConfig {
             healthy_agreement_bonus_multiplier: 0.2,
             healthy_agreement_threshold: 0.95,
 
-            degraded_base_score: 0.6,  // Adjusted for new 0.6 quarantine threshold
+            degraded_base_score: 0.6, // Adjusted for new 0.6 quarantine threshold
             degraded_score_range: 0.3,
             degraded_agreement_threshold: 0.80,
             degraded_agreement_range: 0.15,
-            degraded_min_score: 0.6,   // Degraded nodes must stay above quarantine threshold
+            degraded_min_score: 0.6, // Degraded nodes must stay above quarantine threshold
             degraded_max_score: 0.8,
 
             compromised_base_score: 0.1,

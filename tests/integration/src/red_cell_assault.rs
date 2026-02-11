@@ -91,9 +91,10 @@ mod test_utils {
         request
             .metadata_mut()
             .insert("x-device-id", MetadataValue::from_static(device_id));
-        request
-            .metadata_mut()
-            .insert("x-signature", MetadataValue::from_static("dGVzdC1zaWduYXR1cmU="));
+        request.metadata_mut().insert(
+            "x-signature",
+            MetadataValue::from_static("dGVzdC1zaWduYXR1cmU="),
+        );
 
         request
     }
@@ -166,10 +167,7 @@ async fn test_ghost_node_invalid_merkle_root() {
 
     // Phase 3: Verify stream processor detects the violation
     let result = enforcer.process_event(stream_event2);
-    assert!(
-        result.is_err(),
-        "Impossible Merkle root should be rejected"
-    );
+    assert!(result.is_err(), "Impossible Merkle root should be rejected");
     assert!(
         enforcer.is_stream_compromised(GHOST_NODE_ID),
         "Stream should be marked as compromised"
@@ -312,9 +310,9 @@ async fn test_multiple_byzantine_nodes() {
 
     // Setup server with mixed trust scores
     let server = setup_server_with_nodes(&[
-        (GHOST_NODE, -0.7),        // Score = 0.3 (Quarantined)
-        (REPLAY_NODE, -0.5),       // Score = 0.5 (Quarantined)
-        (LEGITIMATE_NODE, 0.0),    // Score = 1.0 (Healthy)
+        (GHOST_NODE, -0.7),     // Score = 0.3 (Quarantined)
+        (REPLAY_NODE, -0.5),    // Score = 0.5 (Quarantined)
+        (LEGITIMATE_NODE, 0.0), // Score = 1.0 (Healthy)
     ]);
 
     let command = create_navigate_command();
@@ -495,7 +493,7 @@ async fn test_stream_integrity_chain_validation() {
 /// and rejects packets signed with unauthorized keys.
 #[tokio::test]
 async fn test_spoofed_signature_rejection() {
-    use ed25519_dalek::{SigningKey, Signer};
+    use ed25519_dalek::{Signer, SigningKey};
     use rand::rngs::OsRng;
     use test_utils::*;
 
@@ -507,12 +505,12 @@ async fn test_spoofed_signature_rejection() {
 
     // Phase 2: Generate RANDOM Ed25519 key (attacker's key, NOT enrolled)
     let spoofed_key = SigningKey::generate(&mut OsRng);
-    
+
     // Phase 3: Create valid command data
     let command = create_navigate_command();
     let command_json = serde_json::to_string(&command).unwrap();
     let timestamp_ns = current_timestamp_ns();
-    
+
     // Phase 4: Sign with spoofed key
     let message = format!("{}:{}:{}", DEVICE_ID, command_json, timestamp_ns);
     let spoofed_signature = spoofed_key.sign(message.as_bytes());
@@ -529,9 +527,10 @@ async fn test_spoofed_signature_rejection() {
     request
         .metadata_mut()
         .insert("x-device-id", MetadataValue::from_str(DEVICE_ID).unwrap());
-    request
-        .metadata_mut()
-        .insert("x-signature", MetadataValue::from_str(&spoofed_sig_b64).unwrap());
+    request.metadata_mut().insert(
+        "x-signature",
+        MetadataValue::from_str(&spoofed_sig_b64).unwrap(),
+    );
 
     // Phase 6: Attempt command execution with spoofed signature
     let result = server.execute_unit_command(request).await;
@@ -541,20 +540,20 @@ async fn test_spoofed_signature_rejection() {
         result.is_err(),
         "Command with spoofed signature MUST be rejected"
     );
-    
+
     let err = result.unwrap_err();
-    
+
     // Should be Unauthenticated (401) or PermissionDenied (403)
     assert!(
         err.code() == tonic::Code::Unauthenticated || err.code() == tonic::Code::PermissionDenied,
         "Expected Unauthenticated or PermissionDenied, got: {:?}",
         err.code()
     );
-    
+
     assert!(
-        err.message().contains("signature") || 
-        err.message().contains("verification") ||
-        err.message().contains("unauthorized"),
+        err.message().contains("signature")
+            || err.message().contains("verification")
+            || err.message().contains("unauthorized"),
         "Error message should indicate signature failure: {}",
         err.message()
     );
@@ -579,7 +578,7 @@ async fn test_replay_attack_sequence_rejection() {
     use test_utils::*;
 
     const STREAM_ID: &str = "replay-test-stream";
-    
+
     let mut tracker = StreamIntegrityTracker::new();
 
     // Phase 1: Send valid event with sequence 1
@@ -592,10 +591,7 @@ async fn test_replay_attack_sequence_rejection() {
 
     // Phase 3: Replay attack - try to replay sequence 1
     let result_replay = tracker.validate_sequence(STREAM_ID, 1);
-    assert!(
-        result_replay.is_err(),
-        "Replay attack MUST be rejected"
-    );
+    assert!(result_replay.is_err(), "Replay attack MUST be rejected");
     assert!(
         result_replay.unwrap_err().contains("Replay attack"),
         "Error should indicate replay attack"

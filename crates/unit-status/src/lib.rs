@@ -54,23 +54,19 @@
 #![warn(missing_docs)]
 
 pub mod feed;
+pub mod gospel;
 pub mod trust;
 pub mod types;
 pub mod websocket;
-pub mod gospel;
 
 // Re-export commonly used types
 pub use feed::{ChangeFeedEvent, CosmosDbFeedSubscriber, FeedError};
+pub use gospel::{GospelError, GospelLedger, GospelState, RevocationCertificate, RevocationReason};
 pub use trust::{TelemetryTrustScorer, TrustLevel};
 pub use types::{
     ConnectivityState, Coordinate, OperationalState, PlatformType, UnitStatus, UnitTelemetry,
 };
 pub use websocket::{
-    WsServer, WsMessage, MeshHealthMessage, HealthMetrics,
-    RevocationCertificate as WsRevocationCertificate,
-    RevocationReason as WsRevocationReason,
-};
-pub use gospel::{
-    GospelLedger, GospelState, GospelError,
-    RevocationCertificate, RevocationReason,
+    HealthMetrics, MeshHealthMessage, RevocationCertificate as WsRevocationCertificate,
+    RevocationReason as WsRevocationReason, WsMessage, WsServer,
 };

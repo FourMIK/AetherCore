@@ -50,11 +50,19 @@ impl IdentityRegistryService {
             Ok(val) => {
                 let normalized = val.to_lowercase().trim().to_string();
                 // Check for true values
-                if normalized == "true" || normalized == "1" || normalized == "yes" || normalized == "on" {
+                if normalized == "true"
+                    || normalized == "1"
+                    || normalized == "yes"
+                    || normalized == "on"
+                {
                     return true;
                 }
                 // Check for false values
-                if normalized == "false" || normalized == "0" || normalized == "no" || normalized == "off" {
+                if normalized == "false"
+                    || normalized == "0"
+                    || normalized == "no"
+                    || normalized == "off"
+                {
                     return false;
                 }
                 // Invalid value - log warning and use default
@@ -71,7 +79,10 @@ impl IdentityRegistryService {
         tpm_manager: Arc<Mutex<TpmManager>>,
     ) -> Self {
         let tpm_enabled = Self::parse_tpm_enabled();
-        tracing::info!("Identity Registry Service initialized with TPM_ENABLED={}", tpm_enabled);
+        tracing::info!(
+            "Identity Registry Service initialized with TPM_ENABLED={}",
+            tpm_enabled
+        );
         if !tpm_enabled {
             tracing::warn!("⚠️  TPM DISABLED - Hardware-rooted trust validation is disabled. Security guarantees reduced.");
         }
@@ -90,7 +101,10 @@ impl IdentityRegistryService {
         admin_node_ids: Vec<String>,
     ) -> Self {
         let tpm_enabled = Self::parse_tpm_enabled();
-        tracing::info!("Identity Registry Service initialized with TPM_ENABLED={}", tpm_enabled);
+        tracing::info!(
+            "Identity Registry Service initialized with TPM_ENABLED={}",
+            tpm_enabled
+        );
         if !tpm_enabled {
             tracing::warn!("⚠️  TPM DISABLED - Hardware-rooted trust validation is disabled. Security guarantees reduced.");
         }
@@ -136,8 +150,8 @@ impl IdentityRegistryService {
             .map_err(|e| format!("Failed to create verifying key: {}", e))?;
 
         // Decode signature
-        let signature_bytes = hex::decode(signature_hex)
-            .map_err(|e| format!("Failed to decode signature: {}", e))?;
+        let signature_bytes =
+            hex::decode(signature_hex).map_err(|e| format!("Failed to decode signature: {}", e))?;
 
         if signature_bytes.len() != 64 {
             return Err(format!(
@@ -362,7 +376,9 @@ impl IdentityRegistry for IdentityRegistryService {
                     "Registration failed for node {}: No PCR values provided",
                     req.node_id
                 );
-                return Err(Status::invalid_argument("PCR values required for TPM attestation"));
+                return Err(Status::invalid_argument(
+                    "PCR values required for TPM attestation",
+                ));
             }
 
             // Validate AK certificate is provided
@@ -385,7 +401,7 @@ impl IdentityRegistry for IdentityRegistryService {
             let pcr_values = if !req.pcrs.is_empty() {
                 let chunk_size = 32;
                 let num_pcrs = (req.pcrs.len() + chunk_size - 1) / chunk_size;
-                
+
                 (0..num_pcrs.min(24))
                     .map(|i| {
                         let start = i * chunk_size;
@@ -431,17 +447,14 @@ impl IdentityRegistry for IdentityRegistryService {
                 ));
             }
 
-            tracing::info!(
-                "Node {} passed TPM attestation validation",
-                req.node_id
-            );
+            tracing::info!("Node {} passed TPM attestation validation", req.node_id);
         } else {
             // TPM DISABLED: Accept registration without TPM validation
             tracing::info!(
                 "Node {} registration: skipping TPM validation (TPM_ENABLED=false)",
                 req.node_id
             );
-            
+
             if req.tpm_quote.is_empty() && req.pcrs.is_empty() && req.ak_cert.is_empty() {
                 tracing::debug!(
                     "Node {} registered without TPM fields (TPM disabled mode)",
@@ -483,11 +496,7 @@ impl IdentityRegistry for IdentityRegistryService {
                 }))
             }
             Err(e) => {
-                tracing::warn!(
-                    "Registration failed for node {}: {}",
-                    req.node_id,
-                    e
-                );
+                tracing::warn!("Registration failed for node {}: {}", req.node_id, e);
                 Ok(Response::new(RegisterNodeResponse {
                     success: false,
                     error_message: format!("Registration failed: {}", e),
@@ -597,11 +606,7 @@ impl IdentityRegistry for IdentityRegistryService {
                 }))
             }
             Err(e) => {
-                tracing::error!(
-                    "Revocation failed for node {}: {}",
-                    req.node_id,
-                    e
-                );
+                tracing::error!("Revocation failed for node {}: {}", req.node_id, e);
                 Ok(Response::new(RevokeNodeResponse {
                     success: false,
                     error_message: format!("Revocation failed: {}", e),

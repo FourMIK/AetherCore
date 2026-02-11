@@ -19,11 +19,12 @@ pub async fn ingest_binary(
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
     let stream_id = Uuid::new_v4();
-    
+
     // Store in S3 for immutable Merkle proof
     let key = format!("streams/{}/binary", stream_id);
-    
-    match state.s3
+
+    match state
+        .s3
         .put_object()
         .bucket(&state.config.merkle_bucket)
         .key(&key)
@@ -33,7 +34,7 @@ pub async fn ingest_binary(
     {
         Ok(_) => {
             info!("Binary stream {} stored in S3", stream_id);
-            
+
             // Publish to Redis for real-time processing
             if let Ok(mut conn) = state.redis.get_connection() {
                 let _: Result<(), _> = redis::cmd("PUBLISH")
@@ -60,12 +61,12 @@ pub async fn ingest_telemetry(
     Json(payload): Json<Value>,
 ) -> Result<Json<Value>, StatusCode> {
     let stream_id = Uuid::new_v4();
-    
+
     // Publish telemetry to Redis for Tactical Glass dashboard
     if let Ok(mut conn) = state.redis.get_connection() {
-        let telemetry_json = serde_json::to_string(&payload)
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
-            
+        let telemetry_json =
+            serde_json::to_string(&payload).map_err(|_| StatusCode::BAD_REQUEST)?;
+
         let _: Result<(), _> = redis::cmd("PUBLISH")
             .arg("h2:telemetry")
             .arg(&telemetry_json)

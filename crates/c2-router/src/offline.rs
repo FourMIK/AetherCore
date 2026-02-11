@@ -69,10 +69,7 @@ pub enum OfflineError {
 
     /// Merkle root mismatch
     #[error("Merkle root mismatch: offline={offline:?}, online={online:?}")]
-    MerkleRootMismatch {
-        offline: Vec<u8>,
-        online: Vec<u8>,
-    },
+    MerkleRootMismatch { offline: Vec<u8>, online: Vec<u8> },
 }
 
 /// Connection state for offline resilience
@@ -99,7 +96,7 @@ impl ConnectionState {
 }
 
 /// Encrypted event packet for offline storage
-/// 
+///
 /// Note: Encryption at rest is planned for Phase 2 enhancement.
 /// Currently stores event data with signatures but payload encryption
 /// via TPM-derived keys is not yet implemented.
@@ -139,9 +136,9 @@ pub struct OfflineGapInfo {
 }
 
 /// Materia Buffer - Local transaction log for offline operation
-/// 
+///
 /// # Thread Safety
-/// 
+///
 /// This struct is designed to be wrapped in Arc<Mutex<_>> for shared access.
 /// SQLite connection is not Send/Sync by default, so operations must be
 /// serialized through the mutex.
@@ -266,7 +263,8 @@ impl OfflineMateriaBuffer {
 
     /// Transition back to online mode (after successful sync)
     pub fn enter_online_mode(&mut self) -> Result<(), OfflineError> {
-        if self.state != ConnectionState::ReconnectPending && self.state != ConnectionState::Online {
+        if self.state != ConnectionState::ReconnectPending && self.state != ConnectionState::Online
+        {
             return Err(OfflineError::InvalidStateTransition {
                 from: format!("{:?}", self.state),
                 to: "Online".to_string(),
@@ -321,10 +319,8 @@ impl OfflineMateriaBuffer {
 
         // Extend local Merkle Vine
         let timestamp = event.timestamp_ns / NANOS_TO_MILLIS;
-        self.merkle_vine.add_leaf(
-            event.encrypted_payload.clone(),
-            timestamp,
-        )?;
+        self.merkle_vine
+            .add_leaf(event.encrypted_payload.clone(), timestamp)?;
 
         // Insert into storage
         self.storage.execute(
@@ -359,9 +355,9 @@ impl OfflineMateriaBuffer {
 
     /// Get the number of queued events
     pub fn get_queued_count(&self) -> Result<usize, OfflineError> {
-        let count: i64 = self.storage.query_row("SELECT COUNT(*) FROM offline_buffer", [], |row| {
-            row.get(0)
-        })?;
+        let count: i64 =
+            self.storage
+                .query_row("SELECT COUNT(*) FROM offline_buffer", [], |row| row.get(0))?;
 
         Ok(count as usize)
     }
@@ -473,7 +469,7 @@ impl OfflineMateriaBuffer {
     }
 
     /// Get current timestamp in nanoseconds
-    /// 
+    ///
     /// Returns 0 if system time is before Unix epoch (should never happen in practice)
     fn current_timestamp_ns() -> u64 {
         use std::time::{SystemTime, UNIX_EPOCH};
@@ -499,31 +495,25 @@ mod tests {
             .expect("Failed to create buffer");
 
         // Initial state should be Online
-        assert_eq!(
-            buffer.get_state(),
-            ConnectionState::Online
-        );
+        assert_eq!(buffer.get_state(), ConnectionState::Online);
 
         // Transition to offline
-        buffer.enter_offline_mode().expect("Failed to enter offline mode");
-        assert_eq!(
-            buffer.get_state(),
-            ConnectionState::OfflineAutonomous
-        );
+        buffer
+            .enter_offline_mode()
+            .expect("Failed to enter offline mode");
+        assert_eq!(buffer.get_state(), ConnectionState::OfflineAutonomous);
 
         // Transition to reconnect pending
-        buffer.enter_reconnect_pending().expect("Failed to enter reconnect pending");
-        assert_eq!(
-            buffer.get_state(),
-            ConnectionState::ReconnectPending
-        );
+        buffer
+            .enter_reconnect_pending()
+            .expect("Failed to enter reconnect pending");
+        assert_eq!(buffer.get_state(), ConnectionState::ReconnectPending);
 
         // Transition back to online
-        buffer.enter_online_mode().expect("Failed to enter online mode");
-        assert_eq!(
-            buffer.get_state(),
-            ConnectionState::Online
-        );
+        buffer
+            .enter_online_mode()
+            .expect("Failed to enter online mode");
+        assert_eq!(buffer.get_state(), ConnectionState::Online);
 
         let _ = fs::remove_file(&storage_path);
     }
@@ -538,7 +528,9 @@ mod tests {
             .expect("Failed to create buffer");
 
         // Enter offline mode
-        buffer.enter_offline_mode().expect("Failed to enter offline mode");
+        buffer
+            .enter_offline_mode()
+            .expect("Failed to enter offline mode");
 
         // Create a test event
         let event = EncryptedPacket {
@@ -553,7 +545,9 @@ mod tests {
         };
 
         // Queue the event
-        let seq_no = buffer.queue_signed_event(event).expect("Failed to queue event");
+        let seq_no = buffer
+            .queue_signed_event(event)
+            .expect("Failed to queue event");
         assert_eq!(seq_no, 1);
 
         // Check count
