@@ -6,19 +6,19 @@ $ErrorActionPreference = "Continue"
 $script:Errors = 0
 $script:Warnings = 0
 
-function Write-Error-Message {
+function Write-ErrorMsg {
     param([string]$Message)
     Write-Host "ERROR: $Message" -ForegroundColor Red
     $script:Errors++
 }
 
-function Write-Warning-Message {
+function Write-WarningMsg {
     param([string]$Message)
     Write-Host "WARNING: $Message" -ForegroundColor Yellow
     $script:Warnings++
 }
 
-function Write-Success-Message {
+function Write-SuccessMsg {
     param([string]$Message)
     Write-Host "OK: $Message" -ForegroundColor Green
 }
@@ -31,10 +31,10 @@ function Test-Command {
     
     $command = Get-Command $CommandName -ErrorAction SilentlyContinue
     if ($command) {
-        Write-Success-Message "$CommandName is installed"
+        Write-SuccessMsg "$CommandName is installed"
         return $true
     } else {
-        Write-Error-Message "$CommandName is not installed"
+        Write-ErrorMsg "$CommandName is not installed"
         if ($InstallGuidance) {
             Write-Host "  $InstallGuidance"
         }
@@ -47,7 +47,7 @@ function Test-VisualStudioBuildTools {
     $clPath = Get-Command cl.exe -ErrorAction SilentlyContinue
     
     if ($clPath) {
-        Write-Success-Message "Visual Studio Build Tools (MSVC) detected"
+        Write-SuccessMsg "Visual Studio Build Tools (MSVC) detected"
         return $true
     }
     
@@ -57,20 +57,20 @@ function Test-VisualStudioBuildTools {
     if (Test-Path $vsWhere) {
         $vsInstalls = & $vsWhere -property installationPath
         if ($vsInstalls) {
-            Write-Success-Message "Visual Studio detected at: $vsInstalls"
+            Write-SuccessMsg "Visual Studio detected at: $vsInstalls"
             # Check if C++ tools are installed
             $vcTools = Test-Path (Join-Path $vsInstalls "VC\Tools\MSVC")
             if ($vcTools) {
-                Write-Success-Message "Visual C++ Build Tools are installed"
+                Write-SuccessMsg "Visual C++ Build Tools are installed"
                 return $true
             } else {
-                Write-Warning-Message "Visual Studio found but C++ Build Tools may not be installed"
+                Write-WarningMsg "Visual Studio found but C++ Build Tools may not be installed"
                 return $false
             }
         }
     }
     
-    Write-Error-Message "Visual Studio Build Tools or MSVC toolchain not detected"
+    Write-ErrorMsg "Visual Studio Build Tools or MSVC toolchain not detected"
     Write-Host "  Install from: https://visualstudio.microsoft.com/downloads/"
     Write-Host "  Select 'Desktop development with C++' workload"
     Write-Host "  Or install Build Tools: https://aka.ms/vs/17/release/vs_BuildTools.exe"
@@ -88,7 +88,7 @@ function Test-WebView2 {
         if (Test-Path $path) {
             $version = (Get-ItemProperty -Path $path -Name "pv" -ErrorAction SilentlyContinue).pv
             if ($version) {
-                Write-Success-Message "Microsoft WebView2 Runtime is installed (version: $version)"
+                Write-SuccessMsg "Microsoft WebView2 Runtime is installed (version: $version)"
                 return $true
             }
         }
@@ -97,11 +97,11 @@ function Test-WebView2 {
     # Check for Edge browser (includes WebView2)
     $edgePath = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
     if (Test-Path $edgePath) {
-        Write-Success-Message "Microsoft Edge detected (includes WebView2)"
+        Write-SuccessMsg "Microsoft Edge detected (includes WebView2)"
         return $true
     }
     
-    Write-Error-Message "Microsoft WebView2 Runtime not detected"
+    Write-ErrorMsg "Microsoft WebView2 Runtime not detected"
     Write-Host "  Download from: https://developer.microsoft.com/microsoft-edge/webview2/"
     Write-Host "  Or it will be automatically installed with the application"
     return $false
@@ -110,10 +110,10 @@ function Test-WebView2 {
 Write-Host "=========================================="
 Write-Host "AetherCore Windows Preflight Checks"
 Write-Host "=========================================="
-Write-Host ""
+Write-Host
 
 Write-Host "Checking required tools..."
-Write-Host ""
+Write-Host
 
 # Check Rust
 Test-Command "rustc" "Install from: https://rustup.rs/"
@@ -128,9 +128,9 @@ Test-Command "pnpm" "Enable with: corepack enable"
 # Check Git
 Test-Command "git" "Install from: https://git-scm.com/download/win"
 
-Write-Host ""
+Write-Host
 Write-Host "Checking development tools..."
-Write-Host ""
+Write-Host
 
 # Check Visual Studio Build Tools
 Test-VisualStudioBuildTools
@@ -138,14 +138,14 @@ Test-VisualStudioBuildTools
 # Check WebView2
 Test-WebView2
 
-Write-Host ""
+Write-Host
 Write-Host "=========================================="
 Write-Host "Preflight Summary"
 Write-Host "=========================================="
 
 if ($script:Errors -gt 0) {
     Write-Host "FAILED: $($script:Errors) error(s) found" -ForegroundColor Red
-    Write-Host ""
+    Write-Host
     Write-Host "Required steps to fix errors:"
     Write-Host "1. Install Rust toolchain from https://rustup.rs/"
     Write-Host "2. Install Node.js 20.x from https://nodejs.org/"
@@ -153,7 +153,7 @@ if ($script:Errors -gt 0) {
     Write-Host "4. Install Git from https://git-scm.com/download/win"
     Write-Host "5. Install Visual Studio Build Tools with C++ workload"
     Write-Host "6. Install Microsoft WebView2 Runtime"
-    Write-Host ""
+    Write-Host
     exit 1
 } else {
     Write-Host "PASSED: All preflight checks successful" -ForegroundColor Green

@@ -101,7 +101,7 @@ function runPreflightScript() {
   // Make shell scripts executable on Unix-like systems
   if (platform !== 'win32') {
     try {
-      fs.chmodSync(scriptPath, '755');
+      fs.chmodSync(scriptPath, 0o755);
     } catch (error) {
       // Ignore errors if already executable
     }
