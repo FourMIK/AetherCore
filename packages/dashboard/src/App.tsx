@@ -10,6 +10,7 @@ import { useTacticalStore } from './store/useTacticalStore';
 import { initializeComms } from './store/initComms';
 import { initDummyData } from './store/initDummyData';
 import { getWebSocketManager } from './services/api/WebSocketManager';
+import { getRuntimeConfig } from './config/runtime';
 import './index.css';
 
 export const App: React.FC = () => {
@@ -38,7 +39,8 @@ export const App: React.FC = () => {
 
       // Initialize Aetheric Link (signed heartbeat protocol)
       // In production, use wss:// endpoint from environment or config
-      const gatewayUrl = import.meta.env.VITE_GATEWAY_URL || 'ws://localhost:8080';
+      const { wsUrl } = getRuntimeConfig();
+      const gatewayUrl = wsUrl;
       try {
         const wsManager = getWebSocketManager(gatewayUrl);
         // SignalR connect is async, but we don't need to await here
