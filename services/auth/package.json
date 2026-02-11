@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "echo \"No tests yet\"",
+    "test": "npm run build && node --test dist/index.test.js",
     "lint": "echo \"No linting configured yet\""
   },
   "keywords": [
