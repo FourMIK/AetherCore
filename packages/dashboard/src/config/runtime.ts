@@ -37,5 +37,9 @@ export function getRuntimeConfig() {
       runtimeEnv.REACT_APP_TPM_ENABLED || import.meta.env.VITE_TPM_ENABLED,
       true // Default: TPM enabled
     ),
+    devAllowInsecureLocalhost: parseBooleanEnv(
+      import.meta.env.VITE_DEV_ALLOW_INSECURE_LOCALHOST,
+      false // Default: disallow insecure localhost
+    ),
   };
 }
