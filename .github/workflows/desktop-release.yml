@@ -81,6 +81,9 @@ jobs:
       - name: Install npm Dependencies
         run: pnpm install --frozen-lockfile
       
+      - name: Run environment checks
+        run: pnpm doctor
+      
       - name: "🛡️ Operation Ironclad: Comprehensive Release Checklist"
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
