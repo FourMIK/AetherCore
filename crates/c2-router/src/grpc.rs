@@ -35,6 +35,7 @@ use crate::command_types::{SwarmCommand, UnitCommand};
 use crate::dispatcher::CommandDispatcher;
 use crate::offline::OfflineMateriaBuffer;
 use crate::quorum::QuorumGate;
+use crate::replay_protection::ReplayProtector;
 use aethercore_identity::{IdentityManager, PlatformIdentity};
 use aethercore_trust_mesh::{TrustLevel, TrustScorer, HEALTHY_THRESHOLD, QUARANTINE_THRESHOLD};
 use std::sync::{Arc, Mutex, RwLock};
@@ -68,6 +69,8 @@ pub struct C2GrpcServer {
     trust_scorer: Arc<RwLock<TrustScorer>>,
     /// Identity manager for TPM-backed verification
     identity_manager: Arc<RwLock<IdentityManager>>,
+    /// Replay attack protector
+    replay_protector: Arc<ReplayProtector>,
     /// Offline materia buffer for blackout resilience (optional)
     offline_buffer: Option<Arc<Mutex<OfflineMateriaBuffer>>>,
 }
@@ -85,6 +88,7 @@ impl C2GrpcServer {
             quorum_gate: Arc::new(quorum_gate),
             trust_scorer: Arc::new(RwLock::new(trust_scorer)),
             identity_manager: Arc::new(RwLock::new(identity_manager)),
+            replay_protector: Arc::new(ReplayProtector::new()),
             offline_buffer: None,
         }
     }
@@ -102,6 +106,7 @@ impl C2GrpcServer {
             quorum_gate: Arc::new(quorum_gate),
             trust_scorer: Arc::new(RwLock::new(trust_scorer)),
             identity_manager: Arc::new(RwLock::new(identity_manager)),
+            replay_protector: Arc::new(ReplayProtector::new()),
             offline_buffer: Some(Arc::new(Mutex::new(offline_buffer))),
         }
     }
@@ -270,14 +275,43 @@ impl C2Router for C2GrpcServer {
         // Step 1: Authentication - Extract and verify device identity
         let device_id = self.verify_request_metadata(&request)?;
 
-        // Step 2: Trust Gating - Check trust score
-        self.verify_trust_score(&device_id)?;
-
-        // Extract request payload
+        // Extract request payload early for replay protection
         let req = request.into_inner();
         let unit_id = &req.unit_id;
 
-        // Step 3: Parse command from JSON
+        // Step 2: Replay Protection - Validate timestamp and nonce
+        // Extract nonce from signatures (first signature serves as nonce for now)
+        let nonce = req.signatures.first()
+            .ok_or_else(|| {
+                self.audit_log(
+                    "REPLAY_CHECK_FAILED",
+                    &device_id,
+                    unit_id,
+                    "No signature/nonce provided",
+                );
+                Status::unauthenticated("No signature provided")
+            })?;
+
+        // Validate replay protection
+        if let Err(e) = self.replay_protector.validate_command(
+            &device_id,
+            req.timestamp_ns,
+            nonce,
+        ) {
+            let error_msg = format!("Replay attack detected: {}", e);
+            self.audit_log(
+                "REPLAY_ATTACK_DETECTED",
+                &device_id,
+                unit_id,
+                &error_msg,
+            );
+            return Err(Status::permission_denied(error_msg));
+        }
+
+        // Step 3: Trust Gating - Check trust score
+        self.verify_trust_score(&device_id)?;
+
+        // Step 4: Parse command from JSON
         let command: UnitCommand = serde_json::from_str(&req.command_json).map_err(|e| {
             self.audit_log(
                 "EXECUTE_UNIT",
@@ -288,7 +322,7 @@ impl C2Router for C2GrpcServer {
             Status::invalid_argument(format!("Invalid command JSON: {}", e))
         })?;
 
-        // Step 4: Quorum verification would happen here
+        // Step 5: Quorum verification would happen here
         // In full implementation, verify signatures against command hash
         // For now, we log the signature count
         if req.signatures.is_empty() {
@@ -301,7 +335,7 @@ impl C2Router for C2GrpcServer {
             return Err(Status::unauthenticated("No authority signatures provided"));
         }
 
-        // Step 5: Dispatch command
+        // Step 6: Dispatch command
         let dispatch_result = self
             .dispatcher
             .dispatch_unit_command(unit_id, &command, req.timestamp_ns)
