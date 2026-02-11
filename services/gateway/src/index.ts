@@ -63,6 +63,12 @@ const client = new c2_proto.CommandService(C2_GRPC_TARGET, grpc.credentials.crea
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Health check endpoint for Docker/Kubernetes readiness probes
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
