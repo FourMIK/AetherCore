@@ -123,11 +123,15 @@ export function C2StatusPanel({ compact = false }: C2StatusPanelProps) {
   
   const c2State = useCommStore((state) => state.c2State);
   const getC2Status = useCommStore((state) => state.getC2Status);
+  const c2Client = useCommStore((state) => state.c2Client);
   const { connectC2, disconnectC2 } = useCommStore();
   
   const status = getC2Status();
   const config = STATE_CONFIG[c2State];
   const Icon = config.icon;
+  
+  // Get max reconnect attempts from client config
+  const maxReconnectAttempts = (c2Client as any)?.config?.maxReconnectAttempts || 10;
   
   if (!status) {
     return (
@@ -258,7 +262,7 @@ export function C2StatusPanel({ compact = false }: C2StatusPanelProps) {
                   <span>Attempts:</span>
                 </div>
                 <div className="text-gray-300 font-mono">
-                  {status.reconnectAttempts}/10
+                  {status.reconnectAttempts}/{maxReconnectAttempts}
                 </div>
               </>
             )}

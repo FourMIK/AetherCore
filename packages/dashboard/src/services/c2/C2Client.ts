@@ -48,6 +48,8 @@ export interface C2ClientConfig {
   maxReconnectAttempts: number;
   initialBackoffMs: number;
   maxBackoffMs: number;
+  maxMissedHeartbeats?: number; // Max missed heartbeats before disconnect (default: 3)
+  rttSmoothingFactor?: number; // RTT exponential moving average factor (default: 0.8)
   onStateChange?: (state: C2State, event: C2Event) => void;
   onMessage?: (message: MessageEnvelope) => void;
   onError?: (error: Error) => void;
@@ -86,9 +88,17 @@ export class C2Client {
   private missedHeartbeats: number = 0;
   private rttMs: number | null = null;
   private heartbeatSentAt: number | null = null;
+  
+  // Configuration constants with defaults
+  private readonly maxMissedHeartbeats: number;
+  private readonly rttSmoothingFactor: number;
+  private readonly rttNewWeight: number;
 
   constructor(config: C2ClientConfig) {
     this.config = config;
+    this.maxMissedHeartbeats = config.maxMissedHeartbeats ?? 3;
+    this.rttSmoothingFactor = config.rttSmoothingFactor ?? 0.8;
+    this.rttNewWeight = 1 - this.rttSmoothingFactor;
   }
 
   /**
@@ -273,7 +283,9 @@ export class C2Client {
         if (this.heartbeatSentAt) {
           const rtt = Date.now() - this.heartbeatSentAt;
           // Exponential moving average for smoothing
-          this.rttMs = this.rttMs ? (this.rttMs * 0.8 + rtt * 0.2) : rtt;
+          this.rttMs = this.rttMs 
+            ? (this.rttMs * this.rttSmoothingFactor + rtt * this.rttNewWeight) 
+            : rtt;
           this.heartbeatSentAt = null;
         }
         
@@ -421,10 +433,9 @@ export class C2Client {
       }
       
       // If we've missed multiple heartbeats, force disconnect
-      const maxMissed = 3;
-      if (this.missedHeartbeats >= maxMissed) {
+      if (this.missedHeartbeats >= this.maxMissedHeartbeats) {
         console.error(
-          `[C2] Missed ${this.missedHeartbeats} heartbeats (max: ${maxMissed}) - forcing disconnect`
+          `[C2] Missed ${this.missedHeartbeats} heartbeats (max: ${this.maxMissedHeartbeats}) - forcing disconnect`
         );
         this.ws?.close(1006, 'Heartbeat timeout');
       } else {
