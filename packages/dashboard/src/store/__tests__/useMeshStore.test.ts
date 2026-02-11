@@ -59,9 +59,11 @@ describe('useMeshStore - Link Quality Metrics', () => {
 
       const link = linkMetrics.get('peer3');
       expect(link).toBeDefined();
-      expect(link?.linkScore).toBeGreaterThanOrEqual(0.7);
-      expect(link?.linkScore).toBeLessThan(0.9);
-      expect(link?.linkQuality).toMatch(/good|fair/);
+      // With these metrics, computed score should be around 0.8
+      // rttScore: 0.9, lossScore: 0.98, trustScore: 0.85, snrScore: 0.75
+      // (0.9*0.3 + 0.98*0.3 + 0.85*0.2 + 0.75*0.2) = 0.864
+      expect(link?.linkScore).toBeCloseTo(0.864, 1);
+      expect(link?.linkQuality).toBe('good');
     });
 
     it('should handle missing SNR gracefully', () => {

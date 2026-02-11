@@ -153,7 +153,7 @@ export const useCommStore = create<CommState>((set, get) => ({
         timestamp: new Date(),
         verified: false,
         encrypted: false,
-        signature: 'local-only-no-signature',
+        signature: 'placeholder:local-only',
       };
 
       set((state) => {

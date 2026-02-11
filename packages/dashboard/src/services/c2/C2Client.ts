@@ -70,9 +70,9 @@ export class C2Client {
   private ws: WebSocket | null = null;
   private state: C2State = 'IDLE';
   private reconnectAttempts: number = 0;
-  private heartbeatInterval: NodeJS.Timeout | null = null;
-  private heartbeatTimeout: NodeJS.Timeout | null = null;
-  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private heartbeatInterval: number | null = null;
+  private heartbeatTimeout: number | null = null;
+  private reconnectTimeout: number | null = null;
   private lastHeartbeat: Date | null = null;
   private lastConnected: Date | null = null;
   private lastMessageSent: Date | null = null;
@@ -320,6 +320,12 @@ export class C2Client {
    * Send heartbeat
    */
   private sendHeartbeat(): void {
+    // Check if WebSocket is open before sending
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn('[C2] Cannot send heartbeat - WebSocket not open');
+      return;
+    }
+
     try {
       const envelope = createMessageEnvelope(
         'heartbeat',
@@ -436,11 +442,13 @@ export class C2Client {
     
     // TODO: Integrate with TPM signing service
     // For Sprint 1, use software keys or placeholder
+    // IMPORTANT: Production must use BLAKE3-based signatures (not SHA-256)
+    // to maintain consistency with backend security model
     const encoder = new TextEncoder();
     const data = encoder.encode(payload);
     
     // Placeholder: hash the payload as a "signature"
-    // In production, this would call the crypto service
+    // In production, this would call the crypto service with BLAKE3 + Ed25519
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');

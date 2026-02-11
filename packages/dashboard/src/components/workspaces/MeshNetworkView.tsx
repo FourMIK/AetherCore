@@ -19,9 +19,9 @@ export const MeshNetworkView: React.FC = () => {
   // Format bandwidth for display
   const formatBandwidth = (mbps: number): string => {
     if (mbps >= 1000) {
-      return `${(mbps / 1000).toFixed(2)} GB/s`;
+      return `${(mbps / 1000).toFixed(2)} Gb/s`;
     }
-    return `${mbps.toFixed(1)} MB/s`;
+    return `${mbps.toFixed(1)} Mb/s`;
   };
 
   // Format latency for display

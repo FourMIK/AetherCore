@@ -7,6 +7,14 @@
 
 import { create } from 'zustand';
 
+// Bandwidth estimation constants (Mbps)
+// Based on typical RF link quality characteristics
+const BANDWIDTH_EXCELLENT = 100; // Excellent links: 100 Mbps
+const BANDWIDTH_GOOD = 50;       // Good links: 50 Mbps
+const BANDWIDTH_FAIR = 20;       // Fair links: 20 Mbps
+const BANDWIDTH_POOR = 5;        // Poor links: 5 Mbps
+const BANDWIDTH_CRITICAL = 1;    // Critical links: 1 Mbps
+
 // Link quality metrics for a peer connection
 export interface LinkMetrics {
   peerId: string;
@@ -195,13 +203,13 @@ export const useMeshStore = create<MeshState>((set, get) => ({
     const avgLoss = metrics.reduce((sum, m) => sum + m.packetLossPercent, 0) / metrics.length;
     const avgScore = metrics.reduce((sum, m) => sum + m.linkScore, 0) / metrics.length;
     
-    // Estimate bandwidth based on link quality
-    // Excellent links: 100 Mbps, Good: 50 Mbps, Fair: 20 Mbps, Poor: 5 Mbps, Critical: 1 Mbps
+    // Estimate bandwidth based on link quality using predefined constants
     const totalBandwidth = metrics.reduce((sum, m) => {
-      const bw = m.linkQuality === 'excellent' ? 100 :
-                 m.linkQuality === 'good' ? 50 :
-                 m.linkQuality === 'fair' ? 20 :
-                 m.linkQuality === 'poor' ? 5 : 1;
+      const bw = m.linkQuality === 'excellent' ? BANDWIDTH_EXCELLENT :
+                 m.linkQuality === 'good' ? BANDWIDTH_GOOD :
+                 m.linkQuality === 'fair' ? BANDWIDTH_FAIR :
+                 m.linkQuality === 'poor' ? BANDWIDTH_POOR :
+                 BANDWIDTH_CRITICAL;
       return sum + bw;
     }, 0);
     
