@@ -99,3 +99,31 @@ You will see a "DEV MODE" banner at the top of the application. This is normal f
 If you cannot deploy nodes:
 * Ensure ports 8080 and 9000-9100 are not blocked by your firewall.
 * Check the logs in the Deployments view for specific error messages.
+
+## Dashboard Production Docker Image
+
+A production-ready dashboard container is available via a multi-stage build (`node:20-alpine` builder + `nginx:alpine` runtime) with runtime environment injection.
+
+### Build
+
+```bash
+docker build -t aethercore-dashboard -f docker/Dockerfile.dashboard .
+```
+
+### Run
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e REACT_APP_API_URL="https://api.example.mil" \
+  -e REACT_APP_WS_URL="wss://ws.example.mil" \
+  aethercore-dashboard
+```
+
+### Verify
+
+```bash
+curl -fsS http://localhost:8080/healthz
+curl -fsS http://localhost:8080/env.js
+```
+
+`/env.js` is rendered at container startup, so API/WebSocket endpoints can be changed without rebuilding the image.

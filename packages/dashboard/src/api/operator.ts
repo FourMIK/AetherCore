@@ -1,3 +1,5 @@
+import { getRuntimeConfig } from '../config/runtime';
+
 export interface DeployRequestPayload {
   operatorId: string;
   strategy: 'pi-ssh' | 'k8s' | 'local-compose';
@@ -10,7 +12,11 @@ export interface DeployRequestPayload {
 }
 
 export async function requestDeploy(payload: DeployRequestPayload) {
-  const res = await fetch('/api/operator/deploy', {
+  const { apiUrl } = getRuntimeConfig();
+  const normalizedBase = apiUrl.replace(/\/$/, '');
+  const deployEndpoint = normalizedBase ? `${normalizedBase}/operator/deploy` : '/api/operator/deploy';
+
+  const res = await fetch(deployEndpoint, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
