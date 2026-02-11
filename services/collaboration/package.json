@@ -16,7 +16,7 @@
   "author": "AetherCore Team",
   "license": "MIT",
   "dependencies": {
-    "@aethercore/shared": "^0.1.0",
+    "@aethercore/shared": "workspace:*",
     "ws": "^8.16.0",
     "nats": "^2.19.0",
     "zod": "^3.22.4",
