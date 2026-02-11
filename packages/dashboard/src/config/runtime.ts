@@ -11,6 +11,7 @@ const runtimeEnv = (globalThis as unknown as Window & { __ENV__?: RuntimeEnv }).
  * - "false", "0", "no", "off" (case-insensitive) -> false
  * - "true", "1", "yes", "on" (case-insensitive) -> true
  * - undefined/empty -> defaultValue
+ * - invalid value -> defaultValue (with console warning)
  */
 function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined || value === '') {
@@ -23,6 +24,8 @@ function parseBooleanEnv(value: string | undefined, defaultValue: boolean): bool
   if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
     return true;
   }
+  // Invalid value - log warning
+  console.warn(`Invalid boolean environment variable value: "${value}". Valid values: true/false, 1/0, yes/no, on/off. Using default: ${defaultValue}`);
   return defaultValue;
 }
 

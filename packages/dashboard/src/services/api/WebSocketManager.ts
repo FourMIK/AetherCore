@@ -18,6 +18,9 @@ import { getRuntimeConfig } from '../../config/runtime';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'unverified' | 'severed';
 
+// Constants for TPM-disabled mode
+const UNSIGNED_TPM_SIGNATURE = 'unsigned-tpm-disabled';
+
 // Must match AetherBunker/Models/HeartbeatPayload.cs
 export interface HeartbeatPayload {
   deviceId: string;
@@ -243,7 +246,7 @@ export class WebSocketManager {
             // TPM disabled: send unsigned/placeholder signature
             // Backend should accept this when TPM_ENABLED=false
             console.debug('[AETHERIC LINK] TPM disabled - sending unsigned heartbeat');
-            signature = 'unsigned-tpm-disabled';
+            signature = UNSIGNED_TPM_SIGNATURE;
         }
 
         const payload: HeartbeatPayload = {

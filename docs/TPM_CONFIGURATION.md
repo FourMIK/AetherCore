@@ -169,12 +169,14 @@ Task definitions are provided in `infra/ecs/task-definitions/`:
 }
 ```
 
-#### Deploying to ECS (us-east-1)
+#### Deploying to ECS (Any AWS Region)
 
 **Prerequisites:**
 - AWS CLI configured with credentials
-- ECR images pushed to `565919382365.dkr.ecr.us-east-1.amazonaws.com`
-- ECS cluster `AetherCore` created
+- ECR images pushed to your container registry
+- ECS cluster created
+
+The following examples use `us-east-1` region. Adapt the `--region` flag and ARNs for your deployment region.
 
 **Step 1: Register Task Definitions**
 

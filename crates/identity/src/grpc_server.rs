@@ -49,7 +49,17 @@ impl IdentityRegistryService {
         match std::env::var("TPM_ENABLED") {
             Ok(val) => {
                 let normalized = val.to_lowercase().trim().to_string();
-                !(normalized == "false" || normalized == "0" || normalized == "no" || normalized == "off")
+                // Check for true values
+                if normalized == "true" || normalized == "1" || normalized == "yes" || normalized == "on" {
+                    return true;
+                }
+                // Check for false values
+                if normalized == "false" || normalized == "0" || normalized == "no" || normalized == "off" {
+                    return false;
+                }
+                // Invalid value - log warning and use default
+                tracing::warn!("Invalid TPM_ENABLED value: '{}'. Valid values: true/false, 1/0, yes/no, on/off. Defaulting to true.", val);
+                true
             }
             Err(_) => true, // Default: enabled
         }

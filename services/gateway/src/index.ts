@@ -24,6 +24,8 @@ function parseTpmEnabled(): boolean {
   if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
     return true;
   }
+  // Invalid value - log warning and use default
+  logger.warn({ tpm_enabled_value: value }, 'Invalid TPM_ENABLED value, defaulting to true. Valid values: true/false, 1/0, yes/no, on/off');
   return true; // Default if invalid value
 }
 

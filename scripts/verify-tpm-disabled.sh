@@ -27,6 +27,7 @@ echo -e "${YELLOW}Step 1: Building dashboard with TPM disabled...${NC}"
 cd packages/dashboard
 
 # Set TPM_ENABLED=false for build
+# Note: Vite uses VITE_ prefix at build time; React uses REACT_APP_ prefix at runtime
 export VITE_TPM_ENABLED=false
 
 # Build dashboard
