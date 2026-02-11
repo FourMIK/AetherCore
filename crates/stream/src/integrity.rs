@@ -42,6 +42,8 @@ pub struct IntegrityStatus {
     pub is_compromised: bool,
     /// Reason for compromise (if any)
     pub compromise_reason: Option<String>,
+    /// Last seen sequence ID for replay attack prevention
+    pub last_sequence_id: u64,
 }
 
 impl IntegrityStatus {
@@ -56,6 +58,7 @@ impl IntegrityStatus {
             last_check_ns: current_time_ns(),
             is_compromised: false,
             compromise_reason: None,
+            last_sequence_id: 0,
         }
     }
 
@@ -116,6 +119,42 @@ impl IntegrityStatus {
     pub fn get_compromise_reason(&self) -> Option<&str> {
         self.compromise_reason.as_deref()
     }
+
+    /// Validate sequence ID for replay attack prevention
+    /// Returns Ok(()) if sequence is valid, Err with reason if replay detected
+    pub fn validate_sequence(&mut self, sequence_id: u64) -> Result<(), String> {
+        // Sequence ID must be strictly increasing
+        if sequence_id <= self.last_sequence_id {
+            let reason = format!(
+                "Replay attack detected: sequence_id {} <= last_seen {}",
+                sequence_id, self.last_sequence_id
+            );
+            tracing::error!(
+                stream_id = %self.stream_id,
+                sequence_id,
+                last_sequence_id = self.last_sequence_id,
+                "Replay attack detected"
+            );
+            return Err(reason);
+        }
+
+        // Check for suspiciously large gaps (potential indicator of attack)
+        const MAX_SEQUENCE_GAP: u64 = 1000;
+        let gap = sequence_id.saturating_sub(self.last_sequence_id);
+        if gap > MAX_SEQUENCE_GAP && self.last_sequence_id > 0 {
+            tracing::warn!(
+                stream_id = %self.stream_id,
+                sequence_id,
+                last_sequence_id = self.last_sequence_id,
+                gap,
+                "Large sequence gap detected - possible attack or network disruption"
+            );
+        }
+
+        // Update last seen sequence
+        self.last_sequence_id = sequence_id;
+        Ok(())
+    }
 }
 
 /// Tracks integrity status for multiple streams
@@ -174,6 +213,12 @@ impl StreamIntegrityTracker {
     /// Get all stream IDs
     pub fn stream_ids(&self) -> Vec<String> {
         self.streams.keys().cloned().collect()
+    }
+
+    /// Validate sequence ID for a stream (replay attack prevention)
+    pub fn validate_sequence(&mut self, stream_id: &str, sequence_id: u64) -> Result<(), String> {
+        let status = self.get_or_create(stream_id);
+        status.validate_sequence(sequence_id)
     }
 }
 
@@ -266,5 +311,70 @@ mod tests {
         assert_eq!(tracker.get_compromised_streams().len(), 1);
         assert!(tracker.is_stream_compromised("stream-3"));
         assert!(!tracker.is_stream_compromised("stream-1"));
+    }
+
+    #[test]
+    fn test_sequence_validation_accepts_increasing() {
+        let mut status = IntegrityStatus::new("test-stream".to_string());
+        
+        assert!(status.validate_sequence(1).is_ok());
+        assert!(status.validate_sequence(2).is_ok());
+        assert!(status.validate_sequence(100).is_ok());
+        assert_eq!(status.last_sequence_id, 100);
+    }
+
+    #[test]
+    fn test_sequence_validation_rejects_replay() {
+        let mut status = IntegrityStatus::new("test-stream".to_string());
+        
+        assert!(status.validate_sequence(10).is_ok());
+        
+        // Replay with same sequence
+        let result = status.validate_sequence(10);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Replay attack"));
+        
+        // Replay with lower sequence
+        let result = status.validate_sequence(5);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Replay attack"));
+    }
+
+    #[test]
+    fn test_sequence_validation_warns_on_large_gap() {
+        let mut status = IntegrityStatus::new("test-stream".to_string());
+        
+        assert!(status.validate_sequence(10).is_ok());
+        
+        // Large gap should still be accepted but logged
+        let result = status.validate_sequence(2000);
+        assert!(result.is_ok());
+        assert_eq!(status.last_sequence_id, 2000);
+    }
+
+    #[test]
+    fn test_tracker_validates_sequence() {
+        let mut tracker = StreamIntegrityTracker::new();
+        
+        // First event
+        assert!(tracker.validate_sequence("stream-1", 1).is_ok());
+        assert!(tracker.validate_sequence("stream-1", 2).is_ok());
+        
+        // Replay attack
+        let result = tracker.validate_sequence("stream-1", 1);
+        assert!(result.is_err());
+        
+        // Different stream should work
+        assert!(tracker.validate_sequence("stream-2", 1).is_ok());
+    }
+
+    #[test]
+    fn test_sequence_starts_at_zero() {
+        let status = IntegrityStatus::new("test-stream".to_string());
+        assert_eq!(status.last_sequence_id, 0);
+        
+        // First sequence ID of 1 should be valid
+        let mut status = status;
+        assert!(status.validate_sequence(1).is_ok());
     }
 }
