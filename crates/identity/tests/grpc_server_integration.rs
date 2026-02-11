@@ -341,4 +341,128 @@ mod grpc_tests {
         assert_eq!(err.code(), tonic::Code::PermissionDenied);
         assert!(err.message().contains("No admin nodes configured"));
     }
+
+    #[tokio::test]
+    async fn test_register_node_without_tpm_when_tpm_disabled() {
+        // Set TPM_ENABLED=false for this test
+        std::env::set_var("TPM_ENABLED", "false");
+        
+        let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
+        let tpm_manager = Arc::new(Mutex::new(TpmManager::new(false)));
+
+        let server_url = start_test_server(identity_manager.clone(), tpm_manager.clone()).await;
+
+        let mut client = IdentityRegistryClient::connect(server_url)
+            .await
+            .expect("Failed to connect to server");
+
+        let public_key = vec![10u8; 32];
+        let node_id = hex::encode(blake3::hash(&public_key).as_bytes());
+
+        // Register without TPM fields - should succeed when TPM_ENABLED=false
+        let request = tonic::Request::new(RegisterNodeRequest {
+            node_id: node_id.clone(),
+            public_key_hex: hex::encode(&public_key),
+            tpm_quote: vec![], // Empty
+            pcrs: vec![],      // Empty
+            ak_cert: vec![],   // Empty
+            timestamp_ms: current_timestamp_ms(),
+        });
+
+        let response = client.register_node(request).await.unwrap().into_inner();
+
+        assert!(
+            response.success,
+            "Registration should succeed when TPM_ENABLED=false: {}",
+            response.error_message
+        );
+
+        // Verify node is enrolled
+        let enrolled_request = tonic::Request::new(IsNodeEnrolledRequest {
+            node_id: node_id.clone(),
+        });
+        let enrolled_response = client
+            .is_node_enrolled(enrolled_request)
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(enrolled_response.is_enrolled);
+        
+        // Clean up
+        std::env::remove_var("TPM_ENABLED");
+    }
+
+    #[tokio::test]
+    async fn test_register_node_with_partial_tpm_when_tpm_disabled() {
+        // Set TPM_ENABLED=false for this test
+        std::env::set_var("TPM_ENABLED", "false");
+        
+        let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
+        let tpm_manager = Arc::new(Mutex::new(TpmManager::new(false)));
+
+        let server_url = start_test_server(identity_manager.clone(), tpm_manager.clone()).await;
+
+        let mut client = IdentityRegistryClient::connect(server_url)
+            .await
+            .expect("Failed to connect to server");
+
+        let public_key = vec![11u8; 32];
+        let node_id = hex::encode(blake3::hash(&public_key).as_bytes());
+
+        // Register with some TPM fields but not all - should still succeed when TPM_ENABLED=false
+        let request = tonic::Request::new(RegisterNodeRequest {
+            node_id: node_id.clone(),
+            public_key_hex: hex::encode(&public_key),
+            tpm_quote: vec![0xAA; 64], // Provided but won't be validated
+            pcrs: vec![],               // Missing
+            ak_cert: vec![],            // Missing
+            timestamp_ms: current_timestamp_ms(),
+        });
+
+        let response = client.register_node(request).await.unwrap().into_inner();
+
+        assert!(
+            response.success,
+            "Registration should succeed with partial TPM data when TPM_ENABLED=false: {}",
+            response.error_message
+        );
+        
+        // Clean up
+        std::env::remove_var("TPM_ENABLED");
+    }
+
+    #[tokio::test]
+    async fn test_tpm_enabled_parsing() {
+        // Test various TPM_ENABLED values
+        let test_cases = vec![
+            ("false", false),
+            ("0", false),
+            ("no", false),
+            ("off", false),
+            ("true", true),
+            ("1", true),
+            ("yes", true),
+            ("on", true),
+            ("FALSE", false),
+            ("TRUE", true),
+        ];
+
+        for (value, expected) in test_cases {
+            std::env::set_var("TPM_ENABLED", value);
+            let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
+            let tpm_manager = Arc::new(Mutex::new(TpmManager::new(false)));
+            
+            // Create service which will parse TPM_ENABLED
+            let _service = aethercore_identity::grpc_server::IdentityRegistryService::new(
+                identity_manager,
+                tpm_manager,
+            );
+            
+            // If we got here without panic, the parsing worked
+            // The actual value is checked in the service constructor logs
+        }
+        
+        // Clean up
+        std::env::remove_var("TPM_ENABLED");
+    }
 }

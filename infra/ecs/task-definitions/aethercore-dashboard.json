@@ -1,0 +1,51 @@
+{
+  "family": "aethercore-dashboard",
+  "taskRoleArn": "arn:aws:iam::565919382365:role/aether-prod-c2-task-role",
+  "executionRoleArn": "arn:aws:iam::565919382365:role/ecsTaskExecutionRole",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "containerDefinitions": [
+    {
+      "name": "aethercore-dashboard",
+      "image": "565919382365.dkr.ecr.us-east-1.amazonaws.com/aethercore-dashboard:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8443,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "REACT_APP_API_URL",
+          "value": "https://api.aethercore.mil"
+        },
+        {
+          "name": "REACT_APP_WS_URL",
+          "value": "wss://ws.aethercore.mil"
+        },
+        {
+          "name": "REACT_APP_TPM_ENABLED",
+          "value": "true"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/ecs/aethercore-dashboard",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8443/healthz || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

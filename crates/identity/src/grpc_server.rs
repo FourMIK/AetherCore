@@ -38,19 +38,38 @@ pub struct IdentityRegistryService {
     tpm_manager: Arc<Mutex<TpmManager>>,
     /// Admin node IDs authorized to revoke nodes
     admin_node_ids: Arc<Mutex<Vec<String>>>,
+    /// TPM enforcement enabled (default: true)
+    tpm_enabled: bool,
 }
 
 #[cfg(feature = "grpc-server")]
 impl IdentityRegistryService {
+    /// Parse TPM_ENABLED environment variable with standard boolean parsing
+    fn parse_tpm_enabled() -> bool {
+        match std::env::var("TPM_ENABLED") {
+            Ok(val) => {
+                let normalized = val.to_lowercase().trim().to_string();
+                !(normalized == "false" || normalized == "0" || normalized == "no" || normalized == "off")
+            }
+            Err(_) => true, // Default: enabled
+        }
+    }
+
     /// Create a new Identity Registry service
     pub fn new(
         identity_manager: Arc<Mutex<IdentityManager>>,
         tpm_manager: Arc<Mutex<TpmManager>>,
     ) -> Self {
+        let tpm_enabled = Self::parse_tpm_enabled();
+        tracing::info!("Identity Registry Service initialized with TPM_ENABLED={}", tpm_enabled);
+        if !tpm_enabled {
+            tracing::warn!("⚠️  TPM DISABLED - Hardware-rooted trust validation is disabled. Security guarantees reduced.");
+        }
         Self {
             identity_manager,
             tpm_manager,
             admin_node_ids: Arc::new(Mutex::new(Vec::new())),
+            tpm_enabled,
         }
     }
 
@@ -60,10 +79,16 @@ impl IdentityRegistryService {
         tpm_manager: Arc<Mutex<TpmManager>>,
         admin_node_ids: Vec<String>,
     ) -> Self {
+        let tpm_enabled = Self::parse_tpm_enabled();
+        tracing::info!("Identity Registry Service initialized with TPM_ENABLED={}", tpm_enabled);
+        if !tpm_enabled {
+            tracing::warn!("⚠️  TPM DISABLED - Hardware-rooted trust validation is disabled. Security guarantees reduced.");
+        }
         Self {
             identity_manager,
             tpm_manager,
             admin_node_ids: Arc::new(Mutex::new(admin_node_ids)),
+            tpm_enabled,
         }
     }
 
@@ -307,24 +332,51 @@ impl IdentityRegistry for IdentityRegistryService {
         };
 
         // Validate TPM attestation (hardware-rooted trust)
-        // NO GRACEFUL DEGRADATION: If TPM attestation fails, the node is Byzantine
-        if !req.tpm_quote.is_empty() {
+        // When TPM_ENABLED=false, skip validation and accept empty TPM fields
+        if self.tpm_enabled {
+            // TPM ENABLED: Enforce hardware-rooted trust (NO GRACEFUL DEGRADATION)
+            if req.tpm_quote.is_empty() {
+                // NO TPM QUOTE PROVIDED - This is a security failure
+                tracing::error!(
+                    "Registration DENIED for node {}: No TPM attestation provided. Hardware root of trust required.",
+                    req.node_id
+                );
+                return Err(Status::permission_denied(
+                    "TPM attestation required for registration. No graceful degradation for security failures.",
+                ));
+            }
+
+            // Validate PCRs are provided
+            if req.pcrs.is_empty() {
+                tracing::warn!(
+                    "Registration failed for node {}: No PCR values provided",
+                    req.node_id
+                );
+                return Err(Status::invalid_argument("PCR values required for TPM attestation"));
+            }
+
+            // Validate AK certificate is provided
+            if req.ak_cert.is_empty() {
+                tracing::warn!(
+                    "Registration failed for node {}: No AK certificate provided",
+                    req.node_id
+                );
+                return Err(Status::invalid_argument(
+                    "Attestation Key certificate required for TPM attestation",
+                ));
+            }
+
             let tpm_manager = self
                 .tpm_manager
                 .lock()
                 .map_err(|e| Status::internal(format!("Lock error: {}", e)))?;
 
             // Parse PCRs from the request
-            // For stub implementation, we accept simple PCR format
-            // In production, PCRs should be properly structured with indices
             let pcr_values = if !req.pcrs.is_empty() {
-                // Each PCR is typically 32 bytes (SHA256)
-                // For now, treat the entire PCR blob as a single PCR value
-                // Production should parse structured PCR data
                 let chunk_size = 32;
                 let num_pcrs = (req.pcrs.len() + chunk_size - 1) / chunk_size;
                 
-                (0..num_pcrs.min(24)) // TPM 2.0 supports PCRs 0-23
+                (0..num_pcrs.min(24))
                     .map(|i| {
                         let start = i * chunk_size;
                         let end = (start + chunk_size).min(req.pcrs.len());
@@ -342,7 +394,7 @@ impl IdentityRegistry for IdentityRegistryService {
             let tpm_quote = crate::TpmQuote {
                 pcrs: pcr_values,
                 signature: req.tpm_quote.clone(),
-                nonce: vec![], // Nonce would be from challenge-response
+                nonce: vec![],
                 timestamp: req.timestamp_ms,
                 attestation_data: vec![],
             };
@@ -374,34 +426,23 @@ impl IdentityRegistry for IdentityRegistryService {
                 req.node_id
             );
         } else {
-            // NO TPM QUOTE PROVIDED - This is a security failure
-            tracing::error!(
-                "Registration DENIED for node {}: No TPM attestation provided. Hardware root of trust required.",
+            // TPM DISABLED: Accept registration without TPM validation
+            tracing::info!(
+                "Node {} registration: skipping TPM validation (TPM_ENABLED=false)",
                 req.node_id
             );
-            return Err(Status::permission_denied(
-                "TPM attestation required for registration. No graceful degradation for security failures.",
-            ));
-        }
-
-        // Validate PCRs are provided
-        if req.pcrs.is_empty() {
-            tracing::warn!(
-                "Registration failed for node {}: No PCR values provided",
-                req.node_id
-            );
-            return Err(Status::invalid_argument("PCR values required for TPM attestation"));
-        }
-
-        // Validate AK certificate is provided
-        if req.ak_cert.is_empty() {
-            tracing::warn!(
-                "Registration failed for node {}: No AK certificate provided",
-                req.node_id
-            );
-            return Err(Status::invalid_argument(
-                "Attestation Key certificate required for TPM attestation",
-            ));
+            
+            if req.tpm_quote.is_empty() && req.pcrs.is_empty() && req.ak_cert.is_empty() {
+                tracing::debug!(
+                    "Node {} registered without TPM fields (TPM disabled mode)",
+                    req.node_id
+                );
+            } else {
+                tracing::debug!(
+                    "Node {} registered with TPM fields but validation skipped (TPM disabled mode)",
+                    req.node_id
+                );
+            }
         }
 
         // Create platform identity
