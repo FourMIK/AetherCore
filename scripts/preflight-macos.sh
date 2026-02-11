@@ -3,8 +3,6 @@
 # macOS preflight checks for AetherCore development environment
 # Exit codes: 0 = all checks passed, 1 = one or more checks failed
 
-set -e
-
 ERRORS=0
 WARNINGS=0
 
