@@ -60,7 +60,12 @@ export interface IdentityRegistryConfig {
  */
 export class IdentityRegistryClient {
   private client: any;
-  private config: Required<IdentityRegistryConfig>;
+  private config: IdentityRegistryConfig & {
+    timeout: number;
+    maxRetries: number;
+    retryDelay: number;
+    useTls: boolean;
+  };
 
   constructor(config: IdentityRegistryConfig) {
     this.config = {

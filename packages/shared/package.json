@@ -3,7 +3,19 @@
   "version": "0.1.0",
   "description": "AetherCore Shared Utilities",
   "main": "dist/index.js",
-  "types": "src/index.ts",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./c2-message-schema": {
+      "types": "./dist/c2-message-schema.d.ts",
+      "require": "./dist/c2-message-schema.js",
+      "default": "./dist/c2-message-schema.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",

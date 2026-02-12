@@ -28,3 +28,8 @@ export * from './identity';
  * Protocol - Canonical implementations for cross-platform verification
  */
 export * from './protocol';
+
+/**
+ * C2 Message Schema - Command & Control Message Envelope
+ */
+export * from './c2-message-schema';

@@ -5,8 +5,8 @@
  */
 
 import { create } from 'zustand';
-import { C2Client, C2State, type C2ClientConfig } from '../services/c2/C2Client';
-import type { MessageEnvelope } from '../../../../shared/src/c2-message-schema';
+import { C2Client, C2State, type C2ClientConfig, type C2ClientStatus } from '../services/c2/C2Client';
+import type { MessageEnvelope } from '@aethercore/shared';
 
 export type OperatorRole = 'operator' | 'commander' | 'admin';
 export type ConnectionStatus =
@@ -76,7 +76,7 @@ interface CommState {
   initC2Client: (endpoint: string, clientId: string) => void;
   connectC2: () => Promise<void>;
   disconnectC2: () => void;
-  getC2Status: () => { state: C2State; endpoint?: string } | null;
+  getC2Status: () => C2ClientStatus | null;
 }
 
 export const useCommStore = create<CommState>((set, get) => ({
@@ -350,10 +350,6 @@ export const useCommStore = create<CommState>((set, get) => ({
   getC2Status: () => {
     const state = get();
     if (!state.c2Client) return null;
-    const status = state.c2Client.getStatus();
-    return {
-      state: status.state,
-      endpoint: status.endpoint,
-    };
+    return state.c2Client.getStatus();
   },
 }));
