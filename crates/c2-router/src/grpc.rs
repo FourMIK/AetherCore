@@ -36,8 +36,8 @@ use crate::dispatcher::CommandDispatcher;
 use crate::offline::OfflineMateriaBuffer;
 use crate::quorum::QuorumGate;
 use crate::replay_protection::ReplayProtector;
-use aethercore_identity::{IdentityManager, PlatformIdentity};
-use aethercore_trust_mesh::{TrustLevel, TrustScorer, HEALTHY_THRESHOLD, QUARANTINE_THRESHOLD};
+use aethercore_identity::IdentityManager;
+use aethercore_trust_mesh::{TrustLevel, TrustScorer};
 use base64::engine::general_purpose;
 use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -49,6 +49,8 @@ use tonic::{Request, Response, Status};
 // exclusive access for all database operations.
 
 // Include generated protobuf code
+/// Generated protobuf types for the C2 gRPC API.
+#[allow(missing_docs)]
 pub mod c2_proto {
     tonic::include_proto!("aethercore.c2");
 }
@@ -67,6 +69,7 @@ pub struct C2GrpcServer {
     /// Command dispatcher for routing commands to the mesh
     dispatcher: Arc<CommandDispatcher>,
     /// Quorum gate for authority verification
+    #[allow(dead_code)]
     quorum_gate: Arc<QuorumGate>,
     /// Trust scorer for checking node trust levels
     trust_scorer: Arc<RwLock<TrustScorer>>,
@@ -179,7 +182,7 @@ impl C2GrpcServer {
             Status::internal("Identity manager lock error")
         })?;
 
-        let identity = identity_mgr.get(&device_id).ok_or_else(|| {
+        identity_mgr.get(&device_id).ok_or_else(|| {
             self.audit_log("AUTH_FAILED", &device_id, "None", "Unknown device");
             Status::unauthenticated("Unknown device ID")
         })?;
@@ -223,19 +226,15 @@ impl C2GrpcServer {
             Status::unauthenticated("Unknown device ID")
         })?;
 
-        let public_key: [u8; 32] = identity
-            .public_key
-            .as_slice()
-            .try_into()
-            .map_err(|_| {
-                self.audit_log(
-                    "AUTH_FAILED",
-                    device_id,
-                    "None",
-                    "Invalid device public key length",
-                );
-                Status::unauthenticated("Invalid device public key")
-            })?;
+        let public_key: [u8; 32] = identity.public_key.as_slice().try_into().map_err(|_| {
+            self.audit_log(
+                "AUTH_FAILED",
+                device_id,
+                "None",
+                "Invalid device public key length",
+            );
+            Status::unauthenticated("Invalid device public key")
+        })?;
 
         let verifying_key = VerifyingKey::from_bytes(&public_key).map_err(|_| {
             self.audit_log(
@@ -260,12 +259,7 @@ impl C2GrpcServer {
             })?;
 
         let signature = Signature::from_slice(&signature_bytes).map_err(|_| {
-            self.audit_log(
-                "AUTH_FAILED",
-                device_id,
-                "None",
-                "Invalid signature format",
-            );
+            self.audit_log("AUTH_FAILED", device_id, "None", "Invalid signature format");
             Status::unauthenticated("Invalid signature format")
         })?;
 
@@ -367,34 +361,32 @@ impl C2Router for C2GrpcServer {
         let unit_id = &req.unit_id;
 
         // Step 1a: Verify the command signature against the registered device key
-        self.verify_command_signature(&device_id, &signature_b64, &req.command_json, req.timestamp_ns)?;
+        self.verify_command_signature(
+            &device_id,
+            &signature_b64,
+            &req.command_json,
+            req.timestamp_ns,
+        )?;
 
         // Step 2: Replay Protection - Validate timestamp and nonce
         // Extract nonce from signatures (first signature serves as nonce for now)
-        let nonce = req.signatures.first()
-            .ok_or_else(|| {
-                self.audit_log(
-                    "REPLAY_CHECK_FAILED",
-                    &device_id,
-                    unit_id,
-                    "No signature/nonce provided",
-                );
-                Status::unauthenticated("No signature provided")
-            })?;
-
-        // Validate replay protection
-        if let Err(e) = self.replay_protector.validate_command(
-            &device_id,
-            req.timestamp_ns,
-            nonce,
-        ) {
-            let error_msg = format!("Replay attack detected: {}", e);
+        let nonce = req.signatures.first().ok_or_else(|| {
             self.audit_log(
-                "REPLAY_ATTACK_DETECTED",
+                "REPLAY_CHECK_FAILED",
                 &device_id,
                 unit_id,
-                &error_msg,
+                "No signature/nonce provided",
             );
+            Status::unauthenticated("No signature provided")
+        })?;
+
+        // Validate replay protection
+        if let Err(e) = self
+            .replay_protector
+            .validate_command(&device_id, req.timestamp_ns, nonce)
+        {
+            let error_msg = format!("Replay attack detected: {}", e);
+            self.audit_log("REPLAY_ATTACK_DETECTED", &device_id, unit_id, &error_msg);
             return Err(Status::permission_denied(error_msg));
         }
 
@@ -475,7 +467,12 @@ impl C2Router for C2GrpcServer {
         let swarm_id = &req.swarm_command_id;
 
         // Step 1a: Verify signature against registered key
-        self.verify_command_signature(&device_id, &signature_b64, &req.command_json, req.timestamp_ns)?;
+        self.verify_command_signature(
+            &device_id,
+            &signature_b64,
+            &req.command_json,
+            req.timestamp_ns,
+        )?;
 
         // Step 2: Trust Gating
         self.verify_trust_score(&device_id)?;
@@ -846,7 +843,6 @@ mod tests {
     use crate::authority::AuthorityVerifier;
     use aethercore_identity::{Attestation, PlatformIdentity};
     use base64::engine::general_purpose;
-    use base64::Engine as _;
     use ed25519_dalek::{Signer, SigningKey};
     use proptest::prelude::*;
     use std::collections::HashMap;
@@ -918,7 +914,7 @@ mod tests {
         }
     }
 
-    fn register_identity(server: &mut C2GrpcServer, identity: PlatformIdentity) {
+    fn register_identity(server: &C2GrpcServer, identity: PlatformIdentity) {
         let mut manager = match server.identity_manager.write() {
             Ok(manager) => manager,
             Err(err) => panic!("Identity manager lock error: {}", err),
@@ -996,7 +992,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_unit_command_no_trust_score() {
-        let mut server = create_test_server();
+        let server = create_test_server();
 
         // Register the device
         let identity = create_test_identity("device-1");
@@ -1007,8 +1003,7 @@ mod tests {
             .register(identity)
             .unwrap();
 
-        let command_json =
-            r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
+        let command_json = r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
         let timestamp_ns = C2GrpcServer::current_timestamp_ns();
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
@@ -1029,7 +1024,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_unit_command_low_trust_score() {
-        let mut server = create_test_server();
+        let server = create_test_server();
 
         // Register the device
         let identity = create_test_identity("device-1");
@@ -1050,8 +1045,7 @@ mod tests {
             .unwrap()
             .update_score("device-1", TEST_TRUST_SCORE - 1.0);
 
-        let command_json =
-            r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
+        let command_json = r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
         let timestamp_ns = C2GrpcServer::current_timestamp_ns();
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
@@ -1073,7 +1067,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_unit_command_success() {
-        let mut server = create_test_server();
+        let server = create_test_server();
 
         // Register the device
         let identity = create_test_identity("device-1");
@@ -1091,8 +1085,7 @@ mod tests {
             .unwrap()
             .update_score("device-1", 0.0); // Score will be 1.0 (default)
 
-        let command_json =
-            r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
+        let command_json = r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
         let timestamp_ns = C2GrpcServer::current_timestamp_ns();
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
@@ -1113,7 +1106,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_swarm_command_success() {
-        let mut server = create_test_server();
+        let server = create_test_server();
 
         // Register the device
         let identity = create_test_identity("device-1");
@@ -1154,7 +1147,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_command_status() {
-        let mut server = create_test_server();
+        let server = create_test_server();
 
         // Register the device
         let identity = create_test_identity("device-1");
@@ -1192,7 +1185,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_abort_swarm_command() {
-        let mut server = create_test_server();
+        let server = create_test_server();
 
         // Register the device
         let identity = create_test_identity("device-1");
@@ -1231,7 +1224,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_revoked_device_rejected() {
-        let mut server = create_test_server();
+        let server = create_test_server();
 
         // Register the device
         let identity = create_test_identity("device-1");
@@ -1248,8 +1241,7 @@ mod tests {
             .unwrap()
             .update_score("device-1", 0.0);
 
-        let command_json =
-            r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
+        let command_json = r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
         let timestamp_ns = C2GrpcServer::current_timestamp_ns();
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
@@ -1270,7 +1262,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_unit_command_quarantined_node() {
-        let mut server = create_test_server();
+        let server = create_test_server();
 
         // Register the device
         let identity = create_test_identity("device-1");
@@ -1288,8 +1280,7 @@ mod tests {
             .unwrap()
             .update_score("device-1", -0.6); // Score will be 0.4, which is quarantined
 
-        let command_json =
-            r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
+        let command_json = r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
         let timestamp_ns = C2GrpcServer::current_timestamp_ns();
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
@@ -1317,25 +1308,21 @@ mod tests {
 
     #[test]
     fn signature_verification_accepts_valid_signature() {
-        let mut server = create_test_server();
+        let server = create_test_server();
         let device_id = "device-1";
         let command_json = r#"{"cmd":"test"}"#;
         let timestamp_ns = 42;
         let signing_key = SigningKey::from_bytes(&[7u8; 32]);
         let public_key = signing_key.verifying_key().to_bytes();
 
-        register_identity(&mut server, create_signing_identity(device_id, public_key));
+        register_identity(&server, create_signing_identity(device_id, public_key));
 
         let message = format!("{}:{}:{}", device_id, command_json, timestamp_ns);
         let signature = signing_key.sign(message.as_bytes());
         let signature_b64 = general_purpose::STANDARD.encode(signature.to_bytes());
 
-        let result = server.verify_command_signature(
-            device_id,
-            &signature_b64,
-            command_json,
-            timestamp_ns,
-        );
+        let result =
+            server.verify_command_signature(device_id, &signature_b64, command_json, timestamp_ns);
 
         if let Err(err) = result {
             panic!("Valid signature rejected: {}", err);
@@ -1344,14 +1331,14 @@ mod tests {
 
     #[test]
     fn signature_verification_rejects_invalid_base64() {
-        let mut server = create_test_server();
+        let server = create_test_server();
         let device_id = "device-1";
         let command_json = r#"{"cmd":"test"}"#;
         let timestamp_ns = 42;
         let signing_key = SigningKey::from_bytes(&[3u8; 32]);
         let public_key = signing_key.verifying_key().to_bytes();
 
-        register_identity(&mut server, create_signing_identity(device_id, public_key));
+        register_identity(&server, create_signing_identity(device_id, public_key));
 
         let result =
             server.verify_command_signature(device_id, "not-base64!", command_json, timestamp_ns);
@@ -1364,7 +1351,7 @@ mod tests {
 
     #[test]
     fn signature_verification_rejects_mismatched_signature() {
-        let mut server = create_test_server();
+        let server = create_test_server();
         let device_id = "device-1";
         let command_json = r#"{"cmd":"test"}"#;
         let timestamp_ns = 77;
@@ -1372,18 +1359,14 @@ mod tests {
         let attacker_key = SigningKey::from_bytes(&[8u8; 32]);
         let public_key = identity_key.verifying_key().to_bytes();
 
-        register_identity(&mut server, create_signing_identity(device_id, public_key));
+        register_identity(&server, create_signing_identity(device_id, public_key));
 
         let message = format!("{}:{}:{}", device_id, command_json, timestamp_ns);
         let signature = attacker_key.sign(message.as_bytes());
         let signature_b64 = general_purpose::STANDARD.encode(signature.to_bytes());
 
-        let result = server.verify_command_signature(
-            device_id,
-            &signature_b64,
-            command_json,
-            timestamp_ns,
-        );
+        let result =
+            server.verify_command_signature(device_id, &signature_b64, command_json, timestamp_ns);
 
         match result {
             Ok(_) => panic!("Mismatched signature was accepted"),
@@ -1397,14 +1380,14 @@ mod tests {
             bytes in prop::collection::vec(any::<u8>(), 0..128)
                 .prop_filter("non-64 length", |data| data.len() != 64)
         ) {
-            let mut server = create_test_server();
+            let server = create_test_server();
             let device_id = "device-1";
             let command_json = r#"{"cmd":"test"}"#;
             let timestamp_ns = 99;
             let signing_key = SigningKey::from_bytes(&[4u8; 32]);
             let public_key = signing_key.verifying_key().to_bytes();
 
-            register_identity(&mut server, create_signing_identity(device_id, public_key));
+            register_identity(&server, create_signing_identity(device_id, public_key));
 
             let signature_b64 = general_purpose::STANDARD.encode(bytes);
             let result = server.verify_command_signature(

@@ -32,8 +32,3 @@ toml = { workspace = true, optional = true }
 tokio = { workspace = true }
 uuid = { version = "1.6", features = ["v4"] }
 rand = { workspace = true }
-criterion = { version = "0.5", features = ["html_reports"] }
-
-[[bench]]
-name = "merkle_vine_bench"
-harness = false

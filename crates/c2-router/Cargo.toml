@@ -31,8 +31,3 @@ tonic-build = "0.10"
 tokio = { workspace = true }
 proptest = "1.4"
 rand = { workspace = true }
-criterion = { version = "0.5", features = ["html_reports"] }
-
-[[bench]]
-name = "c2_router_bench"
-harness = false
