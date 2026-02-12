@@ -29,12 +29,6 @@ AetherCore replaces "trust by policy" with **Cryptographic Certainty**. It is de
 
 ## Quick Start
 
-### Testing Package (Recommended for Evaluation)
-For testing and evaluation, use our complete testing package:
-- **Quick Start:** See [QUICKSTART_TESTING.md](QUICKSTART_TESTING.md)
-- **Complete Guide:** See [TESTING_DEPLOYMENT.md](TESTING_DEPLOYMENT.md)
-- **Distribution Info:** See [TESTING_DISTRIBUTION.md](TESTING_DISTRIBUTION.md)
-
 ### Download Binaries
 For the latest installers (macOS .dmg, Windows .msi, Linux .AppImage), please visit our [Releases Page](https://github.com/FourMIK/AetherCore/releases).
 
@@ -65,6 +59,8 @@ pnpm tauri dev
 
 ## Documentation
 * [Installation Guide](INSTALLATION.md): Setup for Windows, macOS, and Linux.
+* [Release Guide](RELEASE.md): Release procedures and version history.
+* [Changelog](CHANGELOG.md): Detailed version history and breaking changes.
 * [Architecture](ARCHITECTURE.md): System design and data flow.
 * [Security](SECURITY.md): Threat models and reporting vulnerabilities.
 * [Protocol Overview](PROTOCOL_OVERVIEW.md): Deep dive into the consensus mechanism.
