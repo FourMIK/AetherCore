@@ -40,7 +40,7 @@
 //!
 //! ```rust,no_run
 //! use std::path::Path;
-//! use aethercore_crypto::zk::{ZkProver, ZkPrivateInputs, ZkPublicInputs};
+//! use aethercore_crypto::zk::{ZkProver, ZkPrivateInputs, ZkPublicInputs, ZkProverTrait};
 //!
 //! let mut prover = ZkProver::new();
 //! prover.initialize(
@@ -49,8 +49,22 @@
 //!     Path::new("./circuits/auth.zkey"),
 //! )?;
 //!
-//! let private_inputs = ZkPrivateInputs::new(/* ... */);
-//! let public_inputs = ZkPublicInputs::new(/* ... */);
+//! let private_inputs = ZkPrivateInputs::new(
+//!     [0u8; 32],
+//!     [1u8; 32],
+//!     [2u8; 32],
+//!     [3u8; 32],
+//!     0,
+//!     [[0u8; 32]; 4],
+//! );
+//! let public_inputs = ZkPublicInputs::new(
+//!     [0u8; 32],
+//!     [0u8; 32],
+//!     0,
+//!     [0u8; 32],
+//!     [0u8; 32],
+//!     60_000,
+//! );
 //! let proof = prover.generate_proof(&private_inputs, &public_inputs)?;
 //! # Ok::<(), aethercore_crypto::zk::ZkError>(())
 //! ```

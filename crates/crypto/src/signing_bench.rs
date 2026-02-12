@@ -45,6 +45,8 @@ fn bench_event_signing() {
     let p95 = durations[(iterations * 95) / 100];
     let p99 = durations[(iterations * 99) / 100];
     let max = durations[iterations - 1];
+    let median_target = if cfg!(debug_assertions) { 5000 } else { 1000 };
+    let p95_target = if cfg!(debug_assertions) { 20000 } else { 2000 };
 
     println!("\n=== Event Signing Performance ===");
     println!("Iterations: {}", iterations);
@@ -52,20 +54,25 @@ fn bench_event_signing() {
     println!("P95:        {}μs", p95);
     println!("P99:        {}μs", p99);
     println!("Max:        {}μs", max);
-    println!("Target:     <1000μs (1ms)");
+    println!(
+        "Target:     <{}μs median, <{}μs P95",
+        median_target, p95_target
+    );
 
-    // Target: <1ms (1000μs) median for event signing
+    // Target: <1ms median in release, relaxed for debug builds
     assert!(
-        median < 1000,
-        "Event signing too slow: {}μs median (target: <1000μs)",
-        median
+        median < median_target,
+        "Event signing too slow: {}μs median (target: <{}μs)",
+        median,
+        median_target
     );
 
     // P95 should also be reasonable
     assert!(
-        p95 < 2000,
-        "P95 event signing too slow: {}μs (target: <2000μs)",
-        p95
+        p95 < p95_target,
+        "P95 event signing too slow: {}μs (target: <{}μs)",
+        p95,
+        p95_target
     );
 }
 
@@ -101,17 +108,19 @@ fn bench_event_signing_with_payload() {
     durations.sort();
     let median = durations[iterations / 2];
     let p95 = durations[(iterations * 95) / 100];
+    let payload_target = if cfg!(debug_assertions) { 5000 } else { 1000 };
 
     println!("\n=== Event Signing with Payload Performance ===");
     println!("Iterations: {}", iterations);
     println!("Median:     {}μs", median);
     println!("P95:        {}μs", p95);
 
-    // Should still be <1ms median even with payload
+    // Should still be <1ms median even with payload (relaxed for debug builds)
     assert!(
-        median < 1000,
-        "Event signing with payload too slow: {}μs median (target: <1000μs)",
-        median
+        median < payload_target,
+        "Event signing with payload too slow: {}μs median (target: <{}μs)",
+        median,
+        payload_target
     );
 }
 

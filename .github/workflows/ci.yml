@@ -2,9 +2,9 @@ name: AetherCore MonoRepo CI
 
 on:
   push:
-    branches: [ main, develop, internal ]
+    branches: [main, develop, internal]
   pull_request:
-    branches: [ main, develop, internal ]
+    branches: [main, develop, internal]
 
 jobs:
   network-prerequisites:
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Run documentation verification
         run: |
           chmod +x scripts/verify-docs.sh
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Run verification script
         run: |
           chmod +x verify-monorepo.sh
@@ -46,10 +46,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
-      
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -60,7 +60,7 @@ jobs:
             librsvg2-dev \
             libssl-dev \
             pkg-config
-      
+
       - name: Cache Rust dependencies
         uses: actions/cache@v3
         with:
@@ -72,40 +72,43 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-release-
             ${{ runner.os }}-cargo-
-      
+
       - name: Check Rust workspace
         run: cargo check --workspace
-      
+
       - name: Run Rust tests
         run: cargo test --workspace
-      
+
+      - name: Signature verification regression gate
+        run: cargo test -p aethercore-c2-router signature_verification
+
       - name: Run Clippy
         run: cargo clippy --workspace -- -D warnings
 
   license-compliance:
     needs: [network-prerequisites]
-    name: "Operation Legal Shield: License Compliance"
+    name: 'Operation Legal Shield: License Compliance'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
-      
+
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked
-      
+
       - name: Run cargo-deny license check
         run: |
           echo "🛡️  Operation Legal Shield: Enforcing license compliance"
           cargo deny check licenses
-      
+
       - name: Run cargo-deny advisories check
         run: cargo deny check advisories
-      
+
       - name: Run cargo-deny bans check
         run: cargo deny check bans
-      
+
       - name: Verify deny.toml exists
         run: |
           if [ ! -f "deny.toml" ]; then
@@ -120,25 +123,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'pnpm'
-      
+
       - name: Enable Corepack
         run: corepack enable
-      
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      
+
       - name: Run environment checks
         run: pnpm doctor
-      
+
       - name: Build all packages and services
         run: pnpm run build
-      
+
       - name: Run tests
         run: pnpm run test
 
@@ -148,16 +151,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Check for illegal legacy imports
         run: |
           echo "Checking for illegal imports from /legacy..."
-          
+
           # Search for legacy imports in non-allowed locations
           # Allowed: crates/h2-domain and packages/h2-glass
-          
+
           VIOLATIONS=0
-          
+
           # Check Rust files (excluding h2-domain)
           for file in $(find crates -name "*.rs" | grep -v "h2-domain"); do
             if grep -l "legacy" "$file" 2>/dev/null; then
@@ -165,7 +168,7 @@ jobs:
               VIOLATIONS=$((VIOLATIONS + 1))
             fi
           done
-          
+
           # Check TypeScript files (excluding h2-glass)
           for file in $(find services packages -name "*.ts" | grep -v "h2-glass"); do
             if grep -l "legacy" "$file" 2>/dev/null; then
@@ -173,7 +176,7 @@ jobs:
               VIOLATIONS=$((VIOLATIONS + 1))
             fi
           done
-          
+
           if [ $VIOLATIONS -gt 0 ]; then
             echo "::error::Found $VIOLATIONS file(s) with illegal legacy references"
             exit 1
@@ -187,42 +190,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Check Cargo.toml workspace members
         run: |
           echo "Verifying all crates are in Cargo.toml workspace..."
-          
+
           MISSING=0
           CRATES=("core" "crypto" "identity" "domain" "mesh" "stream" "edge" "isr" "rf" "radio" "trust_mesh" "h2-domain")
-          
+
           for crate in "${CRATES[@]}"; do
             if ! grep -q "\"crates/$crate\"" Cargo.toml; then
               echo "::error::Crate crates/$crate not found in workspace members"
               MISSING=$((MISSING + 1))
             fi
           done
-          
+
           if [ $MISSING -gt 0 ]; then
             exit 1
           fi
-          
+
           echo "✓ All crates are in workspace"
-      
+
       - name: Check package.json workspace members
         run: |
           echo "Verifying all services and packages are in package.json workspace..."
-          
+
           # This is a basic check - in production you'd parse JSON properly
           if ! grep -q '"services/\*"' package.json; then
             echo "::error::services/* not found in workspaces"
             exit 1
           fi
-          
+
           if ! grep -q '"packages/\*"' package.json; then
             echo "::error::packages/* not found in workspaces"
             exit 1
           fi
-          
+
           echo "✓ Workspace configuration is valid"
 
   build-and-push-internal:
@@ -232,24 +235,24 @@ jobs:
     needs: [network-prerequisites, rust-workspace, typescript-workspace, license-compliance]
     permissions:
       contents: read
-      id-token: write  # For OIDC authentication with AWS
+      id-token: write # For OIDC authentication with AWS
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-      
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-      
+
       - name: Build and push h2-ingest
         uses: docker/build-push-action@v5
         with:
@@ -261,7 +264,7 @@ jobs:
             ${{ steps.login-ecr.outputs.registry }}/aethercore-h2-ingest:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      
+
       - name: Build and push gateway
         uses: docker/build-push-action@v5
         with:
@@ -273,7 +276,7 @@ jobs:
             ${{ steps.login-ecr.outputs.registry }}/aethercore-gateway:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      
+
       - name: Build and push auth
         uses: docker/build-push-action@v5
         with:
@@ -285,7 +288,7 @@ jobs:
             ${{ steps.login-ecr.outputs.registry }}/aethercore-auth:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      
+
       - name: Build and push collaboration
         uses: docker/build-push-action@v5
         with:
@@ -316,19 +319,19 @@ jobs:
           - platform: 'windows-latest'
             os: windows-latest
             artifact: 'aethercore-tactical-glass_*.msi'
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'pnpm'
-      
+
       - name: Install dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -339,13 +342,13 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             libssl-dev
-      
+
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
           # macOS dependencies are typically pre-installed
           echo "macOS dependencies check..."
-      
+
       - name: Cache Rust dependencies
         uses: actions/cache@v3
         with:
@@ -354,28 +357,28 @@ jobs:
             ~/.cargo/git
             target/
           key: ${{ runner.os }}-cargo-desktop-${{ hashFiles('**/Cargo.lock') }}
-      
+
       - name: Enable Corepack
         run: corepack enable
-      
+
       - name: Install npm dependencies
         run: pnpm install --frozen-lockfile
-      
+
       - name: Install Tauri CLI
         run: |
           cd packages/dashboard
           pnpm add -D @tauri-apps/cli@2.9.6
-      
+
       - name: Build Dashboard TypeScript
         run: |
           cd packages/dashboard
           pnpm run build
-      
+
       - name: Build Tauri App
         run: |
           cd packages/dashboard
           pnpm tauri build
-      
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -390,21 +393,21 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     needs: [rust-workspace]
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
-      
+
       - name: Install cross
         run: cargo install cross --git https://github.com/cross-rs/cross
-      
+
       - name: Build ARM64 Edge Library
         run: |
           chmod +x scripts/build_arm.sh
           ./scripts/build_arm.sh
-      
+
       - name: Upload ARM64 Artifacts
         uses: actions/upload-artifact@v4
         with:

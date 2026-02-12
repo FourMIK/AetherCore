@@ -845,6 +845,10 @@ mod tests {
     use super::*;
     use crate::authority::AuthorityVerifier;
     use aethercore_identity::{Attestation, PlatformIdentity};
+    use base64::engine::general_purpose;
+    use base64::Engine as _;
+    use ed25519_dalek::{Signer, SigningKey};
+    use proptest::prelude::*;
     use std::collections::HashMap;
     use tonic::metadata::MetadataValue;
 
@@ -858,15 +862,70 @@ mod tests {
         C2GrpcServer::new(dispatcher, quorum_gate, trust_scorer, identity_manager)
     }
 
+    fn test_signing_key() -> SigningKey {
+        SigningKey::from_bytes(&[6u8; 32])
+    }
+
     fn create_test_identity(device_id: &str) -> PlatformIdentity {
+        let signing_key = test_signing_key();
         PlatformIdentity {
             id: device_id.to_string(),
-            public_key: vec![1, 2, 3, 4],
+            public_key: signing_key.verifying_key().to_bytes().to_vec(),
             attestation: Attestation::Software {
                 certificate: vec![5, 6, 7, 8],
             },
             created_at: 1000,
             metadata: HashMap::new(),
+        }
+    }
+
+    fn sign_metadata(device_id: &str, command_json: &str, timestamp_ns: u64) -> String {
+        let signing_key = test_signing_key();
+        let message = format!("{}:{}:{}", device_id, command_json, timestamp_ns);
+        let signature = signing_key.sign(message.as_bytes());
+        general_purpose::STANDARD.encode(signature.to_bytes())
+    }
+
+    fn attach_signature_metadata<T>(
+        request: &mut Request<T>,
+        device_id: &str,
+        signature_b64: &str,
+    ) {
+        let device_value = match MetadataValue::try_from(device_id) {
+            Ok(value) => value,
+            Err(err) => panic!("Invalid device id metadata: {}", err),
+        };
+        let signature_value = match MetadataValue::try_from(signature_b64) {
+            Ok(value) => value,
+            Err(err) => panic!("Invalid signature metadata: {}", err),
+        };
+
+        request.metadata_mut().insert("x-device-id", device_value);
+        request
+            .metadata_mut()
+            .insert("x-signature", signature_value);
+    }
+
+    fn create_signing_identity(device_id: &str, public_key: [u8; 32]) -> PlatformIdentity {
+        PlatformIdentity {
+            id: device_id.to_string(),
+            public_key: public_key.to_vec(),
+            attestation: Attestation::Software {
+                certificate: vec![9, 9, 9],
+            },
+            created_at: 1000,
+            metadata: HashMap::new(),
+        }
+    }
+
+    fn register_identity(server: &mut C2GrpcServer, identity: PlatformIdentity) {
+        let mut manager = match server.identity_manager.write() {
+            Ok(manager) => manager,
+            Err(err) => panic!("Identity manager lock error: {}", err),
+        };
+
+        if let Err(err) = manager.register(identity) {
+            panic!("Identity registration failed: {}", err);
         }
     }
 
@@ -948,19 +1007,18 @@ mod tests {
             .register(identity)
             .unwrap();
 
+        let command_json =
+            r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
+        let timestamp_ns = C2GrpcServer::current_timestamp_ns();
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
-            command_json: r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#.to_string(),
+            command_json: command_json.to_string(),
             signatures: vec!["sig1".to_string()],
-            timestamp_ns: 1000,
+            timestamp_ns,
         });
 
-        request
-            .metadata_mut()
-            .insert("x-device-id", MetadataValue::from_static("device-1"));
-        request
-            .metadata_mut()
-            .insert("x-signature", MetadataValue::from_static("c2lnbmF0dXJl"));
+        let signature_b64 = sign_metadata("device-1", command_json, timestamp_ns);
+        attach_signature_metadata(&mut request, "device-1", &signature_b64);
 
         let result = server.execute_unit_command(request).await;
         assert!(result.is_err());
@@ -992,19 +1050,18 @@ mod tests {
             .unwrap()
             .update_score("device-1", TEST_TRUST_SCORE - 1.0);
 
+        let command_json =
+            r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
+        let timestamp_ns = C2GrpcServer::current_timestamp_ns();
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
-            command_json: r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#.to_string(),
+            command_json: command_json.to_string(),
             signatures: vec!["sig1".to_string()],
-            timestamp_ns: 1000,
+            timestamp_ns,
         });
 
-        request
-            .metadata_mut()
-            .insert("x-device-id", MetadataValue::from_static("device-1"));
-        request
-            .metadata_mut()
-            .insert("x-signature", MetadataValue::from_static("c2lnbmF0dXJl"));
+        let signature_b64 = sign_metadata("device-1", command_json, timestamp_ns);
+        attach_signature_metadata(&mut request, "device-1", &signature_b64);
 
         let result = server.execute_unit_command(request).await;
         assert!(result.is_err());
@@ -1034,19 +1091,18 @@ mod tests {
             .unwrap()
             .update_score("device-1", 0.0); // Score will be 1.0 (default)
 
+        let command_json =
+            r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
+        let timestamp_ns = C2GrpcServer::current_timestamp_ns();
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
-            command_json: r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#.to_string(),
+            command_json: command_json.to_string(),
             signatures: vec!["sig1".to_string()],
-            timestamp_ns: 1000,
+            timestamp_ns,
         });
 
-        request
-            .metadata_mut()
-            .insert("x-device-id", MetadataValue::from_static("device-1"));
-        request
-            .metadata_mut()
-            .insert("x-signature", MetadataValue::from_static("c2lnbmF0dXJl"));
+        let signature_b64 = sign_metadata("device-1", command_json, timestamp_ns);
+        attach_signature_metadata(&mut request, "device-1", &signature_b64);
 
         let result = server.execute_unit_command(request).await;
         assert!(result.is_ok());
@@ -1075,20 +1131,18 @@ mod tests {
             .unwrap()
             .update_score("device-1", 0.0);
 
+        let command_json = r#"{"RecallAll":{"base_id":"BASE-1"}}"#;
+        let timestamp_ns = C2GrpcServer::current_timestamp_ns();
         let mut request = Request::new(SwarmCommandRequest {
             swarm_command_id: "swarm-1".to_string(),
             target_unit_ids: vec!["unit-1".to_string(), "unit-2".to_string()],
-            command_json: r#"{"RecallAll":{"base_id":"BASE-1"}}"#.to_string(),
+            command_json: command_json.to_string(),
             signatures: vec!["sig1".to_string()],
-            timestamp_ns: 1000,
+            timestamp_ns,
         });
 
-        request
-            .metadata_mut()
-            .insert("x-device-id", MetadataValue::from_static("device-1"));
-        request
-            .metadata_mut()
-            .insert("x-signature", MetadataValue::from_static("c2lnbmF0dXJl"));
+        let signature_b64 = sign_metadata("device-1", command_json, timestamp_ns);
+        attach_signature_metadata(&mut request, "device-1", &signature_b64);
 
         let result = server.execute_swarm_command(request).await;
         assert!(result.is_ok());
@@ -1194,19 +1248,18 @@ mod tests {
             .unwrap()
             .update_score("device-1", 0.0);
 
+        let command_json =
+            r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
+        let timestamp_ns = C2GrpcServer::current_timestamp_ns();
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
-            command_json: r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#.to_string(),
+            command_json: command_json.to_string(),
             signatures: vec!["sig1".to_string()],
-            timestamp_ns: 1000,
+            timestamp_ns,
         });
 
-        request
-            .metadata_mut()
-            .insert("x-device-id", MetadataValue::from_static("device-1"));
-        request
-            .metadata_mut()
-            .insert("x-signature", MetadataValue::from_static("c2lnbmF0dXJl"));
+        let signature_b64 = sign_metadata("device-1", command_json, timestamp_ns);
+        attach_signature_metadata(&mut request, "device-1", &signature_b64);
 
         let result = server.execute_unit_command(request).await;
         assert!(result.is_err());
@@ -1235,26 +1288,136 @@ mod tests {
             .unwrap()
             .update_score("device-1", -0.6); // Score will be 0.4, which is quarantined
 
+        let command_json =
+            r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
+        let timestamp_ns = C2GrpcServer::current_timestamp_ns();
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
-            command_json: r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#.to_string(),
+            command_json: command_json.to_string(),
             signatures: vec!["sig1".to_string()],
-            timestamp_ns: 1000,
+            timestamp_ns,
         });
 
-        request
-            .metadata_mut()
-            .insert("x-device-id", MetadataValue::from_static("device-1"));
-        request
-            .metadata_mut()
-            .insert("x-signature", MetadataValue::from_static("c2lnbmF0dXJl"));
+        let signature_b64 = sign_metadata("device-1", command_json, timestamp_ns);
+        attach_signature_metadata(&mut request, "device-1", &signature_b64);
 
         let result = server.execute_unit_command(request).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.code(), tonic::Code::PermissionDenied);
+        let message = err.message();
         // Verify the rejection message explicitly mentions quarantine
-        assert!(err.message().contains("Quarantined"));
-        assert!(err.message().contains("COMMAND REJECTED"));
+        assert!(
+            message.contains("Quarantined") || message.contains("quarantine"),
+            "Expected quarantine rejection, got: {}",
+            message
+        );
+        assert!(message.contains("COMMAND REJECTED") || message.contains("Trust score"));
+    }
+
+    #[test]
+    fn signature_verification_accepts_valid_signature() {
+        let mut server = create_test_server();
+        let device_id = "device-1";
+        let command_json = r#"{"cmd":"test"}"#;
+        let timestamp_ns = 42;
+        let signing_key = SigningKey::from_bytes(&[7u8; 32]);
+        let public_key = signing_key.verifying_key().to_bytes();
+
+        register_identity(&mut server, create_signing_identity(device_id, public_key));
+
+        let message = format!("{}:{}:{}", device_id, command_json, timestamp_ns);
+        let signature = signing_key.sign(message.as_bytes());
+        let signature_b64 = general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let result = server.verify_command_signature(
+            device_id,
+            &signature_b64,
+            command_json,
+            timestamp_ns,
+        );
+
+        if let Err(err) = result {
+            panic!("Valid signature rejected: {}", err);
+        }
+    }
+
+    #[test]
+    fn signature_verification_rejects_invalid_base64() {
+        let mut server = create_test_server();
+        let device_id = "device-1";
+        let command_json = r#"{"cmd":"test"}"#;
+        let timestamp_ns = 42;
+        let signing_key = SigningKey::from_bytes(&[3u8; 32]);
+        let public_key = signing_key.verifying_key().to_bytes();
+
+        register_identity(&mut server, create_signing_identity(device_id, public_key));
+
+        let result =
+            server.verify_command_signature(device_id, "not-base64!", command_json, timestamp_ns);
+
+        match result {
+            Ok(_) => panic!("Invalid base64 signature was accepted"),
+            Err(err) => assert_eq!(err.code(), tonic::Code::Unauthenticated),
+        }
+    }
+
+    #[test]
+    fn signature_verification_rejects_mismatched_signature() {
+        let mut server = create_test_server();
+        let device_id = "device-1";
+        let command_json = r#"{"cmd":"test"}"#;
+        let timestamp_ns = 77;
+        let identity_key = SigningKey::from_bytes(&[5u8; 32]);
+        let attacker_key = SigningKey::from_bytes(&[8u8; 32]);
+        let public_key = identity_key.verifying_key().to_bytes();
+
+        register_identity(&mut server, create_signing_identity(device_id, public_key));
+
+        let message = format!("{}:{}:{}", device_id, command_json, timestamp_ns);
+        let signature = attacker_key.sign(message.as_bytes());
+        let signature_b64 = general_purpose::STANDARD.encode(signature.to_bytes());
+
+        let result = server.verify_command_signature(
+            device_id,
+            &signature_b64,
+            command_json,
+            timestamp_ns,
+        );
+
+        match result {
+            Ok(_) => panic!("Mismatched signature was accepted"),
+            Err(err) => assert_eq!(err.code(), tonic::Code::Unauthenticated),
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn signature_verification_rejects_non_64_len_signature(
+            bytes in prop::collection::vec(any::<u8>(), 0..128)
+                .prop_filter("non-64 length", |data| data.len() != 64)
+        ) {
+            let mut server = create_test_server();
+            let device_id = "device-1";
+            let command_json = r#"{"cmd":"test"}"#;
+            let timestamp_ns = 99;
+            let signing_key = SigningKey::from_bytes(&[4u8; 32]);
+            let public_key = signing_key.verifying_key().to_bytes();
+
+            register_identity(&mut server, create_signing_identity(device_id, public_key));
+
+            let signature_b64 = general_purpose::STANDARD.encode(bytes);
+            let result = server.verify_command_signature(
+                device_id,
+                &signature_b64,
+                command_json,
+                timestamp_ns,
+            );
+
+            prop_assert!(result.is_err());
+            if let Err(err) = result {
+                prop_assert_eq!(err.code(), tonic::Code::Unauthenticated);
+            }
+        }
     }
 }

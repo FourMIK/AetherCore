@@ -320,26 +320,26 @@ mod tests {
         SigningKey::from_bytes(&[seed; 32])
     }
 
+    fn write_bytes(data: &mut Vec<u8>, bytes: &[u8]) {
+        let len = bytes.len() as u32;
+        data.extend_from_slice(&len.to_be_bytes());
+        data.extend_from_slice(bytes);
+    }
+
     fn certificate_tbs_bytes(cert: &Certificate) -> Vec<u8> {
         let mut data = Vec::new();
-        let mut write_bytes = |bytes: &[u8]| {
-            let len = bytes.len() as u32;
-            data.extend_from_slice(&len.to_be_bytes());
-            data.extend_from_slice(bytes);
-        };
-
-        write_bytes(cert.serial.as_bytes());
-        write_bytes(cert.subject.as_bytes());
-        write_bytes(cert.issuer.as_bytes());
-        write_bytes(&cert.public_key);
+        write_bytes(&mut data, cert.serial.as_bytes());
+        write_bytes(&mut data, cert.subject.as_bytes());
+        write_bytes(&mut data, cert.issuer.as_bytes());
+        write_bytes(&mut data, &cert.public_key);
         data.extend_from_slice(&cert.not_before.to_be_bytes());
         data.extend_from_slice(&cert.not_after.to_be_bytes());
 
         let mut extensions: Vec<(&String, &Vec<u8>)> = cert.extensions.iter().collect();
         extensions.sort_by(|a, b| a.0.cmp(b.0));
         for (key, value) in extensions {
-            write_bytes(key.as_bytes());
-            write_bytes(value);
+            write_bytes(&mut data, key.as_bytes());
+            write_bytes(&mut data, value);
         }
 
         data
