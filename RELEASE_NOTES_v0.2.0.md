@@ -15,18 +15,23 @@ This is the **first published package** of AetherCore, a hardware-rooted trust f
 ## ⚡ Key Capabilities
 
 ### 🛡️ Hardware-Rooted Identity
+
 Every node is cryptographically bound to physical silicon via TPM 2.0 / Secure Enclave. No software-only identity chains.
 
 ### 🔗 Merkle Vine™ Integrity
+
 Telemetry streams are historically anchored. Data cannot be injected retroactively. Every event contains a hash of its ancestor.
 
 ### ⚡ The Aetheric Sweep
+
 Automated gossip protocols actively hunt and isolate compromised or "lying" nodes. Byzantine detection is continuous and automatic.
 
 ### 🖥️ Tactical Glass
+
 GPU-accelerated desktop dashboard providing real-time fleet command and mesh visualization. Built with Tauri for native performance.
 
 ### 🔐 Zero-Trust Architecture
+
 - Fail-visible mode: Unverified data is explicitly marked as `STATUS_UNVERIFIED` or `SPOOFED`
 - No silent integrity failures
 - If identity verification fails, the node is considered an adversary
@@ -36,12 +41,14 @@ GPU-accelerated desktop dashboard providing real-time fleet command and mesh vis
 ## 🔧 Technical Highlights
 
 ### Cryptographic Foundation
+
 - **Hashing:** BLAKE3 exclusively (SHA-256 deprecated and removed)
 - **Signing:** Ed25519 with TPM-backed private keys (CodeRalphie)
 - **Transport:** TLS 1.3 enforced in production mode
 - **Memory Safety:** Rust core with zero-copy optimization
 
 ### Architecture (4MIK Architectural Invariants)
+
 ✓ **No Mocks in Production:** Systematic replacement of all simulation with real gRPC/FFI calls  
 ✓ **Memory Safety:** Rust is the source of truth for edge execution  
 ✓ **Hashing:** BLAKE3 exclusively throughout the stack  
@@ -50,6 +57,7 @@ GPU-accelerated desktop dashboard providing real-time fleet command and mesh vis
 ✓ **Fail-Visibility:** No graceful degradation for security failures
 
 ### Services
+
 - **Identity Service** - TPM attestation gate for all nodes
 - **Stream Processing** - Integrity tracking for telemetry
 - **H2 Ingest Service** - High-throughput telemetry ingestion
@@ -63,6 +71,7 @@ GPU-accelerated desktop dashboard providing real-time fleet command and mesh vis
 ### Desktop Installers (Auto-Built via GitHub Actions)
 
 Installers are automatically built for:
+
 - **macOS:** Universal Binary (Intel + Apple Silicon) - `.dmg`
 - **Windows:** x64 Installer - `.msi`
 - **Linux:** Portable AppImage - `.AppImage`
@@ -104,18 +113,22 @@ This is an **Alpha Release** for evaluation and testing:
 ## 🔒 Security Posture
 
 ### Production-Ready Components
+
 - Cryptographic primitives (BLAKE3, Ed25519)
 - Merkle Vine integrity system
 - Identity verification protocols
 - Byzantine node detection algorithms
 
 ### Development-Mode Components
+
 - Simulated TPM for testing without hardware
 - HTTP/WebSocket support for local development
 - SQLite database (PostgreSQL recommended for production)
 
 ### Security Hardening
+
 See [SECURITY.md](SECURITY.md) for:
+
 - Threat model and attack surface analysis
 - Security assumptions and limitations
 - Incident response procedures
@@ -126,6 +139,7 @@ See [SECURITY.md](SECURITY.md) for:
 ## 📊 What's Included
 
 ### Core Rust Crates
+
 ```
 crates/
 ├── core/         - Core types and traits
@@ -145,6 +159,7 @@ crates/
 ```
 
 ### TypeScript Packages
+
 ```
 packages/
 ├── dashboard/        - Tactical Glass desktop app (Tauri)
@@ -154,6 +169,7 @@ packages/
 ```
 
 ### Services
+
 ```
 services/
 ├── auth/           - Authentication service
@@ -180,18 +196,21 @@ services/
 ## 🚀 Next Steps
 
 ### For Evaluators
+
 1. Download desktop installer for your platform
 2. Review [SECURITY.md](SECURITY.md) for security posture
 3. Test in controlled environment with Dev Mode
 4. Provide feedback via GitHub Issues
 
 ### For Developers
+
 1. Clone repository and checkout v0.2.0 tag
 2. Run `./scripts/doctor.js` to verify environment
 3. Follow [CONTRIBUTING.md](CONTRIBUTING.md) for development setup
 4. Review [ARCHITECTURE.md](ARCHITECTURE.md) for system design
 
 ### For Production Deployment
+
 1. Review [SECURITY_HARDENING.md](SECURITY_HARDENING.md)
 2. Configure production mode with hardware TPM
 3. Follow [DEPLOYMENT_PRODUCTION.md](DEPLOYMENT_PRODUCTION.md)
@@ -203,6 +222,7 @@ services/
 ## 🛠️ CI/CD Pipeline
 
 GitHub Actions automatically:
+
 - ✓ Builds desktop applications for all platforms
 - ✓ Generates checksums for installers
 - ✓ Creates Software Bill of Materials (SBOM)
@@ -221,6 +241,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes, additions, and fi
 ### Highlights
 
 #### Core Infrastructure
+
 - Hardware-rooted identity system with TPM 2.0 / Secure Enclave support
 - Ed25519 signature verification for all node communications
 - BLAKE3 hashing for integrity checks (SHA-256 deprecated)
@@ -229,10 +250,12 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes, additions, and fi
 - Fail-visible mode for unverified data
 
 #### Configuration
+
 - Production configuration with strict verification (`config/production.yaml`)
 - Testing configuration with dev mode for development (`config/testing.yaml`)
 
 #### Documentation
+
 - Complete architecture documentation
 - Security model and threat analysis
 - Production deployment playbooks
@@ -244,6 +267,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes, additions, and fi
 ## 🤝 Contributing
 
 We welcome contributions! Please see:
+
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) - Community standards
 
@@ -252,6 +276,7 @@ We welcome contributions! Please see:
 ## 📜 License
 
 AetherCore is dual-licensed under:
+
 - **MIT License** - See [LICENSE](LICENSE)
 - **Apache License 2.0** - See [LICENSE](LICENSE)
 
@@ -271,6 +296,7 @@ You may choose either license at your option.
 ## 🙏 Acknowledgments
 
 This release represents the culmination of rigorous architectural work adhering to 4MIK AetherCore Architect principles:
+
 - Zero tolerance for mocks in production paths
 - Memory safety as a first principle
 - Cryptographic certainty over policy-based trust
