@@ -1,6 +1,6 @@
 {
   "name": "aethercore-monorepo",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "private": true,
   "description": "AetherCore monorepo integrating H2OS/4MIK",
   "packageManager": "pnpm@9.15.0",
