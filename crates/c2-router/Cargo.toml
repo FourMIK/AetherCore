@@ -22,6 +22,7 @@ prost-types = { workspace = true }
 tracing = { workspace = true }
 rusqlite = { workspace = true }
 hex = { workspace = true }
+base64 = "0.21"
 
 [build-dependencies]
 tonic-build = "0.10"

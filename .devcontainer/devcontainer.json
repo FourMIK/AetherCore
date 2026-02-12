@@ -15,11 +15,13 @@
 "customizations": {
 "vscode": {
 "extensions": [
-"rust-lang.rust-analyzer",
-"dbaeumer.vscode-eslint",
-"esbenp.prettier-vscode",
-"ms-azuretools.vscode-docker",
-"GitHub.copilot"
+	"rust-lang.rust-analyzer",
+	"dbaeumer.vscode-eslint",
+	"esbenp.prettier-vscode",
+	"ms-azuretools.vscode-docker",
+	"GitHub.copilot",
+	"openai.chatgpt",
+	"GitHub.copilot-chat"
 ],
 "settings": {
 "terminal.integrated.defaultProfile.linux": "bash",

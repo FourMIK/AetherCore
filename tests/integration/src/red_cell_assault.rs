@@ -33,18 +33,33 @@ use tonic::Request;
 /// Utility functions for Red Cell test scenarios
 mod test_utils {
     use super::*;
+    use base64::engine::general_purpose;
+    use base64::Engine as _;
+    use ed25519_dalek::{Signer, SigningKey};
+    use tonic::metadata::MetadataValue;
 
     /// Create a valid node identity for testing
     pub fn create_node_identity(node_id: &str) -> PlatformIdentity {
+        let signing_key = derive_signing_key(node_id);
+        let public_key = signing_key.verifying_key().to_bytes().to_vec();
+
         PlatformIdentity {
             id: node_id.to_string(),
-            public_key: vec![1, 2, 3, 4],
+            public_key,
             attestation: Attestation::Software {
                 certificate: vec![5, 6, 7, 8],
             },
             created_at: current_timestamp_ms(),
             metadata: HashMap::new(),
         }
+    }
+
+    /// Derive a deterministic Ed25519 key from the node ID (test-only)
+    fn derive_signing_key(node_id: &str) -> SigningKey {
+        let hash = blake3::hash(node_id.as_bytes());
+        let mut secret = [0u8; 32];
+        secret.copy_from_slice(hash.as_bytes());
+        SigningKey::from_bytes(&secret)
     }
 
     /// Get current timestamp in milliseconds
@@ -81,20 +96,28 @@ mod test_utils {
         device_id: &'static str,
         command: &UnitCommand,
     ) -> Request<UnitCommandRequest> {
+        let command_json = serde_json::to_string(command).unwrap();
+        let timestamp_ns = current_timestamp_ns();
+
+        // Sign the command with the device's deterministic test key
+        let signing_key = derive_signing_key(device_id);
+        let message = format!("{}:{}:{}", device_id, command_json, timestamp_ns);
+        let signature = signing_key.sign(message.as_bytes());
+        let signature_b64 = general_purpose::STANDARD.encode(signature.to_bytes());
+
         let mut request = Request::new(UnitCommandRequest {
             unit_id: "unit-1".to_string(),
-            command_json: serde_json::to_string(command).unwrap(),
-            signatures: vec!["test-sig".to_string()],
-            timestamp_ns: current_timestamp_ns(),
+            command_json,
+            signatures: vec![signature_b64.clone()],
+            timestamp_ns,
         });
 
         request
             .metadata_mut()
             .insert("x-device-id", MetadataValue::from_static(device_id));
-        request.metadata_mut().insert(
-            "x-signature",
-            MetadataValue::from_static("dGVzdC1zaWduYXR1cmU="),
-        );
+        request
+            .metadata_mut()
+            .insert("x-signature", MetadataValue::try_from(signature_b64.as_str()).unwrap());
 
         request
     }
@@ -494,7 +517,7 @@ async fn test_stream_integrity_chain_validation() {
 #[tokio::test]
 async fn test_spoofed_signature_rejection() {
     use ed25519_dalek::{Signer, SigningKey};
-    use rand::rngs::OsRng;
+    use rand::{rngs::OsRng, RngCore};
     use test_utils::*;
 
     const DEVICE_ID: &str = "legitimate-device-001";
@@ -504,7 +527,9 @@ async fn test_spoofed_signature_rejection() {
     let server = setup_server_with_nodes(&[(DEVICE_ID, 0.0)]); // Healthy trust
 
     // Phase 2: Generate RANDOM Ed25519 key (attacker's key, NOT enrolled)
-    let spoofed_key = SigningKey::generate(&mut OsRng);
+    let mut secret = [0u8; 32];
+    OsRng.fill_bytes(&mut secret);
+    let spoofed_key = SigningKey::from_bytes(&secret);
 
     // Phase 3: Create valid command data
     let command = create_navigate_command();
@@ -526,10 +551,10 @@ async fn test_spoofed_signature_rejection() {
 
     request
         .metadata_mut()
-        .insert("x-device-id", MetadataValue::from_str(DEVICE_ID).unwrap());
+        .insert("x-device-id", MetadataValue::from_static(DEVICE_ID));
     request.metadata_mut().insert(
         "x-signature",
-        MetadataValue::from_str(&spoofed_sig_b64).unwrap(),
+        MetadataValue::try_from(spoofed_sig_b64.as_str()).unwrap(),
     );
 
     // Phase 6: Attempt command execution with spoofed signature

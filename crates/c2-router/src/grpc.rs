@@ -38,6 +38,9 @@ use crate::quorum::QuorumGate;
 use crate::replay_protection::ReplayProtector;
 use aethercore_identity::{IdentityManager, PlatformIdentity};
 use aethercore_trust_mesh::{TrustLevel, TrustScorer, HEALTHY_THRESHOLD, QUARANTINE_THRESHOLD};
+use base64::engine::general_purpose;
+use base64::Engine as _;
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use std::sync::{Arc, Mutex, RwLock};
 use tonic::{Request, Response, Status};
 
@@ -115,7 +118,7 @@ impl C2GrpcServer {
     fn verify_request_metadata(
         &self,
         request: &Request<impl std::fmt::Debug>,
-    ) -> Result<String, Status> {
+    ) -> Result<(String, String), Status> {
         // Extract device ID from metadata
         let device_id = request
             .metadata()
@@ -194,7 +197,91 @@ impl C2GrpcServer {
             return Err(Status::unauthenticated("Empty signature"));
         }
 
-        Ok(device_id)
+        Ok((device_id, signature_b64.to_string()))
+    }
+
+    /// Validate that the provided signature matches the registered device key
+    fn verify_command_signature(
+        &self,
+        device_id: &str,
+        signature_b64: &str,
+        command_json: &str,
+        timestamp_ns: u64,
+    ) -> Result<(), Status> {
+        let identity_mgr = self.identity_manager.read().map_err(|e| {
+            self.audit_log(
+                "AUTH_FAILED",
+                device_id,
+                "None",
+                &format!("Lock error: {}", e),
+            );
+            Status::internal("Identity manager lock error")
+        })?;
+
+        let identity = identity_mgr.get(device_id).ok_or_else(|| {
+            self.audit_log("AUTH_FAILED", device_id, "None", "Unknown device");
+            Status::unauthenticated("Unknown device ID")
+        })?;
+
+        let public_key: [u8; 32] = identity
+            .public_key
+            .as_slice()
+            .try_into()
+            .map_err(|_| {
+                self.audit_log(
+                    "AUTH_FAILED",
+                    device_id,
+                    "None",
+                    "Invalid device public key length",
+                );
+                Status::unauthenticated("Invalid device public key")
+            })?;
+
+        let verifying_key = VerifyingKey::from_bytes(&public_key).map_err(|_| {
+            self.audit_log(
+                "AUTH_FAILED",
+                device_id,
+                "None",
+                "Invalid device public key bytes",
+            );
+            Status::unauthenticated("Invalid device public key")
+        })?;
+
+        let signature_bytes = general_purpose::STANDARD
+            .decode(signature_b64)
+            .map_err(|_| {
+                self.audit_log(
+                    "AUTH_FAILED",
+                    device_id,
+                    "None",
+                    "Invalid signature encoding",
+                );
+                Status::unauthenticated("Invalid signature encoding")
+            })?;
+
+        let signature = Signature::from_slice(&signature_bytes).map_err(|_| {
+            self.audit_log(
+                "AUTH_FAILED",
+                device_id,
+                "None",
+                "Invalid signature format",
+            );
+            Status::unauthenticated("Invalid signature format")
+        })?;
+
+        let message = format!("{}:{}:{}", device_id, command_json, timestamp_ns);
+
+        verifying_key
+            .verify(message.as_bytes(), &signature)
+            .map_err(|_| {
+                self.audit_log(
+                    "AUTH_FAILED",
+                    device_id,
+                    "None",
+                    "Signature verification failed",
+                );
+                Status::unauthenticated("Signature verification failed")
+            })
     }
 
     /// Check trust score against threshold and quarantine status
@@ -273,11 +360,14 @@ impl C2Router for C2GrpcServer {
         request: Request<UnitCommandRequest>,
     ) -> Result<Response<UnitCommandResponse>, Status> {
         // Step 1: Authentication - Extract and verify device identity
-        let device_id = self.verify_request_metadata(&request)?;
+        let (device_id, signature_b64) = self.verify_request_metadata(&request)?;
 
         // Extract request payload early for replay protection
         let req = request.into_inner();
         let unit_id = &req.unit_id;
+
+        // Step 1a: Verify the command signature against the registered device key
+        self.verify_command_signature(&device_id, &signature_b64, &req.command_json, req.timestamp_ns)?;
 
         // Step 2: Replay Protection - Validate timestamp and nonce
         // Extract nonce from signatures (first signature serves as nonce for now)
@@ -378,14 +468,17 @@ impl C2Router for C2GrpcServer {
         request: Request<SwarmCommandRequest>,
     ) -> Result<Response<SwarmCommandResponse>, Status> {
         // Step 1: Authentication
-        let device_id = self.verify_request_metadata(&request)?;
-
-        // Step 2: Trust Gating
-        self.verify_trust_score(&device_id)?;
+        let (device_id, signature_b64) = self.verify_request_metadata(&request)?;
 
         // Extract request payload
         let req = request.into_inner();
         let swarm_id = &req.swarm_command_id;
+
+        // Step 1a: Verify signature against registered key
+        self.verify_command_signature(&device_id, &signature_b64, &req.command_json, req.timestamp_ns)?;
+
+        // Step 2: Trust Gating
+        self.verify_trust_score(&device_id)?;
 
         // Step 3: Parse command from JSON
         let command: SwarmCommand = serde_json::from_str(&req.command_json).map_err(|e| {
@@ -458,7 +551,7 @@ impl C2Router for C2GrpcServer {
         request: Request<CommandStatusRequest>,
     ) -> Result<Response<CommandStatusResponse>, Status> {
         // Authentication
-        let device_id = self.verify_request_metadata(&request)?;
+        let (device_id, _signature_b64) = self.verify_request_metadata(&request)?;
 
         // Trust gating
         self.verify_trust_score(&device_id)?;
@@ -484,7 +577,7 @@ impl C2Router for C2GrpcServer {
         request: Request<AbortRequest>,
     ) -> Result<Response<AbortResponse>, Status> {
         // Authentication
-        let device_id = self.verify_request_metadata(&request)?;
+        let (device_id, _signature_b64) = self.verify_request_metadata(&request)?;
 
         // Trust gating
         self.verify_trust_score(&device_id)?;
@@ -514,7 +607,7 @@ impl C2Router for C2GrpcServer {
         request: Request<OfflineGapRequest>,
     ) -> Result<Response<OfflineGapResponse>, Status> {
         // Authentication
-        let device_id = self.verify_request_metadata(&request)?;
+        let (device_id, _signature_b64) = self.verify_request_metadata(&request)?;
 
         // Trust gating
         self.verify_trust_score(&device_id)?;
@@ -574,7 +667,7 @@ impl C2Router for C2GrpcServer {
         request: Request<SyncAuthorizationRequest>,
     ) -> Result<Response<SyncAuthorizationResponse>, Status> {
         // Step 1: Authentication
-        let device_id = self.verify_request_metadata(&request)?;
+        let (device_id, _signature_b64) = self.verify_request_metadata(&request)?;
 
         // Step 2: Trust Gating
         self.verify_trust_score(&device_id)?;
