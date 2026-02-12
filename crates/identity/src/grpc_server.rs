@@ -66,10 +66,10 @@ impl IdentityRegistryService {
                     return false;
                 }
                 // Invalid value - log warning and use default
-                tracing::warn!("Invalid TPM_ENABLED value: '{}'. Valid values: true/false, 1/0, yes/no, on/off. Defaulting to true.", val);
-                true
+                tracing::warn!("Invalid TPM_ENABLED value: '{}'. Valid values: true/false, 1/0, yes/no, on/off. Defaulting to false.", val);
+                false
             }
-            Err(_) => true, // Default: enabled
+            Err(_) => false, // Default: disabled for field testing
         }
     }
 

@@ -45,16 +45,7 @@ pub mod zk;
 pub mod grpc_server;
 
 #[cfg(test)]
-mod bench;
-
-#[cfg(test)]
 mod test_vectors;
-
-#[cfg(test)]
-mod signing_bench;
-
-#[cfg(test)]
-mod chain_bench;
 
 pub use chain::{
     compute_event_hash, compute_pointer, verify_chain, Blake3Hash, ChainError, ChainManager,
