@@ -12,35 +12,62 @@ pub use crate::processor::ProcessError;
 pub enum StreamError {
     /// Processing errors
     #[error("Processing error: {0}")]
-    Process(#[from] ProcessError),
+    Process(
+        /// Underlying processing error
+        #[from]
+        ProcessError,
+    ),
 
     /// Stream integrity errors
     #[error("Integrity violation: {0}")]
-    Integrity(String),
+    Integrity(
+        /// Integrity violation details
+        String,
+    ),
 
     /// Stream not found
     #[error("Stream not found: {stream_id}")]
-    StreamNotFound { stream_id: String },
+    StreamNotFound {
+        /// Stream identifier
+        stream_id: String,
+    },
 
     /// Stream already exists
     #[error("Stream already exists: {stream_id}")]
-    StreamExists { stream_id: String },
+    StreamExists {
+        /// Stream identifier
+        stream_id: String,
+    },
 
     /// Invalid stream configuration
     #[error("Invalid stream configuration: {0}")]
-    InvalidConfig(String),
+    InvalidConfig(
+        /// Configuration validation details
+        String,
+    ),
 
     /// Serialization errors
     #[error("Serialization error: {0}")]
-    Serialization(#[from] serde_json::Error),
+    Serialization(
+        /// Serialization failure details
+        #[from]
+        serde_json::Error,
+    ),
 
     /// I/O errors
     #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(
+        /// I/O failure details
+        #[from]
+        std::io::Error,
+    ),
 
     /// Timeout error
     #[error("Operation timed out: {0}")]
-    Timeout(String),
+    Timeout(
+        /// Timeout details
+        String,
+    ),
 }
 
 /// Result type for stream operations.

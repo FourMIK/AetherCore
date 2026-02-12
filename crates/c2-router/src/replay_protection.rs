@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 /// Maximum age of a command timestamp (5 minutes)
@@ -23,23 +23,48 @@ const MAX_NONCES_PER_DEVICE: usize = 1000;
 /// Replay protection error types
 #[derive(Debug, Error)]
 pub enum ReplayError {
+    /// Command timestamp is older than allowed window
     #[error("Timestamp too old: {0} seconds ago (max: {1} seconds)")]
-    TimestampTooOld(u64, u64),
+    TimestampTooOld(
+        /// Age in seconds
+        u64,
+        /// Maximum allowed age in seconds
+        u64,
+    ),
 
+    /// Command timestamp is too far ahead of local clock
     #[error("Timestamp too far in future: {0} seconds ahead (max: {1} seconds)")]
-    TimestampTooFuture(u64, u64),
+    TimestampTooFuture(
+        /// Future skew in seconds
+        u64,
+        /// Maximum allowed future skew in seconds
+        u64,
+    ),
 
+    /// Nonce was already observed for this device
     #[error("Duplicate nonce detected: {0}")]
-    DuplicateNonce(String),
+    DuplicateNonce(
+        /// Nonce value
+        String,
+    ),
 
+    /// Nonce tracking limit exceeded
     #[error("Nonce tracking limit exceeded for device")]
     NonceLimitExceeded,
 
+    /// Timestamp could not be parsed or validated
     #[error("Invalid timestamp: {0}")]
-    InvalidTimestamp(String),
+    InvalidTimestamp(
+        /// Timestamp details
+        String,
+    ),
 
+    /// System time source failed
     #[error("System time error: {0}")]
-    SystemTimeError(String),
+    SystemTimeError(
+        /// System time error details
+        String,
+    ),
 }
 
 /// Result type for replay protection operations
@@ -106,7 +131,10 @@ impl ReplayProtector {
         if timestamp_ns < now {
             let age_secs = (now - timestamp_ns) / 1_000_000_000;
             if age_secs > MAX_TIMESTAMP_AGE_SECS {
-                return Err(ReplayError::TimestampTooOld(age_secs, MAX_TIMESTAMP_AGE_SECS));
+                return Err(ReplayError::TimestampTooOld(
+                    age_secs,
+                    MAX_TIMESTAMP_AGE_SECS,
+                ));
             }
         } else {
             // Check if timestamp is too far in future
@@ -129,9 +157,10 @@ impl ReplayProtector {
         timestamp_ns: u64,
         nonce: &str,
     ) -> ReplayResult<()> {
-        let mut nonces = self.nonces.write().map_err(|e| {
-            ReplayError::InvalidTimestamp(format!("Lock error: {}", e))
-        })?;
+        let mut nonces = self
+            .nonces
+            .write()
+            .map_err(|e| ReplayError::InvalidTimestamp(format!("Lock error: {}", e)))?;
 
         let device_nonces = nonces.entry(device_id.to_string()).or_insert_with(Vec::new);
 
@@ -225,7 +254,9 @@ mod tests {
         let nonce = "nonce-001";
 
         // First attempt should succeed
-        assert!(protector.validate_command(device_id, timestamp, nonce).is_ok());
+        assert!(protector
+            .validate_command(device_id, timestamp, nonce)
+            .is_ok());
 
         // Second attempt with same nonce should fail
         let result = protector.validate_command(device_id, timestamp, nonce);
@@ -263,8 +294,12 @@ mod tests {
         let nonce = "nonce-001";
 
         // Same nonce should be allowed for different devices
-        assert!(protector.validate_command("device-001", timestamp, nonce).is_ok());
-        assert!(protector.validate_command("device-002", timestamp, nonce).is_ok());
+        assert!(protector
+            .validate_command("device-001", timestamp, nonce)
+            .is_ok());
+        assert!(protector
+            .validate_command("device-002", timestamp, nonce)
+            .is_ok());
     }
 
     #[test]
@@ -274,21 +309,29 @@ mod tests {
         let timestamp = current_timestamp_ns();
 
         // Different nonces should be allowed
-        assert!(protector.validate_command(device_id, timestamp, "nonce-001").is_ok());
-        assert!(protector.validate_command(device_id, timestamp, "nonce-002").is_ok());
-        assert!(protector.validate_command(device_id, timestamp, "nonce-003").is_ok());
+        assert!(protector
+            .validate_command(device_id, timestamp, "nonce-001")
+            .is_ok());
+        assert!(protector
+            .validate_command(device_id, timestamp, "nonce-002")
+            .is_ok());
+        assert!(protector
+            .validate_command(device_id, timestamp, "nonce-003")
+            .is_ok());
     }
 
     #[test]
     fn test_nonce_cleanup() {
         let protector = ReplayProtector::new();
         let device_id = "device-001";
-        
+
         // Add some nonces
         for i in 0..5 {
             let timestamp = current_timestamp_ns();
             let nonce = format!("nonce-{}", i);
-            protector.validate_command(device_id, timestamp, &nonce).unwrap();
+            protector
+                .validate_command(device_id, timestamp, &nonce)
+                .unwrap();
         }
 
         assert_eq!(protector.nonce_count(device_id), 5);
@@ -307,7 +350,9 @@ mod tests {
         // Add nonces up to the limit
         for i in 0..MAX_NONCES_PER_DEVICE {
             let nonce = format!("nonce-{}", i);
-            protector.validate_command(device_id, timestamp, &nonce).unwrap();
+            protector
+                .validate_command(device_id, timestamp, &nonce)
+                .unwrap();
         }
 
         // Adding one more should fail
@@ -319,7 +364,7 @@ mod tests {
     fn test_timestamp_within_window_accepted() {
         let protector = ReplayProtector::new();
         let device_id = "device-001";
-        
+
         // Timestamp 1 minute ago (within 5 minute window)
         let recent_timestamp = current_timestamp_ns() - (60 * 1_000_000_000);
         let result = protector.validate_command(device_id, recent_timestamp, "nonce-001");

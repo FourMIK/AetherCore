@@ -4,7 +4,7 @@
 //! Every event must contain a previous_hash that validates against the local chain state.
 
 use crate::integrity::{IntegrityStatus, StreamIntegrityTracker};
-use aethercore_crypto::chain::{Blake3Hash, ChainError, ChainManager, GENESIS_HASH};
+use aethercore_crypto::chain::{Blake3Hash, ChainError, ChainManager};
 use aethercore_crypto::signing::CanonicalEvent;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -280,6 +280,7 @@ pub fn current_time_ns() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aethercore_crypto::chain::GENESIS_HASH;
     use std::collections::HashMap;
 
     fn create_test_event(stream_id: &str, sequence: u64) -> CanonicalEvent {

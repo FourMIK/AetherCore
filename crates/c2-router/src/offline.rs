@@ -19,12 +19,11 @@
 //! - Chain continuity must be verified before accepting sync
 //! - Mismatches trigger Aetheric Sweep (Byzantine node detection)
 
-use aethercore_core::ledger::{LedgerError, SignedEvent};
+use aethercore_core::ledger::LedgerError;
 use aethercore_core::merkle_vine::MerkleVine;
 use rusqlite::{params, Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
@@ -33,43 +32,82 @@ use tracing::{debug, error, info, warn};
 pub enum OfflineError {
     /// Database operation failed
     #[error("Database error: {0}")]
-    DatabaseError(#[from] rusqlite::Error),
+    DatabaseError(
+        /// Database error details
+        #[from]
+        rusqlite::Error,
+    ),
 
     /// Ledger operation failed
     #[error("Ledger error: {0}")]
-    LedgerError(#[from] LedgerError),
+    LedgerError(
+        /// Ledger error details
+        #[from]
+        LedgerError,
+    ),
 
     /// Core error
     #[error("Core error: {0}")]
-    CoreError(#[from] aethercore_core::Error),
+    CoreError(
+        /// Core error details
+        #[from]
+        aethercore_core::Error,
+    ),
 
     /// Buffer is full
     #[error("Buffer exhausted: {current} / {max} entries")]
-    BufferExhausted { current: usize, max: usize },
+    BufferExhausted {
+        /// Current number of buffered entries
+        current: usize,
+        /// Maximum allowed buffer size
+        max: usize,
+    },
 
     /// Chain integrity violation
     #[error("Identity collapse detected: chain break at sequence {seq_no}")]
-    ChainBreak { seq_no: u64 },
+    ChainBreak {
+        /// Sequence number where the break occurred
+        seq_no: u64,
+    },
 
     /// Invalid state transition
     #[error("Invalid state transition from {from} to {to}")]
-    InvalidStateTransition { from: String, to: String },
+    InvalidStateTransition {
+        /// Previous state
+        from: String,
+        /// Target state
+        to: String,
+    },
 
     /// Encryption/decryption failed
     #[error("Encryption error: {0}")]
-    EncryptionError(String),
+    EncryptionError(
+        /// Encryption error details
+        String,
+    ),
 
     /// Serialization error
     #[error("Serialization error: {0}")]
-    SerializationError(String),
+    SerializationError(
+        /// Serialization error details
+        String,
+    ),
 
     /// Authorization failed
     #[error("Authorization failed: {0}")]
-    AuthorizationError(String),
+    AuthorizationError(
+        /// Authorization error details
+        String,
+    ),
 
     /// Merkle root mismatch
     #[error("Merkle root mismatch: offline={offline:?}, online={online:?}")]
-    MerkleRootMismatch { offline: Vec<u8>, online: Vec<u8> },
+    MerkleRootMismatch {
+        /// Offline chain root bytes
+        offline: Vec<u8>,
+        /// Online chain root bytes
+        online: Vec<u8>,
+    },
 }
 
 /// Connection state for offline resilience
