@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-c2-router"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "aethercore-identity",
@@ -46,7 +46,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -66,7 +66,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-crypto"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "anyhow",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-domain"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "blake3",
@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-edge"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "anyhow",
@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-h2-domain"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "aethercore-crypto",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-identity"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "aethercore-crypto",
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-integration-tests"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-c2-router",
  "aethercore-core",
@@ -192,7 +192,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-isr"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "anyhow",
@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-mesh"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "aethercore-crypto",
@@ -220,7 +220,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-radio"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "aethercore-rf",
@@ -232,7 +232,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-rf"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "anyhow",
@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-stream"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "aethercore-crypto",
@@ -256,7 +256,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-trust-mesh"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "aethercore-crypto",
@@ -275,7 +275,7 @@ dependencies = [
 
 [[package]]
 name = "aethercore-unit-status"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "aethercore-identity",
@@ -6225,7 +6225,7 @@ dependencies = [
 
 [[package]]
 name = "tactical-glass-desktop"
-version = "1.0.0"
+version = "0.2.0"
 dependencies = [
  "aethercore-core",
  "aethercore-crypto",

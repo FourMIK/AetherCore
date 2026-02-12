@@ -1,7 +1,7 @@
 {
   "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "AetherCore Tactical Glass (Dev Mode)",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "identifier": "com.aethercore.tactical-glass-dev",
   "build": {
     "frontendDist": "../dist",
