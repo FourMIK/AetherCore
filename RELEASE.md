@@ -1,6 +1,6 @@
 # AetherCore Release Guide
 
-**Version:** 0.1.0  
+**Version:** 0.2.0  
 **Classification:** OPERATIONAL  
 **Purpose:** Production release procedures
 
@@ -32,11 +32,11 @@ This guide covers the complete release process for AetherCore, from preparation 
 
 ---
 
-## Current Release: v0.1.0-alpha
+## Current Release: v0.2.0
 
 **Status:** Alpha Release  
 **Date:** 2026-02-12  
-**Purpose:** Initial public release for evaluation
+**Purpose:** Public release for evaluation and testing
 
 ### Features
 
@@ -78,7 +78,7 @@ This validates:
 Update version across all components:
 
 ```bash
-./push-release.sh 0.1.0
+./push-release.sh 0.2.0
 ```
 
 This script:
@@ -86,7 +86,7 @@ This script:
 2. Updates `packages/dashboard/src-tauri/tauri.conf.json`
 3. Updates `packages/dashboard/src-tauri/Cargo.toml`
 4. Commits changes with release message
-5. Creates git tag `v0.1.0`
+5. Creates git tag `v0.2.0`
 6. Pushes to main branch
 
 ### 3. Automated Build
@@ -153,9 +153,9 @@ pnpm tauri build
 
 ### Build Artifacts
 
-- **macOS:** `target/release/bundle/dmg/AetherCore_0.1.0_universal.dmg`
-- **Windows:** `target/release/bundle/msi/AetherCore_0.1.0_x64_en-US.msi`
-- **Linux:** `target/release/bundle/appimage/AetherCore_0.1.0_amd64.AppImage`
+- **macOS:** `target/release/bundle/dmg/AetherCore_0.2.0_universal.dmg`
+- **Windows:** `target/release/bundle/msi/AetherCore_0.2.0_x64_en-US.msi`
+- **Linux:** `target/release/bundle/appimage/AetherCore_0.2.0_amd64.AppImage`
 
 ---
 
@@ -235,9 +235,9 @@ Planned distribution channels:
 
 ## Version History
 
-### v0.1.0-alpha (2026-02-12)
+### v0.2.0 (2026-02-12)
 
-**Initial Release**
+**Public Release**
 
 Features:
 - Core cryptographic infrastructure
@@ -282,7 +282,7 @@ See [LICENSE](LICENSE) for full terms.
 
 ## Roadmap
 
-### v0.2.0 (Q2 2026)
+### v0.3.0 (Q2 2026)
 - Enhanced TPM hardware validation
 - Multi-node mesh improvements
 - Performance optimizations
@@ -302,5 +302,5 @@ See [LICENSE](LICENSE) for full terms.
 
 ---
 
-**Status:** v0.1.0-alpha Released ✅  
-**Next Release:** v0.2.0 (Q2 2026)
+**Status:** v0.2.0 Released ✅  
+**Next Release:** v0.3.0 (Q2 2026)

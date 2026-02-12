@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-02-12
+## [0.2.0] - 2026-02-12
 
 ### Added
 
@@ -143,5 +143,5 @@ Each release includes:
 
 ---
 
-[Unreleased]: https://github.com/FourMIK/AetherCore/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/FourMIK/AetherCore/releases/tag/v0.1.0
+[Unreleased]: https://github.com/FourMIK/AetherCore/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/FourMIK/AetherCore/releases/tag/v0.2.0
