@@ -63,6 +63,7 @@ pnpm tauri dev
 * [Security](SECURITY.md): Threat models and reporting vulnerabilities.
 * [Protocol Overview](PROTOCOL_OVERVIEW.md): Deep dive into the consensus mechanism.
 * [TPM Configuration](docs/TPM_CONFIGURATION.md): TPM runtime configuration and security implications.
+* [Copilot MCP Configuration](docs/COPILOT_MCP_CONFIGURATION.md): GitHub Copilot Model Context Protocol setup.
 
 ## Contributing
 We welcome contributions from the community. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting Pull Requests.
