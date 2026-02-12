@@ -48,6 +48,8 @@ export interface C2ClientConfig {
   maxReconnectAttempts: number;
   initialBackoffMs: number;
   maxBackoffMs: number;
+  maxMissedHeartbeats?: number; // Max missed heartbeats before disconnect (default: 3)
+  rttSmoothingFactor?: number; // RTT exponential moving average factor (default: 0.8)
   onStateChange?: (state: C2State, event: C2Event) => void;
   onMessage?: (message: MessageEnvelope) => void;
   onError?: (error: Error) => void;
@@ -63,6 +65,9 @@ export interface C2ClientStatus {
   lastHeartbeat?: Date;
   backoffUntil?: Date;
   error?: string;
+  rttMs?: number;
+  missedHeartbeats: number;
+  queuedMessages: number;
 }
 
 export class C2Client {
@@ -80,9 +85,20 @@ export class C2Client {
   private backoffUntil: Date | null = null;
   private lastError: string | null = null;
   private messageQueue: MessageEnvelope[] = [];
+  private missedHeartbeats: number = 0;
+  private rttMs: number | null = null;
+  private heartbeatSentAt: number | null = null;
+  
+  // Configuration constants with defaults
+  private readonly maxMissedHeartbeats: number;
+  private readonly rttSmoothingFactor: number;
+  private readonly rttNewWeight: number;
 
   constructor(config: C2ClientConfig) {
     this.config = config;
+    this.maxMissedHeartbeats = config.maxMissedHeartbeats ?? 3;
+    this.rttSmoothingFactor = config.rttSmoothingFactor ?? 0.8;
+    this.rttNewWeight = 1 - this.rttSmoothingFactor;
   }
 
   /**
@@ -112,6 +128,8 @@ export class C2Client {
         this.reconnectAttempts = 0;
         this.lastConnected = new Date();
         this.lastError = null;
+        this.missedHeartbeats = 0;
+        this.rttMs = null;
         this.setState('CONNECTED', 'CONNECTED');
         this.startHeartbeat();
 
@@ -155,6 +173,31 @@ export class C2Client {
 
     this.setState('IDLE', 'DISCONNECTED');
     this.reconnectAttempts = 0;
+  }
+
+  /**
+   * Reconnect immediately (bypass backoff)
+   */
+  public reconnectNow(): void {
+    console.log('[C2] Immediate reconnection requested');
+    
+    // Clear any pending reconnect
+    this.clearReconnectTimeout();
+    this.backoffUntil = null;
+    
+    // Reset to first attempt
+    this.reconnectAttempts = 0;
+    
+    // Disconnect if currently connected
+    if (this.ws) {
+      this.ws.close(1000, 'Manual reconnect');
+      this.ws = null;
+    }
+    
+    // Immediate reconnect
+    this.connect().catch((error) => {
+      console.error('[C2] Immediate reconnection failed:', error);
+    });
   }
 
   /**
@@ -205,6 +248,9 @@ export class C2Client {
       lastHeartbeat: this.lastHeartbeat || undefined,
       backoffUntil: this.backoffUntil || undefined,
       error: this.lastError || undefined,
+      rttMs: this.rttMs || undefined,
+      missedHeartbeats: this.missedHeartbeats,
+      queuedMessages: this.messageQueue.length,
     };
   }
 
@@ -232,6 +278,28 @@ export class C2Client {
       // Handle heartbeat response
       if (envelope.type === 'heartbeat') {
         this.lastHeartbeat = new Date();
+        
+        // Calculate RTT if we have a sent timestamp
+        if (this.heartbeatSentAt) {
+          const rtt = Date.now() - this.heartbeatSentAt;
+          // Exponential moving average for smoothing
+          this.rttMs = this.rttMs 
+            ? (this.rttMs * this.rttSmoothingFactor + rtt * this.rttNewWeight) 
+            : rtt;
+          this.heartbeatSentAt = null;
+        }
+        
+        // Reset missed heartbeats counter
+        if (this.missedHeartbeats > 0) {
+          console.log(`[C2] Heartbeat restored, ${this.missedHeartbeats} missed`);
+          this.missedHeartbeats = 0;
+          
+          // Transition back to CONNECTED if we were DEGRADED
+          if (this.state === 'DEGRADED') {
+            this.setState('CONNECTED', 'CONNECTED');
+          }
+        }
+        
         return;
       }
 
@@ -327,10 +395,13 @@ export class C2Client {
     }
 
     try {
+      // Track send time for RTT calculation
+      this.heartbeatSentAt = Date.now();
+      
       const envelope = createMessageEnvelope(
         'heartbeat',
         this.config.clientId,
-        { timestamp: Date.now() }
+        { timestamp: this.heartbeatSentAt }
       );
 
       this.sendEnvelope(envelope);
@@ -349,16 +420,28 @@ export class C2Client {
     }
 
     this.heartbeatTimeout = setTimeout(() => {
-      console.warn('[C2] Heartbeat timeout - connection degraded');
-      this.setState('DEGRADED', 'HEARTBEAT_TIMEOUT');
+      // Increment missed heartbeats
+      this.missedHeartbeats++;
       
-      // Additional timeout for full disconnect
-      setTimeout(() => {
-        if (this.state === 'DEGRADED') {
-          console.error('[C2] Heartbeat timeout exceeded - disconnecting');
-          this.ws?.close();
-        }
-      }, this.config.heartbeatTimeoutMs);
+      console.warn(
+        `[C2] Heartbeat timeout - missed ${this.missedHeartbeats} heartbeat(s), connection degraded`
+      );
+      
+      // Transition to DEGRADED state
+      if (this.state === 'CONNECTED') {
+        this.setState('DEGRADED', 'HEARTBEAT_TIMEOUT');
+      }
+      
+      // If we've missed multiple heartbeats, force disconnect
+      if (this.missedHeartbeats >= this.maxMissedHeartbeats) {
+        console.error(
+          `[C2] Missed ${this.missedHeartbeats} heartbeats (max: ${this.maxMissedHeartbeats}) - forcing disconnect`
+        );
+        this.ws?.close(1006, 'Heartbeat timeout');
+      } else {
+        // Schedule another check
+        this.resetHeartbeatTimeout();
+      }
     }, this.config.heartbeatTimeoutMs);
   }
 
@@ -436,39 +519,47 @@ export class C2Client {
 
   /**
    * Sign a message (placeholder for TPM integration)
+   * 
+   * TPM INTEGRATION REQUIRED FOR PRODUCTION:
+   * - Use BLAKE3 for hashing (NOT SHA-256)
+   * - Use Ed25519 for signing via TPM/Secure Enclave
+   * - Private keys must never reside in application memory
+   * - Call crates/crypto via FFI/gRPC
    */
   private async signMessage(envelope: Omit<MessageEnvelope, 'signature' | 'trust_status'>): Promise<string> {
     const payload = serializeForSigning(envelope);
     
-    // TODO: Integrate with TPM signing service
-    // For Sprint 1, use software keys or placeholder
-    // IMPORTANT: Production must use BLAKE3-based signatures (not SHA-256)
-    // to maintain consistency with backend security model
+    // Placeholder implementation for Sprint 1
+    // WARNING: This uses SHA-256 which is NOT approved for production
+    // Production MUST use BLAKE3 as per agent instructions
     const encoder = new TextEncoder();
     const data = encoder.encode(payload);
     
-    // Placeholder: hash the payload as a "signature"
-    // In production, this would call the crypto service with BLAKE3 + Ed25519
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     
-    return `placeholder:${signature}`;
+    return `placeholder:sha256:${signature}`;
   }
 
   /**
    * Verify a message signature (placeholder for TPM integration)
+   * 
+   * TPM INTEGRATION REQUIRED FOR PRODUCTION:
+   * - Verify Ed25519 signatures
+   * - Validate against public key from identity registry
+   * - Use BLAKE3 for payload hashing
    */
   private verifyMessage(envelope: MessageEnvelope): boolean {
     if (!envelope.signature) return false;
 
-    // TODO: Integrate with TPM verification service
-    // For Sprint 1, accept placeholder signatures
+    // Accept placeholder signatures in development
     if (envelope.signature.startsWith('placeholder:')) {
-      return true; // Accept dev signatures
+      return true;
     }
 
-    // In production, verify Ed25519 signature
+    // In production, verify Ed25519 signature with BLAKE3
+    // TODO: Call crates/crypto verification service
     return false;
   }
 }

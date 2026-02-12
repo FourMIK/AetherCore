@@ -108,6 +108,8 @@ interface C2ClientConfig {
   maxReconnectAttempts: number;         // Max reconnection attempts (default: 10)
   initialBackoffMs: number;             // Initial backoff delay (default: 1000)
   maxBackoffMs: number;                 // Maximum backoff delay (default: 30000)
+  maxMissedHeartbeats?: number;         // Max missed heartbeats before disconnect (default: 3)
+  rttSmoothingFactor?: number;          // RTT exponential moving average factor (default: 0.8)
   onStateChange?: (state, event) => void;
   onMessage?: (envelope) => void;
   onError?: (error) => void;
@@ -164,7 +166,7 @@ c2Client.sendMessage('presence', {
 });
 ```
 
-### 4. Connection Monitoring
+### Connection Monitoring
 
 Monitor connection state in UI:
 
@@ -175,8 +177,34 @@ const { connectionStatus, c2State, getC2Status } = useCommStore();
 // c2State: 'IDLE' | 'CONNECTING' | 'CONNECTED' | 'DEGRADED' | 'DISCONNECTED' | 'BACKOFF'
 
 const status = getC2Status();
-// { state: 'CONNECTED', endpoint: 'wss://...' }
+// {
+//   state: 'CONNECTED',
+//   endpoint: 'wss://...',
+//   rttMs: 120,
+//   missedHeartbeats: 0,
+//   queuedMessages: 0,
+//   lastMessageReceived: Date,
+//   lastMessageSent: Date,
+//   ...
+// }
 ```
+
+**New UI Components:**
+
+`C2StatusPanel` - Detailed diagnostics panel:
+- Real-time state display
+- Last RX/TX timestamps ("Xs ago" format)
+- RTT display in milliseconds
+- Missed heartbeats counter
+- Queued messages count
+- Reconnection attempts (X/10)
+- Last error with copy-to-clipboard
+- Quick action buttons (Connect, Disconnect, Reconnect Now)
+
+`C2StatusIndicator` - Compact top-bar indicator:
+- Color-coded state icon
+- Missed heartbeats badge
+- Click to expand full status panel
 
 ## Testing
 
@@ -191,11 +219,30 @@ npm start
 ```
 
 The server:
-- Accepts connections on `ws://localhost:8080`
+- Accepts connections on `ws://localhost:8080` (configurable via PORT)
 - Echoes messages back with mock responses
-- Simulates call acceptance
-- Periodically drops connections to test reconnection
+- Simulates call acceptance (1 second delay)
+- Periodically drops connections to test reconnection (20% probability every 60s)
 - Logs all activity to console
+- Supports configurable behavior via environment variables
+
+**Advanced Testing:**
+
+```bash
+# Add 100ms latency to all responses
+LATENCY_MS=100 npm start
+
+# Simulate 10% packet loss
+DROP_RATE=0.1 npm start
+
+# Delay heartbeat responses by 11 seconds (triggers DEGRADED state)
+HEARTBEAT_DELAY_MS=11000 npm start
+
+# Combine multiple conditions
+LATENCY_MS=500 DROP_RATE=0.2 HEARTBEAT_DELAY_MS=5000 npm start
+```
+
+See `tests/mock-servers/README.md` for complete documentation.
 
 ### Testing Workflow
 
