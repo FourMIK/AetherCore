@@ -16,7 +16,7 @@ import {
   createMessageEnvelope,
   parseMessageEnvelope,
   serializeForSigning,
-} from '../../../../../shared/src/c2-message-schema';
+} from '@aethercore/shared';
 
 // C2 Client States
 export type C2State =
@@ -364,7 +364,7 @@ export class C2Client {
 
     this.heartbeatInterval = setInterval(() => {
       this.sendHeartbeat();
-    }, this.config.heartbeatIntervalMs);
+    }, this.config.heartbeatIntervalMs) as unknown as number;
 
     // Initial heartbeat
     this.sendHeartbeat();
@@ -442,7 +442,7 @@ export class C2Client {
         // Schedule another check
         this.resetHeartbeatTimeout();
       }
-    }, this.config.heartbeatTimeoutMs);
+    }, this.config.heartbeatTimeoutMs) as unknown as number;
   }
 
   /**
@@ -477,7 +477,7 @@ export class C2Client {
       this.connect().catch((error) => {
         console.error('[C2] Reconnection failed:', error);
       });
-    }, delay);
+    }, delay) as unknown as number;
   }
 
   /**

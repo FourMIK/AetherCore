@@ -21,7 +21,7 @@ export function ensureOperatorAuth(
   next();
 }
 
-export function createApp() {
+export function createApp(): express.Express {
   const app = express();
   app.use(express.json());
 

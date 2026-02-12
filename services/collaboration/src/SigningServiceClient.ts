@@ -60,7 +60,12 @@ export interface SigningServiceConfig {
  */
 export class SigningServiceClient {
   private client: any;
-  private config: Required<SigningServiceConfig>;
+  private config: SigningServiceConfig & {
+    timeout: number;
+    maxRetries: number;
+    retryDelay: number;
+    useTls: boolean;
+  };
 
   constructor(config: SigningServiceConfig) {
     this.config = {
