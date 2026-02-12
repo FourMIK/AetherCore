@@ -16,20 +16,29 @@
 use super::error::ZkError;
 use super::error::ZkResult;
 use ark_bn254::Fr;
-use light_poseidon::{Poseidon, PoseidonBytesHasher};
+use ark_ff::{BigInteger, PrimeField};
+use light_poseidon::{Poseidon, PoseidonHasher};
 
 fn poseidon_hash(inputs: &[&[u8; 32]]) -> ZkResult<[u8; 32]> {
     let mut hasher = Poseidon::<Fr>::new_circom(inputs.len())
         .map_err(|err| ZkError::HashError(err.to_string()))?;
+    let field_inputs: Vec<Fr> = inputs
+        .iter()
+        .map(|input| Fr::from_be_bytes_mod_order((*input).as_ref()))
+        .collect();
     let hash = hasher
-        .hash_bytes_be(
-            &inputs
-                .iter()
-                .map(|input| input.as_slice())
-                .collect::<Vec<_>>(),
-        )
+        .hash(&field_inputs)
         .map_err(|err| ZkError::HashError(err.to_string()))?;
-    Ok(hash)
+    let hash_bytes = hash.into_bigint().to_bytes_be();
+    if hash_bytes.len() > 32 {
+        return Err(ZkError::HashError(
+            "Poseidon output exceeds 32 bytes".to_string(),
+        ));
+    }
+    let mut output = [0u8; 32];
+    let offset = 32 - hash_bytes.len();
+    output[offset..].copy_from_slice(&hash_bytes);
+    Ok(output)
 }
 
 /// Hash two field elements together

@@ -1,0 +1,14 @@
+{
+  "name": "@aethercore/mock-c2-server",
+  "version": "1.0.0",
+  "description": "Mock C2 WebSocket server for testing AetherCore dashboard",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "start:tls": "node server-tls.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {}
+}

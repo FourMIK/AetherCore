@@ -20,6 +20,7 @@ import {
 import { TauriCommands } from '../../api/tauri-commands';
 import { useCommStore } from '../../store/useCommStore';
 import { getRuntimeConfig } from '../../config/runtime';
+import { validateWebSocketEndpoint } from '../../utils/endpoint-validation';
 
 export type ConnectionStatus =
   | 'disconnected'
@@ -57,7 +58,22 @@ export class WebSocketManager {
   private readonly disconnectedThreshold: number = 2000; // 2000ms threshold for disconnected
 
   constructor(url: string) {
-    this.url = url; // e.g., "http://localhost:5000/h2-tactical"
+    // Validate endpoint before storing
+    const validation = validateWebSocketEndpoint(url);
+    if (!validation.valid) {
+      throw new Error(
+        `[AETHERIC LINK] Invalid WebSocket endpoint: ${validation.error}`
+      );
+    }
+    
+    this.url = url;
+    
+    // Log security posture
+    if (validation.isLocalhost && validation.protocol === 'ws') {
+      console.warn(
+        '[AETHERIC LINK] INSECURE LOCALHOST MODE: Using ws:// for localhost. This is only allowed in development with DEV_ALLOW_INSECURE_LOCALHOST=true'
+      );
+    }
   }
 
   public async connect(): Promise<void> {

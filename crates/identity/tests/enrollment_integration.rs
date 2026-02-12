@@ -14,6 +14,7 @@ use aethercore_identity::{
     EnrollmentStateMachine, GenesisBundleGenerator, PlatformType, CHALLENGE_WINDOW_MS,
     REQUIRED_PCRS,
 };
+use ed25519_dalek::{Signer, SigningKey};
 use std::collections::HashMap;
 
 /// Helper to create a test certificate.
@@ -472,23 +473,27 @@ fn test_state_transition_history() {
 #[test]
 fn test_certificate_authority_integration() {
     // Create a CA for enrollment
-    let mut ca = CertificateAuthority::new(
-        "4mik-enrollment-ca",
-        vec![1, 2, 3, 4], // CA public key
-        vec![5, 6, 7, 8], // CA private key
-    );
+    let ca_signing_key = SigningKey::from_bytes(&[7u8; 32]);
+    let ca_public_key = ca_signing_key.verifying_key().to_bytes().to_vec();
+    let ca_private_key = ca_signing_key.to_bytes().to_vec();
+    let mut ca = CertificateAuthority::new("4mik-enrollment-ca", ca_public_key, ca_private_key);
 
     // Create CSR for a platform
-    let csr = CertificateRequest {
+    let csr_signing_key = SigningKey::from_bytes(&[9u8; 32]);
+    let csr_public_key = csr_signing_key.verifying_key().to_bytes().to_vec();
+    let mut csr = CertificateRequest {
         subject: "platform-usv-011".to_string(),
-        public_key: vec![9, 10, 11, 12],
-        signature: vec![13, 14, 15, 16],
+        public_key: csr_public_key,
+        signature: Vec::new(),
         attestation: Attestation::Tpm {
             quote: vec![],
             pcrs: vec![],
             ak_cert: vec![],
         },
     };
+
+    let csr_tbs = csr_tbs_bytes(&csr);
+    csr.signature = csr_signing_key.sign(&csr_tbs).to_bytes().to_vec();
 
     // Issue certificate
     let cert = ca
@@ -498,6 +503,21 @@ fn test_certificate_authority_integration() {
     assert_eq!(cert.subject, "platform-usv-011");
     assert_eq!(cert.issuer, "4mik-enrollment-ca");
     assert!(ca.verify_certificate(&cert));
+}
+
+fn csr_tbs_bytes(request: &CertificateRequest) -> Vec<u8> {
+    let mut data = Vec::new();
+    write_bytes(&mut data, request.subject.as_bytes());
+    write_bytes(&mut data, &request.public_key);
+    let attestation_bytes = serde_json::to_vec(&request.attestation).unwrap_or_default();
+    write_bytes(&mut data, &attestation_bytes);
+    data
+}
+
+fn write_bytes(buffer: &mut Vec<u8>, bytes: &[u8]) {
+    let len = bytes.len() as u32;
+    buffer.extend_from_slice(&len.to_be_bytes());
+    buffer.extend_from_slice(bytes);
 }
 
 /// Helper to get current timestamp.

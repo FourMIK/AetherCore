@@ -48,11 +48,13 @@ fn bench_chain_build_10k_events() {
 
     // Verify reasonable performance
     // Target: < 50ms total for 10k events (< 5μs per event) in release mode
-    // Allow 150ms in debug builds on CI
+    // Allow higher thresholds in debug builds on CI
+    let max_build_ms = if cfg!(debug_assertions) { 600 } else { 150 };
     assert!(
-        build_duration.as_millis() < 150,
-        "Chain build too slow: {}ms (target: <150ms)",
-        build_duration.as_millis()
+        build_duration.as_millis() < max_build_ms,
+        "Chain build too slow: {}ms (target: <{}ms)",
+        build_duration.as_millis(),
+        max_build_ms
     );
 
     assert_eq!(manager.len(), event_count);
@@ -89,11 +91,13 @@ fn bench_chain_verify_10k_events() {
 
     // Verify reasonable performance
     // Target: < 50ms total for 10k events (< 5μs per event) in release mode
-    // Allow 150ms in debug builds on CI
+    // Allow higher thresholds in debug builds on CI
+    let max_verify_ms = if cfg!(debug_assertions) { 600 } else { 150 };
     assert!(
-        verify_duration.as_millis() < 150,
-        "Chain verification too slow: {}ms (target: <150ms)",
-        verify_duration.as_millis()
+        verify_duration.as_millis() < max_verify_ms,
+        "Chain verification too slow: {}ms (target: <{}ms)",
+        verify_duration.as_millis(),
+        max_verify_ms
     );
 
     assert!(matches!(result, crate::chain::VerifyResult::Ok));
@@ -138,16 +142,20 @@ fn bench_chain_build_and_verify_100k_events() {
     );
 
     // Should complete within reasonable time
-    // Target: < 1s total for 100k events
+    // Target: < 1s total for 100k events (release), relaxed for debug builds
+    let max_build_secs = if cfg!(debug_assertions) { 8 } else { 2 };
+    let max_verify_secs = if cfg!(debug_assertions) { 8 } else { 2 };
     assert!(
-        build_duration.as_secs() < 2,
-        "Chain build too slow: {}s",
-        build_duration.as_secs()
+        build_duration.as_secs() < max_build_secs,
+        "Chain build too slow: {}s (target: <{}s)",
+        build_duration.as_secs(),
+        max_build_secs
     );
     assert!(
-        verify_duration.as_secs() < 2,
-        "Chain verification too slow: {}s",
-        verify_duration.as_secs()
+        verify_duration.as_secs() < max_verify_secs,
+        "Chain verification too slow: {}s (target: <{}s)",
+        verify_duration.as_secs(),
+        max_verify_secs
     );
 
     assert!(matches!(result, crate::chain::VerifyResult::Ok));

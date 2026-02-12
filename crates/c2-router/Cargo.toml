@@ -22,12 +22,14 @@ prost-types = { workspace = true }
 tracing = { workspace = true }
 rusqlite = { workspace = true }
 hex = { workspace = true }
+base64 = "0.21"
 
 [build-dependencies]
 tonic-build = "0.10"
 
 [dev-dependencies]
 tokio = { workspace = true }
+proptest = "1.4"
 rand = { workspace = true }
 criterion = { version = "0.5", features = ["html_reports"] }
 
