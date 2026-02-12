@@ -59,6 +59,8 @@ pnpm tauri dev
 
 ## Documentation
 * [Installation Guide](INSTALLATION.md): Setup for Windows, macOS, and Linux.
+* [Release Guide](RELEASE.md): Release procedures and version history.
+* [Changelog](CHANGELOG.md): Detailed version history and breaking changes.
 * [Architecture](ARCHITECTURE.md): System design and data flow.
 * [Security](SECURITY.md): Threat models and reporting vulnerabilities.
 * [Protocol Overview](PROTOCOL_OVERVIEW.md): Deep dive into the consensus mechanism.
