@@ -1,0 +1,35 @@
+# AetherCore Field Swarm Provisioning - Node Configuration
+#
+# Format: hostname[,user[,arch[,ssh_key_path]]]
+# 
+# Fields:
+#   hostname   - IP address or DNS name of Raspberry Pi
+#   user       - SSH user (default: pi)
+#   arch       - Architecture: arm64 (default) | x86_64
+#   ssh_key    - Path to SSH private key (optional, uses default if omitted)
+#
+# Example configurations:
+# 192.168.1.101,pi,arm64
+# 192.168.1.102,pi,arm64,~/.ssh/field-key
+# ralphie-alpha.local,operator,arm64
+#
+# For field test, specify your target nodes below:
+
+# ========== SQUADRON ALPHA ==========
+# Position/ISR nodes (Intel, Surveillance, Reconnaissance)
+192.168.1.10,pi,arm64,~/.ssh/aethercore-field
+192.168.1.11,pi,arm64,~/.ssh/aethercore-field
+192.168.1.12,pi,arm64,~/.ssh/aethercore-field
+
+# ========== SQUADRON BRAVO ==========
+# Command/RF relay nodes
+192.168.1.20,pi,arm64,~/.ssh/aethercore-field
+192.168.1.21,pi,arm64,~/.ssh/aethercore-field
+
+# ========== FORWARD OBSERVER ==========
+# Targeting/Coordination node
+192.168.1.30,pi,arm64,~/.ssh/aethercore-field
+
+# ========== TEST BUNKER ==========
+# C2 node (x86_64 test rig if available)
+# 192.168.1.100,operator,x86_64,~/.ssh/aethercore-field
