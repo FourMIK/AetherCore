@@ -14,13 +14,15 @@ infra/
 │   └── docker-compose.yml
 ├── terraform/           # Terraform configurations
 │   ├── environments/
-│   │   └── internal/    # Internal environment
+│   │   ├── internal/    # Internal environment
+│   │   └── aws-testbed/ # Isolated AWS test-bed environment
 │   └── modules/
 │       └── ecs-service/ # Reusable ECS service module
 ├── k8s/                 # Kubernetes manifests (optional)
 │   └── base/
 └── scripts/             # Utility scripts
     ├── bootstrap-aws.sh
+    ├── bootstrap-aws-testbed.sh
     └── build-push.sh
 ```
 
@@ -91,6 +93,32 @@ After images are pushed to ECR:
 cd ../terraform/environments/internal
 terraform apply -var='image_tag=v1.0.0'
 ```
+
+
+## AWS Testbed Environment
+
+Use the dedicated test-bed bootstrap wrapper so Terraform remote state is isolated from other environments.
+
+### Required Environment Variables
+
+```bash
+export AWS_REGION=us-east-1
+export TF_VAR_db_password='your-secure-password-here'
+export TF_VAR_jwt_secret='your-jwt-secret-here'
+```
+
+### Bootstrap + Terraform Commands (exact sequence)
+
+```bash
+cd infra/scripts
+./bootstrap-aws-testbed.sh "$AWS_REGION"
+
+cd ../terraform/environments/aws-testbed
+terraform init -backend-config=backend.hcl
+terraform apply
+```
+
+This initializes Terraform with the aws-testbed backend (`aethercore-aws-testbed-terraform-state` and `aethercore-aws-testbed-terraform-locks`) and applies infrastructure in the isolated test-bed environment.
 
 ## Local Development
 
