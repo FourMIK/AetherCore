@@ -1,6 +1,6 @@
 # AetherCore AWS Testbed Environment Infrastructure
 # AWS Region: us-east-1
-# Cost Target: < $50/month
+# Cost Target: < $25/month
 
 terraform {
   required_version = ">= 1.5.0"
@@ -1275,18 +1275,18 @@ resource "aws_budgets_budget" "main" {
 
   notification {
     comparison_operator        = "GREATER_THAN"
-    threshold                 = 80
-    threshold_type            = "PERCENTAGE"
-    notification_type         = "ACTUAL"
-    subscriber_email_addresses = ["ops@aethercore.com"]
+    threshold                  = var.budget_actual_threshold_percent
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = var.budget_alert_emails
   }
 
   notification {
     comparison_operator        = "GREATER_THAN"
-    threshold                 = 100
+    threshold                  = var.budget_forecast_threshold_percent
     threshold_type             = "PERCENTAGE"
     notification_type          = "FORECASTED"
-    subscriber_email_addresses = ["ops@aethercore.com"]
+    subscriber_email_addresses = var.budget_alert_emails
   }
 }
 
