@@ -1,0 +1,5 @@
+bucket         = "REPLACE_ME-tfstate"
+key            = "aethercore/testbed/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "REPLACE_ME-tflock"
+encrypt        = true
