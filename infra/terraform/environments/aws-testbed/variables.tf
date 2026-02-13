@@ -91,7 +91,26 @@ variable "backup_retention_days" {
 variable "budget_limit_usd" {
   description = "Monthly budget limit in USD"
   type        = number
+  default     = 25
+}
+
+
+variable "budget_alert_emails" {
+  description = "Email addresses subscribed to budget alarm notifications"
+  type        = list(string)
+  default     = ["ops@aethercore.com"]
+}
+
+variable "budget_actual_threshold_percent" {
+  description = "Actual spend budget alarm threshold percentage"
+  type        = number
   default     = 50
+}
+
+variable "budget_forecast_threshold_percent" {
+  description = "Forecasted spend budget alarm threshold percentage"
+  type        = number
+  default     = 80
 }
 
 variable "rds_instance_class" {

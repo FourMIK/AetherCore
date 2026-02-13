@@ -1,0 +1,96 @@
+name: AWS Testbed Cleanup
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS region for Terraform cleanup
+        required: true
+        default: us-east-1
+        type: string
+      ttl_hours:
+        description: Destroy only when latest deployment is older than this many hours
+        required: true
+        default: '24'
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_WORKING_DIR: infra/terraform/environments/aws-testbed
+  DEFAULT_AWS_REGION: us-east-1
+  TFSTATE_BUCKET: aethercore-aws-testbed-terraform-state
+  TFSTATE_KEY: aws-testbed/terraform.tfstate
+
+jobs:
+  cleanup:
+    name: Destroy stale aws-testbed resources
+    runs-on: ubuntu-latest
+    if: ${{ vars.AWS_TESTBED_CLEANUP_ENABLED == 'true' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve runtime configuration
+        id: cfg
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "aws_region=${{ inputs.aws_region }}" >> "$GITHUB_OUTPUT"
+            echo "ttl_hours=${{ inputs.ttl_hours }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "aws_region=${DEFAULT_AWS_REGION}" >> "$GITHUB_OUTPUT"
+            echo "ttl_hours=24" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TESTBED_ROLE_ARN }}
+          aws-region: ${{ steps.cfg.outputs.aws_region }}
+
+      - name: Check deployment age from Terraform state object
+        id: staleness
+        run: |
+          set -euo pipefail
+          ttl_seconds=$(( ${{ steps.cfg.outputs.ttl_hours }} * 3600 ))
+          modified="$(aws s3api head-object --bucket "$TFSTATE_BUCKET" --key "$TFSTATE_KEY" --query 'LastModified' --output text 2>/dev/null || true)"
+
+          if [[ -z "${modified}" || "${modified}" == "None" ]]; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+            echo "No state object found; skipping cleanup because no active environment appears to exist."
+            exit 0
+          fi
+
+          last_epoch="$(date -u -d "${modified}" +%s)"
+          now_epoch="$(date -u +%s)"
+          age_seconds=$(( now_epoch - last_epoch ))
+
+          if (( age_seconds >= ttl_seconds )); then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "Environment age ${age_seconds}s >= TTL ${ttl_seconds}s; cleanup enabled."
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+            echo "Environment age ${age_seconds}s < TTL ${ttl_seconds}s; skipping cleanup."
+          fi
+
+      - name: Destroy stale resources
+        if: steps.staleness.outputs.stale == 'true'
+        env:
+          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          TF_VAR_jwt_secret: ${{ secrets.TF_VAR_JWT_SECRET }}
+        run: infra/scripts/destroy-aws-testbed.sh --auto-approve
+
+      - name: Publish cleanup summary
+        run: |
+          {
+            echo "## AWS Testbed Cleanup"
+            echo
+            echo "- Cleanup enabled via repo variable: \`${{ vars.AWS_TESTBED_CLEANUP_ENABLED }}\`"
+            echo "- Region: \`${{ steps.cfg.outputs.aws_region }}\`"
+            echo "- TTL (hours): \`${{ steps.cfg.outputs.ttl_hours }}\`"
+            echo "- Stale: \`${{ steps.staleness.outputs.stale }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -29,7 +29,10 @@ ssl_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERTIFICATE_
 # Hardening Configuration
 enable_multi_az        = false  # Set to true for production resilience testing
 backup_retention_days  = 1      # Keep retention short in testbed to lower cost
-budget_limit_usd      = 50      # Tight monthly cost limit for testbed
+budget_limit_usd                 = 25                   # Lower monthly limit for ephemeral testbed use
+budget_alert_emails              = ["ops@aethercore.com"]
+budget_actual_threshold_percent  = 50                   # Alert early at 50% actual spend
+budget_forecast_threshold_percent = 80                  # Escalate at 80% forecasted spend
 
 # Cost-optimized instance types for aws-testbed environment
 rds_instance_class = "db.t4g.micro"

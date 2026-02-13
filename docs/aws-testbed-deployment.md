@@ -246,3 +246,36 @@ aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$CORE_SERVICE"
 - [ ] `UNSPECIFIED_VERSION`
 - [ ] `DATABASE_SECRET_ARN` (Secrets Manager ARN wired to ECS task definition secrets)
 - [ ] `REDIS_SECRET_ARN` (Secrets Manager ARN wired to ECS task definition secrets)
+
+---
+
+
+## 7) Operator lifecycle policy (required)
+
+The `aws-testbed` environment is ephemeral and must be destroyed after each validation window unless an explicit extension is approved.
+
+Policy requirements:
+- Destroy the testbed within 24 hours of validation completion by default.
+- Extensions beyond 24 hours must be documented in the deployment ticket/change record and include a new teardown deadline.
+- If no extension exists, run targeted teardown via `infra/scripts/destroy-aws-testbed.sh`.
+- Optionally enable automated cleanup with `.github/workflows/aws-testbed-cleanup.yml` by setting repository variable `AWS_TESTBED_CLEANUP_ENABLED=true` and configuring `TF_VAR_DB_PASSWORD` / `TF_VAR_JWT_SECRET` secrets.
+
+Manual teardown command:
+
+```bash
+TF_VAR_db_password=UNSPECIFIED_DB_PASSWORD \
+TF_VAR_jwt_secret=UNSPECIFIED_JWT_SECRET \
+infra/scripts/destroy-aws-testbed.sh --auto-approve
+```
+
+Target only specific resources when needed:
+
+```bash
+TF_VAR_db_password=UNSPECIFIED_DB_PASSWORD \
+TF_VAR_jwt_secret=UNSPECIFIED_JWT_SECRET \
+infra/scripts/destroy-aws-testbed.sh \
+  --target aws_ecs_service.gateway \
+  --target aws_ecs_service.auth \
+  --auto-approve
+```
+
