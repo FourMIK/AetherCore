@@ -239,11 +239,27 @@ jobs:
 
           echo "✓ Workspace configuration is valid"
 
+
+  docker-build-smoke:
+    needs: [network-prerequisites]
+    name: Docker Build Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker images from clean checkout
+        run: |
+          docker build -f infra/docker/Dockerfile.auth -t aethercore-auth-ci .
+          docker build -f infra/docker/Dockerfile.gateway -t aethercore-gateway-ci .
+          docker build -f infra/docker/Dockerfile.collaboration -t aethercore-collaboration-ci .
+          docker build -f infra/docker/Dockerfile.c2-router-mock -t aethercore-c2-router-mock-ci .
+          docker build -f services/h2-ingest/Dockerfile -t aethercore-h2-ingest-ci .
+
   build-and-push-internal:
     name: Build and Push Docker Images (Internal)
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/internal'
-    needs: [network-prerequisites, rust-workspace, typescript-workspace, license-compliance]
+    needs: [network-prerequisites, rust-workspace, typescript-workspace, license-compliance, docker-build-smoke]
     permissions:
       contents: read
       id-token: write # For OIDC authentication with AWS

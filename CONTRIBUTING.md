@@ -54,6 +54,24 @@ Key points:
 
 ## Development Workflow
 
+## Toolchain Enforcement Policy
+
+AetherCore enforces a strict JavaScript toolchain for local development and CI installs:
+
+- Node.js **20.x**
+- pnpm **9.15.0**
+
+This is verified by the root `preinstall` hook (`scripts/verify-toolchain.js`).
+
+### Docker builds
+
+Some Docker build stages intentionally set `SKIP_TOOLCHAIN_CHECK=1` for dependency installation. This bypass is limited to container image builds so images can install dependencies in controlled builder environments without weakening local/CI enforcement.
+
+- **Local development:** do **not** set `SKIP_TOOLCHAIN_CHECK`
+- **TypeScript CI job (`pnpm install`)**: does **not** set `SKIP_TOOLCHAIN_CHECK`
+- **Dockerfiles:** may set `SKIP_TOOLCHAIN_CHECK=1` only on `npm ci`/`pnpm install` build steps
+
+
 ### Creating a New Branch
 
 ```bash
