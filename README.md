@@ -37,7 +37,7 @@ For the latest desktop installers, use only assets listed in each release's `rel
 Each listed artifact is manifest-backed with SHA-256 and signature metadata for deployment validation.
 
 ### Installation
-See the [Installation Guide](INSTALLATION.md) for detailed setup instructions.
+See the [Installation Guide](INSTALLATION.md) and follow the **Commander Mode** first-run sequence (single supported default path).
 
 ### Running from Source
 
@@ -54,7 +54,7 @@ cd AetherCore
 # 2. Install dependencies
 pnpm install
 
-# 3. Build & Run Desktop App (Dev Mode)
+# 3. Build & Run Desktop App (Commander Mode default)
 cd packages/dashboard
 pnpm tauri dev
 ```
@@ -79,15 +79,18 @@ Copyright © 2026 FourMIK. Released under the Apache 2.0 License. See [LICENSE](
 
 ---
 
-## First Run & Configuration
+## First Run & Configuration (Commander Mode)
 
-Upon launching Tactical Glass, you will enter the Command Dashboard.
+Upon launching Tactical Glass for the first time, the app enters **Commander Mode bootstrap** automatically.
 
-### Node Deployment (Local)
-1. Navigate to the **Deployments** tab in the sidebar.
-2. Click **Add Node**.
-3. Select **Local Process** to spawn a node on your machine.
-4. The node will automatically connect to the local mesh loopback.
+### Single Supported First-Run Sequence
+1. Launch Tactical Glass.
+2. Allow Commander Mode bootstrap to run environment checks, local stack startup, mesh connection, and first-node deployment.
+3. Click **Open dashboard** when bootstrap reports **System Ready**.
+4. Continue normal operations from the Command Dashboard.
+
+### Advanced (Non-Default)
+Cloud/internal and dev workflows are available only as advanced paths and are not the default first-run experience. See [DEPLOYMENT_DESKTOP.md](DEPLOYMENT_DESKTOP.md).
 
 ### Hardware Pairing (ESP32)
 Requires Firmware v0.1.0 flashed to device.

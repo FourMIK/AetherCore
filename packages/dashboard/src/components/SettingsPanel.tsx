@@ -88,15 +88,20 @@ export function SettingsPanel() {
 
       <div className="space-y-6">
         <section>
-          <h3 className="text-xl font-semibold mb-4 text-cyan-200">Profile</h3>
+          <h3 className="text-xl font-semibold mb-4 text-cyan-200">Deployment Profile</h3>
+          <p className="text-xs text-cyan-600 mb-3">Commander Mode is the only default profile for first launch and standard desktop operations.</p>
           <select
             value={config.profile}
             onChange={(e) => updateConfig((c) => ({ ...c, profile: e.target.value as AppConfig['profile'] }))}
             className="w-full px-3 py-2 bg-black/50 border border-cyan-900/50 rounded"
           >
-            <option value="local_control_plane">Local Control Plane</option>
-            <option value="testnet">Testnet</option>
-            <option value="production_mesh">Production Mesh</option>
+            <optgroup label="Default">
+              <option value="local_control_plane">Commander Mode (commander-local)</option>
+            </optgroup>
+            <optgroup label="Advanced (non-default)">
+              <option value="testnet">Cloud/Internal (testnet profile)</option>
+              <option value="production_mesh">Production Mesh (cloud profile)</option>
+            </optgroup>
           </select>
         </section>
 
@@ -121,7 +126,7 @@ export function SettingsPanel() {
         </section>
 
         <section>
-          <h3 className="text-xl font-semibold mb-4 text-cyan-200">TPM & Feature Flags</h3>
+          <h3 className="text-xl font-semibold mb-4 text-cyan-200">Advanced Runtime Controls (non-default)</h3>
           <label className="block mb-2 text-sm font-medium">TPM Mode</label>
           <select
             value={config.tpm.mode}
