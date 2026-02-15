@@ -157,7 +157,7 @@ sudo apt-get install -y libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-
 **6. (Optional) Create desktop entry:**
 
 ```bash
-# Create desktop entry for app launcher
+# Create desktop entry for app launcher (Linux)
 # Note: Use the actual path where you downloaded the AppImage
 cat > ~/.local/share/applications/aethercore-commander.desktop <<'EOF'
 [Desktop Entry]
