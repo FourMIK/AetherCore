@@ -71,6 +71,10 @@
           "y": 120
         }
       }
-    }
+    },
+    "resources": [
+      "resources/aethercore-node*",
+      "resources/payloads/**"
+    ]
   }
 }

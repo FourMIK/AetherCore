@@ -103,6 +103,7 @@ pub fn run() {
     let app_state = Arc::new(Mutex::new(AppState::default()));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .manage(Mutex::new(None::<LocalControlPlaneRuntime>))
         .setup(|app| {

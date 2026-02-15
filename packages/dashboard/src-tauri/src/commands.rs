@@ -6,10 +6,16 @@ use aethercore_stream::StreamIntegrityTracker;
 use aethercore_trust_mesh::ComplianceProof;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ed25519_dalek::VerifyingKey;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Arc;
+use tauri::{path::BaseDirectory, Manager};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio::sync::Mutex;
+
+const DASHBOARD_NODE_PROTOCOL_VERSION: u32 = 1;
 
 /// Genesis Bundle for Zero-Touch Enrollment
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -712,6 +718,12 @@ pub struct DeploymentStatus {
     pub status: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct NodeVersionHandshake {
+    version: String,
+    protocol_version: u32,
+}
+
 /// Deploy a node process locally
 ///
 /// This command spawns a node binary as a child process with the provided configuration.
@@ -728,6 +740,7 @@ pub struct DeploymentStatus {
 pub async fn deploy_node(
     config: NodeDeployConfig,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
+    app_handle: tauri::AppHandle,
 ) -> Result<DeploymentStatus, String> {
     log::info!("Deploying node: {}", config.node_id);
 
@@ -781,8 +794,23 @@ pub async fn deploy_node(
     }
 
     // Locate node binary
-    let binary_path =
-        locate_node_binary().map_err(|e| format!("Failed to locate node binary: {}", e))?;
+    let binary_path = locate_node_binary(&app_handle).map_err(|e| {
+        show_node_binary_remediation_dialog(
+            &app_handle,
+            "AetherCore Node Binary Missing",
+            &e.to_string(),
+        );
+        format!("Failed to locate node binary: {}", e)
+    })?;
+
+    verify_node_binary_compatibility(&binary_path).map_err(|e| {
+        show_node_binary_remediation_dialog(
+            &app_handle,
+            "AetherCore Node Version Mismatch",
+            &e.to_string(),
+        );
+        format!("Node compatibility check failed: {}", e)
+    })?;
 
     log::info!("Using node binary: {}", binary_path);
 
@@ -923,9 +951,9 @@ pub async fn get_node_logs(
 
 /// Locate the node binary in the following order:
 /// 1. Environment variable NODE_BINARY_PATH
-/// 2. Bundled resource: ../resources/aethercore-node
+/// 2. Bundled resource resolved via Tauri Resource directory
 /// 3. System PATH
-fn locate_node_binary() -> Result<String> {
+fn locate_node_binary(app_handle: &tauri::AppHandle) -> Result<String> {
     // Check environment variable first
     if let Ok(env_path) = std::env::var("NODE_BINARY_PATH") {
         let path = PathBuf::from(&env_path);
@@ -937,25 +965,36 @@ fn locate_node_binary() -> Result<String> {
         }
     }
 
-    // Check bundled resource
-    let bundled_path = if cfg!(target_os = "windows") {
-        PathBuf::from("../resources/aethercore-node.exe")
-    } else {
-        PathBuf::from("../resources/aethercore-node")
-    };
-
-    if bundled_path.exists() {
-        log::info!("Found bundled node binary: {}", bundled_path.display());
-        return Ok(bundled_path.to_string_lossy().to_string());
-    }
-
-    // Try to find in PATH
+    // Check bundled resources via Tauri path resolver
     let binary_name = if cfg!(target_os = "windows") {
         "aethercore-node.exe"
     } else {
         "aethercore-node"
     };
 
+    let mut candidate_resource_names = vec![binary_name.to_string()];
+    if let Ok(target_triple) = std::env::var("TARGET") {
+        let platform_specific = if cfg!(target_os = "windows") {
+            format!("aethercore-node-{target_triple}.exe")
+        } else {
+            format!("aethercore-node-{target_triple}")
+        };
+        candidate_resource_names.insert(0, platform_specific);
+    }
+
+    for resource_name in candidate_resource_names {
+        if let Ok(resource_path) = app_handle
+            .path()
+            .resolve(&resource_name, BaseDirectory::Resource)
+        {
+            if resource_path.exists() {
+                log::info!("Found bundled node binary: {}", resource_path.display());
+                return Ok(resource_path.to_string_lossy().to_string());
+            }
+        }
+    }
+
+    // Try to find in PATH
     if let Ok(path) = which::which(binary_name) {
         log::info!("Found node binary in PATH: {}", path.display());
         return Ok(path.to_string_lossy().to_string());
@@ -965,6 +1004,71 @@ fn locate_node_binary() -> Result<String> {
     Err(anyhow::anyhow!(
         "Node binary not found. Set NODE_BINARY_PATH environment variable or ensure 'aethercore-node' is in PATH"
     ))
+}
+
+fn verify_node_binary_compatibility(binary_path: &str) -> Result<()> {
+    let output = Command::new(binary_path)
+        .arg("--version-json")
+        .output()
+        .map_err(|e| anyhow::anyhow!("Failed to execute node version handshake: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!(
+            "Node version handshake failed with status {}: {}",
+            output.status,
+            stderr.trim()
+        ));
+    }
+
+    let handshake: NodeVersionHandshake = serde_json::from_slice(&output.stdout)
+        .map_err(|e| anyhow::anyhow!("Invalid node handshake output: {e}"))?;
+
+    let dashboard_version = Version::parse(env!("CARGO_PKG_VERSION"))
+        .map_err(|e| anyhow::anyhow!("Invalid dashboard semantic version: {e}"))?;
+    let node_version = Version::parse(&handshake.version).map_err(|e| {
+        anyhow::anyhow!("Invalid node semantic version '{}': {e}", handshake.version)
+    })?;
+
+    if handshake.protocol_version != DASHBOARD_NODE_PROTOCOL_VERSION {
+        return Err(anyhow::anyhow!(
+            "Protocol mismatch. Dashboard requires protocol v{}, but node reports v{}.
+Rebuild and package a matching 'aethercore-node' binary for this dashboard release.",
+            DASHBOARD_NODE_PROTOCOL_VERSION,
+            handshake.protocol_version
+        ));
+    }
+
+    if node_version.major != dashboard_version.major {
+        return Err(anyhow::anyhow!(
+            "Major version mismatch. Dashboard is {}, node binary is {}.
+Install or bundle the aethercore-node binary built from the same major release.",
+            dashboard_version,
+            node_version
+        ));
+    }
+
+    if node_version < dashboard_version {
+        return Err(anyhow::anyhow!(
+            "Node binary is older than dashboard. Dashboard is {}, node binary is {}.
+Upgrade the bundled node binary or set NODE_BINARY_PATH to a newer build.",
+            dashboard_version,
+            node_version
+        ));
+    }
+
+    Ok(())
+}
+
+fn show_node_binary_remediation_dialog(app_handle: &tauri::AppHandle, title: &str, details: &str) {
+    app_handle
+        .dialog()
+        .message(format!(
+            "{details}\n\nREMEDIATION:\n1. Run `cargo build -p aethercore-node --release`.\n2. Rebuild the desktop app with `tauri build`.\n3. Or set NODE_BINARY_PATH to a compatible aethercore-node executable."
+        ))
+        .kind(MessageDialogKind::Error)
+        .title(title)
+        .blocking_show();
 }
 
 /// Sign Heartbeat Payload (Aetheric Link Protocol)
@@ -1090,6 +1194,13 @@ pub async fn get_config_path(app_handle: tauri::AppHandle) -> Result<String, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn node_version_check_rejects_older_patch_versions() {
+        let dashboard_version = Version::parse("0.2.0").unwrap();
+        let node_version = Version::parse("0.1.9").unwrap();
+        assert!(node_version < dashboard_version);
+    }
 
     #[tokio::test]
     async fn test_generate_genesis_bundle() {

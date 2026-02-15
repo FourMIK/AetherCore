@@ -219,6 +219,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "aethercore-node"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aethercore-radio"
 version = "0.2.0"
 dependencies = [
@@ -6242,6 +6250,7 @@ dependencies = [
  "mdns-sd",
  "p256 0.13.2",
  "rand 0.8.5",
+ "semver",
  "serde",
  "serde_json",
  "serialport",
