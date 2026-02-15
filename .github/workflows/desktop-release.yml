@@ -390,6 +390,7 @@ jobs:
             --clobber
 
       - name: Publish draft release only after all signing/notarization gates pass
+        if: ${{ needs.certification-suite.result == 'success' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -428,98 +429,200 @@ jobs:
         if: matrix.platform == 'macos'
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           mkdir -p certification-artifacts
 
           cert_json="certification-artifacts/certification-result.json"
+          steps_file="certification-artifacts/step-outcomes.ndjson"
+          metrics_file="certification-artifacts/slo-metrics.json"
           log_file="certification-artifacts/app-launch.log"
+          command_log="certification-artifacts/post-install-commands.log"
+          summary_md="certification-artifacts/certification-summary.md"
           screenshot="certification-artifacts/failure-screenshot.png"
+          : > "$steps_file"
+          : > "$command_log"
 
-          check_failed() {
-            local check_name="$1"
-            local message="$2"
-            screencapture -x "$screenshot" || true
-            cat > "$cert_json" <<EOF
-          {
-            "platform": "macos",
-            "slo_target": ">=95% successful first-run bootstrap on clean supported OS images",
-            "status": "failed",
-            "failed_check": "$check_name",
-            "message": "$message"
-          }
-          EOF
-            exit 1
+          final_status="passed"
+          mandatory_failure=0
+          first_deploy_latency_ms="null"
+          launch_start_ms=$(python3 - <<'PY'
+          import time
+          print(int(time.time() * 1000))
+          PY
+          )
+
+          record_step() {
+            local name="$1"
+            local mandatory="$2"
+            local status="$3"
+            local detail="$4"
+            local duration_ms="$5"
+            printf '{"name":"%s","mandatory":%s,"status":"%s","detail":%s,"duration_ms":%s}\n' \
+              "$name" "$mandatory" "$status" "$(python3 - <<'PY' "$detail"
+              import json,sys
+              print(json.dumps(sys.argv[1]))
+              PY
+              )" "$duration_ms" >> "$steps_file"
+            if [ "$status" != "passed" ]; then
+              final_status="failed"
+              if [ "$mandatory" = "true" ]; then mandatory_failure=1; fi
+            fi
           }
 
           dmg="$(find certification-input -name '*.dmg' | head -n 1)"
-          [[ -n "$dmg" ]] || check_failed "artifact" "No DMG found in certification input"
+          if [[ -z "$dmg" ]]; then
+            record_step "artifact" true failed "No DMG found in certification input" 0
+          else
+            record_step "artifact" true passed "Resolved installer artifact: $dmg" 0
+          fi
 
           mount_dir="$(mktemp -d)"
-          hdiutil attach "$dmg" -mountpoint "$mount_dir"
-          app_path="$(find "$mount_dir" -maxdepth 1 -name '*.app' | head -n 1)"
-          [[ -n "$app_path" ]] || check_failed "install" "No .app found inside mounted DMG"
-          cp -R "$app_path" /Applications/
-          hdiutil detach "$mount_dir"
-
-          app_name="$(basename "$app_path")"
-          app_bin="/Applications/${app_name}/Contents/MacOS/$(basename "$app_path" .app)"
-          smoke_workdir="$RUNNER_TEMP/aethercore-smoke"
-          mkdir -p "$smoke_workdir"
-
-          (
-            cd "$smoke_workdir"
-            CI=1 AETHERCORE_SKIP_SENTINEL_FOR_CI=1 "$app_bin" --bootstrap > "$GITHUB_WORKSPACE/$log_file" 2>&1 &
-            app_pid=$!
-
-            bootstrap_state="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/bootstrap-state.json"
-            runtime_config="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/runtime-config.json"
-            sample_node_config="$smoke_workdir/data/first-node/first-node_config.json"
-
-            deadline=$((SECONDS + 150))
-            while [ $SECONDS -lt $deadline ]; do
-              if [ -f "$bootstrap_state" ] && [ -f "$runtime_config" ] && [ -f "$sample_node_config" ]; then
-                break
+          app_pid=""
+          if [[ -n "$dmg" ]]; then
+            if hdiutil attach "$dmg" -mountpoint "$mount_dir" >> "$command_log" 2>&1; then
+              app_path="$(find "$mount_dir" -maxdepth 1 -name '*.app' | head -n 1)"
+              if [[ -n "$app_path" ]] && cp -R "$app_path" /Applications/ >> "$command_log" 2>&1; then
+                app_name="$(basename "$app_path")"
+                app_bin="/Applications/${app_name}/Contents/MacOS/$(basename "$app_path" .app)"
+                smoke_workdir="$RUNNER_TEMP/aethercore-smoke"
+                mkdir -p "$smoke_workdir"
+                cd "$smoke_workdir"
+                CI=1 AETHERCORE_SKIP_SENTINEL_FOR_CI=1 "$app_bin" --bootstrap > "$GITHUB_WORKSPACE/$log_file" 2>&1 &
+                app_pid=$!
+                record_step "launch_bootstrap" true passed "Launched desktop app in bootstrap mode" 0
+              else
+                record_step "launch_bootstrap" true failed "No .app found in DMG or copy to /Applications failed" 0
               fi
-              sleep 3
-            done
-
-            if [ -f "$bootstrap_state" ] && [ -f "$runtime_config" ] && [ -f "$sample_node_config" ]; then
-              kill "$app_pid" || true
-              wait "$app_pid" || true
+              hdiutil detach "$mount_dir" >> "$command_log" 2>&1 || true
             else
-              kill "$app_pid" || true
-              wait "$app_pid" || true
-              check_failed "smoke-flow" "Missing bootstrap/runtime/sample-node artifacts after launch"
+              record_step "launch_bootstrap" true failed "Failed to mount DMG for installation" 0
             fi
+          fi
+
+          bootstrap_state="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/bootstrap-state.json"
+          runtime_config="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/runtime-config.json"
+          stack_state="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/stack-state.json"
+          sample_node_config="$RUNNER_TEMP/aethercore-smoke/data/first-node/first-node_config.json"
+
+          wait_start=$(python3 - <<'PY'
+          import time
+          print(int(time.time() * 1000))
+          PY
+          )
+          deadline=$((SECONDS + 180))
+          while [ $SECONDS -lt $deadline ]; do
+            [ -f "$bootstrap_state" ] && [ -f "$runtime_config" ] && [ -f "$stack_state" ] && break
+            sleep 3
+          done
+          wait_end=$(python3 - <<'PY'
+          import time
+          print(int(time.time() * 1000))
+          PY
           )
 
-          python3 - <<'PY'
-          import json
+          if [ -f "$stack_state" ]; then
+            stack_ok=$(python3 - <<'PY' "$stack_state"
+            import json,sys
+            data=json.load(open(sys.argv[1]))
+            print("1" if data.get("last_ready") and data.get("desired_running") else "0")
+            PY
+            )
+            if [ "$stack_ok" = "1" ]; then
+              record_step "stack_startup" true passed "stack-state.json indicates stack ready" "$((wait_end-wait_start))"
+            else
+              record_step "stack_startup" true failed "stack-state.json indicates stack not ready" "$((wait_end-wait_start))"
+            fi
+          else
+            record_step "stack_startup" true failed "stack-state.json missing after bootstrap window" "$((wait_end-wait_start))"
+          fi
+
+          svc_start=$(python3 - <<'PY'
+          import time
+          print(int(time.time() * 1000))
+          PY
+          )
+          api_ok=0
+          ws_ok=0
+          curl -fsS http://127.0.0.1:3000/health >> "$command_log" 2>&1 && api_ok=1
+          curl -fsS http://127.0.0.1:8080/healthz >> "$command_log" 2>&1 && ws_ok=1
+          python3 - <<'PY' >> "$command_log" 2>&1 && ws_ok=1 || true
+          import socket
+          s = socket.create_connection(("127.0.0.1", 8080), timeout=5)
+          s.close()
+          print("tcp-connect-8080-ok")
+          PY
+          svc_end=$(python3 - <<'PY'
+          import time
+          print(int(time.time() * 1000))
+          PY
+          )
+
+          if [ "$api_ok" = "1" ] && [ "$ws_ok" = "1" ]; then
+            record_step "required_services_healthy" true passed "HTTP health probes reachable for required services" "$((svc_end-svc_start))"
+            record_step "dashboard_connectivity" true passed "API /health and mesh endpoint connectivity checks passed" "$((svc_end-svc_start))"
+          else
+            record_step "required_services_healthy" true failed "One or more required service health probes failed" "$((svc_end-svc_start))"
+            record_step "dashboard_connectivity" true failed "Dashboard connectivity checks failed (api_ok=${api_ok}, ws_ok=${ws_ok})" "$((svc_end-svc_start))"
+          fi
+
+          deploy_deadline=$((SECONDS + 120))
+          while [ $SECONDS -lt $deploy_deadline ]; do
+            if [ -f "$sample_node_config" ]; then
+              now_ms=$(python3 - <<'PY'
+              import time
+              print(int(time.time() * 1000))
+              PY
+              )
+              first_deploy_latency_ms=$((now_ms-launch_start_ms))
+              break
+            fi
+            sleep 2
+          done
+
+          if [ -f "$sample_node_config" ]; then
+            record_step "first_node_deploy" true passed "first-node configuration created at $sample_node_config" "$first_deploy_latency_ms"
+          else
+            record_step "first_node_deploy" true failed "first-node configuration was not created" 0
+          fi
+
+          if [ -n "${app_pid:-}" ]; then
+            kill "$app_pid" >> "$command_log" 2>&1 || true
+            wait "$app_pid" >> "$command_log" 2>&1 || true
+          fi
+
+          python3 - <<'PY' "$steps_file" "$metrics_file" "$cert_json" "$summary_md" "$final_status" "$mandatory_failure" "$first_deploy_latency_ms"
+          import json,sys
           from pathlib import Path
 
-          bootstrap = Path.home() / 'Library/Application Support/com.aethercore.tactical-glass-dev/bootstrap-state.json'
-          completed = False
-          if bootstrap.exists():
-              try:
-                  completed = bool(json.loads(bootstrap.read_text()).get('completed'))
-              except Exception:
-                  completed = False
-
-          result = {
-              'platform': 'macos',
-              'slo_target': '>=95% successful first-run bootstrap on clean supported OS images',
-              'status': 'passed' if completed else 'failed',
-              'checks': [
-                  {'name': 'launch app', 'status': 'passed'},
-                  {'name': 'bootstrap stack', 'status': 'passed'},
-                  {'name': 'deploy sample node', 'status': 'passed'},
-                  {'name': 'verify dashboard state', 'status': 'passed' if completed else 'failed'}
-              ]
+          steps=[json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines() if line.strip()]
+          bootstrap_success = any(step["name"]=="stack_startup" and step["status"]=="passed" for step in steps)
+          metrics = {
+            "bootstrap_success": bootstrap_success,
+            "first_deploy_latency_ms": None if sys.argv[7] == "null" else int(sys.argv[7]),
+            "slo_targets": {
+              "bootstrap_success": ">=95%",
+              "first_deploy_latency_ms": "<=120000"
+            }
           }
-          Path('certification-artifacts/certification-result.json').write_text(json.dumps(result, indent=2))
-          if not completed:
-              raise SystemExit('bootstrap-state.json exists but completed != true')
+          Path(sys.argv[2]).write_text(json.dumps(metrics, indent=2))
+          result = {
+            "platform":"macos",
+            "status":sys.argv[5],
+            "mandatory_failure": sys.argv[6] == "1",
+            "checks": steps,
+            "slo_metrics": metrics
+          }
+          Path(sys.argv[3]).write_text(json.dumps(result, indent=2))
+          Path(sys.argv[4]).write_text("# Certification Summary\n\n" + "\n".join([f"- {s['name']}: {s['status']} ({s['detail']})" for s in steps]))
           PY
+
+          if [ "$final_status" != "passed" ]; then
+            screencapture -x "$screenshot" || true
+          fi
+          if [ "$mandatory_failure" -eq 1 ]; then
+            echo "Mandatory certification step failed on macOS"
+            exit 1
+          fi
 
       - name: Run post-install smoke certification (Windows)
         if: matrix.platform == 'windows'
@@ -528,8 +631,37 @@ jobs:
           New-Item -ItemType Directory -Force -Path certification-artifacts | Out-Null
 
           $certJson = "certification-artifacts/certification-result.json"
+          $metricsJson = "certification-artifacts/slo-metrics.json"
+          $stepJson = "certification-artifacts/step-outcomes.json"
           $logFile = "certification-artifacts/app-launch.log"
+          $commandLog = "certification-artifacts/post-install-commands.log"
           $screenshot = "certification-artifacts/failure-screenshot.png"
+          $summaryMd = "certification-artifacts/certification-summary.md"
+          $steps = @()
+          $status = 'passed'
+          $mandatoryFailure = $false
+          $firstDeployLatencyMs = $null
+
+          function Add-Step {
+            param(
+              [string]$Name,
+              [bool]$Mandatory,
+              [string]$StepStatus,
+              [string]$Detail,
+              [int64]$DurationMs
+            )
+            $steps += @{
+              name = $Name
+              mandatory = $Mandatory
+              status = $StepStatus
+              detail = $Detail
+              duration_ms = $DurationMs
+            }
+            if ($StepStatus -ne 'passed') {
+              $script:status = 'failed'
+              if ($Mandatory) { $script:mandatoryFailure = $true }
+            }
+          }
 
           function Save-Failure {
             param(
@@ -551,77 +683,143 @@ jobs:
               Write-Host "Screenshot capture unavailable: $($_.Exception.Message)"
             }
 
-            @{ 
-              platform = 'windows';
-              slo_target = '>=95% successful first-run bootstrap on clean supported OS images';
-              status = 'failed';
-              failed_check = $Check;
-              message = $Message
-            } | ConvertTo-Json -Depth 8 | Set-Content -Path $certJson -Encoding UTF8
-
-            throw "[$Check] $Message"
+            Add-Step -Name $Check -Mandatory $true -StepStatus 'failed' -Detail $Message -DurationMs 0
           }
 
           $msi = Get-ChildItem -Path certification-input -Recurse -Filter *.msi | Select-Object -First 1
           if (-not $msi) { Save-Failure -Check 'artifact' -Message 'No MSI found in certification input' }
+          if ($msi) { Add-Step -Name 'artifact' -Mandatory $true -StepStatus 'passed' -Detail "Resolved installer artifact: $($msi.FullName)" -DurationMs 0 }
 
-          Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart" -Wait -NoNewWindow
+          $launchStart = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          if ($msi) {
+            try {
+              Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart" -Wait -NoNewWindow
+            } catch {
+              Save-Failure -Check 'launch_bootstrap' -Message "MSI install failed: $($_.Exception.Message)"
+            }
+          }
 
           $exe = Get-ChildItem -Path "$env:LOCALAPPDATA\Programs" -Recurse -Filter '*.exe' |
             Where-Object { $_.Name -like '*Tactical*' -or $_.Name -like '*aethercore*' } |
             Select-Object -First 1
-          if (-not $exe) { Save-Failure -Check 'install' -Message 'Installed executable not found' }
+          if (-not $exe) {
+            Save-Failure -Check 'launch_bootstrap' -Message 'Installed executable not found'
+          } else {
+            Add-Step -Name 'launch_bootstrap' -Mandatory $true -StepStatus 'passed' -Detail 'Installed executable discovered and ready for bootstrap launch' -DurationMs 0
+          }
 
           $smokeDir = Join-Path $env:RUNNER_TEMP 'aethercore-smoke'
           New-Item -ItemType Directory -Force -Path $smokeDir | Out-Null
 
-          Push-Location $smokeDir
-          try {
-            $launch = Start-Process -FilePath $exe.FullName -ArgumentList '--bootstrap' -RedirectStandardOutput (Join-Path $env:GITHUB_WORKSPACE $logFile) -RedirectStandardError (Join-Path $env:GITHUB_WORKSPACE $logFile) -PassThru -Environment @{
-              CI = '1'
-              AETHERCORE_SKIP_SENTINEL_FOR_CI = '1'
-            }
+          if ($exe) {
+            Push-Location $smokeDir
+            try {
+              $launch = Start-Process -FilePath $exe.FullName -ArgumentList '--bootstrap' -RedirectStandardOutput (Join-Path $env:GITHUB_WORKSPACE $logFile) -RedirectStandardError (Join-Path $env:GITHUB_WORKSPACE $logFile) -PassThru -Environment @{
+                CI = '1'
+                AETHERCORE_SKIP_SENTINEL_FOR_CI = '1'
+              }
 
             $bootstrapState = Join-Path $env:APPDATA 'com.aethercore.tactical-glass-dev\bootstrap-state.json'
             $runtimeConfig = Join-Path $env:APPDATA 'com.aethercore.tactical-glass-dev\runtime-config.json'
+            $stackState = Join-Path $env:APPDATA 'com.aethercore.tactical-glass-dev\stack-state.json'
             $sampleNodeConfig = Join-Path $smokeDir 'data\first-node\first-node_config.json'
 
-            $deadline = (Get-Date).AddSeconds(150)
+            $deadline = (Get-Date).AddSeconds(180)
             while ((Get-Date) -lt $deadline) {
-              if ((Test-Path $bootstrapState) -and (Test-Path $runtimeConfig) -and (Test-Path $sampleNodeConfig)) {
+              if ((Test-Path $bootstrapState) -and (Test-Path $runtimeConfig) -and (Test-Path $stackState)) {
                 break
               }
               Start-Sleep -Seconds 3
             }
 
-            if (-not (Test-Path $bootstrapState) -or -not (Test-Path $runtimeConfig) -or -not (Test-Path $sampleNodeConfig)) {
-              if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
-              Save-Failure -Check 'smoke-flow' -Message 'Missing bootstrap/runtime/sample-node artifacts after launch'
+            if (-not (Test-Path $stackState)) {
+              Save-Failure -Check 'stack_startup' -Message 'Missing stack-state.json after bootstrap launch'
+            } else {
+              $stack = Get-Content -Raw -Path $stackState | ConvertFrom-Json
+              if ($stack.last_ready -and $stack.desired_running) {
+                Add-Step -Name 'stack_startup' -Mandatory $true -StepStatus 'passed' -Detail 'stack-state.json confirms stack ready' -DurationMs 0
+              } else {
+                Save-Failure -Check 'stack_startup' -Message 'stack-state.json indicates stack is not ready'
+              }
+            }
+
+            $apiOk = $false
+            $meshOk = $false
+            try {
+              Invoke-WebRequest -Uri 'http://127.0.0.1:3000/health' -UseBasicParsing -TimeoutSec 8 | Out-Null
+              Invoke-WebRequest -Uri 'http://127.0.0.1:8080/healthz' -UseBasicParsing -TimeoutSec 8 | Out-Null
+              $apiOk = $true
+            } catch {
+              Add-Content -Path $commandLog -Value "health checks failed: $($_.Exception.Message)"
+            }
+            try {
+              $client = New-Object System.Net.Sockets.TcpClient
+              $client.Connect('127.0.0.1', 8080)
+              $client.Close()
+              $meshOk = $true
+            } catch {
+              Add-Content -Path $commandLog -Value "mesh connectivity failed: $($_.Exception.Message)"
+            }
+
+            if ($apiOk -and $meshOk) {
+              Add-Step -Name 'required_services_healthy' -Mandatory $true -StepStatus 'passed' -Detail 'HTTP health and mesh port probes succeeded' -DurationMs 0
+              Add-Step -Name 'dashboard_connectivity' -Mandatory $true -StepStatus 'passed' -Detail 'Dashboard connectivity checks passed' -DurationMs 0
+            } else {
+              Save-Failure -Check 'required_services_healthy' -Message "Service health checks failed (api_ok=$apiOk mesh_ok=$meshOk)"
+              Save-Failure -Check 'dashboard_connectivity' -Message "Dashboard connectivity checks failed (api_ok=$apiOk mesh_ok=$meshOk)"
+            }
+
+            $deployDeadline = (Get-Date).AddSeconds(120)
+            while ((Get-Date) -lt $deployDeadline) {
+              if (Test-Path $sampleNodeConfig) {
+                $firstDeployLatencyMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - $launchStart
+                break
+              }
+              Start-Sleep -Seconds 2
+            }
+
+            if (Test-Path $sampleNodeConfig) {
+              Add-Step -Name 'first_node_deploy' -Mandatory $true -StepStatus 'passed' -Detail "first-node deployment config detected: $sampleNodeConfig" -DurationMs $firstDeployLatencyMs
+            } else {
+              Save-Failure -Check 'first_node_deploy' -Message 'first-node deployment config was not created'
             }
 
             $bootstrap = Get-Content -Raw -Path $bootstrapState | ConvertFrom-Json
             if (-not $bootstrap.completed) {
-              if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
-              Save-Failure -Check 'verify-dashboard-state' -Message 'bootstrap-state.json completed != true'
+              Save-Failure -Check 'bootstrap_state' -Message 'bootstrap-state.json completed != true'
             }
 
-            if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
-          }
-          finally {
-            Pop-Location
+              if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
+            }
+            finally {
+              Pop-Location
+            }
           }
 
+          $bootstrapSuccess = ($steps | Where-Object { $_.name -eq 'stack_startup' -and $_.status -eq 'passed' }).Count -gt 0
+          $metrics = @{
+            bootstrap_success = $bootstrapSuccess
+            first_deploy_latency_ms = $firstDeployLatencyMs
+            slo_targets = @{
+              bootstrap_success = '>=95%'
+              first_deploy_latency_ms = '<=120000'
+            }
+          }
+          $metrics | ConvertTo-Json -Depth 8 | Set-Content -Path $metricsJson -Encoding UTF8
+
+          $steps | ConvertTo-Json -Depth 8 | Set-Content -Path $stepJson -Encoding UTF8
           @{
             platform = 'windows'
-            slo_target = '>=95% successful first-run bootstrap on clean supported OS images'
-            status = 'passed'
-            checks = @(
-              @{ name = 'launch app'; status = 'passed' },
-              @{ name = 'bootstrap stack'; status = 'passed' },
-              @{ name = 'deploy sample node'; status = 'passed' },
-              @{ name = 'verify dashboard state'; status = 'passed' }
-            )
-          } | ConvertTo-Json -Depth 8 | Set-Content -Path $certJson -Encoding UTF8
+            status = $status
+            mandatory_failure = $mandatoryFailure
+            checks = $steps
+            slo_metrics = $metrics
+          } | ConvertTo-Json -Depth 10 | Set-Content -Path $certJson -Encoding UTF8
+
+          ($steps | ForEach-Object { "- $($_.name): $($_.status) ($($_.detail))" }) -join "`n" | Set-Content -Path $summaryMd -Encoding UTF8
+          if ($mandatoryFailure) {
+            throw 'Mandatory certification step failed on Windows'
+          }
 
       - name: Upload certification diagnostics
         if: always()
