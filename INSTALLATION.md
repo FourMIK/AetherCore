@@ -107,6 +107,11 @@ Only install `.dmg` and `.msi` artifacts that are explicitly listed in `release-
 - `provenance-macos.json`
 - `provenance-windows.json`
 
+Download these from the same release page as your installer artifact:
+`https://github.com/FourMIK/AetherCore/releases/tag/<tag>`
+
+For provenance verification policy and attestation details, see [PROVENANCE.md](PROVENANCE.md).
+
 ---
 
 ## Platform-Specific Installation
@@ -275,12 +280,12 @@ msiexec /i aethercore-tactical-glass.msi /quiet /qn /norestart
 - Ensure sufficient disk space (500MB+)
 - Check Windows Event Viewer for detailed error
 
-**Issue:** Windows Defender blocks installation  
+**Issue:** Windows Defender or endpoint security blocks installation  
 **Solution:**
-1. Verify downloaded file integrity (checksum)
-2. Temporarily disable real-time protection during installation
-3. Add Tactical Glass to exclusions list
-4. Re-enable real-time protection after installation
+1. Do **not** bypass or disable endpoint protections as a normal install path.
+2. Re-download from the official release tag and verify `release-manifest.json` signature plus checksums.
+3. Confirm the MSI Authenticode signature and trusted timestamp are present.
+4. If policy still blocks install, escalate to security/IT allow-list workflow with the release provenance bundle.
 
 ---
 

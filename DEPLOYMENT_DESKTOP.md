@@ -103,6 +103,7 @@ sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0
 2. Open the DMG
 3. Drag "Tactical Glass" to Applications folder
 4. Launch from Applications. Production builds are Developer ID signed, notarized, and stapled, so Gatekeeper trust validation is automatic.
+5. Validate installer against release integrity assets (`release-manifest.json`, checksums, provenance JSON) from the same tag before deployment rollout.
 
 ### Windows
 
@@ -112,6 +113,8 @@ sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0
 4. Launch from Start Menu or Desktop shortcut
 
 **Trust Chain**: Production Windows installers are Authenticode-signed with trusted timestamps; enterprise policy should allow installation through the normal workflow.
+
+**Release Integrity Assets**: Pull `release-manifest.json`, checksum bundles, and provenance JSON from the matching release tag (`https://github.com/FourMIK/AetherCore/releases/tag/<tag>`) and keep them with deployment records.
 
 ## Configuration
 

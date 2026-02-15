@@ -70,7 +70,9 @@
           "x": 400,
           "y": 120
         }
-      }
+      },
+      "hardenedRuntime": true,
+      "notarize": true
     },
     "resources": [
       "resources/runtime-components.manifest.json",
