@@ -94,10 +94,20 @@ This script:
 Once tagged, GitHub Actions automatically:
 - Builds desktop applications (.dmg, .msi, .AppImage)
 - Generates checksums
+- Runs installer certification suite on clean macOS + Windows runners
+  - Installs produced `.dmg`/`.msi`
+  - Executes first-run smoke flow (`launch app → bootstrap stack → deploy sample node → verify dashboard-ready state`)
+  - Captures structured certification JSON, launch logs, and failure screenshots as artifacts
 - Creates GitHub Release
 - Uploads artifacts
 
 Workflow: `.github/workflows/desktop-release.yml`
+
+### 3.1 Release SLO + Certification Gate
+
+- **Release SLO:** `95%+ successful first-run bootstrap on clean supported OS images.`
+- Certification suite emits machine-readable pass/fail records per platform.
+- The `Finalize Desktop Release` job is hard-gated on certification success; release publication is blocked if any certification job fails.
 
 ### 4. Release Verification
 

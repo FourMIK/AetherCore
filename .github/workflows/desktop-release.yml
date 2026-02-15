@@ -200,6 +200,16 @@ jobs:
           prerelease: false
           args: ${{ matrix.tauri_args }}
 
+      - name: Upload installer bundle for clean-runner certification
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-installer-${{ matrix.platform }}
+          path: |
+            packages/dashboard/src-tauri/target/release/bundle/**/*.dmg
+            packages/dashboard/src-tauri/target/release/bundle/**/*.msi
+          if-no-files-found: error
+          retention-days: 14
+
       - name: "Gate: verify macOS code signing + notarization + stapling"
         if: matrix.platform == 'macos'
         shell: bash
@@ -351,7 +361,7 @@ jobs:
   finalize-release:
     name: Finalize Desktop Release (hard gate)
     if: startsWith(github.ref, 'refs/tags/')
-    needs: release
+    needs: [release, certification-suite]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -392,3 +402,232 @@ jobs:
           set -euo pipefail
           gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name' | \
             grep -E 'SHA256SUMS-(macos|windows)\.txt(\.sig)?|provenance-(macos|windows)\.json|release-manifest\.json(\.sig)?'
+
+  certification-suite:
+    name: Installer Certification (${{ matrix.platform }})
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            os: macos-latest
+          - platform: windows
+            os: windows-latest
+    steps:
+      - name: Download installer from release build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-installer-${{ matrix.platform }}
+          path: certification-input
+
+      - name: Run post-install smoke certification (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p certification-artifacts
+
+          cert_json="certification-artifacts/certification-result.json"
+          log_file="certification-artifacts/app-launch.log"
+          screenshot="certification-artifacts/failure-screenshot.png"
+
+          check_failed() {
+            local check_name="$1"
+            local message="$2"
+            screencapture -x "$screenshot" || true
+            cat > "$cert_json" <<EOF
+          {
+            "platform": "macos",
+            "slo_target": ">=95% successful first-run bootstrap on clean supported OS images",
+            "status": "failed",
+            "failed_check": "$check_name",
+            "message": "$message"
+          }
+          EOF
+            exit 1
+          }
+
+          dmg="$(find certification-input -name '*.dmg' | head -n 1)"
+          [[ -n "$dmg" ]] || check_failed "artifact" "No DMG found in certification input"
+
+          mount_dir="$(mktemp -d)"
+          hdiutil attach "$dmg" -mountpoint "$mount_dir"
+          app_path="$(find "$mount_dir" -maxdepth 1 -name '*.app' | head -n 1)"
+          [[ -n "$app_path" ]] || check_failed "install" "No .app found inside mounted DMG"
+          cp -R "$app_path" /Applications/
+          hdiutil detach "$mount_dir"
+
+          app_name="$(basename "$app_path")"
+          app_bin="/Applications/${app_name}/Contents/MacOS/$(basename "$app_path" .app)"
+          smoke_workdir="$RUNNER_TEMP/aethercore-smoke"
+          mkdir -p "$smoke_workdir"
+
+          (
+            cd "$smoke_workdir"
+            CI=1 AETHERCORE_SKIP_SENTINEL_FOR_CI=1 "$app_bin" --bootstrap > "$GITHUB_WORKSPACE/$log_file" 2>&1 &
+            app_pid=$!
+
+            bootstrap_state="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/bootstrap-state.json"
+            runtime_config="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/runtime-config.json"
+            sample_node_config="$smoke_workdir/data/first-node/first-node_config.json"
+
+            deadline=$((SECONDS + 150))
+            while [ $SECONDS -lt $deadline ]; do
+              if [ -f "$bootstrap_state" ] && [ -f "$runtime_config" ] && [ -f "$sample_node_config" ]; then
+                break
+              fi
+              sleep 3
+            done
+
+            if [ -f "$bootstrap_state" ] && [ -f "$runtime_config" ] && [ -f "$sample_node_config" ]; then
+              kill "$app_pid" || true
+              wait "$app_pid" || true
+            else
+              kill "$app_pid" || true
+              wait "$app_pid" || true
+              check_failed "smoke-flow" "Missing bootstrap/runtime/sample-node artifacts after launch"
+            fi
+          )
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          bootstrap = Path.home() / 'Library/Application Support/com.aethercore.tactical-glass-dev/bootstrap-state.json'
+          completed = False
+          if bootstrap.exists():
+              try:
+                  completed = bool(json.loads(bootstrap.read_text()).get('completed'))
+              except Exception:
+                  completed = False
+
+          result = {
+              'platform': 'macos',
+              'slo_target': '>=95% successful first-run bootstrap on clean supported OS images',
+              'status': 'passed' if completed else 'failed',
+              'checks': [
+                  {'name': 'launch app', 'status': 'passed'},
+                  {'name': 'bootstrap stack', 'status': 'passed'},
+                  {'name': 'deploy sample node', 'status': 'passed'},
+                  {'name': 'verify dashboard state', 'status': 'passed' if completed else 'failed'}
+              ]
+          }
+          Path('certification-artifacts/certification-result.json').write_text(json.dumps(result, indent=2))
+          if not completed:
+              raise SystemExit('bootstrap-state.json exists but completed != true')
+          PY
+
+      - name: Run post-install smoke certification (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path certification-artifacts | Out-Null
+
+          $certJson = "certification-artifacts/certification-result.json"
+          $logFile = "certification-artifacts/app-launch.log"
+          $screenshot = "certification-artifacts/failure-screenshot.png"
+
+          function Save-Failure {
+            param(
+              [string]$Check,
+              [string]$Message
+            )
+
+            try {
+              Add-Type -AssemblyName System.Windows.Forms
+              Add-Type -AssemblyName System.Drawing
+              $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+              $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+              $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+              $bitmap.Save((Join-Path $PWD $screenshot), [System.Drawing.Imaging.ImageFormat]::Png)
+              $graphics.Dispose()
+              $bitmap.Dispose()
+            } catch {
+              Write-Host "Screenshot capture unavailable: $($_.Exception.Message)"
+            }
+
+            @{ 
+              platform = 'windows';
+              slo_target = '>=95% successful first-run bootstrap on clean supported OS images';
+              status = 'failed';
+              failed_check = $Check;
+              message = $Message
+            } | ConvertTo-Json -Depth 8 | Set-Content -Path $certJson -Encoding UTF8
+
+            throw "[$Check] $Message"
+          }
+
+          $msi = Get-ChildItem -Path certification-input -Recurse -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { Save-Failure -Check 'artifact' -Message 'No MSI found in certification input' }
+
+          Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart" -Wait -NoNewWindow
+
+          $exe = Get-ChildItem -Path "$env:LOCALAPPDATA\Programs" -Recurse -Filter '*.exe' |
+            Where-Object { $_.Name -like '*Tactical*' -or $_.Name -like '*aethercore*' } |
+            Select-Object -First 1
+          if (-not $exe) { Save-Failure -Check 'install' -Message 'Installed executable not found' }
+
+          $smokeDir = Join-Path $env:RUNNER_TEMP 'aethercore-smoke'
+          New-Item -ItemType Directory -Force -Path $smokeDir | Out-Null
+
+          Push-Location $smokeDir
+          try {
+            $launch = Start-Process -FilePath $exe.FullName -ArgumentList '--bootstrap' -RedirectStandardOutput (Join-Path $env:GITHUB_WORKSPACE $logFile) -RedirectStandardError (Join-Path $env:GITHUB_WORKSPACE $logFile) -PassThru -Environment @{
+              CI = '1'
+              AETHERCORE_SKIP_SENTINEL_FOR_CI = '1'
+            }
+
+            $bootstrapState = Join-Path $env:APPDATA 'com.aethercore.tactical-glass-dev\bootstrap-state.json'
+            $runtimeConfig = Join-Path $env:APPDATA 'com.aethercore.tactical-glass-dev\runtime-config.json'
+            $sampleNodeConfig = Join-Path $smokeDir 'data\first-node\first-node_config.json'
+
+            $deadline = (Get-Date).AddSeconds(150)
+            while ((Get-Date) -lt $deadline) {
+              if ((Test-Path $bootstrapState) -and (Test-Path $runtimeConfig) -and (Test-Path $sampleNodeConfig)) {
+                break
+              }
+              Start-Sleep -Seconds 3
+            }
+
+            if (-not (Test-Path $bootstrapState) -or -not (Test-Path $runtimeConfig) -or -not (Test-Path $sampleNodeConfig)) {
+              if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
+              Save-Failure -Check 'smoke-flow' -Message 'Missing bootstrap/runtime/sample-node artifacts after launch'
+            }
+
+            $bootstrap = Get-Content -Raw -Path $bootstrapState | ConvertFrom-Json
+            if (-not $bootstrap.completed) {
+              if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
+              Save-Failure -Check 'verify-dashboard-state' -Message 'bootstrap-state.json completed != true'
+            }
+
+            if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
+          }
+          finally {
+            Pop-Location
+          }
+
+          @{
+            platform = 'windows'
+            slo_target = '>=95% successful first-run bootstrap on clean supported OS images'
+            status = 'passed'
+            checks = @(
+              @{ name = 'launch app'; status = 'passed' },
+              @{ name = 'bootstrap stack'; status = 'passed' },
+              @{ name = 'deploy sample node'; status = 'passed' },
+              @{ name = 'verify dashboard state'; status = 'passed' }
+            )
+          } | ConvertTo-Json -Depth 8 | Set-Content -Path $certJson -Encoding UTF8
+
+      - name: Upload certification diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-certification-${{ matrix.platform }}
+          path: certification-artifacts
+          if-no-files-found: warn
+          retention-days: 90
