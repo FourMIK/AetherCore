@@ -39,6 +39,10 @@ pub struct ManagedService {
     pub remediation_hint: String,
     #[serde(default)]
     pub depends_on: Vec<String>,
+    #[serde(default)]
+    pub health_check_timeout_secs: Option<u64>,
+    #[serde(default)]
+    pub health_check_retries: Option<u32>,
     pub working_dir: String,
     pub start_command: String,
 }
@@ -70,6 +74,15 @@ pub struct ServiceReadiness {
     pub elapsed_ms: u128,
     pub last_error: Option<String>,
     pub remediation_hint: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StackReadiness {
+    pub ready: bool,
+    pub required_services: usize,
+    pub healthy_required_services: usize,
+    pub services: Vec<ServiceStatus>,
+    pub readiness: Vec<ServiceReadiness>,
 }
 
 impl Drop for LocalControlPlaneRuntime {
@@ -193,6 +206,38 @@ pub fn check_service_statuses() -> Result<Vec<ServiceStatus>, String> {
             running: runtime.spawned_children.contains_key(&service.name),
         })
         .collect())
+}
+
+pub fn evaluate_stack_readiness() -> Result<StackReadiness, String> {
+    let manifest = read_manifest(&resolve_manifest_path()?)?;
+    let statuses = check_service_statuses()?;
+
+    let readiness = manifest
+        .services
+        .iter()
+        .map(|service| ServiceReadiness {
+            name: service.name.clone(),
+            healthy: is_service_healthy(&service.health_endpoint, service.port),
+            attempts: 0,
+            elapsed_ms: 0,
+            last_error: None,
+            remediation_hint: service.remediation_hint.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let required_services = statuses.iter().filter(|service| service.required).count();
+    let healthy_required_services = statuses
+        .iter()
+        .filter(|service| service.required && service.healthy)
+        .count();
+
+    Ok(StackReadiness {
+        ready: required_services == healthy_required_services,
+        required_services,
+        healthy_required_services,
+        services: statuses,
+        readiness,
+    })
 }
 
 pub fn start_managed_services() -> Result<Vec<ServiceStatus>, String> {
@@ -447,12 +492,19 @@ fn ensure_service_health(
     service: &ManagedService,
     startup: &StartupPolicy,
 ) -> Result<ServiceReadiness, String> {
-    let max_attempts = startup.health_check_retries + 1;
+    let max_attempts = service
+        .health_check_retries
+        .unwrap_or(startup.health_check_retries)
+        + 1;
     let total_started = Instant::now();
     let mut last_error = None;
 
     for attempt in 1..=max_attempts {
-        let timeout = Duration::from_secs(startup.service_health_timeout_secs);
+        let timeout = Duration::from_secs(
+            service
+                .health_check_timeout_secs
+                .unwrap_or(startup.service_health_timeout_secs),
+        );
         let poll_interval = Duration::from_millis(startup.health_poll_interval_ms);
         let started = Instant::now();
 
@@ -481,7 +533,9 @@ fn ensure_service_health(
             "Service '{}' failed health checks at {} within {} seconds (attempt {}/{})",
             service.name,
             service.health_endpoint,
-            startup.service_health_timeout_secs,
+            service
+                .health_check_timeout_secs
+                .unwrap_or(startup.service_health_timeout_secs),
             attempt,
             max_attempts
         ));

@@ -141,6 +141,9 @@ pub fn run() {
             }
 
             local_control_plane::initialize_managed_runtime();
+            if let Err(error) = commands::attempt_stack_auto_recover(&app.handle()) {
+                log::warn!("Local stack auto-recovery skipped: {}", error);
+            }
 
             let config_manager = crate::config::ConfigManager::new(&app.handle())
                 .map_err(|e| tauri::Error::Setup(e.to_string()))?;
@@ -226,6 +229,10 @@ pub fn run() {
             commands::initialize_local_data_dirs,
             commands::start_managed_services,
             commands::stop_managed_services,
+            commands::start_stack,
+            commands::stop_stack,
+            commands::stack_status,
+            commands::repair_stack,
             commands::start_dependency,
             commands::stop_dependency,
             commands::retry_dependency,
