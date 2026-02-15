@@ -40,7 +40,7 @@ const runtimeEnv = (globalThis as unknown as Window & { __ENV__?: RuntimeEnv }).
 
 let runtimeConfigCache: UnifiedRuntimeConfig | null = null;
 
-function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
+export function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined || value === '') return defaultValue;
   const normalized = value.toLowerCase().trim();
   if (['false', '0', 'no', 'off'].includes(normalized)) return false;
@@ -59,10 +59,11 @@ export function validateUnifiedRuntimeConfig(input: UnifiedRuntimeConfig): Unifi
   return input;
 }
 
-function buildEnvFallbackConfig(): UnifiedRuntimeConfig {
+export function buildEnvFallbackConfig(): UnifiedRuntimeConfig {
   const apiEndpoint = runtimeEnv.REACT_APP_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
   const meshEndpoint = runtimeEnv.REACT_APP_WS_URL || import.meta.env.VITE_GATEWAY_URL || 'ws://127.0.0.1:8080';
-  const enforceHardware = parseBooleanEnv(runtimeEnv.REACT_APP_TPM_ENABLED || import.meta.env.VITE_TPM_ENABLED, true);
+  // TPM fallback policy is optional by default and only enforced when explicitly enabled.
+  const enforceHardware = parseBooleanEnv(runtimeEnv.REACT_APP_TPM_ENABLED || import.meta.env.VITE_TPM_ENABLED, false);
 
   return {
     schema_version: 3,

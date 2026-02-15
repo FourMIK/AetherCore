@@ -2,8 +2,8 @@
  * TpmDisabledBanner
  * Displays a clear indicator that TPM features are disabled
  * 
- * This component alerts operators that hardware-rooted trust is disabled,
- * resulting in reduced security guarantees.
+ * This component alerts operators that TPM enforcement is optional and
+ * off by default unless explicitly enabled, which reduces security guarantees.
  */
 
 import React from 'react';
@@ -23,7 +23,7 @@ export const TpmDisabledBanner: React.FC = () => {
       <span className="font-semibold">TPM DISABLED</span>
       <span className="opacity-80">|</span>
       <span className="opacity-80">
-        Hardware-Rooted Trust Features Disabled (TPM_ENABLED=false) - Reduced Security
+        Hardware-Rooted Trust Optional (OFF by default, enable TPM explicitly) - Reduced Security
       </span>
     </div>
   );
