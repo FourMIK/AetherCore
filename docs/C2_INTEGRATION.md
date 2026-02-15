@@ -261,7 +261,7 @@ See `tests/mock-servers/README.md` for complete documentation.
 3. **Start Dashboard**
    ```bash
    cd packages/dashboard
-   npm run dev
+   pnpm run dev
    ```
 
 4. **Test Scenarios**

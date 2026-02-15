@@ -134,14 +134,14 @@ AETHERCORE_PRODUCTION=true  # Enforce hardware TPM (production mode)
    ```bash
    cd services/gateway
    pnpm install --frozen-lockfile
-   npm run build
-   npm start
+   pnpm run build
+   pnpm start
    ```
 
 2. **Start Dashboard (Tauri)**:
    ```bash
    cd packages/dashboard
-   npm run tauri:dev
+   pnpm run tauri:dev
    ```
 
 3. **Observe Console Logs**:

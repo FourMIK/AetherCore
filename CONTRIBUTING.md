@@ -21,8 +21,8 @@ Be respectful, collaborative, and professional in all interactions.
 ### Prerequisites
 
 - **Rust** 1.70 or higher
-- **Node.js** 18 or higher
-- **npm** 9 or higher
+- **Node.js** 20 or higher
+- **pnpm** 9.15.0
 - Git
 
 ### Initial Setup

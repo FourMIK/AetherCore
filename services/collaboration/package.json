@@ -8,7 +8,7 @@
     "build": "tsc",
     "clean": "rm -rf dist",
     "start": "node dist/index.js",
-    "dev": "npm run build && npm start",
+    "dev": "pnpm run build && pnpm start",
     "test": "echo \"No tests yet\"",
     "lint": "eslint src --ext .ts"
   },

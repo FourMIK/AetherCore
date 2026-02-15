@@ -203,13 +203,13 @@ Dependencies managed in root `Cargo.toml` workspace configuration.
 pnpm install --frozen-lockfile
 
 # Build all packages and services
-npm run build
+pnpm run build
 
 # Build Tauri desktop application
-cd packages/dashboard && npm run tauri:build
+cd packages/dashboard && pnpm run tauri:build
 ```
 
-Dependencies managed via npm workspaces in root `package.json`.
+Dependencies managed via pnpm workspaces in root `package.json`.
 
 ## Configuration
 
@@ -231,7 +231,7 @@ Dependencies managed via npm workspaces in root `package.json`.
    ```bash
    # Start Tauri dev mode (hot reload)
    cd packages/dashboard
-   npm run tauri:dev
+   pnpm run tauri:dev
    ```
 
 2. **Testing**
@@ -240,14 +240,14 @@ Dependencies managed via npm workspaces in root `package.json`.
    cargo test --workspace
    
    # TypeScript tests
-   npm run test
+   pnpm run test
    ```
 
 3. **Building**
    ```bash
    # Windows MSI installer
    cd packages/dashboard
-   npm run tauri:build
+   pnpm run tauri:build
    ```
 
 ## Deployment Architecture

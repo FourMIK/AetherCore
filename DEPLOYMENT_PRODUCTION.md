@@ -116,7 +116,7 @@ cargo build --release --features hardware-tpm
 # Build Dashboard (Tactical Glass)
 cd packages/dashboard
 pnpm install --frozen-lockfile
-npm run build
+pnpm run build
 
 # Build service containers (if not using pre-built images)
 cd /home/runner/work/AetherCore/AetherCore
@@ -144,7 +144,7 @@ docker-compose -f docker-compose.bunker.yml logs -f auth
 
 ```bash
 # Run migrations (if applicable)
-docker-compose -f docker-compose.bunker.yml exec gateway npm run migrate
+docker-compose -f docker-compose.bunker.yml exec gateway pnpm run migrate
 
 # Verify database
 docker-compose -f docker-compose.bunker.yml exec postgres \

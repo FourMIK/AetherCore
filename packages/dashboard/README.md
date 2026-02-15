@@ -52,10 +52,10 @@ cd packages/dashboard
 pnpm install --frozen-lockfile
 
 # Development mode with hot reload
-npm run tauri:dev
+pnpm run tauri:dev
 
 # Production build
-npm run tauri:build
+pnpm run tauri:build
 ```
 
 ### Build Outputs

@@ -69,7 +69,7 @@ pnpm install --frozen-lockfile
 ### 2. Build Packages
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 ### 3. Start Signaling Server
@@ -204,20 +204,20 @@ Logged when verification fails:
 ### Run Tests
 
 ```bash
-npm run test
+pnpm run test
 ```
 
 ### Lint Code
 
 ```bash
-npm run lint
+pnpm run lint
 ```
 
 ### Clean Build
 
 ```bash
-npm run clean
-npm run build
+pnpm run clean
+pnpm run build
 ```
 
 ## Migration from Legacy
@@ -267,8 +267,8 @@ cargo run --release --features grpc-server --bin signing-grpc-server
 
 # Terminal 3: Collaboration Service
 cd services/collaboration
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
 ### Configuration
