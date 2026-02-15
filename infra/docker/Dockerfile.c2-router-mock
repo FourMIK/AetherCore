@@ -6,7 +6,7 @@ COPY infra/docker/c2-router-mock/package.json ./package.json
 RUN corepack enable && pnpm install --prod --no-frozen-lockfile
 
 COPY infra/docker/c2-router-mock/server.js ./server.js
-COPY crates/c2-router/proto/c2.proto ./proto/c2.proto
+COPY infra/docker/c2-router-mock/c2.proto ./proto/c2.proto
 
 ENV PORT=50051
 EXPOSE 50051

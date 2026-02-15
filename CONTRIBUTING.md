@@ -65,11 +65,20 @@ This is verified by the root `preinstall` hook (`scripts/verify-toolchain.js`).
 
 ### Docker builds
 
-Some Docker build stages intentionally set `SKIP_TOOLCHAIN_CHECK=1` for dependency installation. This bypass is limited to container image builds so images can install dependencies in controlled builder environments without weakening local/CI enforcement.
+The preinstall hook is resilient to missing files during Docker layer caching. The hook checks three conditions in order:
+
+1. **SKIP_TOOLCHAIN_CHECK=1**: If set, skips verification immediately (explicit bypass)
+2. **scripts/ missing**: If `scripts/verify-toolchain.js` doesn't exist, skips gracefully (Docker layer caching)
+3. **scripts/ present**: If the script exists, runs full toolchain verification
+
+**Note**: The preinstall hook uses an inline JavaScript snippet rather than a separate wrapper script to avoid a chicken-and-egg problem where the wrapper itself would need to be present before package.json can be processed. While this makes the script less readable, it ensures maximum compatibility with Docker layer caching strategies.
+
+For explicit control in Dockerfiles, you may set `SKIP_TOOLCHAIN_CHECK=1` to clearly document intent, though the hook will now gracefully handle missing scripts automatically.
 
 - **Local development:** do **not** set `SKIP_TOOLCHAIN_CHECK`
 - **TypeScript CI job (`pnpm install --frozen-lockfile`)**: does **not** set `SKIP_TOOLCHAIN_CHECK`
-- **Dockerfiles:** may set `SKIP_TOOLCHAIN_CHECK=1` only on `pnpm install --frozen-lockfile` build steps
+- **Dockerfiles:** may set `SKIP_TOOLCHAIN_CHECK=1` only on `pnpm install --frozen-lockfile` build steps (optional but recommended for clarity)
+
 
 
 ### Creating a New Branch
@@ -186,10 +195,10 @@ cargo test --workspace -- --nocapture
 
 ```bash
 # Run all tests
-pnpm -r run test
+pnpm run test --recursive
 
 # Run specific package tests
-pnpm run --filter @aethercore/my-package test
+pnpm run test --filter packages/my-package
 ```
 
 ## Pull Request Process
