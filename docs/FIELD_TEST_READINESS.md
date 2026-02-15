@@ -57,7 +57,7 @@ This will:
 cd /workspaces/AetherCore/packages/dashboard
 
 # Build and run (requires Node.js 20+, npm)
-npm install
+pnpm install --frozen-lockfile
 npm run build
 npm run tauri dev
 

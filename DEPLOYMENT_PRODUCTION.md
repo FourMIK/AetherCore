@@ -115,7 +115,7 @@ cargo build --release --features hardware-tpm
 
 # Build Dashboard (Tactical Glass)
 cd packages/dashboard
-npm install
+pnpm install --frozen-lockfile
 npm run build
 
 # Build service containers (if not using pre-built images)

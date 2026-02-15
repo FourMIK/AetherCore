@@ -112,7 +112,7 @@ All implementations MUST produce this exact hash for these inputs.
 Run tests:
 ```bash
 cd tests/cross-platform
-npm install
+pnpm install --frozen-lockfile
 npm test
 ```
 
@@ -249,7 +249,7 @@ cp BLAKE3/c/blake3.h ~/Arduino/libraries/BLAKE3/
 
 Node.js:
 ```bash
-npm install hash-wasm
+pnpm add hash-wasm
 ```
 
 ## References

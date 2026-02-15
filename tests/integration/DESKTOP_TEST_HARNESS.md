@@ -286,7 +286,7 @@ jobs:
         with:
           node-version: '18'
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       - name: Run TypeScript tests
         run: cd packages/dashboard && npm test
 ```

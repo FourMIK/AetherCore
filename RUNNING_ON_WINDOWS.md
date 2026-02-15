@@ -88,7 +88,7 @@ cd AetherCore
 cargo fetch
 
 # Install Node.js dependencies
-npm install
+pnpm install --frozen-lockfile
 ```
 
 This may take several minutes as dependencies are downloaded and compiled.
@@ -277,7 +277,7 @@ Edit configuration file before launch:
    # Clear caches and retry
    cargo clean
    rm -r node_modules
-   npm install
+   pnpm install --frozen-lockfile
    cargo build --workspace
    ```
 

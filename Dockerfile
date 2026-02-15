@@ -21,7 +21,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_GATEWAY_URL=${VITE_GATEWAY_URL}
 
 # Copy only dependency manifests first for better layer caching.
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY agent/linux/package.json agent/linux/package.json
 COPY packages/h2-glass/package.json packages/h2-glass/package.json
 COPY packages/dashboard/package.json packages/dashboard/package.json
@@ -35,11 +35,11 @@ COPY services/h2-ingest/package.json services/h2-ingest/package.json
 COPY services/operator/package.json services/operator/package.json
 
 # Install workspace dependencies in a reproducible way.
-RUN npm ci
+RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile
 
 # Copy the rest of the repository and build only the dashboard workspace.
 COPY . .
-RUN npm run build --workspace @aethercore/dashboard
+RUN pnpm --filter @aethercore/dashboard run build
 
 ##################################
 # 2) Production runtime (nginx)  #

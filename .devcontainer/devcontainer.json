@@ -39,7 +39,7 @@
 }
 },
 
-"postCreateCommand": "npm install && cargo build --workspace",
+"postCreateCommand": "corepack enable && pnpm install --frozen-lockfile && cargo build --workspace",
 
 "forwardPorts": [
 3000,

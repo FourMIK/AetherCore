@@ -83,10 +83,16 @@ else
     check_status "Rust toolchain installed" "FAIL" "cargo not found"
 fi
 
-if command -v npm &> /dev/null; then
-    check_status "Node.js/npm installed" "PASS"
+if command -v node &> /dev/null; then
+    check_status "Node.js installed" "PASS"
 else
-    check_status "Node.js/npm installed" "FAIL" "npm not found"
+    check_status "Node.js installed" "FAIL" "node not found"
+fi
+
+if command -v pnpm &> /dev/null; then
+    check_status "pnpm installed" "PASS"
+else
+    check_status "pnpm installed" "FAIL" "pnpm not found (run: corepack enable)"
 fi
 
 if command -v git &> /dev/null; then
@@ -206,7 +212,7 @@ fi
 echo "📦 Running TypeScript type checks..."
 if [ -d "$REPO_ROOT/packages/dashboard" ]; then
     cd "$REPO_ROOT/packages/dashboard"
-    if npm run test:types 2>&1 | tee /tmp/ts-test-output.log; then
+    if pnpm run test:types 2>&1 | tee /tmp/ts-test-output.log; then
         check_status "TypeScript type checking" "PASS"
     else
         check_status "TypeScript type checking" "FAIL" "Type errors found - see /tmp/ts-test-output.log"
@@ -367,11 +373,11 @@ else
     check_status "Cargo.lock exists" "FAIL" "Cargo.lock not found"
 fi
 
-# Check package-lock.json exists
-if [ -f "package-lock.json" ] || [ -f "pnpm-lock.yaml" ]; then
+# Check pnpm-lock.yaml exists
+if [ -f "pnpm-lock.yaml" ]; then
     check_status "JavaScript lock file exists" "PASS"
 else
-    check_status "JavaScript lock file exists" "FAIL" "Neither package-lock.json nor pnpm-lock.yaml found"
+    check_status "JavaScript lock file exists" "FAIL" "pnpm-lock.yaml not found"
 fi
 
 echo ""
@@ -469,7 +475,7 @@ echo ""
 echo "Next Steps:"
 echo "  1. Review SBOM artifacts in sbom-artifacts/"
 echo "  2. Verify code signing will be applied during build"
-echo "  3. Trigger desktop release workflow or run 'npm run tauri:build'"
+echo "  3. Trigger desktop release workflow or run 'pnpm run tauri:build'"
 echo ""
 echo "Status: IRONCLAD SECURED ✅"
 echo ""

@@ -313,7 +313,7 @@ git clone https://github.com/FourMIK/AetherCore.git
 cd AetherCore
 
 # Install dependencies
-npm ci
+pnpm install --frozen-lockfile
 
 # Build desktop app
 cd packages/dashboard

@@ -54,14 +54,15 @@ if [ ! -f "package.json" ]; then
     exit 1
 fi
 
-npm install
+corepack enable
+pnpm install --frozen-lockfile
 
 # Inject API URL as environment variable for build
 echo "Injecting API URL: ${API_URL}"
 export VITE_API_URL="${API_URL}"
 export REACT_APP_API_URL="${API_URL}"
 
-npm run build
+pnpm run build
 
 if [ ! -d "dist" ]; then
     echo "ERROR: Dashboard build failed - dist directory not found"

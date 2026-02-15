@@ -102,7 +102,7 @@ Install dependencies:
 
 ```bash
 cd packages/dashboard
-npm install
+pnpm install --frozen-lockfile
 ```
 
 Install Playwright browsers:

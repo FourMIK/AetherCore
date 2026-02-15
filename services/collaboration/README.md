@@ -63,7 +63,7 @@ Mission Guardian replaces legacy instant messaging systems with a hardware-backe
 
 ```bash
 cd /home/runner/work/AetherCore/AetherCore
-npm install
+pnpm install --frozen-lockfile
 ```
 
 ### 2. Build Packages

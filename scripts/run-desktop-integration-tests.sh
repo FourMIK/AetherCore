@@ -36,14 +36,14 @@ echo ""
 
 echo "📦 Installing TypeScript test dependencies..."
 cd packages/dashboard
-npm list vitest > /dev/null 2>&1 || npm install --save-dev vitest @vitest/ui happy-dom > /dev/null 2>&1
+pnpm list vitest > /dev/null 2>&1 || pnpm --filter @aethercore/dashboard add -D vitest @vitest/ui happy-dom > /dev/null 2>&1
 cd ../..
 echo ""
 
 echo "📝 Running TypeScript integration tests..."
 echo "----------------------------------------"
 cd packages/dashboard
-if npm test 2>&1; then
+if pnpm test 2>&1; then
     echo -e "${GREEN}✓ TypeScript integration tests PASSED${NC}"
 else
     TS_EXIT=$?

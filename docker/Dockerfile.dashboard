@@ -4,7 +4,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy dependency manifests first for cache-friendly, reproducible workspace installs.
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY agent/linux/package.json ./agent/linux/package.json
 COPY packages/canonical-schema/package.json ./packages/canonical-schema/package.json
 COPY packages/dashboard/package.json ./packages/dashboard/package.json
@@ -17,11 +17,11 @@ COPY services/gateway/package.json ./services/gateway/package.json
 COPY services/h2-ingest/package.json ./services/h2-ingest/package.json
 COPY services/operator/package.json ./services/operator/package.json
 
-RUN npm ci
+RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile
 
 # Copy repository source and build dashboard workspace.
 COPY . .
-RUN npm run build --workspace @aethercore/dashboard
+RUN pnpm --filter @aethercore/dashboard run build
 
 FROM nginx:alpine AS runtime
 

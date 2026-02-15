@@ -275,7 +275,7 @@ sudo -u ralphie node index.js
 ### Build
 
 ```bash
-npm install
+pnpm install --frozen-lockfile
 npm run build
 ```
 

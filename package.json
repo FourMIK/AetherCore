@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "preinstall": "node scripts/verify-toolchain.js",
-    "setup": "pnpm install && node scripts/doctor.js",
+    "setup": "pnpm install --frozen-lockfile && node scripts/doctor.js",
     "doctor": "node scripts/doctor.js",
     "build": "pnpm run build --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
     "test": "pnpm run test --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
