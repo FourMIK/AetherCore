@@ -2,6 +2,7 @@ use crate::config::{AppConfig, ConfigManager};
 use crate::error::{validation, AppError, Result};
 use crate::local_control_plane;
 use crate::process_manager::{NodeProcessInfo, NodeProcessManager, ProcessStatus};
+use crate::SentinelTrustStatus;
 use aethercore_identity::IdentityManager;
 use aethercore_stream::StreamIntegrityTracker;
 use aethercore_trust_mesh::ComplianceProof;
@@ -72,6 +73,14 @@ pub struct SupportBundleSummary {
     pub generated_at_unix_secs: u64,
     pub file_count: usize,
     pub diagnostics: DiagnosticsReport,
+}
+
+#[tauri::command]
+pub async fn get_sentinel_trust_status(
+    sentinel_status: tauri::State<'_, Arc<Mutex<SentinelTrustStatus>>>,
+) -> std::result::Result<SentinelTrustStatus, String> {
+    let guard = sentinel_status.lock().await;
+    Ok(guard.clone())
 }
 
 /// Genesis Bundle for Zero-Touch Enrollment

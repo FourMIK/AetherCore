@@ -9,6 +9,7 @@ mod provisioning_legacy;
 use aethercore_core::Error;
 use aethercore_identity::tpm::{TpmManager, TpmQuote};
 use commands::AppState;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -96,14 +97,96 @@ fn sentinel_boot() -> Result<(), String> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SentinelBootPolicy {
+    Required,
+    Optional,
+    Disabled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SentinelTrustStatus {
+    pub trust_level: String,
+    pub reduced_trust: bool,
+    pub headline: String,
+    pub detail: String,
+}
+
+impl Default for SentinelTrustStatus {
+    fn default() -> Self {
+        Self {
+            trust_level: "full".to_string(),
+            reduced_trust: false,
+            headline: "Hardware trust attested".to_string(),
+            detail: "TPM attestation verified at startup.".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SentinelStartupDecision {
+    Continue(SentinelTrustStatus),
+    FailClosed { error_details: String },
+}
+
+fn sentinel_policy_from_config(config: &crate::config::AppConfig) -> SentinelBootPolicy {
+    let mode = config.tpm_policy.mode.to_ascii_lowercase();
+    if config.tpm_policy.enforce_hardware
+        || mode == "required"
+        || config.profile == crate::config::ConnectionProfile::EnterpriseRemote
+    {
+        SentinelBootPolicy::Required
+    } else if mode == "disabled" {
+        SentinelBootPolicy::Disabled
+    } else {
+        SentinelBootPolicy::Optional
+    }
+}
+
+fn evaluate_sentinel_startup(
+    policy: SentinelBootPolicy,
+    sentinel_result: Result<(), String>,
+) -> SentinelStartupDecision {
+    match (policy, sentinel_result) {
+        (_, Ok(())) => SentinelStartupDecision::Continue(SentinelTrustStatus::default()),
+        (SentinelBootPolicy::Required, Err(error_details)) => {
+            SentinelStartupDecision::FailClosed { error_details }
+        }
+        (SentinelBootPolicy::Optional, Err(error_details)) => {
+            SentinelStartupDecision::Continue(SentinelTrustStatus {
+                trust_level: "reduced".to_string(),
+                reduced_trust: true,
+                headline: "TPM Optional Mode Active".to_string(),
+                detail: format!(
+                    "Startup continued without TPM attestation. Reduced-trust posture is active. {}",
+                    error_details
+                ),
+            })
+        }
+        (SentinelBootPolicy::Disabled, Err(error_details)) => {
+            SentinelStartupDecision::Continue(SentinelTrustStatus {
+                trust_level: "reduced".to_string(),
+                reduced_trust: true,
+                headline: "TPM Disabled Mode Active".to_string(),
+                detail: format!(
+                    "TPM verification is disabled by policy. Startup bypassed attestation. {}",
+                    error_details
+                ),
+            })
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize application state
     let app_state = Arc::new(Mutex::new(AppState::default()));
+    let sentinel_status = Arc::new(Mutex::new(SentinelTrustStatus::default()));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
+        .manage(sentinel_status)
         .setup(|app| {
             // ============================================================
             // SENTINEL BOOT: Hardware-Rooted Trust Verification
@@ -116,11 +199,30 @@ pub fn run() {
                     .unwrap_or(false)
                 && std::env::args().any(|arg| arg == "--bootstrap");
 
-            if ci_bootstrap_override {
+            let config_manager = crate::config::ConfigManager::new(&app.handle())
+                .map_err(|e| tauri::Error::Setup(e.to_string()))?;
+            let config_exists_before_boot = config_manager.get_config_path().exists();
+            let config = config_manager
+                .load()
+                .map_err(|e| tauri::Error::Setup(e.to_string()))?;
+            let sentinel_policy = sentinel_policy_from_config(&config);
+
+            let decision = if ci_bootstrap_override {
                 log::warn!(
                     "[SENTINEL] CI bootstrap validation mode enabled; skipping TPM attestation"
                 );
-            } else if let Err(error_details) = sentinel_boot() {
+                SentinelStartupDecision::Continue(SentinelTrustStatus {
+                    trust_level: "ci_override".to_string(),
+                    reduced_trust: true,
+                    headline: "CI Sentinel Override Active".to_string(),
+                    detail: "Sentinel boot attestation skipped for CI bootstrap validation."
+                        .to_string(),
+                })
+            } else {
+                evaluate_sentinel_startup(sentinel_policy, sentinel_boot())
+            };
+
+            if let SentinelStartupDecision::FailClosed { error_details } = decision {
                 // Display error dialog with remediation steps
                 let dialog_handle = app.handle().clone();
 
@@ -140,17 +242,41 @@ pub fn run() {
                 std::process::exit(1);
             }
 
+            let status = match decision {
+                SentinelStartupDecision::Continue(status) => status,
+                SentinelStartupDecision::FailClosed { .. } => unreachable!(),
+            };
+
+            if status.reduced_trust {
+                let dialog_handle = app.handle().clone();
+                let warning_text = format!("{}\n\n{}", status.headline, status.detail);
+
+                tauri::async_runtime::block_on(async move {
+                    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+
+                    dialog_handle
+                        .dialog()
+                        .message(warning_text)
+                        .kind(MessageDialogKind::Warning)
+                        .title("AetherCore Reduced-Trust Startup")
+                        .blocking_show();
+                });
+            }
+
+            if let Some(shared_status) = app.try_state::<Arc<Mutex<SentinelTrustStatus>>>() {
+                let shared_status = Arc::clone(&*shared_status);
+                tauri::async_runtime::block_on(async move {
+                    let mut guard = shared_status.lock().await;
+                    *guard = status;
+                });
+            }
+
             local_control_plane::initialize_managed_runtime();
             if let Err(error) = commands::attempt_stack_auto_recover(&app.handle()) {
                 log::warn!("Local stack auto-recovery skipped: {}", error);
             }
 
-            let config_manager = crate::config::ConfigManager::new(&app.handle())
-                .map_err(|e| tauri::Error::Setup(e.to_string()))?;
-            if config_manager
-                .ensure_install_time_config()
-                .map_err(|e| tauri::Error::Setup(e.to_string()))?
-            {
+            if !config_exists_before_boot {
                 log::info!(
                     "Created first-run runtime config at {:?}",
                     config_manager.get_config_path()
@@ -200,7 +326,21 @@ pub fn run() {
             if ci_bootstrap_override {
                 log::warn!("[SENTINEL] CI override active for bootstrap validation run");
             } else {
-                log::info!("[SENTINEL] Boot verification successful - Hardware identity confirmed");
+                let status = app
+                    .try_state::<Arc<Mutex<SentinelTrustStatus>>>()
+                    .expect("Sentinel trust status state should be managed");
+                let status = tauri::async_runtime::block_on(async {
+                    let guard = status.lock().await;
+                    guard.clone()
+                });
+
+                if status.reduced_trust {
+                    log::warn!("[SENTINEL] {} - {}", status.headline, status.detail);
+                } else {
+                    log::info!(
+                        "[SENTINEL] Boot verification successful - Hardware identity confirmed"
+                    );
+                }
             }
 
             Ok(())
@@ -244,6 +384,7 @@ pub fn run() {
             commands::get_bootstrap_state,
             commands::set_bootstrap_state,
             commands::installer_bootstrap_requested,
+            commands::get_sentinel_trust_status,
             // New unified provisioning commands
             provisioning::scan_for_assets,
             provisioning::provision_target,
@@ -270,4 +411,41 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn required_policy_fails_closed_when_tpm_boot_fails() {
+        let decision = evaluate_sentinel_startup(
+            SentinelBootPolicy::Required,
+            Err("TPM 2.0 chip missing".to_string()),
+        );
+
+        assert!(matches!(
+            decision,
+            SentinelStartupDecision::FailClosed { .. }
+        ));
+    }
+
+    #[test]
+    fn optional_policy_continues_with_reduced_trust_when_tpm_boot_fails() {
+        let decision = evaluate_sentinel_startup(
+            SentinelBootPolicy::Optional,
+            Err("TPM device unavailable".to_string()),
+        );
+
+        match decision {
+            SentinelStartupDecision::Continue(status) => {
+                assert!(status.reduced_trust);
+                assert_eq!(status.headline, "TPM Optional Mode Active");
+                assert!(status.detail.contains("TPM device unavailable"));
+            }
+            SentinelStartupDecision::FailClosed { .. } => {
+                panic!("optional policy should not fail closed")
+            }
+        }
+    }
 }
