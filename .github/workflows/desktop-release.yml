@@ -35,6 +35,7 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
       WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
       WINDOWS_SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
@@ -119,6 +120,27 @@ jobs:
             fi
           done
 
+      - name: Configure macOS signing keychain + identity
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/apple-signing.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/aethercore-signing.keychain-db"
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+
+          KEYCHAIN_PASSWORD="${APPLE_KEYCHAIN_PASSWORD:-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-aethercore}"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -F "$APPLE_SIGNING_IDENTITY"
+
       - name: Enforce signing secrets (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
@@ -130,6 +152,23 @@ jobs:
               throw "Missing required secret: $key"
             }
           }
+
+      - name: Configure Windows Authenticode certificate store
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP 'aethercore-signing.pfx'
+          [System.IO.File]::WriteAllBytes($certPath, [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+
+          $securePassword = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $imported = Import-PfxCertificate -FilePath $certPath -Password $securePassword -CertStoreLocation Cert:\CurrentUser\My -Exportable
+          if (-not $imported) { throw 'Failed to import Windows signing certificate into CurrentUser\My' }
+
+          $thumbprint = $imported.Thumbprint
+          if ([string]::IsNullOrWhiteSpace($thumbprint)) { throw 'Unable to resolve imported certificate thumbprint' }
+
+          Add-Content -Path $env:GITHUB_ENV -Value "WINDOWS_CERTIFICATE_THUMBPRINT=$thumbprint"
+          Write-Host "Configured Authenticode signing certificate thumbprint: $thumbprint"
 
       - name: Build Frontend (TypeScript)
         run: |
@@ -157,7 +196,7 @@ jobs:
 
             ### Installation
             See [INSTALLATION.md](https://github.com/FourMIK/AetherCore/blob/main/INSTALLATION.md).
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.tauri_args }}
 
@@ -307,21 +346,49 @@ jobs:
         shell: bash
         run: rm -f release-artifacts/checksum-signing.pem
 
-      - name: Attach integrity + provenance assets to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+
+
+  finalize-release:
+    name: Finalize Desktop Release (hard gate)
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download integrity artifacts from matrix builds
+        uses: actions/download-artifact@v4
         with:
-          files: |
-            release-artifacts/*.dmg
-            release-artifacts/*.msi
-            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt
-            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt.sig
-            release-artifacts/provenance-${{ matrix.platform }}.json
-            release-artifacts/release-manifest.json
-            release-artifacts/release-manifest.json.sig
-            sbom-artifacts/tauri-sbom.json
-            sbom-artifacts/frontend-sbom.json
-            sbom-artifacts/LICENSE_MANIFEST.txt
-            sbom-artifacts/SUPPLY_CHAIN_MANIFEST.md
+          pattern: release-integrity-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Attach integrity + provenance assets to GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ github.ref_name }}" \
+            release-assets/SHA256SUMS-macos.txt \
+            release-assets/SHA256SUMS-macos.txt.sig \
+            release-assets/SHA256SUMS-windows.txt \
+            release-assets/SHA256SUMS-windows.txt.sig \
+            release-assets/provenance-macos.json \
+            release-assets/provenance-windows.json \
+            release-assets/release-manifest.json \
+            release-assets/release-manifest.json.sig \
+            --clobber
+
+      - name: Publish draft release only after all signing/notarization gates pass
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ github.ref_name }}" --draft=false
+
+      - name: Confirm published integrity assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name' | \
+            grep -E 'SHA256SUMS-(macos|windows)\.txt(\.sig)?|provenance-(macos|windows)\.json|release-manifest\.json(\.sig)?'
