@@ -65,11 +65,14 @@ This is verified by the root `preinstall` hook (`scripts/verify-toolchain.js`).
 
 ### Docker builds
 
-Some Docker build stages intentionally set `SKIP_TOOLCHAIN_CHECK=1` for dependency installation. This bypass is limited to container image builds so images can install dependencies in controlled builder environments without weakening local/CI enforcement.
+The preinstall hook is resilient to missing files during Docker layer caching. When `scripts/verify-toolchain.js` is not yet present in the filesystem (e.g., when `package.json` is copied before the `scripts/` directory), the hook gracefully skips verification with an informational message.
+
+For explicit control, Docker build stages may also set `SKIP_TOOLCHAIN_CHECK=1` to bypass verification. This is recommended for container image builds to clearly document intent.
 
 - **Local development:** do **not** set `SKIP_TOOLCHAIN_CHECK`
 - **TypeScript CI job (`pnpm install --frozen-lockfile`)**: does **not** set `SKIP_TOOLCHAIN_CHECK`
-- **Dockerfiles:** may set `SKIP_TOOLCHAIN_CHECK=1` only on `pnpm install --frozen-lockfile` build steps
+- **Dockerfiles:** may set `SKIP_TOOLCHAIN_CHECK=1` only on `pnpm install --frozen-lockfile` build steps (optional but recommended for clarity)
+
 
 
 ### Creating a New Branch
