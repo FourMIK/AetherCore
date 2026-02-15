@@ -59,7 +59,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
   const [flowComplete, setFlowComplete] = useState(false);
   const [latestServiceStatus, setLatestServiceStatus] = useState<ServiceStatus[]>([]);
 
-  const recommendedProfile = 'local_control_plane';
+  const recommendedProfile = 'commander-local';
   const recommendedMeshEndpoint = 'ws://127.0.0.1:8080';
   const firstNodeId = 'first-node';
 
@@ -308,16 +308,16 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
   return (
     <div className="min-h-screen bg-carbon text-tungsten p-8">
       <div className="mx-auto max-w-3xl rounded-lg border border-overmatch/40 bg-carbon-2 p-6">
-        <h1 className="text-2xl font-display mb-2">First-Run Guided Setup</h1>
+        <h1 className="text-2xl font-display mb-2">Commander Mode Setup</h1>
         <p className="text-sm text-tungsten/80 mb-4">
-          We apply secure defaults automatically so you can get operational with minimal technical choices.
+          Tactical Glass follows a single supported first-run path: Commander Mode bootstrap.
         </p>
 
         <div className="mb-4 rounded border border-overmatch/30 bg-carbon p-3 text-xs">
-          <p className="font-semibold">Recommended defaults (auto-applied)</p>
+          <p className="font-semibold">Commander Mode defaults (auto-applied)</p>
           <p>Profile: <span className="font-mono">{recommendedProfile}</span></p>
           <p>Mesh endpoint: <span className="font-mono">{recommendedMeshEndpoint}</span></p>
-          <p className="text-tungsten/70 mt-1">Advanced toggles are hidden during first run for a deterministic setup path.</p>
+          <p className="text-tungsten/70 mt-1">Advanced options are non-default and hidden during first run for a deterministic setup path.</p>
         </div>
 
         <div className="mb-4 h-2 w-full rounded bg-carbon">

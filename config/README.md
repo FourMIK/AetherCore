@@ -6,6 +6,18 @@ AetherCore supports both JSON and TOML configuration files with hierarchical pri
 2. **Configuration File** (config.json or config.toml)
 3. **Default Values** (lowest priority)
 
+
+## Deployment Profiles
+
+Tactical Glass desktop uses a single default deployment profile:
+
+- `commander-local` (**default**): Commander Mode bootstrap with local control plane services.
+
+Advanced, non-default profiles:
+
+- `cloud-internal` (advanced): Connect to pre-existing remote/internal services.
+- `dev-compose` (advanced): Development/CI composition path only.
+
 ## Example Configuration
 
 See `config.json` for a complete example.

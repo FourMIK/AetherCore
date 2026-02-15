@@ -12,7 +12,8 @@ This guide provides comprehensive installation instructions for AetherCore Tacti
 
 ## Table of Contents
 
-- [Runtime Modes (Scoped)](#runtime-modes-scoped)
+- [Commander Mode (Default First-Run Path)](#commander-mode-default-first-run-path)
+- [Advanced Non-Default Paths](#advanced-non-default-paths)
 - [System Requirements](#system-requirements)
 - [Pre-Installation Checklist](#pre-installation-checklist)
 - [Platform-Specific Installation](#platform-specific-installation)
@@ -26,15 +27,22 @@ This guide provides comprehensive installation instructions for AetherCore Tacti
 
 ---
 
-## Runtime Modes (Scoped)
+## Commander Mode (Default First-Run Path)
 
-Desktop installation and first-run behavior now uses a canonical mode taxonomy:
+**Commander Mode** is the only supported first-run default for Tactical Glass desktop operators.
 
-- **Desktop local mode (default desktop path):** Local Control Plane startup contract in [docs/LOCAL_CONTROL_PLANE.md](docs/LOCAL_CONTROL_PLANE.md).
-- **Cloud/internal mode:** Connect Tactical Glass to pre-existing remote/internal services.
-- **Dev-only compose mode:** Use `infra/docker/docker-compose.yml` only for development/test workflows.
+- Backed by the Local Control Plane startup contract in [docs/LOCAL_CONTROL_PLANE.md](docs/LOCAL_CONTROL_PLANE.md).
+- Boots required local services and blocks UI readiness until health checks pass.
+- Runs first-launch bootstrap automatically (no mode selection required).
 
-> Deprecation: any prior instructions that treated these as parallel equivalent desktop defaults are deprecated. For desktop operators, use Local Control Plane mode by default.
+## Advanced Non-Default Paths
+
+Use these only when explicitly needed after Commander Mode onboarding:
+
+- **Cloud/internal mode (advanced):** Connect Tactical Glass to pre-existing remote/internal services.
+- **Dev-only compose mode (advanced):** Use `infra/docker/docker-compose.yml` only for development/test workflows.
+
+> Deprecation: prior instructions that treated cloud/dev as parallel first-run defaults are deprecated.
 
 ---
 
@@ -282,7 +290,7 @@ msiexec /i aethercore-tactical-glass.msi /quiet /qn /norestart
 
 Open the application using your platform's standard method.
 
-**Desktop default behavior:** Tactical Glass now boots in **Local Control Plane mode** and blocks UI readiness until required local services are healthy. Service definitions and startup order are sourced from `config/local-control-plane.toml` (see [docs/LOCAL_CONTROL_PLANE.md](docs/LOCAL_CONTROL_PLANE.md)).
+**Desktop default behavior:** Tactical Glass now boots in **Commander Mode** and blocks UI readiness until required local services are healthy. Commander Mode uses the Local Control Plane manifest (`config/local-control-plane.toml`), including startup order and health gates (see [docs/LOCAL_CONTROL_PLANE.md](docs/LOCAL_CONTROL_PLANE.md)).
 
 **2. First-Run Configuration Wizard**
 

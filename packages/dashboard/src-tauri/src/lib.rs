@@ -152,6 +152,18 @@ pub fn run() {
                     "Created first-run runtime config at {:?}",
                     config_manager.get_config_path()
                 );
+
+                // Commander Mode is the only first-launch path.
+                // Force bootstrap to run with local control plane defaults on initial install.
+                let mut first_launch_config = config_manager
+                    .load()
+                    .map_err(|e| tauri::Error::Setup(e.to_string()))?;
+                first_launch_config.profile = crate::config::ConnectionProfile::LocalControlPlane;
+                first_launch_config.features.bootstrap_on_startup = true;
+                config_manager
+                    .save(&first_launch_config)
+                    .map_err(|e| tauri::Error::Setup(e.to_string()))?;
+                log::info!("First launch pinned to Commander Mode bootstrap defaults");
             }
 
             if let Err(error) = commands::verify_node_runtime_startup(&app.handle()) {
