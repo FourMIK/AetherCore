@@ -72,9 +72,18 @@ impl Default for BackendConfig {
 
 /// Detect if running in a container environment
 fn is_running_in_container() -> bool {
-    std::env::var("RUNNING_IN_CONTAINER").is_ok()
-        || std::env::var("CONTAINER").is_ok()
-        || std::path::Path::new("/.dockerenv").exists()
+    // Check for explicit environment variables
+    let running_in_container = std::env::var("RUNNING_IN_CONTAINER")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+    let container_var = std::env::var("CONTAINER")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+    
+    // Check for Docker marker file
+    let dockerenv_exists = std::path::Path::new("/.dockerenv").exists();
+    
+    running_in_container || container_var || dockerenv_exists
 }
 
 /// Get default bunker endpoint based on environment

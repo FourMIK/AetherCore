@@ -1,7 +1,7 @@
 import OperatorService from './operator-service';
 import { createApp } from './http';
 import pino from 'pino';
-import fs from 'fs';
+import { getDefaultC2Endpoint } from '@aethercore/shared';
 
 // Initialize structured logger
 const logger = pino({
@@ -18,19 +18,9 @@ const logger = pino({
 
 export { OperatorService };
 
-function isRunningInContainer(): boolean {
-  return process.env.RUNNING_IN_CONTAINER === 'true' || process.env.CONTAINER === 'true' || fs.existsSync('/.dockerenv');
-}
-
-function getDefaultBunkerEndpoint(): string {
-  // In containerized environments, default to service DNS name
-  // Outside containers, use localhost for local development
-  return isRunningInContainer() ? 'c2-router:50051' : 'localhost:50051';
-}
-
 if (process.env.RUN_HTTP_SERVER === 'true') {
   const port = parseInt(process.env.OPERATOR_HTTP_PORT || '4001', 10);
-  const aetherBunkerEndpoint = process.env.AETHER_BUNKER_ENDPOINT || getDefaultBunkerEndpoint();
+  const aetherBunkerEndpoint = process.env.AETHER_BUNKER_ENDPOINT || getDefaultC2Endpoint();
   
   logger.info({ port, aetherBunkerEndpoint }, 'Operator service configuration loaded');
   

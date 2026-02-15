@@ -5,7 +5,7 @@
 import pino from 'pino';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
-import fs from 'fs';
+import { getDefaultC2Endpoint } from '@aethercore/shared';
 
 dotenv.config();
 
@@ -22,17 +22,7 @@ const logger = pino({
     : { transport: { target: 'pino-pretty', options: { colorize: true } } }),
 });
 
-function isRunningInContainer(): boolean {
-  return process.env.RUNNING_IN_CONTAINER === 'true' || process.env.CONTAINER === 'true' || fs.existsSync('/.dockerenv');
-}
-
-function getDefaultBunkerEndpoint(): string {
-  // In containerized environments, default to service DNS name
-  // Outside containers, use localhost for local development
-  return isRunningInContainer() ? 'c2-router:50051' : 'localhost:50051';
-}
-
-const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || getDefaultBunkerEndpoint();
+const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || getDefaultC2Endpoint();
 const DEFAULT_JWT_ISSUER = 'aethercore-auth';
 const DEFAULT_JWT_AUDIENCE = 'aethercore-services';
 
