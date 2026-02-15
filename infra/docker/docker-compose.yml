@@ -130,6 +130,7 @@ services:
       DATABASE_URL: postgresql://aethercore:aethercore_dev_password@postgres:5432/aethercore
       REDIS_URL: redis://redis:6379
       AUTH_SERVICE_URL: http://auth:3001
+      IDENTITY_REGISTRY_ADDRESS: c2-router:50051
     ports:
       - "8080:8080"
     depends_on:

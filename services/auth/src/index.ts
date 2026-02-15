@@ -5,6 +5,7 @@
 import pino from 'pino';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -21,7 +22,17 @@ const logger = pino({
     : { transport: { target: 'pino-pretty', options: { colorize: true } } }),
 });
 
-const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || 'localhost:50051';
+function isRunningInContainer(): boolean {
+  return process.env.RUNNING_IN_CONTAINER === 'true' || process.env.CONTAINER === 'true' || fs.existsSync('/.dockerenv');
+}
+
+function getDefaultBunkerEndpoint(): string {
+  // In containerized environments, default to service DNS name
+  // Outside containers, use localhost for local development
+  return isRunningInContainer() ? 'c2-router:50051' : 'localhost:50051';
+}
+
+const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || getDefaultBunkerEndpoint();
 const DEFAULT_JWT_ISSUER = 'aethercore-auth';
 const DEFAULT_JWT_AUDIENCE = 'aethercore-services';
 

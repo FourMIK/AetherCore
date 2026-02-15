@@ -11,7 +11,7 @@
  * 
  * Environment Variables:
  * - PORT: WebSocket server port (default: 8080)
- * - IDENTITY_REGISTRY_ADDRESS: gRPC address for Identity Registry (default: localhost:50051)
+ * - IDENTITY_REGISTRY_ADDRESS: gRPC address for Identity Registry (default: c2-router:50051 in containers, localhost:50051 otherwise)
  */
 
 // Export production components
@@ -20,6 +20,23 @@ export { VerificationService, ConsoleSecurityEventHandler } from './Verification
 export * from './IdentityRegistryClient';
 
 import { SignalingServer } from './SignalingServer';
+import fs from 'fs';
+
+/**
+ * Detect if running in a container environment
+ */
+function isRunningInContainer(): boolean {
+  return process.env.RUNNING_IN_CONTAINER === 'true' || process.env.CONTAINER === 'true' || fs.existsSync('/.dockerenv');
+}
+
+/**
+ * Get default identity registry address based on environment
+ */
+function getDefaultRegistryAddress(): string {
+  // In containerized environments, default to service DNS name
+  // Outside containers, use localhost for local development
+  return isRunningInContainer() ? 'c2-router:50051' : 'localhost:50051';
+}
 
 /**
  * Start the collaboration service (Production Mode with gRPC)
@@ -35,7 +52,7 @@ export function startCollaborationService(
 ): SignalingServer {
   // Read from environment variables or use defaults
   const serverPort = port ?? parseInt(process.env.PORT || '8080', 10);
-  const registryAddress = identityRegistryAddress ?? process.env.IDENTITY_REGISTRY_ADDRESS ?? 'localhost:50051';
+  const registryAddress = identityRegistryAddress ?? process.env.IDENTITY_REGISTRY_ADDRESS ?? getDefaultRegistryAddress();
 
   console.log('='.repeat(80));
   console.log('[CollaborationService] Starting Mission Guardian Collaboration Service');
