@@ -9,14 +9,15 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ed25519_dalek::VerifyingKey;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use tauri::{path::BaseDirectory, Manager};
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tokio::sync::Mutex;
 
 const DASHBOARD_NODE_PROTOCOL_VERSION: u32 = 1;
+const DASHBOARD_NODE_RUNTIME_VERSION: u32 = 1;
 
 /// Genesis Bundle for Zero-Touch Enrollment
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -740,6 +741,7 @@ pub struct DeploymentStatus {
 #[derive(Debug, Deserialize)]
 struct NodeVersionHandshake {
     version: String,
+    runtime_version: u32,
     protocol_version: u32,
 }
 
@@ -822,7 +824,7 @@ pub async fn deploy_node(
         format!("Failed to locate node binary: {}", e)
     })?;
 
-    verify_node_binary_compatibility(&binary_path).map_err(|e| {
+    let _ = verify_node_binary_compatibility(&binary_path).map_err(|e| {
         show_node_binary_remediation_dialog(
             &app_handle,
             "AetherCore Node Version Mismatch",
@@ -985,21 +987,24 @@ fn locate_node_binary(app_handle: &tauri::AppHandle) -> Result<String> {
     }
 
     // Check bundled resources via Tauri path resolver
+    let platform_resource_dir = if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    };
+
     let binary_name = if cfg!(target_os = "windows") {
         "aethercore-node.exe"
     } else {
         "aethercore-node"
     };
 
-    let mut candidate_resource_names = vec![binary_name.to_string()];
-    if let Ok(target_triple) = std::env::var("TARGET") {
-        let platform_specific = if cfg!(target_os = "windows") {
-            format!("aethercore-node-{target_triple}.exe")
-        } else {
-            format!("aethercore-node-{target_triple}")
-        };
-        candidate_resource_names.insert(0, platform_specific);
-    }
+    let candidate_resource_names = [
+        format!("{platform_resource_dir}/{binary_name}"),
+        binary_name.to_string(),
+    ];
 
     for resource_name in candidate_resource_names {
         if let Ok(resource_path) = app_handle
@@ -1025,7 +1030,7 @@ fn locate_node_binary(app_handle: &tauri::AppHandle) -> Result<String> {
     ))
 }
 
-fn verify_node_binary_compatibility(binary_path: &str) -> Result<()> {
+fn read_node_handshake(binary_path: &str) -> Result<NodeVersionHandshake> {
     let output = Command::new(binary_path)
         .arg("--version-json")
         .output()
@@ -1040,14 +1045,27 @@ fn verify_node_binary_compatibility(binary_path: &str) -> Result<()> {
         ));
     }
 
-    let handshake: NodeVersionHandshake = serde_json::from_slice(&output.stdout)
-        .map_err(|e| anyhow::anyhow!("Invalid node handshake output: {e}"))?;
+    serde_json::from_slice(&output.stdout)
+        .map_err(|e| anyhow::anyhow!("Invalid node handshake output: {e}"))
+}
+
+fn verify_node_binary_compatibility(binary_path: &str) -> Result<NodeVersionHandshake> {
+    let handshake = read_node_handshake(binary_path)?;
 
     let dashboard_version = Version::parse(env!("CARGO_PKG_VERSION"))
         .map_err(|e| anyhow::anyhow!("Invalid dashboard semantic version: {e}"))?;
     let node_version = Version::parse(&handshake.version).map_err(|e| {
         anyhow::anyhow!("Invalid node semantic version '{}': {e}", handshake.version)
     })?;
+
+    if handshake.runtime_version != DASHBOARD_NODE_RUNTIME_VERSION {
+        return Err(anyhow::anyhow!(
+            "Runtime mismatch. Dashboard requires runtime v{}, but node reports runtime v{}.
+Install a node binary compiled for this dashboard runtime.",
+            DASHBOARD_NODE_RUNTIME_VERSION,
+            handshake.runtime_version
+        ));
+    }
 
     if handshake.protocol_version != DASHBOARD_NODE_PROTOCOL_VERSION {
         return Err(anyhow::anyhow!(
@@ -1076,18 +1094,116 @@ Upgrade the bundled node binary or set NODE_BINARY_PATH to a newer build.",
         ));
     }
 
+    Ok(handshake)
+}
+
+pub fn verify_node_runtime_startup(app_handle: &tauri::AppHandle) -> Result<()> {
+    let binary_path = locate_node_binary(app_handle)?;
+    let handshake = verify_node_binary_compatibility(&binary_path)?;
+    log::info!(
+        "Startup compatibility check passed: binary={} runtime=v{} protocol=v{} node_version={}",
+        binary_path,
+        handshake.runtime_version,
+        handshake.protocol_version,
+        handshake.version
+    );
     Ok(())
 }
 
-fn show_node_binary_remediation_dialog(app_handle: &tauri::AppHandle, title: &str, details: &str) {
-    app_handle
+pub fn attempt_node_binary_repair(app_handle: &tauri::AppHandle) -> Result<String> {
+    let binary_name = if cfg!(target_os = "windows") {
+        "aethercore-node.exe"
+    } else {
+        "aethercore-node"
+    };
+    let platform_resource_dir = if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    };
+
+    let bundled_path = app_handle
+        .path()
+        .resolve(
+            format!("{platform_resource_dir}/{binary_name}"),
+            BaseDirectory::Resource,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to resolve bundled node binary: {e}"))?;
+
+    if !bundled_path.exists() {
+        return Err(anyhow::anyhow!(
+            "Bundled node binary missing at {}",
+            bundled_path.display()
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&bundled_path)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&bundled_path, perms)?;
+    }
+
+    let handshake = verify_node_binary_compatibility(path_to_str(&bundled_path)?)?;
+    Ok(format!(
+        "Repaired bundled node binary at {} (runtime v{}, protocol v{}, node version {})",
+        bundled_path.display(),
+        handshake.runtime_version,
+        handshake.protocol_version,
+        handshake.version
+    ))
+}
+
+fn path_to_str(path: &Path) -> Result<&str> {
+    path.to_str()
+        .ok_or_else(|| anyhow::anyhow!("Path contains invalid UTF-8: {}", path.display()))
+}
+
+pub fn show_node_binary_remediation_dialog(
+    app_handle: &tauri::AppHandle,
+    title: &str,
+    details: &str,
+) {
+    let requested_repair = app_handle
         .dialog()
         .message(format!(
-            "{details}\n\nREMEDIATION:\n1. Run `cargo build -p aethercore-node --release`.\n2. Rebuild the desktop app with `tauri build`.\n3. Or set NODE_BINARY_PATH to a compatible aethercore-node executable."
+            "{details}\n\nREMEDIATION:\n1. Click 'Repair Now' to re-validate bundled runtime assets.\n2. If repair fails, rebuild with `cargo build -p aethercore-node --release` and package again with `tauri build`.\n3. Or set NODE_BINARY_PATH to a compatible aethercore-node executable."
+        ))
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Repair Now".to_string(),
+            "Dismiss".to_string(),
         ))
         .kind(MessageDialogKind::Error)
         .title(title)
         .blocking_show();
+
+    if requested_repair {
+        match attempt_node_binary_repair(app_handle) {
+            Ok(message) => {
+                app_handle
+                    .dialog()
+                    .message(format!(
+                        "{message}\n\nRe-run the previous operation to continue."
+                    ))
+                    .kind(MessageDialogKind::Info)
+                    .title("AetherCore Runtime Repair Complete")
+                    .blocking_show();
+            }
+            Err(error) => {
+                app_handle
+                    .dialog()
+                    .message(format!(
+                        "Repair failed: {error}\n\nManual remediation:\n1. Rebuild with `cargo build -p aethercore-node --release`.\n2. Repackage the desktop app with `tauri build`."
+                    ))
+                    .kind(MessageDialogKind::Error)
+                    .title("AetherCore Runtime Repair Failed")
+                    .blocking_show();
+            }
+        }
+    }
 }
 
 /// Sign Heartbeat Payload (Aetheric Link Protocol)

@@ -73,6 +73,7 @@ pub async fn provision_target(
     credentials: Option<Credentials>,
     firmware_path: Option<String>,
     window: tauri::Window,
+    app_handle: tauri::AppHandle,
 ) -> Result<ProvisioningResult, String> {
     log::info!("Starting unified provisioning for target: {:?}", target);
 
@@ -91,7 +92,7 @@ pub async fn provision_target(
                 "FAIL-VISIBLE: Missing credentials for network device provisioning".to_string()
             })?;
 
-            provision_network_device(&target, creds).await
+            provision_network_device(&app_handle, &target, creds).await
         }
         _ => Err(format!(
             "FAIL-VISIBLE: Unsupported device type: {}. \
@@ -128,6 +129,7 @@ async fn provision_usb_device(
 
 /// Provision network device (remote)
 async fn provision_network_device(
+    app_handle: &tauri::AppHandle,
     target: &CandidateNode,
     credentials: Credentials,
 ) -> Result<ProvisioningResult, String> {
@@ -139,6 +141,7 @@ async fn provision_network_device(
 
     // Use injector module to SSH and provision
     let identity = injector::inject_pi(
+        app_handle,
         target.id.clone(),
         credentials.username,
         credentials.password,

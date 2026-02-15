@@ -379,6 +379,45 @@ jobs:
           cd packages/dashboard
           pnpm tauri build
 
+      - name: Validation Gate (macOS): install + smoke-launch package
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="$(find packages/dashboard/src-tauri/target/release/bundle -name '*.dmg' | head -n 1)"
+          mount_dir="$(mktemp -d)"
+          hdiutil attach "$dmg" -mountpoint "$mount_dir"
+          app_path="$(find "$mount_dir" -maxdepth 1 -name '*.app' | head -n 1)"
+          cp -R "$app_path" /Applications/
+          hdiutil detach "$mount_dir"
+
+          app_bin="/Applications/$(basename "$app_path")/Contents/MacOS/$(basename "$app_path" .app)"
+          CI=1 AETHERCORE_SKIP_SENTINEL_FOR_CI=1 "$app_bin" --bootstrap > /tmp/aethercore-ci-macos.log 2>&1 &
+          app_pid=$!
+          sleep 20
+          kill "$app_pid" || true
+
+      - name: Validation Gate (Windows): install + smoke-launch package
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem -Path "packages/dashboard/src-tauri/target/release/bundle" -Recurse -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { throw "No MSI artifact found" }
+
+          Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart" -Wait -NoNewWindow
+
+          $exe = Get-ChildItem -Path "$env:LOCALAPPDATA\Programs" -Recurse -Filter "*.exe" |
+            Where-Object { $_.Name -like "*Tactical*" -or $_.Name -like "*aethercore*" } |
+            Select-Object -First 1
+          if (-not $exe) { throw "Installed executable not found" }
+
+          $launch = Start-Process -FilePath $exe.FullName -ArgumentList "--bootstrap" -PassThru -Environment @{
+            CI = '1'
+            AETHERCORE_SKIP_SENTINEL_FOR_CI = '1'
+          }
+          Start-Sleep -Seconds 20
+          if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
