@@ -1,0 +1,28 @@
+# Canonical desktop startup manifest for Tactical Glass local dependencies.
+# This is the single source of truth used by docs and the dashboard startup orchestrator.
+
+mode = "desktop-local-control-plane"
+version = 1
+
+[startup]
+health_poll_interval_ms = 1000
+service_start_grace_period_ms = 1500
+service_health_timeout_secs = 90
+
+[[services]]
+name = "gateway"
+startup_order = 10
+required = true
+port = 3000
+health_endpoint = "http://127.0.0.1:3000/health"
+working_dir = "services/gateway"
+start_command = "pnpm run dev"
+
+[[services]]
+name = "collaboration"
+startup_order = 20
+required = true
+port = 8080
+health_endpoint = "http://127.0.0.1:8080/health"
+working_dir = "services/collaboration"
+start_command = "pnpm run dev"
