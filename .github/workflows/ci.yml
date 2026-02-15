@@ -265,6 +265,25 @@ jobs:
           docker build -f infra/docker/Dockerfile.c2-router-mock -t aethercore-c2-router-mock-ci .
           docker build -f services/h2-ingest/Dockerfile -t aethercore-h2-ingest-ci .
 
+      - name: Validate gateway container boots without monorepo crates tree
+        run: |
+          docker run --rm aethercore-gateway-ci test ! -d /app/crates
+
+          GATEWAY_CONTAINER_ID=$(docker run -d -p 3000:3000 -e C2_ADDR=127.0.0.1:59999 aethercore-gateway-ci)
+          trap 'docker rm -f "$GATEWAY_CONTAINER_ID" >/dev/null 2>&1 || true' EXIT
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null; then
+              echo "Gateway health endpoint is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "Gateway failed to start in minimal runtime image"
+          docker logs "$GATEWAY_CONTAINER_ID"
+          exit 1
+
   build-and-push-internal:
     name: Build and Push Docker Images (Internal)
     runs-on: ubuntu-latest

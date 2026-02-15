@@ -7,6 +7,8 @@ on:
       - 'services/gateway/src/**'
       - 'services/gateway/package.json'
       - 'services/gateway/tsconfig.json'
+      - 'services/gateway/proto/**/*.proto'
+      - 'services/gateway/scripts/**'
   push:
     branches: [main, develop, internal]
     paths:
@@ -14,6 +16,8 @@ on:
       - 'services/gateway/src/**'
       - 'services/gateway/package.json'
       - 'services/gateway/tsconfig.json'
+      - 'services/gateway/proto/**/*.proto'
+      - 'services/gateway/scripts/**'
 
 jobs:
   gateway-proto-client-drift:
@@ -36,7 +40,6 @@ jobs:
 
       - name: Validate pnpm-only policy
         run: ./scripts/enforce-pnpm-policy.sh
-
 
       - name: Run targeted gateway proto/client integration test
         run: pnpm --filter @aethercore/gateway run test:integration

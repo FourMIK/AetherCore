@@ -5,13 +5,15 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "pnpm run proto:sync && pnpm run proto:types && tsc && node ./scripts/copy-proto-assets.mjs",
     "clean": "rm -rf dist",
     "dev": "tsc && node dist/index.js",
     "start": "node dist/index.js",
     "test": "npm run test:integration",
     "lint": "eslint src --ext .ts",
-    "test:integration": "npm run build && node --test dist/__tests__/c2-client.integration.test.js"
+    "test:integration": "pnpm run build && node --test dist/__tests__/c2-client.integration.test.js",
+    "proto:sync": "node ./scripts/sync-c2-proto.mjs",
+    "proto:types": "pnpm exec proto-loader-gen-types --grpcLib=@grpc/grpc-js --outDir dist/generated proto/c2.proto"
   },
   "keywords": [
     "aethercore",
