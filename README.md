@@ -22,6 +22,9 @@ AetherCore replaces "trust by policy" with **Cryptographic Certainty**. It is de
 
 ### Key Capabilities
 
+### Supported Product Profile
+- **Commander Edition (default):** Guided bootstrap and first deployment for field operators without terminal usage.
+
 * **🛡️ Hardware-Rooted Identity:** Every node is cryptographically bound to physical silicon (TPM 2.0 / Secure Enclave).
 * **🔗 Merkle Vine™ Integrity:** Telemetry streams are historically anchored; data cannot be injected retroactively.
 * **⚡ The Aetheric Sweep:** Automated gossip protocols actively hunt and isolate compromised or "lying" nodes.
@@ -37,9 +40,11 @@ For the latest desktop installers, use only assets listed in each release's `rel
 Each listed artifact is manifest-backed with SHA-256 and signature metadata for deployment validation.
 
 ### Installation
-See the [Installation Guide](INSTALLATION.md) and follow the **Commander Mode** first-run sequence (single supported default path).
+See the [Installation Guide](INSTALLATION.md) and follow the **Commander Edition** first-run sequence (single supported default path).
 
-### Running from Source
+## Appendix A: Advanced/Engineering Flows
+
+### Build and Run from Source (Engineering)
 
 **Prerequisites:**
 * Node.js 20+
@@ -54,7 +59,7 @@ cd AetherCore
 # 2. Install dependencies
 pnpm install
 
-# 3. Build & Run Desktop App (Commander Mode default)
+# 3. Build & Run Desktop App (Commander Edition baseline)
 cd packages/dashboard
 pnpm tauri dev
 ```
@@ -69,6 +74,7 @@ pnpm tauri dev
 * [Security](SECURITY.md): Threat models and reporting vulnerabilities.
 * [Protocol Overview](PROTOCOL_OVERVIEW.md): Deep dive into the consensus mechanism.
 * [TPM Configuration](docs/TPM_CONFIGURATION.md): TPM runtime configuration and security implications.
+* [Product Profiles](docs/PRODUCT_PROFILES.md): Commander Edition default profile and engineering appendix.
 * [Copilot MCP Configuration](docs/COPILOT_MCP_CONFIGURATION.md): GitHub Copilot Model Context Protocol setup.
 
 ## Contributing
@@ -79,18 +85,20 @@ Copyright © 2026 FourMIK. Released under the Apache 2.0 License. See [LICENSE](
 
 ---
 
-## First Run & Configuration (Commander Mode)
+## First Run & Configuration (Commander Edition)
 
-Upon launching Tactical Glass for the first time, the app enters **Commander Mode bootstrap** automatically.
+Upon launching Tactical Glass for the first time, the app enters **Commander Edition bootstrap** automatically.
 
 ### Single Supported First-Run Sequence
 1. Launch Tactical Glass.
-2. Allow Commander Mode bootstrap to run environment checks, local stack startup, mesh connection, and first-node deployment.
+2. Allow Commander Edition bootstrap to run environment checks, local stack startup, mesh connection, and first-node deployment.
 3. Click **Open dashboard** when bootstrap reports **System Ready**.
 4. Continue normal operations from the Command Dashboard.
 
-### Advanced (Non-Default)
-Cloud/internal and dev workflows are available only as advanced paths and are not the default first-run experience. See [DEPLOYMENT_DESKTOP.md](DEPLOYMENT_DESKTOP.md).
+**Acceptance criteria:** A non-technical user can complete first deployment from this flow without opening a terminal.
+
+### Advanced/Engineering Appendix
+Cloud/internal and dev workflows are intentionally moved to Appendix A and are not part of the supported first-run operator path. See [DEPLOYMENT_DESKTOP.md](DEPLOYMENT_DESKTOP.md).
 
 ### Hardware Pairing (ESP32)
 Requires Firmware v0.1.0 flashed to device.
@@ -111,7 +119,9 @@ If you cannot deploy nodes:
 * Ensure ports 8080 and 9000-9100 are not blocked by your firewall.
 * Check the logs in the Deployments view for specific error messages.
 
-## Dashboard Production Docker Image
+## Appendix B: Engineering Container Deployment
+
+### Dashboard Production Docker Image (Engineering)
 
 A production-ready dashboard container is available via a multi-stage build (`node:20-alpine` builder + `nginx:alpine` runtime) with runtime environment injection.
 

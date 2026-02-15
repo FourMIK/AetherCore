@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 export interface UnifiedRuntimeConfig {
   schema_version: number;
+  product_profile: 'commander_edition' | string;
   profile: 'local_control_plane' | 'testnet' | 'production_mesh';
   connection: {
     api_url: string;
@@ -57,6 +58,7 @@ function buildEnvFallbackConfig(): UnifiedRuntimeConfig {
 
   return {
     schema_version: 2,
+    product_profile: 'commander_edition',
     profile: 'local_control_plane',
     connection: {
       api_url: apiUrl,

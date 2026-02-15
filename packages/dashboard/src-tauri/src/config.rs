@@ -39,6 +39,12 @@ pub enum ConnectionProfile {
     ProductionMesh,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProductProfile {
+    CommanderEdition,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeConnection {
     pub api_url: String,
@@ -71,6 +77,8 @@ pub struct RetryConfig {
 pub struct AppConfig {
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
+    #[serde(default = "default_product_profile")]
+    pub product_profile: ProductProfile,
     #[serde(default = "default_profile")]
     pub profile: ConnectionProfile,
     pub connection: RuntimeConnection,
@@ -94,6 +102,10 @@ struct LegacyConfig {
 
 fn default_schema_version() -> u32 {
     CONFIG_SCHEMA_VERSION
+}
+
+fn default_product_profile() -> ProductProfile {
+    ProductProfile::CommanderEdition
 }
 
 fn default_profile() -> ConnectionProfile {
@@ -130,6 +142,7 @@ impl AppConfig {
     pub fn local_control_plane() -> Self {
         Self {
             schema_version: CONFIG_SCHEMA_VERSION,
+            product_profile: ProductProfile::CommanderEdition,
             profile: ConnectionProfile::LocalControlPlane,
             connection: RuntimeConnection {
                 api_url: "http://127.0.0.1:3000".to_string(),
@@ -150,6 +163,7 @@ impl AppConfig {
     pub fn testnet() -> Self {
         Self {
             schema_version: CONFIG_SCHEMA_VERSION,
+            product_profile: ProductProfile::CommanderEdition,
             profile: ConnectionProfile::Testnet,
             connection: RuntimeConnection {
                 api_url: "https://api.testnet.aethercore.example".to_string(),
@@ -170,6 +184,7 @@ impl AppConfig {
     pub fn production_mesh() -> Self {
         Self {
             schema_version: CONFIG_SCHEMA_VERSION,
+            product_profile: ProductProfile::CommanderEdition,
             profile: ConnectionProfile::ProductionMesh,
             connection: RuntimeConnection {
                 api_url: "https://api.aethercore.example".to_string(),

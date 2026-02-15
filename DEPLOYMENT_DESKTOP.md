@@ -8,21 +8,19 @@ This guide covers deployment of the AetherCore Tactical Glass desktop applicatio
 
 ## Deployment Modes (Scoped)
 
-### Commander Mode (**only default desktop path**)
+**Acceptance criteria:** A non-technical user can complete first deployment through Commander Edition without terminal usage.
+
+### Commander Edition (**only default desktop path**)
 - Canonical first-run and day-one runtime path for Tactical Glass desktop deployments.
 - Uses the Local Control Plane contract in [docs/LOCAL_CONTROL_PLANE.md](docs/LOCAL_CONTROL_PLANE.md).
 - Service startup order, ports, and health gates are defined in `config/local-control-plane.toml`.
 - Dashboard startup blocks until required services are healthy.
 
-### Advanced (non-default): Cloud/internal mode
-- Tactical Glass connects to managed internal or cloud-hosted services.
-- Local service bootstrap is disabled by setting `AETHERCORE_MODE` to a non-`desktop-local` value.
+### Advanced/Engineering paths
+- Cloud/internal and dev/infra compose flows are intentionally moved to [Appendix A: Advanced/Engineering](#appendix-a-advancedengineering).
+- These are non-default and out of scope for first deployment operators.
 
-### Advanced (non-default): Dev-only compose mode
-- `infra/docker/docker-compose.yml` is for development/test composition only.
-- Not the default operator desktop deployment path.
-
-> Deprecation: ambiguous docs that implied these modes are parallel defaults are superseded by Commander Mode as the single default.
+> Deprecation: ambiguous docs that implied these modes are parallel defaults are superseded by Commander Edition as the single default.
 
 ## Build Artifacts
 
@@ -79,7 +77,7 @@ This guide covers deployment of the AetherCore Tactical Glass desktop applicatio
 - **Storage**: 100MB free space
 - **Hardware**: Raspberry Pi 4, or compatible ARM64 SBC
 
-## Installation (Commander Mode Default)
+## Installation (Commander Edition Default)
 
 ### Linux (Ubuntu/Debian)
 
@@ -290,7 +288,17 @@ All IT deployment channels must use `release-manifest.json` as the source of tru
 
 Pipelines must fail closed when manifest validation fails or artifact hashes do not match.
 
-## Build from Source
+## Appendix A: Advanced/Engineering
+
+### Cloud/internal mode (non-default)
+- Tactical Glass connects to managed internal or cloud-hosted services.
+- Local service bootstrap is disabled by setting `AETHERCORE_MODE` to a non-`desktop-local` value.
+
+### Dev-only compose mode (non-default)
+- `infra/docker/docker-compose.yml` is for development/test composition only.
+- Not the default operator desktop deployment path.
+
+### Build from Source
 
 See [README.md](README.md) for build instructions.
 
@@ -311,7 +319,7 @@ npm run tauri:build
 
 Build artifacts will be in `packages/dashboard/src-tauri/target/release/bundle/`
 
-## CI/CD Pipeline
+### CI/CD Pipeline
 
 Automated builds run on every push to `main` and `develop`:
 
@@ -320,7 +328,7 @@ Automated builds run on every push to `main` and `develop`:
 - **Artifacts**: Uploaded to GitHub Actions artifacts
 - **Releases**: Tagged commits automatically publish to GitHub Releases
 
-### Triggering a Release
+#### Triggering a Release
 
 ```bash
 git tag -a v0.1.0 -m "Release v0.1.0"

@@ -167,6 +167,7 @@ export const TauriCommands = {
  */
 export interface AppConfig {
   schema_version: number;
+  product_profile: 'commander_edition' | string;
   profile: 'local_control_plane' | 'testnet' | 'production_mesh';
   connection: {
     api_url: string;
