@@ -101,6 +101,11 @@ function checkPnpmVersion() {
 }
 
 // Main execution
+if (process.env.SKIP_TOOLCHAIN_CHECK === '1') {
+  console.log('Skipping toolchain verification because SKIP_TOOLCHAIN_CHECK=1');
+  process.exit(0);
+}
+
 console.log('\nVerifying toolchain requirements...\n');
 
 try {

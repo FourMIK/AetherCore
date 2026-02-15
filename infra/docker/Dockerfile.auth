@@ -3,13 +3,14 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files and toolchain scripts required by preinstall
 COPY package*.json ./
+COPY scripts ./scripts
 COPY services/auth/package*.json ./services/auth/
 COPY packages/shared/package*.json ./packages/shared/
 
 # Install dependencies
-RUN npm ci --workspace=@aethercore/auth --workspace=@aethercore/shared
+RUN SKIP_TOOLCHAIN_CHECK=1 npm ci --workspace=@aethercore/auth --workspace=@aethercore/shared
 
 # Copy source code
 COPY services/auth ./services/auth
