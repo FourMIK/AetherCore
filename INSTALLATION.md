@@ -12,6 +12,7 @@ This guide provides comprehensive installation instructions for AetherCore Tacti
 
 ## Table of Contents
 
+- [Runtime Modes (Scoped)](#runtime-modes-scoped)
 - [System Requirements](#system-requirements)
 - [Pre-Installation Checklist](#pre-installation-checklist)
 - [Platform-Specific Installation](#platform-specific-installation)
@@ -22,6 +23,18 @@ This guide provides comprehensive installation instructions for AetherCore Tacti
 - [Verification](#verification)
 - [Troubleshooting](#troubleshooting)
 - [Uninstallation](#uninstallation)
+
+---
+
+## Runtime Modes (Scoped)
+
+Desktop installation and first-run behavior now uses a canonical mode taxonomy:
+
+- **Desktop local mode (default desktop path):** Local Control Plane startup contract in [docs/LOCAL_CONTROL_PLANE.md](docs/LOCAL_CONTROL_PLANE.md).
+- **Cloud/internal mode:** Connect Tactical Glass to pre-existing remote/internal services.
+- **Dev-only compose mode:** Use `infra/docker/docker-compose.yml` only for development/test workflows.
+
+> Deprecation: any prior instructions that treated these as parallel equivalent desktop defaults are deprecated. For desktop operators, use Local Control Plane mode by default.
 
 ---
 
@@ -275,6 +288,8 @@ msiexec /i aethercore-tactical-glass.msi /quiet /qn /norestart
 **1. Launch Tactical Glass**
 
 Open the application using your platform's standard method.
+
+**Desktop default behavior:** Tactical Glass now boots in **Local Control Plane mode** and blocks UI readiness until required local services are healthy. Service definitions and startup order are sourced from `config/local-control-plane.toml` (see [docs/LOCAL_CONTROL_PLANE.md](docs/LOCAL_CONTROL_PLANE.md)).
 
 **2. First-Run Configuration Wizard**
 

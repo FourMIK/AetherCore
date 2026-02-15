@@ -6,6 +6,24 @@ This guide covers deployment of the AetherCore Tactical Glass desktop applicatio
 
 > **For Release Managers**: If you're building and releasing desktop applications, see [docs/SECRET_PROVISIONING.md](docs/SECRET_PROVISIONING.md) for code signing certificate setup and release workflow configuration.
 
+## Deployment Modes (Scoped)
+
+### Desktop local mode (**default desktop path**)
+- Canonical runtime path for Tactical Glass desktop deployments.
+- Uses the Local Control Plane contract in [docs/LOCAL_CONTROL_PLANE.md](docs/LOCAL_CONTROL_PLANE.md).
+- Service startup order, ports, and health gates are defined in `config/local-control-plane.toml`.
+- Dashboard startup blocks until required services are healthy.
+
+### Cloud/internal mode
+- Tactical Glass connects to managed internal or cloud-hosted services.
+- Local service bootstrap is disabled by setting `AETHERCORE_MODE` to a non-`desktop-local` value.
+
+### Dev-only compose mode
+- `infra/docker/docker-compose.yml` is for development/test composition only.
+- Not the default operator desktop deployment path.
+
+> Deprecation: ambiguous docs that implied these modes are parallel defaults are superseded by this explicit scoping.
+
 ## Build Artifacts
 
 ### Desktop Applications
@@ -61,7 +79,7 @@ This guide covers deployment of the AetherCore Tactical Glass desktop applicatio
 - **Storage**: 100MB free space
 - **Hardware**: Raspberry Pi 4, or compatible ARM64 SBC
 
-## Installation
+## Installation (Desktop Local Mode Default)
 
 ### Linux (Ubuntu/Debian)
 

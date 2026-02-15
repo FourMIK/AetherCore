@@ -49,3 +49,4 @@ p256 = { version = "0.13", features = ["ecdsa"] }
 hex = "0.4"
 ssh2 = "0.9"
 mdns-sd = "0.11"
+toml = "0.8"
