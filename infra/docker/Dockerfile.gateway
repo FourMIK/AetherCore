@@ -12,12 +12,11 @@ COPY packages/shared/package.json ./packages/shared/
 # Install dependencies
 RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --filter @aethercore/gateway --filter @aethercore/shared
 
-# Copy source code and authoritative proto source used by gateway asset sync
+# Copy source code (proto is vendored in services/gateway/proto)
 COPY services/gateway ./services/gateway
 COPY packages/shared ./packages/shared
-COPY crates/c2-router/proto ./crates/c2-router/proto
 
-# Build the service (includes proto sync + generated TS stubs + packaged proto asset copy)
+# Build the service (includes proto validation + generated TS stubs + packaged proto asset copy)
 RUN pnpm --filter @aethercore/gateway run build
 
 # Production stage
@@ -35,7 +34,7 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 # Create non-root user
-RUN addgroup -g 1000 nonroot && adduser -D -u 1000 -G nonroot nonroot
+RUN addgroup -g 1001 nonroot && adduser -D -u 1001 -G nonroot nonroot
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
