@@ -10,8 +10,8 @@ fn test_default_config() {
 
     assert_eq!(config.schema_version, CONFIG_SCHEMA_VERSION);
     assert_eq!(config.product_profile, ProductProfile::CommanderEdition);
-    assert_eq!(config.profile, ConnectionProfile::LocalControlPlane);
-    assert!(!config.connection.api_url.is_empty());
+    assert_eq!(config.profile, ConnectionProfile::CommanderLocal);
+    assert!(!config.connection.api_endpoint.is_empty());
     assert!(!config.connection.mesh_endpoint.is_empty());
     assert_eq!(config.connection_retry.max_retries, 10);
 }
@@ -23,8 +23,11 @@ fn test_config_serialization() {
     let deserialized: AppConfig = serde_json::from_str(&json).unwrap();
 
     assert_eq!(deserialized.schema_version, CONFIG_SCHEMA_VERSION);
-    assert_eq!(deserialized.product_profile, ProductProfile::CommanderEdition);
-    assert_eq!(deserialized.profile, ConnectionProfile::ProductionMesh);
+    assert_eq!(
+        deserialized.product_profile,
+        ProductProfile::CommanderEdition
+    );
+    assert_eq!(deserialized.profile, ConnectionProfile::EnterpriseRemote);
     assert!(deserialized.connection.mesh_endpoint.starts_with("wss://"));
 }
 

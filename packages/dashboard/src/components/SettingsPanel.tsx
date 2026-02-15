@@ -96,11 +96,11 @@ export function SettingsPanel() {
             className="w-full px-3 py-2 bg-black/50 border border-cyan-900/50 rounded"
           >
             <optgroup label="Default">
-              <option value="local_control_plane">Commander Mode (commander-local)</option>
+              <option value="commander-local">Commander Mode (commander-local)</option>
             </optgroup>
             <optgroup label="Advanced (non-default)">
-              <option value="testnet">Cloud/Internal (testnet profile)</option>
-              <option value="production_mesh">Production Mesh (cloud profile)</option>
+              <option value="training-testnet">Cloud/Internal (testnet profile)</option>
+              <option value="enterprise-remote">Production Mesh (cloud profile)</option>
             </optgroup>
           </select>
         </section>
@@ -110,8 +110,8 @@ export function SettingsPanel() {
           <label className="block mb-2 text-sm font-medium">API URL</label>
           <input
             type="text"
-            value={config.connection.api_url}
-            onChange={(e) => updateConfig((c) => ({ ...c, connection: { ...c.connection, api_url: e.target.value } }))}
+            value={config.connection.api_endpoint}
+            onChange={(e) => updateConfig((c) => ({ ...c, connection: { ...c.connection, api_endpoint: e.target.value } }))}
             className="w-full px-3 py-2 bg-black/50 border border-cyan-900/50 rounded mb-4"
           />
 
@@ -129,8 +129,8 @@ export function SettingsPanel() {
           <h3 className="text-xl font-semibold mb-4 text-cyan-200">Advanced Runtime Controls (non-default)</h3>
           <label className="block mb-2 text-sm font-medium">TPM Mode</label>
           <select
-            value={config.tpm.mode}
-            onChange={(e) => updateConfig((c) => ({ ...c, tpm: { ...c.tpm, mode: e.target.value } }))}
+            value={config.tpm_policy.mode}
+            onChange={(e) => updateConfig((c) => ({ ...c, tpm_policy: { ...c.tpm_policy, mode: e.target.value as AppConfig['tpm_policy']['mode'] } }))}
             className="w-full px-3 py-2 bg-black/50 border border-cyan-900/50 rounded mb-4"
           >
             <option value="required">required</option>
@@ -139,7 +139,7 @@ export function SettingsPanel() {
           </select>
 
           <label className="flex items-center gap-2 mb-2">
-            <input type="checkbox" checked={config.tpm.enforce_hardware} onChange={(e) => updateConfig((c) => ({ ...c, tpm: { ...c.tpm, enforce_hardware: e.target.checked } }))} />
+            <input type="checkbox" checked={config.tpm_policy.enforce_hardware} onChange={(e) => updateConfig((c) => ({ ...c, tpm_policy: { ...c.tpm_policy, enforce_hardware: e.target.checked } }))} />
             Enforce Hardware TPM
           </label>
           <label className="flex items-center gap-2 mb-2">

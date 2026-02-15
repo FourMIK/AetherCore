@@ -136,13 +136,24 @@ pub async fn connect_to_mesh(
 /// in isolated test environments. Production deployments must use connect_to_mesh.
 #[tauri::command]
 pub async fn connect_to_testnet(
-    endpoint: String,
+    endpoint: Option<String>,
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<String, String> {
     async fn inner(
-        endpoint: String,
+        endpoint: Option<String>,
+        app_handle: tauri::AppHandle,
         state: tauri::State<'_, Arc<Mutex<AppState>>>,
     ) -> Result<String> {
+        let endpoint = match endpoint {
+            Some(value) if !value.trim().is_empty() => value,
+            _ => {
+                let manager = ConfigManager::new(&app_handle)?;
+                let config = manager.load()?;
+                config.connection.mesh_endpoint
+            }
+        };
+
         log::warn!(
             "connect_to_testnet is deprecated. Use connect_to_mesh for production. \
              Endpoint: {}",
@@ -173,7 +184,7 @@ pub async fn connect_to_testnet(
 
         // Store the endpoint in state
         let app_state = state.lock().await;
-        *app_state.mesh_endpoint.lock().await = Some(resolved_endpoint.clone());
+        *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
 
         log::info!("Testnet endpoint validated and stored: {}", endpoint);
 
@@ -1619,20 +1630,25 @@ pub async fn verify_dashboard_connectivity(
         .load()
         .map_err(|e| format!("Failed to load configuration: {}", e))?;
 
-    let api_health_endpoint = api_health_endpoint
-        .unwrap_or_else(|| format!("{}/health", config.connection.api_url.trim_end_matches('/')));
+    let api_health_endpoint = api_health_endpoint.unwrap_or_else(|| {
+        format!(
+            "{}/health",
+            config.connection.api_endpoint.trim_end_matches('/')
+        )
+    });
     let websocket_endpoint = websocket_endpoint.unwrap_or(config.connection.mesh_endpoint);
 
-    let api_healthy = match local_control_plane::verify_http_endpoint(&api_health_endpoint, 3000) {
-        Ok(_) => {
-            details.push(format!("API endpoint healthy: {}", api_health_endpoint));
-            true
-        }
-        Err(error) => {
-            details.push(error);
-            false
-        }
-    };
+    let api_healthy =
+        match local_control_plane::verify_http_endpoint(&api_health_endpoint, config.ports.api) {
+            Ok(_) => {
+                details.push(format!("API endpoint healthy: {}", api_health_endpoint));
+                true
+            }
+            Err(error) => {
+                details.push(error);
+                false
+            }
+        };
 
     let websocket_reachable = match local_control_plane::verify_websocket_port(&websocket_endpoint)
     {
