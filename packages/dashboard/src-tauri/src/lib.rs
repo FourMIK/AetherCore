@@ -272,6 +272,8 @@ pub fn run() {
             }
 
             local_control_plane::initialize_managed_runtime();
+            local_control_plane::initialize_manifest_paths(&app.handle())
+                .map_err(|error| tauri::Error::Setup(error.to_string()))?;
             if let Err(error) = commands::attempt_stack_auto_recover(&app.handle()) {
                 log::warn!("Local stack auto-recovery skipped: {}", error);
             }

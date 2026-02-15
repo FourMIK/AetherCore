@@ -9,6 +9,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
+use tauri::{path::BaseDirectory, AppHandle, Manager};
 use url::Url;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -57,6 +58,14 @@ pub struct LocalControlPlaneRuntime {
 }
 
 static MANAGED_RUNTIME: OnceLock<Mutex<LocalControlPlaneRuntime>> = OnceLock::new();
+static MANIFEST_PATHS: OnceLock<ManifestPaths> = OnceLock::new();
+
+#[derive(Debug, Clone)]
+struct ManifestPaths {
+    app_data_manifest_path: PathBuf,
+    bundled_template_path: PathBuf,
+    legacy_repo_manifest_path: PathBuf,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ServiceStatus {
@@ -158,6 +167,43 @@ pub fn initialize_managed_runtime() {
             spawned_children: HashMap::new(),
         })
     });
+}
+
+pub fn initialize_manifest_paths(app_handle: &AppHandle) -> Result<(), String> {
+    let app_data_dir = app_handle
+        .path()
+        .resolve(".", BaseDirectory::AppData)
+        .map_err(|error| {
+            format!(
+                "Failed to resolve app data directory for manifest: {}",
+                error
+            )
+        })?;
+
+    let bundled_template_path = app_handle
+        .path()
+        .resolve(
+            "config/local-control-plane.template.toml",
+            BaseDirectory::Resource,
+        )
+        .map_err(|error| {
+            format!(
+                "Failed to resolve bundled control plane template: {}",
+                error
+            )
+        })?;
+
+    let manifest_paths = ManifestPaths {
+        app_data_manifest_path: app_data_dir.join("local-control-plane.toml"),
+        bundled_template_path,
+        legacy_repo_manifest_path: default_repo_manifest_path(),
+    };
+
+    if MANIFEST_PATHS.set(manifest_paths).is_err() {
+        log::debug!("Local control plane manifest paths were already initialized");
+    }
+
+    Ok(())
 }
 
 pub fn ensure_local_data_dirs() -> Result<Vec<String>, String> {
@@ -439,16 +485,122 @@ pub fn verify_websocket_port(endpoint: &str) -> Result<(), String> {
 
 pub fn resolve_manifest_path() -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("AETHERCORE_LOCAL_CONTROL_PLANE_MANIFEST") {
-        return Ok(PathBuf::from(path));
+        let override_path = PathBuf::from(path);
+        log::warn!(
+            "Using AETHERCORE_LOCAL_CONTROL_PLANE_MANIFEST override for local control plane manifest (engineering/debug only): {}",
+            override_path.display()
+        );
+        log_manifest_diagnostics(&override_path);
+        return Ok(override_path);
     }
 
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    Ok(manifest_dir
+    if let Some(paths) = MANIFEST_PATHS.get() {
+        let manifest_path = ensure_runtime_manifest(paths)?;
+        log_manifest_diagnostics(&manifest_path);
+        return Ok(manifest_path);
+    }
+
+    log::warn!(
+        "Manifest path resolver was not initialized with AppHandle; falling back to repo-relative manifest path"
+    );
+
+    let manifest_path = default_repo_manifest_path();
+    log_manifest_diagnostics(&manifest_path);
+    Ok(manifest_path)
+}
+
+fn ensure_runtime_manifest(paths: &ManifestPaths) -> Result<PathBuf, String> {
+    if paths.app_data_manifest_path.exists() {
+        return Ok(paths.app_data_manifest_path.clone());
+    }
+
+    if let Some(parent) = paths.app_data_manifest_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "Failed to create app data directory for local control plane manifest {}: {}",
+                parent.display(),
+                error
+            )
+        })?;
+    }
+
+    if paths.legacy_repo_manifest_path.exists() {
+        std::fs::copy(
+            &paths.legacy_repo_manifest_path,
+            &paths.app_data_manifest_path,
+        )
+        .map_err(|error| {
+            format!(
+                "Failed to migrate legacy local control plane manifest from {} to {}: {}",
+                paths.legacy_repo_manifest_path.display(),
+                paths.app_data_manifest_path.display(),
+                error
+            )
+        })?;
+
+        log::info!(
+            "Migrated local control plane manifest from legacy path {} to app data {}",
+            paths.legacy_repo_manifest_path.display(),
+            paths.app_data_manifest_path.display()
+        );
+
+        return Ok(paths.app_data_manifest_path.clone());
+    }
+
+    if !paths.bundled_template_path.exists() {
+        return Err(format!(
+            "Bundled local control plane template is missing at {}",
+            paths.bundled_template_path.display()
+        ));
+    }
+
+    std::fs::copy(&paths.bundled_template_path, &paths.app_data_manifest_path).map_err(
+        |error| {
+            format!(
+            "Failed to initialize local control plane manifest from bundled template {} to {}: {}",
+            paths.bundled_template_path.display(),
+            paths.app_data_manifest_path.display(),
+            error
+        )
+        },
+    )?;
+
+    log::info!(
+        "Initialized local control plane manifest from bundled resource {} into {}",
+        paths.bundled_template_path.display(),
+        paths.app_data_manifest_path.display()
+    );
+
+    Ok(paths.app_data_manifest_path.clone())
+}
+
+fn default_repo_manifest_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join("..")
         .join("config")
-        .join("local-control-plane.toml"))
+        .join("local-control-plane.toml")
+}
+
+fn log_manifest_diagnostics(manifest_path: &Path) {
+    match std::fs::read(manifest_path) {
+        Ok(contents) => {
+            let hash = blake3::hash(&contents).to_hex().to_string();
+            log::info!(
+                "Active local control plane manifest path: {}, hash: {}",
+                manifest_path.display(),
+                hash
+            );
+        }
+        Err(error) => {
+            log::warn!(
+                "Active local control plane manifest path: {} (hash unavailable: {})",
+                manifest_path.display(),
+                error
+            );
+        }
+    }
 }
 
 pub fn read_manifest(path: &Path) -> Result<LocalControlPlaneManifest, String> {
