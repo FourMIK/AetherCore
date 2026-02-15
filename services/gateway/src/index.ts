@@ -1,14 +1,12 @@
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import * as grpc from '@grpc/grpc-js';
-import * as protoLoader from '@grpc/proto-loader';
-import path from 'path';
 import { z } from 'zod';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import pino from 'pino';
 import { parseTpmEnabled } from './tpm';
+import { createC2RouterClient, dispatchCommand } from './c2-client';
 
 dotenv.config();
 
@@ -35,7 +33,6 @@ const PORT = process.env.PORT || 3000;
 const C2_GRPC_TARGET = process.env.C2_ADDR || 'localhost:50051';
 // Backend endpoint for future integration with AetherBunker services
 const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || process.env.C2_ADDR || 'localhost:50051';
-const PROTO_PATH = path.resolve(__dirname, '../../../crates/c2-router/proto/c2.proto');
 
 logger.info({
   port: PORT,
@@ -56,9 +53,8 @@ const CommandSchema = z.object({
   signature: z.string().min(1, "Operator signature required"), 
 });
 
-const packageDefinition = protoLoader.loadSync(PROTO_PATH, { keepCase: true, longs: String, enums: String, defaults: true, oneofs: true });
-const c2_proto = grpc.loadPackageDefinition(packageDefinition).c2 as any;
-const client = new c2_proto.CommandService(C2_GRPC_TARGET, grpc.credentials.createInsecure());
+
+const client = createC2RouterClient(C2_GRPC_TARGET);
 
 const app = express();
 app.use(cors());
@@ -90,19 +86,13 @@ wss.on('connection', (ws: WebSocket) => {
         }
         const cmd = validation.data;
         logger.info({ command_type: cmd.type, target: cmd.target, command_id: cmd.id }, 'Dispatching command');
-        client.ExecuteCommand({
-          command_id: cmd.id,
-          target_id: cmd.target,
-          command_type: cmd.type,
-          signature: cmd.signature,
-          payload: JSON.stringify(cmd.payload || {})
-        }, (err: any, response: any) => {
+        dispatchCommand(client, cmd, (err, response) => {
           if (err) {
             logger.error({ error: err.message, command_id: cmd.id }, 'C2 RPC error');
             ws.send(JSON.stringify({ type: 'COMMAND_ACK', status: 'FAILED', error: err.message }));
           } else {
-            logger.info({ transaction_id: response.tx_id, command_id: cmd.id }, 'Command dispatched successfully');
-            ws.send(JSON.stringify({ type: 'COMMAND_ACK', status: 'SENT', transaction_id: response.tx_id }));
+            logger.info({ unit_id: response.unit_id, command_id: cmd.id }, 'Command dispatched successfully');
+            ws.send(JSON.stringify({ type: 'COMMAND_ACK', status: response.success ? 'SENT' : 'FAILED', unit_id: response.unit_id, message: response.message }));
           }
         });
       }
@@ -116,9 +106,9 @@ wss.on('connection', (ws: WebSocket) => {
 setInterval(() => {
   const deadline = new Date();
   deadline.setSeconds(deadline.getSeconds() + 5);
-  client.waitForReady(deadline, (err: Error) => {
+  client.waitForReady(deadline, (err?: Error) => {
     if (err) {
-      if (backendHealthy) {
+      if (backendHealthy && err) {
         logger.error({ error: err.message }, 'CRITICAL: Backend unreachable');
         backendHealthy = false;
         broadcast({ type: 'SYSTEM_ALERT', level: 'CRITICAL', message: 'BACKEND_CONNECTION_LOST' });
