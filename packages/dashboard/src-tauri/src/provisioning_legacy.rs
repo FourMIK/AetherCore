@@ -8,6 +8,7 @@
 //! - Implements Ed25519 signature verification for device identity
 //! - Requires explicit error handling per 4MIK coding standards
 
+use crate::commands::resolve_required_component_path;
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -192,16 +193,9 @@ pub async fn flash_firmware(
         },
     );
 
-    // Check if esptool is available
-    let esptool_cmd = which::which("esptool.py")
-        .or_else(|_| which::which("esptool"))
-        .map_err(|e| {
-            format!(
-                "FAIL-VISIBLE: esptool not found in PATH. \
-                 Install esptool.py: pip install esptool. Error: {}",
-                e
-            )
-        })?;
+    // Resolve bundled esptool from app resources
+    let esptool_cmd = resolve_required_component_path(&window.app_handle(), "esptool")
+        .map_err(|e| format!("FAIL-VISIBLE: Bundled esptool missing/corrupt: {e}"))?;
 
     log::info!("Using esptool at: {:?}", esptool_cmd);
 

@@ -73,6 +73,8 @@
       }
     },
     "resources": [
+      "resources/runtime-components.manifest.json",
+      "resources/config/**",
       "resources/windows/**",
       "resources/macos/**",
       "resources/linux/**",
