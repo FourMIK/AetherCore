@@ -45,16 +45,16 @@
         "language": "en-US"
       },
       "nsis": null,
-      "certificateThumbprint": null,
+      "certificateThumbprint": "$WINDOWS_CERTIFICATE_THUMBPRINT",
       "digestAlgorithm": "sha256",
-      "timestampUrl": ""
+      "timestampUrl": "http://timestamp.digicert.com"
     },
     "macOS": {
       "frameworks": [],
       "minimumSystemVersion": "11.0",
       "exceptionDomain": "",
-      "signingIdentity": null,
-      "providerShortName": null,
+      "signingIdentity": "Developer ID Application",
+      "providerShortName": "$APPLE_TEAM_ID",
       "entitlements": "entitlements.plist",
       "dmg": {
         "background": null,

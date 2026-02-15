@@ -89,7 +89,13 @@ shasum -a 256 tactical-glass.dmg
 Get-FileHash tactical-glass.msi -Algorithm SHA256
 ```
 
-Compare output with published checksums in release notes.
+Compare output with the release-attached `SHA256SUMS.txt` file and verify the detached signature (`SHA256SUMS.txt.sig`) before installation. Provenance JSON attestations are published as `provenance-macos.json` and `provenance-windows.json` assets on each release (details in [PROVENANCE.md](PROVENANCE.md)).
+
+**Release integrity assets (per tag):**
+- `SHA256SUMS.txt`
+- `SHA256SUMS.txt.sig`
+- `provenance-macos.json`
+- `provenance-windows.json`
 
 ---
 
@@ -188,27 +194,12 @@ Drag "Tactical Glass" icon to the "Applications" folder shortcut in the DMG wind
 
 **5. First launch:**
 
-On first run, macOS Gatekeeper will block the app because it's not notarized by Apple.
-
-**Option A: Using System Preferences**
-1. Open System Preferences → Security & Privacy
-2. In the "General" tab, click "Open Anyway" next to the Tactical Glass warning
-3. Confirm you want to open the application
-
-**Option B: Using Terminal**
-```bash
-xattr -cr /Applications/Tactical\ Glass.app
-```
-
-Then launch normally from Applications folder.
+Launch from `/Applications` normally. Production release builds are Developer ID signed, notarized, and stapled; Gatekeeper should validate trust chain automatically.
 
 #### Troubleshooting macOS Installation
 
 **Issue:** "App is damaged and can't be opened"  
-**Solution:**
-```bash
-xattr -cr /Applications/Tactical\ Glass.app
-```
+**Solution:** Re-download from the official GitHub release, then verify `SHA256SUMS.txt` and `SHA256SUMS.txt.sig` before retrying. If the issue persists, confirm your macOS trust store and date/time are correct.
 
 **Issue:** "Code signature invalid"  
 **Solution:** Re-download the DMG from official GitHub releases. Verify checksum matches.
@@ -238,9 +229,9 @@ Get-FileHash aethercore-tactical-glass.msi -Algorithm SHA256
 
 Double-click the `.msi` file to launch the installer.
 
-**4. SmartScreen warning:**
+**4. Trust validation:**
 
-Windows SmartScreen may display a warning. Click "More info" → "Run anyway".
+Production MSI artifacts are Authenticode-signed with trusted timestamping. SmartScreen reputation should build from the signed chain; do not bypass warnings on managed endpoints.
 
 **5. Follow installation wizard:**
 

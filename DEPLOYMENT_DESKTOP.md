@@ -104,9 +104,7 @@ sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0
 1. Download the `.dmg` file from releases
 2. Open the DMG
 3. Drag "Tactical Glass" to Applications folder
-4. On first run, go to System Preferences > Security & Privacy to allow the app
-
-**Note**: The app is not notarized by Apple. You may need to right-click and select "Open" on first launch.
+4. Launch from Applications. Production builds are Developer ID signed, notarized, and stapled, so Gatekeeper trust validation is automatic.
 
 ### Windows
 
@@ -115,7 +113,7 @@ sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0
 3. Follow the installation wizard
 4. Launch from Start Menu or Desktop shortcut
 
-**SmartScreen Warning**: On first run, Windows may show a SmartScreen warning. Click "More info" and then "Run anyway".
+**Trust Chain**: Production Windows installers are Authenticode-signed with trusted timestamps; enterprise policy should allow installation through the normal workflow.
 
 ## Configuration
 
@@ -251,12 +249,9 @@ file tactical-glass.AppImage  # Verify it's x86-64
 
 ### macOS: "App is damaged and can't be opened"
 
-**Cause**: Gatekeeper quarantine
+**Cause**: Download corruption or trust chain mismatch
 
-**Fix**:
-```bash
-xattr -cr /Applications/Tactical\ Glass.app
-```
+**Fix**: Re-download from the official release, then validate `SHA256SUMS.txt` and `SHA256SUMS.txt.sig` before relaunch.
 
 ### Windows: "VCRUNTIME140.dll was not found"
 

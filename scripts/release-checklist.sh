@@ -137,39 +137,37 @@ echo "🔐 [Phase 3] Code Signing Configuration"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# In CI environment, check for signing secrets
+# In CI environment, enforce signing/notarization prerequisites
 if [ -n "${CI:-}" ]; then
-    # Check if this is a pre-release tag
-    IS_PRERELEASE=false
-    if [ -n "${GITHUB_REF_NAME:-}" ]; then
-        # Validate semver format with optional v prefix, then check for pre-release suffix
-        if [[ "${GITHUB_REF_NAME:-}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
-            # Check for pre-release suffix (after - but before optional + build metadata)
-            if [[ "${GITHUB_REF_NAME:-}" =~ -(alpha|beta|rc|dev|pre) ]]; then
-                IS_PRERELEASE=true
-            fi
-        fi
-    fi
-    
-    # macOS signing
+    # macOS signing + notarization
     if [ "$(uname)" = "Darwin" ]; then
-        if [ -n "${APPLE_CERTIFICATE:-}" ] && [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
-            check_status "macOS code signing configured" "PASS"
-        elif [ "$IS_PRERELEASE" = "true" ]; then
-            check_status "macOS code signing configured" "WARN" "Pre-release build - code signing not required"
+        missing=()
+        for key in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID CHECKSUM_SIGNING_PRIVATE_KEY; do
+            if [ -z "${!key:-}" ]; then
+                missing+=("$key")
+            fi
+        done
+
+        if [ ${#missing[@]} -eq 0 ]; then
+            check_status "macOS signing/notarization configured" "PASS"
         else
-            check_status "macOS code signing configured" "FAIL" "APPLE_CERTIFICATE or APPLE_SIGNING_IDENTITY not set"
+            check_status "macOS signing/notarization configured" "FAIL" "Missing: ${missing[*]}"
         fi
     fi
-    
-    # Windows signing
+
+    # Windows signing + timestamp
     if [[ "${OSTYPE:-}" == "msys"* ]] || [[ "${OSTYPE:-}" == "win32" ]] || [ -n "${MSYSTEM:-}" ]; then
-        if [ -n "${WINDOWS_CERTIFICATE:-}" ]; then
-            check_status "Windows code signing configured" "PASS"
-        elif [ "$IS_PRERELEASE" = "true" ]; then
-            check_status "Windows code signing configured" "WARN" "Pre-release build - code signing not required"
+        missing=()
+        for key in WINDOWS_CERTIFICATE WINDOWS_CERTIFICATE_PASSWORD WINDOWS_SIGNING_TIMESTAMP_URL CHECKSUM_SIGNING_PRIVATE_KEY; do
+            if [ -z "${!key:-}" ]; then
+                missing+=("$key")
+            fi
+        done
+
+        if [ ${#missing[@]} -eq 0 ]; then
+            check_status "Windows signing/timestamp configured" "PASS"
         else
-            check_status "Windows code signing configured" "FAIL" "WINDOWS_CERTIFICATE not set"
+            check_status "Windows signing/timestamp configured" "FAIL" "Missing: ${missing[*]}"
         fi
     fi
 else
