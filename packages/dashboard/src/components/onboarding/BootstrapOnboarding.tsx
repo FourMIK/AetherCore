@@ -57,7 +57,7 @@ function isTauriRuntime(): boolean {
 
 export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?: string | null }> = ({ onReady, externalError }) => {
   const [steps, setSteps] = useState<BootstrapStep[]>([
-    { id: 'environment', label: 'Environment check', state: 'pending', attempts: 0 },
+    { id: 'environment', label: 'Device check', state: 'pending', attempts: 0 },
     { id: 'stack', label: 'Local stack boot', state: 'pending', attempts: 0 },
     { id: 'mesh', label: 'Mesh connect', state: 'pending', attempts: 0 },
     { id: 'node', label: 'First node deploy', state: 'pending', attempts: 0 },
@@ -66,6 +66,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
   const [isRunning, setIsRunning] = useState(false);
   const [flowComplete, setFlowComplete] = useState(false);
   const [latestServiceStatus, setLatestServiceStatus] = useState<ServiceStatus[]>([]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const recommendedProfile = 'commander-edition';
   const recommendedMeshEndpoint = 'ws://127.0.0.1:8080';
@@ -179,6 +180,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
       }
 
       await invoke<string>('set_bootstrap_state', { completed: true });
+      localStorage.setItem('bootstrap.onboarding.completed', 'true');
       setFlowComplete(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -195,6 +197,18 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
 
   const convertErrorToPlainLanguage = useCallback((message: string) => {
     const normalized = message.toLowerCase();
+    const portMatch = message.match(/(?:port\s*|:)(\d{2,5})/i);
+    const blockedPort = portMatch?.[1];
+
+    if ((normalized.includes('refused') || normalized.includes('timed out') || normalized.includes('unreachable')) && blockedPort) {
+      return {
+        title: `Connection blocked by firewall on port ${blockedPort}.`,
+        instructions: [
+          `Allow local loopback traffic on port ${blockedPort} in your firewall policy.`,
+          'After updating firewall rules, click Retry now to verify the connection path.',
+        ],
+      };
+    }
 
     if (normalized.includes('timeout exceeded')) {
       return {
@@ -335,7 +349,21 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
           <p className="font-semibold">Commander Edition defaults (auto-applied)</p>
           <p>Profile: <span className="font-mono">{recommendedProfile}</span></p>
           <p>Mesh endpoint: <span className="font-mono">{recommendedMeshEndpoint}</span></p>
-          <p className="text-tungsten/70 mt-1">Advanced options are non-default and hidden during first run for a deterministic setup path.</p>
+          <p className="text-tungsten/70 mt-1">Advanced options are hidden during first run for a deterministic setup path.</p>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((prev) => !prev)}
+            className="mt-2 underline decoration-dotted"
+          >
+            {showAdvanced ? 'Hide Advanced' : 'Advanced'}
+          </button>
+          {showAdvanced && (
+            <div className="mt-2 rounded border border-overmatch/20 bg-carbon-2 p-2 text-[11px] space-y-1">
+              <p>Endpoint (internal): <span className="font-mono">{recommendedMeshEndpoint}</span></p>
+              <p>Log level (internal): <span className="font-mono">info</span></p>
+              <p>Profile internals: <span className="font-mono">{recommendedProfile}</span> / deterministic bootstrap policy</p>
+            </div>
+          )}
         </div>
 
         <div className="mb-4 h-2 w-full rounded bg-carbon">
@@ -376,13 +404,26 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
               </ul>
             )}
             <p className="mt-2 text-xs">Last error: {errorSummary}</p>
+            <button
+              type="button"
+              onClick={() => void executeFlow()}
+              disabled={isRunning}
+              className="mt-3 rounded bg-overmatch px-3 py-1.5 text-carbon text-xs disabled:opacity-50"
+            >
+              Retry now
+            </button>
           </div>
         )}
 
         {flowComplete && (
           <div className="mt-4 rounded border border-overmatch bg-overmatch/10 p-4">
-            <p className="font-semibold">System Ready: Dashboard + Mesh + Node deployment validated</p>
-            <p className="text-sm mt-1">Success criteria met. You can open the dashboard or run quick self-tests anytime.</p>
+            <p className="font-semibold text-lg">Mission Ready</p>
+            <p className="text-sm mt-1">All launch checks passed. Core operator services are online.</p>
+            <ul className="mt-3 space-y-1 text-sm">
+              <li>✅ Dashboard service reachable</li>
+              <li>✅ Mesh link established</li>
+              <li>✅ Deployment pipeline active</li>
+            </ul>
             <p className="text-xs mt-2 text-tungsten/80">Acceptance criteria: a non-technical user can complete first deployment from this guided flow without terminal usage.</p>
             <div className="mt-3 flex gap-3">
               <button
@@ -440,6 +481,10 @@ export async function shouldRunBootstrapOnboarding(): Promise<boolean> {
 
   if (forcedByInstaller || forcedByCli) {
     return true;
+  }
+
+  if (typeof window !== 'undefined' && localStorage.getItem('bootstrap.onboarding.completed') === 'true') {
+    return false;
   }
 
   try {
