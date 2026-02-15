@@ -64,6 +64,17 @@ npm run tauri:build
 - **macOS**: `.dmg` in `src-tauri/target/release/bundle/dmg/`
 - **Windows**: `.msi` in `src-tauri/target/release/bundle/msi/`
 
+## First-Run Bootstrap Wiring
+
+The desktop app now enforces a deterministic first-run bootstrap flow before rendering the main dashboard.
+
+Installer integrations should launch with `--bootstrap` for post-install first open:
+
+- **Windows Start Menu post-install launch**: `AetherCore Tactical Glass.exe --bootstrap`
+- **macOS launch prompt**: `open -a "AetherCore Tactical Glass" --args --bootstrap`
+
+The app inspects this flag via the `installer_bootstrap_requested` Tauri command and forces bootstrap even before persisted completion state is present.
+
 ## Cross-Platform Builds
 
 The CI pipeline automatically builds for all platforms:

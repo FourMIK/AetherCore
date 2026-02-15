@@ -1,5 +1,6 @@
 use crate::config::{AppConfig, ConfigManager};
 use crate::error::{validation, AppError, Result};
+use crate::local_control_plane;
 use crate::process_manager::{NodeProcessInfo, NodeProcessManager, ProcessStatus};
 use aethercore_identity::IdentityManager;
 use aethercore_stream::StreamIntegrityTracker;
@@ -1189,6 +1190,154 @@ pub async fn get_config_path(app_handle: tauri::AppHandle) -> Result<String, Str
         .get_config_path()
         .to_string_lossy()
         .to_string())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalServiceStatusResponse {
+    pub name: String,
+    pub required: bool,
+    pub healthy: bool,
+    pub health_endpoint: String,
+    pub port: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectivityCheckResult {
+    pub api_healthy: bool,
+    pub websocket_reachable: bool,
+    pub details: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn check_local_service_status() -> Result<Vec<LocalServiceStatusResponse>, String> {
+    local_control_plane::check_service_statuses().map(|statuses| {
+        statuses
+            .into_iter()
+            .map(|status| LocalServiceStatusResponse {
+                name: status.name,
+                required: status.required,
+                healthy: status.healthy,
+                health_endpoint: status.health_endpoint,
+                port: status.port,
+            })
+            .collect()
+    })
+}
+
+#[tauri::command]
+pub async fn initialize_local_data_dirs() -> Result<Vec<String>, String> {
+    local_control_plane::ensure_local_data_dirs()
+}
+
+#[tauri::command]
+pub async fn start_managed_services() -> Result<Vec<LocalServiceStatusResponse>, String> {
+    local_control_plane::start_managed_services().map(|statuses| {
+        statuses
+            .into_iter()
+            .map(|status| LocalServiceStatusResponse {
+                name: status.name,
+                required: status.required,
+                healthy: status.healthy,
+                health_endpoint: status.health_endpoint,
+                port: status.port,
+            })
+            .collect()
+    })
+}
+
+#[tauri::command]
+pub async fn stop_managed_services() -> Result<String, String> {
+    local_control_plane::stop_managed_services()?;
+    Ok("Managed services stopped".to_string())
+}
+
+#[tauri::command]
+pub async fn verify_dashboard_connectivity(
+    api_health_endpoint: String,
+    websocket_endpoint: String,
+) -> Result<ConnectivityCheckResult, String> {
+    let mut details = Vec::new();
+
+    let api_healthy = match local_control_plane::verify_http_endpoint(&api_health_endpoint, 3000) {
+        Ok(_) => {
+            details.push(format!("API endpoint healthy: {}", api_health_endpoint));
+            true
+        }
+        Err(error) => {
+            details.push(error);
+            false
+        }
+    };
+
+    let websocket_reachable = match local_control_plane::verify_websocket_port(&websocket_endpoint)
+    {
+        Ok(_) => {
+            details.push(format!("WebSocket reachable: {}", websocket_endpoint));
+            true
+        }
+        Err(error) => {
+            details.push(error);
+            false
+        }
+    };
+
+    Ok(ConnectivityCheckResult {
+        api_healthy,
+        websocket_reachable,
+        details,
+    })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BootstrapState {
+    pub completed: bool,
+}
+
+#[tauri::command]
+pub async fn get_bootstrap_state(app_handle: tauri::AppHandle) -> Result<BootstrapState, String> {
+    let app_data_dir = app_handle
+        .path()
+        .resolve(".", BaseDirectory::AppData)
+        .map_err(|e| format!("Failed to resolve app data directory: {}", e))?;
+
+    let state_path = app_data_dir.join("bootstrap-state.json");
+    if !state_path.exists() {
+        return Ok(BootstrapState { completed: false });
+    }
+
+    let content = std::fs::read_to_string(&state_path)
+        .map_err(|e| format!("Failed to read bootstrap state: {}", e))?;
+    serde_json::from_str::<BootstrapState>(&content)
+        .map_err(|e| format!("Failed to parse bootstrap state: {}", e))
+}
+
+#[tauri::command]
+pub async fn set_bootstrap_state(
+    completed: bool,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let app_data_dir = app_handle
+        .path()
+        .resolve(".", BaseDirectory::AppData)
+        .map_err(|e| format!("Failed to resolve app data directory: {}", e))?;
+
+    std::fs::create_dir_all(&app_data_dir)
+        .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+
+    let state_path = app_data_dir.join("bootstrap-state.json");
+    std::fs::write(
+        &state_path,
+        serde_json::to_string_pretty(&BootstrapState { completed })
+            .map_err(|e| format!("Failed to serialize bootstrap state: {}", e))?,
+    )
+    .map_err(|e| format!("Failed to persist bootstrap state: {}", e))?;
+
+    Ok("Bootstrap state saved".to_string())
+}
+
+#[tauri::command]
+pub async fn installer_bootstrap_requested() -> Result<bool, String> {
+    Ok(std::env::args().any(|arg| arg == "--bootstrap"))
 }
 
 #[cfg(test)]
