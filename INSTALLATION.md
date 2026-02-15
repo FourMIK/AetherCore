@@ -107,8 +107,8 @@ Only install `.dmg` and `.msi` artifacts that are explicitly listed in `release-
 - `provenance-macos.json`
 - `provenance-windows.json`
 
-Download these from the same release page as your installer artifact:
-`https://github.com/FourMIK/AetherCore/releases/tag/<tag>`
+Download these from the same release page as your installer artifact. For example, for release v0.2.0:
+`https://github.com/FourMIK/AetherCore/releases/tag/v0.2.0`
 
 For provenance verification policy and attestation details, see [PROVENANCE.md](PROVENANCE.md).
 
@@ -157,15 +157,24 @@ sudo apt-get install -y libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-
 **6. (Optional) Create desktop entry:**
 
 ```bash
-# Create desktop entry for app launcher
-cat > ~/.local/share/applications/aethercore-commander.desktop << EOF
+# Create desktop entry for app launcher (Linux)
+# Note: Use the actual path where you downloaded the AppImage
+cat > ~/.local/share/applications/aethercore-commander.desktop <<'EOF'
 [Desktop Entry]
 Name=AetherCore Commander
-Exec=/path/to/aethercore-commander_amd64.AppImage
+Exec=/home/YOUR_USERNAME/Downloads/aethercore-commander_amd64.AppImage
 Icon=application-x-executable
 Type=Application
 Categories=Network;Utility;
 EOF
+
+# After creating the file, edit it to replace YOUR_USERNAME with your actual username
+# Using nano (beginner-friendly):
+nano ~/.local/share/applications/aethercore-commander.desktop
+# Or using vim:
+# vim ~/.local/share/applications/aethercore-commander.desktop
+# Or use sed to replace in-place (uses double quotes to expand $USER variable):
+# sed -i "s|YOUR_USERNAME|$USER|g" ~/.local/share/applications/aethercore-commander.desktop
 ```
 
 #### Troubleshooting Linux Installation
@@ -216,13 +225,45 @@ Launch from `/Applications` normally. Production release builds are Developer ID
 #### Troubleshooting macOS Installation
 
 **Issue:** "App is damaged and can't be opened"  
-**Solution:** Re-download from the official GitHub release, then verify the matching platform checksum file and signature (`SHA256SUMS-<platform>.txt` + `.sig`) before retrying. If the issue persists, confirm your macOS trust store and date/time are correct.
+**Solution:** Re-download from the official GitHub release, then verify the matching platform checksum file and signature (e.g., `SHA256SUMS-macos.txt` and `SHA256SUMS-macos.txt.sig`) before retrying. If the issue persists, confirm your macOS trust store and date/time are correct.
 
 **Issue:** "Code signature invalid"  
 **Solution:** Re-download the DMG from official GitHub releases. Verify checksum matches.
 
 **Issue:** Application crashes on launch  
 **Solution:** Check macOS version is 11.0+. For Apple Silicon, ensure Rosetta 2 is not interfering with native ARM build.
+
+#### Mac/zsh Shell Notes
+
+macOS uses **zsh** as the default shell (since Catalina). When copying shell commands from documentation:
+
+**Common zsh Parse Errors:**
+
+1. **Unquoted heredocs with special characters:**
+   - ❌ Wrong: `cat > file.txt << EOF` (variables expand)
+   - ✅ Right: `cat > file.txt <<'EOF'` (literal text, no expansion)
+
+2. **Inline comments after commands:**
+   - These usually work fine, but if you see parse errors, remove them
+   - Example: `command arg  # comment` should work, but try without comment if it fails
+
+**Editor Alternatives:**
+
+You don't need VS Code. Use any editor you prefer:
+- **nano** (beginner-friendly): `nano filename.txt`
+- **vim**: `vim filename.txt`
+- **TextEdit** (GUI): `open -e filename.txt`
+- **BBEdit** (if installed): `bbedit filename.txt`
+- **VS Code** (if installed): `code filename.txt`
+
+Or edit files inline with `sed`:
+```bash
+# Example: Replace text in a file
+# macOS:
+sed -i '' 's/old-text/new-text/g' filename.txt
+# Linux:
+sed -i 's/old-text/new-text/g' filename.txt
+```
 
 ---
 
