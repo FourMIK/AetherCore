@@ -1,8 +1,9 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use url::Url;
@@ -36,6 +37,17 @@ pub struct ManagedService {
 #[derive(Debug)]
 pub struct LocalControlPlaneRuntime {
     spawned_children: Vec<Child>,
+}
+
+static MANAGED_RUNTIME: OnceLock<Mutex<LocalControlPlaneRuntime>> = OnceLock::new();
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ServiceStatus {
+    pub name: String,
+    pub required: bool,
+    pub healthy: bool,
+    pub health_endpoint: String,
+    pub port: u16,
 }
 
 impl Drop for LocalControlPlaneRuntime {
@@ -101,7 +113,146 @@ pub fn bootstrap_local_control_plane() -> Result<LocalControlPlaneRuntime, Strin
     Ok(LocalControlPlaneRuntime { spawned_children })
 }
 
-fn resolve_manifest_path() -> Result<PathBuf, String> {
+pub fn initialize_managed_runtime() {
+    MANAGED_RUNTIME.get_or_init(|| {
+        Mutex::new(LocalControlPlaneRuntime {
+            spawned_children: Vec::new(),
+        })
+    });
+}
+
+pub fn ensure_local_data_dirs() -> Result<Vec<String>, String> {
+    let base = std::env::var("AETHERCORE_LOCAL_DATA_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("aethercore"));
+
+    let dirs = [
+        base.join("dashboard"),
+        base.join("dashboard").join("config"),
+        base.join("dashboard").join("logs"),
+        base.join("dashboard").join("state"),
+    ];
+
+    let mut created = Vec::new();
+    for dir in dirs {
+        std::fs::create_dir_all(&dir).map_err(|error| {
+            format!(
+                "Failed to initialize data directory {}: {}",
+                dir.display(),
+                error
+            )
+        })?;
+        created.push(dir.to_string_lossy().to_string());
+    }
+
+    Ok(created)
+}
+
+pub fn check_service_statuses() -> Result<Vec<ServiceStatus>, String> {
+    let manifest = read_manifest(&resolve_manifest_path()?)?;
+    Ok(manifest
+        .services
+        .iter()
+        .map(|service| ServiceStatus {
+            name: service.name.clone(),
+            required: service.required,
+            healthy: is_service_healthy(&service.health_endpoint, service.port),
+            health_endpoint: service.health_endpoint.clone(),
+            port: service.port,
+        })
+        .collect())
+}
+
+pub fn start_managed_services() -> Result<Vec<ServiceStatus>, String> {
+    initialize_managed_runtime();
+    let manifest = read_manifest(&resolve_manifest_path()?)?;
+    let mut services = manifest.services;
+    services.sort_by_key(|service| service.startup_order);
+
+    let mut runtime = MANAGED_RUNTIME
+        .get()
+        .expect("managed runtime must be initialized")
+        .lock()
+        .map_err(|_| "Failed to lock managed runtime".to_string())?;
+
+    for service in &services {
+        if is_service_healthy(&service.health_endpoint, service.port) {
+            continue;
+        }
+
+        runtime.spawned_children.push(spawn_service(service)?);
+        thread::sleep(Duration::from_millis(
+            manifest.startup.service_start_grace_period_ms,
+        ));
+        wait_for_service_health(service, &manifest.startup)?;
+    }
+
+    Ok(services
+        .iter()
+        .map(|service| ServiceStatus {
+            name: service.name.clone(),
+            required: service.required,
+            healthy: is_service_healthy(&service.health_endpoint, service.port),
+            health_endpoint: service.health_endpoint.clone(),
+            port: service.port,
+        })
+        .collect())
+}
+
+pub fn stop_managed_services() -> Result<(), String> {
+    initialize_managed_runtime();
+    let mut runtime = MANAGED_RUNTIME
+        .get()
+        .expect("managed runtime must be initialized")
+        .lock()
+        .map_err(|_| "Failed to lock managed runtime".to_string())?;
+
+    for child in &mut runtime.spawned_children {
+        let _ = child.kill();
+    }
+    runtime.spawned_children.clear();
+    Ok(())
+}
+
+pub fn verify_http_endpoint(endpoint: &str, fallback_port: u16) -> Result<(), String> {
+    if is_service_healthy(endpoint, fallback_port) {
+        Ok(())
+    } else {
+        Err(format!(
+            "HTTP endpoint {} failed health verification",
+            endpoint
+        ))
+    }
+}
+
+pub fn verify_websocket_port(endpoint: &str) -> Result<(), String> {
+    let parsed = Url::parse(endpoint)
+        .map_err(|error| format!("Invalid WebSocket endpoint {}: {}", endpoint, error))?;
+    if parsed.scheme() != "ws" && parsed.scheme() != "wss" {
+        return Err(format!(
+            "Unsupported WebSocket scheme {} for {}",
+            parsed.scheme(),
+            endpoint
+        ));
+    }
+
+    let host = parsed.host_str().unwrap_or("127.0.0.1");
+    let port = parsed
+        .port()
+        .unwrap_or(if parsed.scheme() == "wss" { 443 } else { 80 });
+    let address = format!("{}:{}", host, port);
+
+    TcpStream::connect_timeout(
+        &address
+            .parse()
+            .map_err(|error| format!("Invalid WebSocket socket address {}: {}", address, error))?,
+        Duration::from_secs(2),
+    )
+    .map(|_| ())
+    .map_err(|error| format!("WebSocket endpoint {} is unreachable: {}", endpoint, error))
+}
+
+pub fn resolve_manifest_path() -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("AETHERCORE_LOCAL_CONTROL_PLANE_MANIFEST") {
         return Ok(PathBuf::from(path));
     }
@@ -115,7 +266,7 @@ fn resolve_manifest_path() -> Result<PathBuf, String> {
         .join("local-control-plane.toml"))
 }
 
-fn read_manifest(path: &Path) -> Result<LocalControlPlaneManifest, String> {
+pub fn read_manifest(path: &Path) -> Result<LocalControlPlaneManifest, String> {
     let contents = std::fs::read_to_string(path).map_err(|error| {
         format!(
             "Unable to read local control plane manifest {}: {}",

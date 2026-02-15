@@ -9,7 +9,6 @@ mod provisioning_legacy;
 use aethercore_core::Error;
 use aethercore_identity::tpm::{TpmManager, TpmQuote};
 use commands::AppState;
-use local_control_plane::LocalControlPlaneRuntime;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -105,7 +104,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
-        .manage(Mutex::new(None::<LocalControlPlaneRuntime>))
         .setup(|app| {
             // ============================================================
             // SENTINEL BOOT: Hardware-Rooted Trust Verification
@@ -132,37 +130,7 @@ pub fn run() {
                 std::process::exit(1);
             }
 
-
-            // ============================================================
-            // LOCAL CONTROL PLANE BOOTSTRAP: Desktop-local dependency guard
-            // ============================================================
-            // In desktop-local mode, the dashboard only becomes ready after
-            // required local dependencies are started and healthy.
-            match local_control_plane::bootstrap_local_control_plane() {
-                Ok(runtime) => {
-                    let state = app.state::<Mutex<Option<LocalControlPlaneRuntime>>>();
-                    *tauri::async_runtime::block_on(state.lock()) = Some(runtime);
-                    log::info!("[LOCAL CONTROL PLANE] All required services are healthy");
-                }
-                Err(error_details) => {
-                    let dialog_handle = app.handle().clone();
-                    tauri::async_runtime::block_on(async move {
-                        use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-
-                        dialog_handle
-                            .dialog()
-                            .message(format!(
-                                "Local Control Plane failed to initialize. Tactical Glass cannot continue in desktop-local mode.\n\n{}",
-                                error_details
-                            ))
-                            .kind(MessageDialogKind::Error)
-                            .title("AetherCore Local Control Plane Failure")
-                            .blocking_show();
-                    });
-
-                    std::process::exit(1);
-                }
-            }
+            local_control_plane::initialize_managed_runtime();
 
             // TPM verification successful - continue with normal initialization
             if cfg!(debug_assertions) {
@@ -198,6 +166,14 @@ pub fn run() {
             commands::get_config,
             commands::update_config,
             commands::get_config_path,
+            commands::check_local_service_status,
+            commands::initialize_local_data_dirs,
+            commands::start_managed_services,
+            commands::stop_managed_services,
+            commands::verify_dashboard_connectivity,
+            commands::get_bootstrap_state,
+            commands::set_bootstrap_state,
+            commands::installer_bootstrap_requested,
             // New unified provisioning commands
             provisioning::scan_for_assets,
             provisioning::provision_target,

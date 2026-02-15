@@ -11,10 +11,31 @@ import { initializeComms } from './store/initComms';
 import { initDummyData } from './store/initDummyData';
 import { getWebSocketManager } from './services/api/WebSocketManager';
 import { getRuntimeConfig } from './config/runtime';
+import {
+  BootstrapOnboarding,
+  shouldRunBootstrapOnboarding,
+} from './components/onboarding/BootstrapOnboarding';
 import './index.css';
 
 export const App: React.FC = () => {
   const theme = useTacticalStore((s) => s.theme);
+  const [bootstrapReady, setBootstrapReady] = React.useState(false);
+  const [bootstrapCheckComplete, setBootstrapCheckComplete] = React.useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    shouldRunBootstrapOnboarding().then((shouldRun) => {
+      if (!mounted) {
+        return;
+      }
+      setBootstrapReady(!shouldRun);
+      setBootstrapCheckComplete(true);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Apply theme
   useEffect(() => {
@@ -25,6 +46,10 @@ export const App: React.FC = () => {
   // In production, this establishes connection to the authenticated c2-router
   // endpoint with TLS 1.3 and hardware-rooted identity verification.
   useEffect(() => {
+    if (!bootstrapCheckComplete || !bootstrapReady) {
+      return;
+    }
+
     // Add a small delay to ensure store is hydrated
     setTimeout(() => {
       // Initialize communications
@@ -63,7 +88,15 @@ export const App: React.FC = () => {
         // Ignore errors during cleanup
       }
     };
-  }, []);
+  }, [bootstrapReady]);
+
+  if (!bootstrapCheckComplete) {
+    return null;
+  }
+
+  if (!bootstrapReady) {
+    return <BootstrapOnboarding onReady={() => setBootstrapReady(true)} />;
+  }
 
   return (
     <MapProvider>

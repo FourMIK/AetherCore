@@ -21,13 +21,10 @@ import { SystemAdminView } from '../workspaces/SystemAdminView';
 import { DeploymentManagementView } from '../workspaces/DeploymentManagementView';
 import { RalphieNodeProvisioning } from '../RalphieNodeProvisioning';
 import { VideoCallPanel } from '../comms/VideoCallPanel';
-import { DevModeBanner } from './DevModeBanner';
-import { TpmDisabledBanner } from './TpmDisabledBanner';
 import { SettingsPanel } from '../SettingsPanel';
 import { ConnectionStatusIndicator } from '../ConnectionStatus';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { useCommStore } from '../../store/useCommStore';
-import { getRuntimeConfig } from '../../config/runtime';
 import { Plus } from 'lucide-react';
 
 export const DashboardLayout: React.FC = () => {
@@ -37,49 +34,11 @@ export const DashboardLayout: React.FC = () => {
   const clearByzantineAlert = useTacticalStore((s) => s.clearByzantineAlert);
   const clearVerificationFailure = useTacticalStore((s) => s.clearVerificationFailure);
   const activeCall = useCommStore((s) => s.activeCall);
-  const connectionState = useCommStore((s) => s.connectionState);
-
   const [showWizard, setShowWizard] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>('tactical');
 
-  const { tpmEnabled } = getRuntimeConfig();
-
   const verifiedCount = Array.from(nodes.values()).filter((n) => n.verified).length;
   const totalCount = nodes.size;
-
-  // Calculate visual degradation based on connection state
-  const getVisualDegradation = () => {
-    switch (connectionState) {
-      case 'intermittent':
-        return {
-          filter: 'grayscale(0.5) blur(1px)',
-          banner: {
-            show: true,
-            color: 'bg-amber-500/90',
-            text: '⚠ SIGNAL UNSTABLE',
-            description: 'Heartbeat latency detected',
-          },
-        };
-      case 'disconnected':
-        return {
-          filter: 'grayscale(1) blur(4px)',
-          banner: {
-            show: true,
-            color: 'bg-jamming/90',
-            text: '🔴 SIGNAL LOST - DATA UNVERIFIED',
-            description: 'Connection to backend severed',
-          },
-        };
-      case 'connected':
-      default:
-        return {
-          filter: 'none',
-          banner: { show: false },
-        };
-    }
-  };
-
-  const visualDegradation = getVisualDegradation();
 
   const renderWorkspaceContent = () => {
     switch (currentView) {
@@ -141,29 +100,8 @@ export const DashboardLayout: React.FC = () => {
       {/* Scanline Overlay */}
       <div className="scanline-overlay" />
 
-      {/* Dev Mode Banner */}
-      <DevModeBanner />
-
-      {/* TPM Disabled Banner - shown when TPM is disabled */}
-      {!tpmEnabled && <TpmDisabledBanner />}
-
-      {/* Connection State Degradation Banner */}
-      {visualDegradation.banner.show && (
-        <div
-          className={`${visualDegradation.banner.color} text-white px-4 py-2 flex items-center justify-center gap-3 z-50 animate-pulse`}
-        >
-          <span className="font-display font-bold tracking-wider">
-            {visualDegradation.banner.text}
-          </span>
-          <span className="text-xs opacity-80">{visualDegradation.banner.description}</span>
-        </div>
-      )}
-
-      {/* Main Content Wrapper - Apply visual degradation filter */}
-      <div
-        className="flex-1 flex flex-col overflow-hidden"
-        style={{ filter: visualDegradation.filter }}
-      >
+      {/* Main Content Wrapper */}
+      <div className="flex-1 flex flex-col overflow-hidden">
         {/* TopBar - Fixed Height */}
         <div className="flex items-center gap-4 p-4 pb-2 flex-shrink-0">
           <NavigationMenu currentView={currentView} onViewChange={setCurrentView} />
