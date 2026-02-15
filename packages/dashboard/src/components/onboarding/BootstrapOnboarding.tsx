@@ -29,6 +29,14 @@ interface ConnectivityCheck {
   details: string[];
 }
 
+interface StackStatus {
+  ready: boolean;
+  required_services: number;
+  healthy_required_services: number;
+  services: ServiceStatus[];
+  readiness: Array<{ name: string; healthy: boolean; remediation_hint: string; last_error?: string | null }>;
+}
+
 interface DeploymentStatus {
   node_id: string;
   pid: number;
@@ -47,7 +55,7 @@ function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
-export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady }) => {
+export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?: string | null }> = ({ onReady, externalError }) => {
   const [steps, setSteps] = useState<BootstrapStep[]>([
     { id: 'environment', label: 'Environment check', state: 'pending', attempts: 0 },
     { id: 'stack', label: 'Local stack boot', state: 'pending', attempts: 0 },
@@ -109,10 +117,14 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
       const dirs = await runWithRetry('environment', async () => invoke<string[]>('initialize_local_data_dirs'));
       updateStep('environment', { state: 'success', detail: `Environment ready (${dirs.length} local directories prepared)` });
 
-      const serviceStatuses = await runWithRetry('stack', async () => {
-        await invoke<ServiceStatus[]>('start_managed_services');
-        return invoke<ServiceStatus[]>('check_local_service_status');
+      const stackStatus = await runWithRetry('stack', async () => {
+        const status = await invoke<StackStatus>('start_stack');
+        updateStep('stack', {
+          detail: `Required services healthy ${status.healthy_required_services}/${status.required_services}`
+        });
+        return invoke<StackStatus>('stack_status');
       });
+      const serviceStatuses = stackStatus.services;
       setLatestServiceStatus(serviceStatuses);
 
       const unhealthyRequired = serviceStatuses.filter((svc) => svc.required && !svc.healthy);
@@ -121,7 +133,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
       }
       updateStep('stack', {
         state: 'success',
-        detail: `${serviceStatuses.filter((svc) => svc.healthy).length}/${serviceStatuses.length} services healthy`,
+        detail: `Required services healthy ${stackStatus.healthy_required_services}/${stackStatus.required_services}`,
       });
 
       const runtime = getRuntimeConfig();
@@ -243,7 +255,8 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
     setIsRunning(true);
 
     try {
-      const serviceStatuses = await invoke<ServiceStatus[]>('check_local_service_status');
+      const stackStatus = await invoke<StackStatus>('stack_status');
+      const serviceStatuses = stackStatus.services;
       const requiredUnhealthy = serviceStatuses.filter((svc) => svc.required && !svc.healthy);
       if (requiredUnhealthy.length > 0) {
         throw new Error(`Required services unhealthy: ${requiredUnhealthy.map((svc) => svc.name).join(', ')}`);
@@ -283,8 +296,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
     setErrorSummary(null);
     setIsRunning(true);
     try {
-      await invoke('stop_managed_services');
-      await invoke<ServiceStatus[]>('start_managed_services');
+      await invoke<StackStatus>('repair_stack');
       await executeFlow();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -293,6 +305,12 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
       setIsRunning(false);
     }
   }, [executeFlow]);
+
+  useEffect(() => {
+    if (externalError) {
+      setErrorSummary(externalError);
+    }
+  }, [externalError]);
 
   useEffect(() => {
     void executeFlow();

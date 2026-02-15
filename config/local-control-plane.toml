@@ -19,6 +19,8 @@ port = 3000
 health_endpoint = "http://127.0.0.1:3000/health"
 remediation_hint = "Ensure port 3000 is free, then run `pnpm --dir services/gateway dev` manually to inspect startup logs."
 depends_on = []
+health_check_timeout_secs = 45
+health_check_retries = 2
 working_dir = "services/gateway"
 start_command = "pnpm run dev"
 
@@ -30,5 +32,7 @@ port = 8080
 health_endpoint = "http://127.0.0.1:8080/health"
 remediation_hint = "Ensure port 8080 is free and gateway is healthy, then run `pnpm --dir services/collaboration dev`."
 depends_on = ["gateway"]
+health_check_timeout_secs = 60
+health_check_retries = 3
 working_dir = "services/collaboration"
 start_command = "pnpm run dev"

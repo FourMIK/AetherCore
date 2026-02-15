@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { MapProvider } from './map-engine/MapContext';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { useTacticalStore } from './store/useTacticalStore';
@@ -16,10 +17,24 @@ import {
 } from './components/onboarding/BootstrapOnboarding';
 import './index.css';
 
+interface StackStatus {
+  ready: boolean;
+  required_services: number;
+  healthy_required_services: number;
+  services: Array<{ name: string; required: boolean; healthy: boolean; remediation_hint: string }>;
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
 export const App: React.FC = () => {
   const theme = useTacticalStore((s) => s.theme);
   const [bootstrapReady, setBootstrapReady] = React.useState(false);
   const [bootstrapCheckComplete, setBootstrapCheckComplete] = React.useState(false);
+  const [stackReady, setStackReady] = React.useState(false);
+  const [stackCheckComplete, setStackCheckComplete] = React.useState(false);
+  const [stackError, setStackError] = React.useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -36,34 +51,70 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Apply theme
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
-
-  // PRODUCTION: Connect to live C2 mesh on mount
-  // In production, this establishes connection to the authenticated c2-router
-  // endpoint with TLS 1.3 and hardware-rooted identity verification.
   useEffect(() => {
     if (!bootstrapCheckComplete || !bootstrapReady) {
       return;
     }
 
-    // Add a small delay to ensure store is hydrated
+    if (!isTauriRuntime()) {
+      setStackReady(true);
+      setStackCheckComplete(true);
+      return;
+    }
+
+    let mounted = true;
+    invoke<StackStatus>('stack_status')
+      .then((status) => {
+        if (!mounted) {
+          return;
+        }
+        setStackReady(status.ready);
+        setStackCheckComplete(true);
+        if (!status.ready) {
+          const guidance = status.services
+            .filter((service) => service.required && !service.healthy)
+            .map((service) => `${service.name}: ${service.remediation_hint}`)
+            .join(' | ');
+          setStackError(
+            guidance ||
+              `Required services healthy: ${status.healthy_required_services}/${status.required_services}`,
+          );
+        } else {
+          setStackError(null);
+        }
+      })
+      .catch((error) => {
+        if (!mounted) {
+          return;
+        }
+        setStackReady(false);
+        setStackCheckComplete(true);
+        setStackError(error instanceof Error ? error.message : String(error));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [bootstrapCheckComplete, bootstrapReady]);
+
+  // Apply theme
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
+
+  useEffect(() => {
+    if (!bootstrapCheckComplete || !bootstrapReady || !stackCheckComplete || !stackReady) {
+      return;
+    }
+
     setTimeout(async () => {
       await loadUnifiedRuntimeConfig().then(setRuntimeConfig).catch(() => undefined);
-
-      // Initialize communications
       initializeComms();
-      
-      // Initialize Aetheric Link (signed heartbeat protocol)
-      // In production, use wss:// endpoint from environment or config
+
       const { wsUrl } = getRuntimeConfig();
       const gatewayUrl = wsUrl;
       try {
         const wsManager = getWebSocketManager(gatewayUrl);
-        // SignalR connect is async, but we don't need to await here
-        // Connection will establish in background
         wsManager.connect().catch(err => {
           console.error('[AETHERIC LINK] Connection failed:', err);
         });
@@ -73,16 +124,15 @@ export const App: React.FC = () => {
       }
     }, 100);
 
-    // Cleanup on unmount
     return () => {
       try {
         const wsManager = getWebSocketManager();
         wsManager.disconnect();
-      } catch (err) {
+      } catch {
         // Ignore errors during cleanup
       }
     };
-  }, [bootstrapReady]);
+  }, [bootstrapCheckComplete, bootstrapReady, stackCheckComplete, stackReady]);
 
   if (!bootstrapCheckComplete) {
     return null;
@@ -90,6 +140,14 @@ export const App: React.FC = () => {
 
   if (!bootstrapReady) {
     return <BootstrapOnboarding onReady={() => setBootstrapReady(true)} />;
+  }
+
+  if (!stackCheckComplete) {
+    return null;
+  }
+
+  if (!stackReady) {
+    return <BootstrapOnboarding onReady={() => setStackReady(true)} externalError={stackError} />;
   }
 
   return (

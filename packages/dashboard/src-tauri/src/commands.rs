@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{path::BaseDirectory, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tokio::sync::Mutex;
@@ -1655,6 +1656,188 @@ pub async fn verify_dashboard_connectivity(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BootstrapState {
     pub completed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StackState {
+    pub desired_running: bool,
+    pub last_ready: bool,
+    pub updated_at_unix_secs: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StackStatusResponse {
+    pub ready: bool,
+    pub required_services: usize,
+    pub healthy_required_services: usize,
+    pub services: Vec<LocalServiceStatusResponse>,
+    pub readiness: Vec<ServiceReadinessResponse>,
+    pub persisted_state: StackState,
+}
+
+fn now_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn stack_state_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app_handle
+        .path()
+        .resolve(".", BaseDirectory::AppData)
+        .map_err(|e| format!("Failed to resolve app data directory: {}", e))?;
+    Ok(app_data_dir.join("stack-state.json"))
+}
+
+fn read_stack_state(app_handle: &tauri::AppHandle) -> Result<StackState, String> {
+    let path = stack_state_path(app_handle)?;
+    if !path.exists() {
+        return Ok(StackState {
+            desired_running: true,
+            last_ready: false,
+            updated_at_unix_secs: 0,
+        });
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read stack state {}: {}", path.display(), e))?;
+    serde_json::from_str::<StackState>(&content)
+        .map_err(|e| format!("Failed to parse stack state {}: {}", path.display(), e))
+}
+
+fn persist_stack_state(app_handle: &tauri::AppHandle, state: &StackState) -> Result<(), String> {
+    let path = stack_state_path(app_handle)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create stack state directory {}: {}",
+                parent.display(),
+                e
+            )
+        })?;
+    }
+
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(state)
+            .map_err(|e| format!("Failed to serialize stack state: {}", e))?,
+    )
+    .map_err(|e| format!("Failed to persist stack state {}: {}", path.display(), e))
+}
+
+fn build_stack_status(app_handle: &tauri::AppHandle) -> Result<StackStatusResponse, String> {
+    let readiness = local_control_plane::evaluate_stack_readiness()?;
+    let persisted_state = read_stack_state(app_handle)?;
+
+    Ok(StackStatusResponse {
+        ready: readiness.ready,
+        required_services: readiness.required_services,
+        healthy_required_services: readiness.healthy_required_services,
+        services: readiness
+            .services
+            .into_iter()
+            .map(|status| LocalServiceStatusResponse {
+                name: status.name,
+                required: status.required,
+                healthy: status.healthy,
+                health_endpoint: status.health_endpoint,
+                port: status.port,
+                remediation_hint: status.remediation_hint,
+                startup_order: status.startup_order,
+                running: status.running,
+            })
+            .collect(),
+        readiness: readiness
+            .readiness
+            .into_iter()
+            .map(|item| ServiceReadinessResponse {
+                name: item.name,
+                healthy: item.healthy,
+                attempts: item.attempts,
+                elapsed_ms: item.elapsed_ms,
+                last_error: item.last_error,
+                remediation_hint: item.remediation_hint,
+            })
+            .collect(),
+        persisted_state,
+    })
+}
+
+pub fn attempt_stack_auto_recover(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    let state = read_stack_state(app_handle)?;
+    if !state.desired_running {
+        return Ok(());
+    }
+
+    let current = local_control_plane::evaluate_stack_readiness()?;
+    if current.ready {
+        return Ok(());
+    }
+
+    log::info!("Attempting local stack auto-recovery on relaunch");
+    let _ = local_control_plane::start_managed_services()?;
+
+    let recovered = local_control_plane::evaluate_stack_readiness()?;
+    persist_stack_state(
+        app_handle,
+        &StackState {
+            desired_running: true,
+            last_ready: recovered.ready,
+            updated_at_unix_secs: now_unix_secs(),
+        },
+    )
+}
+
+#[tauri::command]
+pub async fn stack_status(app_handle: tauri::AppHandle) -> Result<StackStatusResponse, String> {
+    build_stack_status(&app_handle)
+}
+
+#[tauri::command]
+pub async fn start_stack(app_handle: tauri::AppHandle) -> Result<StackStatusResponse, String> {
+    local_control_plane::start_managed_services()?;
+    let status = build_stack_status(&app_handle)?;
+    persist_stack_state(
+        &app_handle,
+        &StackState {
+            desired_running: true,
+            last_ready: status.ready,
+            updated_at_unix_secs: now_unix_secs(),
+        },
+    )?;
+    Ok(status)
+}
+
+#[tauri::command]
+pub async fn stop_stack(app_handle: tauri::AppHandle) -> Result<StackStatusResponse, String> {
+    local_control_plane::stop_managed_services()?;
+    let status = build_stack_status(&app_handle)?;
+    persist_stack_state(
+        &app_handle,
+        &StackState {
+            desired_running: false,
+            last_ready: status.ready,
+            updated_at_unix_secs: now_unix_secs(),
+        },
+    )?;
+    Ok(status)
+}
+
+#[tauri::command]
+pub async fn repair_stack(app_handle: tauri::AppHandle) -> Result<StackStatusResponse, String> {
+    local_control_plane::stop_managed_services()?;
+    local_control_plane::start_managed_services()?;
+    let status = build_stack_status(&app_handle)?;
+    persist_stack_state(
+        &app_handle,
+        &StackState {
+            desired_running: true,
+            last_ready: status.ready,
+            updated_at_unix_secs: now_unix_secs(),
+        },
+    )?;
+    Ok(status)
 }
 
 #[tauri::command]
