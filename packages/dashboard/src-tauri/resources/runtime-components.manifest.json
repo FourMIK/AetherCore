@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "components": [
+    {
+      "id": "aethercore-node",
+      "kind": "binary",
+      "description": "AetherCore mesh node runtime executable used for local deployments.",
+      "required": true,
+      "platform_paths": {
+        "linux": "linux/aethercore-node",
+        "macos": "macos/aethercore-node",
+        "windows": "windows/aethercore-node.exe"
+      },
+      "version_check_args": ["--version-json"],
+      "version_compatibility": "dashboard_runtime"
+    },
+    {
+      "id": "esptool",
+      "kind": "sidecar",
+      "description": "Bundled esptool utility used for USB firmware flashing workflows.",
+      "required": true,
+      "platform_paths": {
+        "linux": "linux/esptool",
+        "macos": "macos/esptool",
+        "windows": "windows/esptool.exe"
+      },
+      "version_check_args": ["--version"],
+      "version_compatibility": "invocation_success"
+    },
+    {
+      "id": "coderalphie-linux-arm64",
+      "kind": "payload",
+      "description": "Remote provisioning payload copied to edge assets during network enrollment.",
+      "required": true,
+      "platform_paths": {
+        "linux": "payloads/coderalphie-linux-arm64",
+        "macos": "payloads/coderalphie-linux-arm64",
+        "windows": "payloads/coderalphie-linux-arm64"
+      }
+    },
+    {
+      "id": "runtime-config-template",
+      "kind": "config_template",
+      "description": "Install-time runtime configuration template used by first-launch bootstrap validation.",
+      "required": true,
+      "platform_paths": {
+        "linux": "config/runtime-config.template.json",
+        "macos": "config/runtime-config.template.json",
+        "windows": "config/runtime-config.template.json"
+      }
+    },
+    {
+      "id": "local-control-plane-template",
+      "kind": "config_template",
+      "description": "Local control-plane fallback template bundled for offline commander bootstrap.",
+      "required": true,
+      "platform_paths": {
+        "linux": "config/local-control-plane.template.toml",
+        "macos": "config/local-control-plane.template.toml",
+        "windows": "config/local-control-plane.template.toml"
+      }
+    }
+  ]
+}

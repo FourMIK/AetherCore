@@ -166,6 +166,15 @@ pub fn run() {
                 log::info!("First launch pinned to Commander Edition bootstrap defaults");
             }
 
+            if let Err(error) = commands::verify_runtime_components_post_install(&app.handle()) {
+                commands::show_node_binary_remediation_dialog(
+                    &app.handle(),
+                    "AetherCore Runtime Asset Verification Failed",
+                    &error.to_string(),
+                );
+                return Err(tauri::Error::Setup(error.to_string()));
+            }
+
             if let Err(error) = commands::verify_node_runtime_startup(&app.handle()) {
                 commands::show_node_binary_remediation_dialog(
                     &app.handle(),

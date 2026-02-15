@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "product_profile": "commander_edition",
+  "profile": "local_control_plane",
+  "connection": {
+    "api_url": "http://127.0.0.1:3000",
+    "mesh_endpoint": "ws://127.0.0.1:8080"
+  },
+  "tpm": {
+    "mode": "optional",
+    "enforce_hardware": false
+  },
+  "features": {
+    "allow_insecure_localhost": true,
+    "bootstrap_on_startup": true
+  },
+  "connection_retry": {
+    "max_retries": 10,
+    "initial_delay_ms": 1000,
+    "max_delay_ms": 30000
+  }
+}

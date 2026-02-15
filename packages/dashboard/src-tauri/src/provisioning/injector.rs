@@ -7,13 +7,14 @@
 //! Security: SSH connections use password authentication (for initial deployment).
 //! Future enhancement: Use SSH key-based authentication for production.
 
+use crate::commands::resolve_required_component_path;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use ssh2::Session;
 use std::io::Read;
 use std::net::TcpStream;
 use std::path::Path;
-use tauri::{path::BaseDirectory, Manager};
+use tauri::Manager;
 
 /// Genesis message from provisioned remote device
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,9 +131,7 @@ pub async fn inject_pi(
 
 /// Find the coderalphie-linux-arm64 binary in resources/payloads/
 fn find_payload_binary(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    let resource_path = app_handle
-        .path()
-        .resolve("payloads/coderalphie-linux-arm64", BaseDirectory::Resource)
+    let resource_path = resolve_required_component_path(app_handle, "coderalphie-linux-arm64")
         .map_err(|e| format!("Failed to resolve payload resource path: {e}"))?;
 
     if resource_path.exists() {

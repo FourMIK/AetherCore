@@ -9,6 +9,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ed25519_dalek::VerifyingKey;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -745,6 +746,29 @@ struct NodeVersionHandshake {
     protocol_version: u32,
 }
 
+#[derive(Debug, Deserialize)]
+struct RuntimeComponentManifest {
+    schema_version: u32,
+    components: Vec<RuntimeComponent>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RuntimeComponent {
+    id: String,
+    kind: String,
+    description: String,
+    required: bool,
+    platform_paths: HashMap<String, String>,
+    version_check_args: Option<Vec<String>>,
+    version_compatibility: Option<String>,
+}
+
+#[derive(Debug)]
+struct RuntimeComponentValidationIssue {
+    component_id: String,
+    details: String,
+}
+
 /// Deploy a node process locally
 ///
 /// This command spawns a node binary as a child process with the provided configuration.
@@ -753,7 +777,7 @@ struct NodeVersionHandshake {
 /// # Security Considerations
 /// - All inputs are validated (ports, paths, URLs)
 /// - Config files are written to sanitized paths
-/// - Binary location is checked in secure order (env var -> bundled -> PATH)
+/// - Runtime binaries are resolved from signed bundled resources only
 ///
 /// # Integration
 /// Uses NodeProcessManager to track and manage the spawned process lifecycle.
@@ -970,64 +994,225 @@ pub async fn get_node_logs(
     Ok(logs)
 }
 
-/// Locate the node binary in the following order:
-/// 1. Environment variable NODE_BINARY_PATH
-/// 2. Bundled resource resolved via Tauri Resource directory
-/// 3. System PATH
-fn locate_node_binary(app_handle: &tauri::AppHandle) -> Result<String> {
-    // Check environment variable first
-    if let Ok(env_path) = std::env::var("NODE_BINARY_PATH") {
-        let path = PathBuf::from(&env_path);
-        if path.exists() {
-            log::info!("Found node binary via NODE_BINARY_PATH: {}", env_path);
-            return Ok(env_path);
-        } else {
-            log::warn!("NODE_BINARY_PATH set but file not found: {}", env_path);
-        }
-    }
-
-    // Check bundled resources via Tauri path resolver
-    let platform_resource_dir = if cfg!(target_os = "windows") {
+fn current_platform_key() -> &'static str {
+    if cfg!(target_os = "windows") {
         "windows"
     } else if cfg!(target_os = "macos") {
         "macos"
     } else {
         "linux"
-    };
+    }
+}
 
-    let binary_name = if cfg!(target_os = "windows") {
-        "aethercore-node.exe"
-    } else {
-        "aethercore-node"
-    };
+fn load_runtime_manifest(app_handle: &tauri::AppHandle) -> Result<RuntimeComponentManifest> {
+    let manifest_path = app_handle
+        .path()
+        .resolve("runtime-components.manifest.json", BaseDirectory::Resource)
+        .map_err(|e| anyhow::anyhow!("Failed to resolve runtime manifest: {e}"))?;
 
-    let candidate_resource_names = [
-        format!("{platform_resource_dir}/{binary_name}"),
-        binary_name.to_string(),
-    ];
+    let manifest_raw = std::fs::read_to_string(&manifest_path).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to read runtime manifest {}: {e}",
+            manifest_path.display()
+        )
+    })?;
 
-    for resource_name in candidate_resource_names {
-        if let Ok(resource_path) = app_handle
-            .path()
-            .resolve(&resource_name, BaseDirectory::Resource)
-        {
-            if resource_path.exists() {
-                log::info!("Found bundled node binary: {}", resource_path.display());
-                return Ok(resource_path.to_string_lossy().to_string());
-            }
+    let manifest: RuntimeComponentManifest = serde_json::from_str(&manifest_raw)
+        .map_err(|e| anyhow::anyhow!("Invalid runtime manifest JSON: {e}"))?;
+
+    if manifest.schema_version == 0 {
+        return Err(anyhow::anyhow!(
+            "Runtime manifest schema version must be >= 1"
+        ));
+    }
+
+    Ok(manifest)
+}
+
+pub(crate) fn resolve_required_component_path(
+    app_handle: &tauri::AppHandle,
+    component_id: &str,
+) -> Result<PathBuf> {
+    let manifest = load_runtime_manifest(app_handle)?;
+    let component = manifest
+        .components
+        .iter()
+        .find(|entry| entry.id == component_id)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Runtime component '{}' not declared in manifest",
+                component_id
+            )
+        })?;
+
+    let relative_path = component
+        .platform_paths
+        .get(current_platform_key())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Runtime component '{}' has no path for platform {}",
+                component_id,
+                current_platform_key()
+            )
+        })?;
+
+    let resolved = app_handle
+        .path()
+        .resolve(relative_path, BaseDirectory::Resource)
+        .map_err(|e| anyhow::anyhow!("Failed to resolve component '{}': {e}", component_id))?;
+
+    if !resolved.exists() {
+        return Err(anyhow::anyhow!(
+            "Required runtime component '{}' is missing at {}",
+            component_id,
+            resolved.display()
+        ));
+    }
+
+    Ok(resolved)
+}
+
+fn ensure_binary_executable(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = std::fs::metadata(path)?;
+        let mode = metadata.permissions().mode();
+        if mode & 0o111 == 0 {
+            let mut permissions = metadata.permissions();
+            permissions.set_mode(mode | 0o755);
+            std::fs::set_permissions(path, permissions)?;
         }
     }
 
-    // Try to find in PATH
-    if let Ok(path) = which::which(binary_name) {
-        log::info!("Found node binary in PATH: {}", path.display());
-        return Ok(path.to_string_lossy().to_string());
+    if !path.is_file() {
+        return Err(anyhow::anyhow!(
+            "Runtime component is not a file: {}",
+            path.display()
+        ));
     }
 
-    // If all else fails, return an error
-    Err(anyhow::anyhow!(
-        "Node binary not found. Set NODE_BINARY_PATH environment variable or ensure 'aethercore-node' is in PATH"
-    ))
+    Ok(())
+}
+
+fn locate_node_binary(app_handle: &tauri::AppHandle) -> Result<String> {
+    let path = resolve_required_component_path(app_handle, "aethercore-node")?;
+    ensure_binary_executable(&path)?;
+    log::info!("Resolved bundled node binary: {}", path.display());
+    Ok(path.to_string_lossy().to_string())
+}
+
+pub fn verify_runtime_components_post_install(app_handle: &tauri::AppHandle) -> Result<()> {
+    let manifest = load_runtime_manifest(app_handle)?;
+    let mut issues: Vec<RuntimeComponentValidationIssue> = Vec::new();
+
+    for component in &manifest.components {
+        if !component.required {
+            continue;
+        }
+
+        let relative_path = match component.platform_paths.get(current_platform_key()) {
+            Some(path) => path,
+            None => {
+                issues.push(RuntimeComponentValidationIssue {
+                    component_id: component.id.clone(),
+                    details: format!("No platform path configured for {}", current_platform_key()),
+                });
+                continue;
+            }
+        };
+
+        let resolved = match app_handle
+            .path()
+            .resolve(relative_path, BaseDirectory::Resource)
+        {
+            Ok(path) => path,
+            Err(error) => {
+                issues.push(RuntimeComponentValidationIssue {
+                    component_id: component.id.clone(),
+                    details: format!("Path resolution failed: {error}"),
+                });
+                continue;
+            }
+        };
+
+        if !resolved.exists() {
+            issues.push(RuntimeComponentValidationIssue {
+                component_id: component.id.clone(),
+                details: format!("Missing at {}", resolved.display()),
+            });
+            continue;
+        }
+
+        if component.kind == "binary" || component.kind == "sidecar" {
+            if let Err(error) = ensure_binary_executable(&resolved) {
+                issues.push(RuntimeComponentValidationIssue {
+                    component_id: component.id.clone(),
+                    details: format!("Not executable: {error}"),
+                });
+                continue;
+            }
+
+            if component.id == "aethercore-node" {
+                if let Err(error) = verify_node_binary_compatibility(path_to_str(&resolved)?) {
+                    issues.push(RuntimeComponentValidationIssue {
+                        component_id: component.id.clone(),
+                        details: format!("Version compatibility failed: {error}"),
+                    });
+                }
+            } else if component.version_check_args.is_some() {
+                let mut command = Command::new(&resolved);
+                for arg in component.version_check_args.clone().unwrap_or_default() {
+                    command.arg(arg);
+                }
+
+                match command.output() {
+                    Ok(output) if output.status.success() => {
+                        if component.version_compatibility.as_deref() == Some("invocation_success")
+                        {
+                            log::info!("Runtime component '{}' passed version check", component.id);
+                        }
+                    }
+                    Ok(output) => {
+                        issues.push(RuntimeComponentValidationIssue {
+                            component_id: component.id.clone(),
+                            details: format!(
+                                "Version check command failed with status {}: {}",
+                                output.status,
+                                String::from_utf8_lossy(&output.stderr)
+                            ),
+                        });
+                    }
+                    Err(error) => {
+                        issues.push(RuntimeComponentValidationIssue {
+                            component_id: component.id.clone(),
+                            details: format!("Version check invocation failed: {error}"),
+                        });
+                    }
+                }
+            }
+        }
+
+        log::info!(
+            "Validated runtime component '{}' ({}) at {}",
+            component.id,
+            component.description,
+            resolved.display()
+        );
+    }
+
+    if !issues.is_empty() {
+        let mut details = String::new();
+        for issue in issues {
+            details.push_str(&format!("- {}: {}\n", issue.component_id, issue.details));
+        }
+        return Err(anyhow::anyhow!(
+            "One or more runtime components are missing or corrupt:\n{}",
+            details.trim_end()
+        ));
+    }
+
+    Ok(())
 }
 
 fn read_node_handshake(binary_path: &str) -> Result<NodeVersionHandshake> {
@@ -1088,7 +1273,7 @@ Install or bundle the aethercore-node binary built from the same major release."
     if node_version < dashboard_version {
         return Err(anyhow::anyhow!(
             "Node binary is older than dashboard. Dashboard is {}, node binary is {}.
-Upgrade the bundled node binary or set NODE_BINARY_PATH to a newer build.",
+Upgrade and reinstall the desktop package with a newer bundled runtime.",
             dashboard_version,
             node_version
         ));
@@ -1111,26 +1296,7 @@ pub fn verify_node_runtime_startup(app_handle: &tauri::AppHandle) -> Result<()> 
 }
 
 pub fn attempt_node_binary_repair(app_handle: &tauri::AppHandle) -> Result<String> {
-    let binary_name = if cfg!(target_os = "windows") {
-        "aethercore-node.exe"
-    } else {
-        "aethercore-node"
-    };
-    let platform_resource_dir = if cfg!(target_os = "windows") {
-        "windows"
-    } else if cfg!(target_os = "macos") {
-        "macos"
-    } else {
-        "linux"
-    };
-
-    let bundled_path = app_handle
-        .path()
-        .resolve(
-            format!("{platform_resource_dir}/{binary_name}"),
-            BaseDirectory::Resource,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to resolve bundled node binary: {e}"))?;
+    let bundled_path = resolve_required_component_path(app_handle, "aethercore-node")?;
 
     if !bundled_path.exists() {
         return Err(anyhow::anyhow!(
@@ -1139,13 +1305,7 @@ pub fn attempt_node_binary_repair(app_handle: &tauri::AppHandle) -> Result<Strin
         ));
     }
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&bundled_path)?.permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&bundled_path, perms)?;
-    }
+    ensure_binary_executable(&bundled_path)?;
 
     let handshake = verify_node_binary_compatibility(path_to_str(&bundled_path)?)?;
     Ok(format!(
@@ -1170,7 +1330,7 @@ pub fn show_node_binary_remediation_dialog(
     let requested_repair = app_handle
         .dialog()
         .message(format!(
-            "{details}\n\nREMEDIATION:\n1. Click 'Repair Now' to re-validate bundled runtime assets.\n2. If repair fails, rebuild with `cargo build -p aethercore-node --release` and package again with `tauri build`.\n3. Or set NODE_BINARY_PATH to a compatible aethercore-node executable."
+            "{details}\n\nREMEDIATION:\n1. Click 'Repair Now' to re-validate bundled runtime assets.\n2. If repair fails, rebuild with `cargo build -p aethercore-node --release` and package again with `tauri build`.\n3. Reinstall the desktop package to restore bundled runtime components."
         ))
         .buttons(MessageDialogButtons::OkCancelCustom(
             "Repair Now".to_string(),

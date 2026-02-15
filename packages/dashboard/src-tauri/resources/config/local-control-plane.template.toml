@@ -1,0 +1,8 @@
+# Local control plane defaults for Commander Edition bootstrap.
+[connection]
+api_url = "http://127.0.0.1:3000"
+mesh_endpoint = "ws://127.0.0.1:8080"
+
+[tpm]
+mode = "optional"
+enforce_hardware = false
