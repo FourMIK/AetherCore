@@ -173,7 +173,7 @@ EOF
 nano ~/.local/share/applications/aethercore-commander.desktop
 # Or using vim:
 # vim ~/.local/share/applications/aethercore-commander.desktop
-# Or use sed to replace in-place:
+# Or use sed to replace in-place (Linux syntax):
 # sed -i "s|YOUR_USERNAME|$USER|g" ~/.local/share/applications/aethercore-commander.desktop
 ```
 
@@ -243,11 +243,7 @@ macOS uses **zsh** as the default shell (since Catalina). When copying shell com
    - ❌ Wrong: `cat > file.txt << EOF` (variables expand)
    - ✅ Right: `cat > file.txt <<'EOF'` (literal text, no expansion)
 
-2. **Array/glob patterns in brackets:**
-   - If you see `[something]` in a command, ensure it's quoted if it's literal text
-   - zsh treats unquoted brackets as glob patterns
-
-3. **Inline comments after commands:**
+2. **Inline comments after commands:**
    - These usually work fine, but if you see parse errors, remove them
    - Example: `command arg  # comment` should work, but try without comment if it fails
 
