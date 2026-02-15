@@ -158,7 +158,7 @@ sudo apt-get install -y libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-
 
 ```bash
 # Create desktop entry for app launcher
-# Replace ~/Downloads with the actual path to your AppImage
+# Note: Use the actual path where you downloaded the AppImage
 cat > ~/.local/share/applications/aethercore-commander.desktop <<'EOF'
 [Desktop Entry]
 Name=AetherCore Commander
@@ -173,7 +173,7 @@ EOF
 nano ~/.local/share/applications/aethercore-commander.desktop
 # Or using vim:
 # vim ~/.local/share/applications/aethercore-commander.desktop
-# Or use sed to replace in-place (Linux syntax):
+# Or use sed to replace in-place (uses double quotes to expand $USER variable):
 # sed -i "s|YOUR_USERNAME|$USER|g" ~/.local/share/applications/aethercore-commander.desktop
 ```
 
