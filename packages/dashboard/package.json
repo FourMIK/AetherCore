@@ -17,8 +17,9 @@
     "clean": "rm -rf dist",
     "lint": "echo \"No linting configured yet\"",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "tauri:build": "tauri build",
+    "tauri:build:dev": "tauri build --config src-tauri/tauri.dev.conf.json"
   },
   "keywords": [
     "aethercore",

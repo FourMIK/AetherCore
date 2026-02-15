@@ -100,6 +100,17 @@ jobs:
       - name: Install npm Dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Gate: release-tag branding metadata must be production
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          set -euo pipefail
+          if rg -n "Dev Mode|tactical-glass-dev" packages/dashboard/src-tauri/tauri.conf.json; then
+            echo "❌ Release metadata contains Dev Mode branding"
+            exit 1
+          fi
+          echo "✅ Release metadata branding is production-safe"
+
       - name: Run environment checks
         run: pnpm doctor
 
@@ -257,7 +268,7 @@ jobs:
           sleep 25
           kill "$APP_PID" || true
 
-          CONFIG_FILE="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/runtime-config.json"
+          CONFIG_FILE="$HOME/Library/Application Support/com.aethercore.commander/runtime-config.json"
           test -f "$CONFIG_FILE"
 
       - name: "Validation Gate: install + launch + bootstrap ready (Windows)"
@@ -281,7 +292,7 @@ jobs:
           Start-Sleep -Seconds 25
           if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
 
-          $configPath = Join-Path $env:APPDATA "com.aethercore.tactical-glass-dev\runtime-config.json"
+          $configPath = Join-Path $env:APPDATA "com.aethercore.commander\runtime-config.json"
           if (-not (Test-Path $configPath)) {
             throw "Bootstrap ready-state config not found at $configPath"
           }
@@ -330,7 +341,18 @@ jobs:
             --tauri-version "${tauri_version:-2.x}" \
             --rust-version "$rust_version" \
             --node-version "$node_version" \
-            --private-key-path release-artifacts/checksum-signing.pem
+            --private-key-path release-artifacts/checksum-signing.pem \
+            --bundle-identifier com.aethercore.commander
+
+      - name: Gate: installer artifact names must align with production Commander naming
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find packages/dashboard/src-tauri/target/release/bundle -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.AppImage' -o -name '*.appimage' \) | grep -E 'Dev|dev|tactical-glass'; then
+            echo "❌ Installer artifact names contain non-production branding"
+            exit 1
+          fi
+          echo "✅ Installer artifact names align with Commander branding"
 
       - name: Upload signed checksum + provenance artifacts
         uses: actions/upload-artifact@v4
@@ -499,9 +521,9 @@ jobs:
             fi
           fi
 
-          bootstrap_state="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/bootstrap-state.json"
-          runtime_config="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/runtime-config.json"
-          stack_state="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/stack-state.json"
+          bootstrap_state="$HOME/Library/Application Support/com.aethercore.commander/bootstrap-state.json"
+          runtime_config="$HOME/Library/Application Support/com.aethercore.commander/runtime-config.json"
+          stack_state="$HOME/Library/Application Support/com.aethercore.commander/stack-state.json"
           sample_node_config="$RUNNER_TEMP/aethercore-smoke/data/first-node/first-node_config.json"
 
           wait_start=$(python3 - <<'PY'
@@ -719,9 +741,9 @@ jobs:
                 AETHERCORE_SKIP_SENTINEL_FOR_CI = '1'
               }
 
-            $bootstrapState = Join-Path $env:APPDATA 'com.aethercore.tactical-glass-dev\bootstrap-state.json'
-            $runtimeConfig = Join-Path $env:APPDATA 'com.aethercore.tactical-glass-dev\runtime-config.json'
-            $stackState = Join-Path $env:APPDATA 'com.aethercore.tactical-glass-dev\stack-state.json'
+            $bootstrapState = Join-Path $env:APPDATA 'com.aethercore.commander\bootstrap-state.json'
+            $runtimeConfig = Join-Path $env:APPDATA 'com.aethercore.commander\runtime-config.json'
+            $stackState = Join-Path $env:APPDATA 'com.aethercore.commander\stack-state.json'
             $sampleNodeConfig = Join-Path $smokeDir 'data\first-node\first-node_config.json'
 
             $deadline = (Get-Date).AddSeconds(180)
