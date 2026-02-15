@@ -29,6 +29,14 @@ interface ConnectivityCheck {
   details: string[];
 }
 
+interface DeploymentStatus {
+  node_id: string;
+  pid: number;
+  port: number;
+  started_at: number;
+  status: string;
+}
+
 const RETRY_LIMIT = 3;
 const RETRY_DELAY_MS = 1000;
 const TIMEOUT_BUDGET_MS = 30000;
@@ -41,13 +49,19 @@ function isTauriRuntime(): boolean {
 
 export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady }) => {
   const [steps, setSteps] = useState<BootstrapStep[]>([
-    { id: 'dirs', label: 'Initialize local data/config directories', state: 'pending', attempts: 0 },
-    { id: 'services', label: 'Start and validate managed local services', state: 'pending', attempts: 0 },
-    { id: 'connectivity', label: 'Verify dashboard API and WebSocket connectivity', state: 'pending', attempts: 0 },
+    { id: 'environment', label: 'Environment check', state: 'pending', attempts: 0 },
+    { id: 'stack', label: 'Local stack boot', state: 'pending', attempts: 0 },
+    { id: 'mesh', label: 'Mesh connect', state: 'pending', attempts: 0 },
+    { id: 'node', label: 'First node deploy', state: 'pending', attempts: 0 },
   ]);
   const [errorSummary, setErrorSummary] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [flowComplete, setFlowComplete] = useState(false);
   const [latestServiceStatus, setLatestServiceStatus] = useState<ServiceStatus[]>([]);
+
+  const recommendedProfile = 'local_control_plane';
+  const recommendedMeshEndpoint = 'ws://127.0.0.1:8080';
+  const firstNodeId = 'first-node';
 
   const updateStep = useCallback((id: string, patch: Partial<BootstrapStep>) => {
     setSteps((prev) => prev.map((step) => (step.id === id ? { ...step, ...patch } : step)));
@@ -82,6 +96,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
     }
 
     setIsRunning(true);
+    setFlowComplete(false);
     setErrorSummary(null);
 
     try {
@@ -91,10 +106,10 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
         onReady();
         return;
       }
-      const dirs = await runWithRetry('dirs', async () => invoke<string[]>('initialize_local_data_dirs'));
-      updateStep('dirs', { state: 'success', detail: `Ready (${dirs.length} directories)` });
+      const dirs = await runWithRetry('environment', async () => invoke<string[]>('initialize_local_data_dirs'));
+      updateStep('environment', { state: 'success', detail: `Environment ready (${dirs.length} local directories prepared)` });
 
-      const serviceStatuses = await runWithRetry('services', async () => {
+      const serviceStatuses = await runWithRetry('stack', async () => {
         await invoke<ServiceStatus[]>('start_managed_services');
         return invoke<ServiceStatus[]>('check_local_service_status');
       });
@@ -104,15 +119,15 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
       if (unhealthyRequired.length > 0) {
         throw new Error(`Required services unhealthy: ${unhealthyRequired.map((svc) => svc.name).join(', ')}`);
       }
-      updateStep('services', {
+      updateStep('stack', {
         state: 'success',
-        detail: `${serviceStatuses.filter((svc) => svc.healthy).length}/${serviceStatuses.length} healthy`,
+        detail: `${serviceStatuses.filter((svc) => svc.healthy).length}/${serviceStatuses.length} services healthy`,
       });
 
       const runtime = getRuntimeConfig();
       const apiHealth = `${runtime.apiUrl || 'http://127.0.0.1:3000'}/health`;
-      const wsEndpoint = runtime.wsUrl || 'ws://127.0.0.1:8080';
-      const connectivity = await runWithRetry('connectivity', () =>
+      const wsEndpoint = runtime.wsUrl || recommendedMeshEndpoint;
+      const connectivity = await runWithRetry('mesh', () =>
         invoke<ConnectivityCheck>('verify_dashboard_connectivity', {
           apiHealthEndpoint: apiHealth,
           websocketEndpoint: wsEndpoint,
@@ -123,9 +138,36 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
         throw new Error(connectivity.details.join(' | '));
       }
 
-      updateStep('connectivity', { state: 'success', detail: 'All connectivity checks passed' });
+      updateStep('mesh', { state: 'success', detail: 'Dashboard API and mesh WebSocket are reachable' });
+
+      const existingDeployments = await invoke<DeploymentStatus[]>('get_deployment_status').catch(() => []);
+      const alreadyRunning = existingDeployments.find((deployment) => deployment.node_id === firstNodeId);
+
+      if (alreadyRunning) {
+        updateStep('node', {
+          state: 'success',
+          detail: `Node ${firstNodeId} already running (pid ${alreadyRunning.pid})`,
+        });
+      } else {
+        const nodeDeployment = await runWithRetry('node', () =>
+          invoke<DeploymentStatus>('deploy_node', {
+            config: {
+              node_id: firstNodeId,
+              mesh_endpoint: wsEndpoint,
+              listen_port: 9000,
+              data_dir: './data/first-node',
+              log_level: 'info',
+            },
+          })
+        );
+        updateStep('node', {
+          state: 'success',
+          detail: `Node ${nodeDeployment.node_id} deployed and running on port ${nodeDeployment.port}`,
+        });
+      }
+
       await invoke<string>('set_bootstrap_state', { completed: true });
-      onReady();
+      setFlowComplete(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setErrorSummary(message);
@@ -138,6 +180,100 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
       setIsRunning(false);
     }
   }, [onReady, runWithRetry, updateStep]);
+
+  const convertErrorToPlainLanguage = useCallback((message: string) => {
+    const normalized = message.toLowerCase();
+
+    if (normalized.includes('timeout exceeded')) {
+      return {
+        title: 'Setup timed out before services finished starting.',
+        instructions: [
+          'Wait about 30 seconds for local services to warm up, then run Retry checks.',
+          'If it keeps timing out, choose Repair deployment to restart local services cleanly.',
+        ],
+      };
+    }
+
+    if (normalized.includes('required services unhealthy') || normalized.includes('failed to bind')) {
+      return {
+        title: 'Local services did not start correctly.',
+        instructions: [
+          'Close other apps that might be using ports 3000 or 8080.',
+          'Run Repair deployment to restart the local stack.',
+          'If the issue persists, reboot the machine and relaunch AetherCore.',
+        ],
+      };
+    }
+
+    if (normalized.includes('websocket') || normalized.includes('/health')) {
+      return {
+        title: 'Dashboard could not reach the local mesh endpoints.',
+        instructions: [
+          'Make sure your local firewall allows loopback traffic on ports 3000 and 8080.',
+          'Run Retry checks after confirming networking is enabled.',
+        ],
+      };
+    }
+
+    if (normalized.includes('failed to locate node binary')) {
+      return {
+        title: 'Node runtime is missing, so first node deployment cannot complete.',
+        instructions: [
+          'Reinstall or repair the desktop package so the node binary is bundled.',
+          'Advanced users can set NODE_BINARY_PATH to the aethercore-node binary.',
+        ],
+      };
+    }
+
+    return {
+      title: 'Setup could not finish automatically.',
+      instructions: [
+        'Run Retry checks once to confirm whether this was transient.',
+        'If it repeats, run Repair deployment and then Retry checks again.',
+      ],
+    };
+  }, []);
+
+  const runQuickSelfTest = useCallback(async () => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    setErrorSummary(null);
+    setIsRunning(true);
+
+    try {
+      const serviceStatuses = await invoke<ServiceStatus[]>('check_local_service_status');
+      const requiredUnhealthy = serviceStatuses.filter((svc) => svc.required && !svc.healthy);
+      if (requiredUnhealthy.length > 0) {
+        throw new Error(`Required services unhealthy: ${requiredUnhealthy.map((svc) => svc.name).join(', ')}`);
+      }
+
+      const runtime = getRuntimeConfig();
+      const connectivity = await invoke<ConnectivityCheck>('verify_dashboard_connectivity', {
+        apiHealthEndpoint: `${runtime.apiUrl || 'http://127.0.0.1:3000'}/health`,
+        websocketEndpoint: runtime.wsUrl || recommendedMeshEndpoint,
+      });
+
+      if (!connectivity.api_healthy || !connectivity.websocket_reachable) {
+        throw new Error(connectivity.details.join(' | '));
+      }
+
+      const deployments = await invoke<DeploymentStatus[]>('get_deployment_status');
+      const nodeReady = deployments.some((deployment) => deployment.node_id === firstNodeId && deployment.status === 'Running');
+
+      if (!nodeReady) {
+        throw new Error(`First node not running: ${firstNodeId}`);
+      }
+
+      setErrorSummary('Quick self-test passed: dashboard, mesh, and node deployment are healthy.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorSummary(message);
+    } finally {
+      setIsRunning(false);
+    }
+  }, []);
 
   const repairDeployment = useCallback(async () => {
     if (!isTauriRuntime()) {
@@ -167,13 +303,23 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
     return Math.round((complete / steps.length) * 100);
   }, [steps]);
 
+  const plainLanguageError = errorSummary ? convertErrorToPlainLanguage(errorSummary) : null;
+
   return (
     <div className="min-h-screen bg-carbon text-tungsten p-8">
       <div className="mx-auto max-w-3xl rounded-lg border border-overmatch/40 bg-carbon-2 p-6">
-        <h1 className="text-2xl font-display mb-2">First-Run Bootstrap</h1>
+        <h1 className="text-2xl font-display mb-2">First-Run Guided Setup</h1>
         <p className="text-sm text-tungsten/80 mb-4">
-          Deterministic readiness contract: {TIMEOUT_BUDGET_MS / 1000}s timeout budget, {RETRY_LIMIT} retries, {RETRY_DELAY_MS}ms backoff.
+          We apply secure defaults automatically so you can get operational with minimal technical choices.
         </p>
+
+        <div className="mb-4 rounded border border-overmatch/30 bg-carbon p-3 text-xs">
+          <p className="font-semibold">Recommended defaults (auto-applied)</p>
+          <p>Profile: <span className="font-mono">{recommendedProfile}</span></p>
+          <p>Mesh endpoint: <span className="font-mono">{recommendedMeshEndpoint}</span></p>
+          <p className="text-tungsten/70 mt-1">Advanced toggles are hidden during first run for a deterministic setup path.</p>
+        </div>
+
         <div className="mb-4 h-2 w-full rounded bg-carbon">
           <div className="h-2 rounded bg-overmatch transition-all" style={{ width: `${progress}%` }} />
         </div>
@@ -194,13 +340,13 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
           ))}
         </ul>
 
-        {errorSummary && (
+        {errorSummary && plainLanguageError && (
           <div className="mt-4 rounded border border-jamming/60 bg-jamming/10 p-4">
-            <p className="font-semibold">Guided remediation</p>
+            <p className="font-semibold">{plainLanguageError.title}</p>
             <ul className="list-disc pl-5 text-sm mt-2 space-y-1">
-              <li>Verify local services can bind to ports 3000 and 8080.</li>
-              <li>Run `pnpm --dir services/gateway dev` and `pnpm --dir services/collaboration dev` manually.</li>
-              <li>Confirm API `/health` and WebSocket endpoints are reachable from this host.</li>
+              {plainLanguageError.instructions.map((instruction) => (
+                <li key={instruction}>{instruction}</li>
+              ))}
             </ul>
             {latestServiceStatus.length > 0 && (
               <ul className="mt-3 space-y-1 text-xs">
@@ -212,6 +358,30 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
               </ul>
             )}
             <p className="mt-2 text-xs">Last error: {errorSummary}</p>
+          </div>
+        )}
+
+        {flowComplete && (
+          <div className="mt-4 rounded border border-overmatch bg-overmatch/10 p-4">
+            <p className="font-semibold">System Ready: Dashboard + Mesh + Node deployment validated</p>
+            <p className="text-sm mt-1">Success criteria met. You can open the dashboard or run quick self-tests anytime.</p>
+            <div className="mt-3 flex gap-3">
+              <button
+                type="button"
+                onClick={() => void runQuickSelfTest()}
+                disabled={isRunning}
+                className="rounded border border-overmatch/50 px-4 py-2 text-sm disabled:opacity-50"
+              >
+                Run quick self-test
+              </button>
+              <button
+                type="button"
+                onClick={onReady}
+                className="rounded bg-overmatch px-4 py-2 text-carbon text-sm"
+              >
+                Open dashboard
+              </button>
+            </div>
           </div>
         )}
 
@@ -231,15 +401,6 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
             className="rounded border border-jamming/50 px-4 py-2 disabled:opacity-50"
           >
             Repair deployment
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void invoke<string>('set_bootstrap_state', { completed: false });
-            }}
-            className="rounded border border-overmatch/40 px-4 py-2"
-          >
-            Reset first-run state
           </button>
         </div>
       </div>
