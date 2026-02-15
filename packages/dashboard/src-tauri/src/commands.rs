@@ -1217,6 +1217,19 @@ pub struct LocalServiceStatusResponse {
     pub healthy: bool,
     pub health_endpoint: String,
     pub port: u16,
+    pub remediation_hint: String,
+    pub startup_order: u32,
+    pub running: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceReadinessResponse {
+    pub name: String,
+    pub healthy: bool,
+    pub attempts: u32,
+    pub elapsed_ms: u128,
+    pub last_error: Option<String>,
+    pub remediation_hint: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1237,6 +1250,9 @@ pub async fn check_local_service_status() -> Result<Vec<LocalServiceStatusRespon
                 healthy: status.healthy,
                 health_endpoint: status.health_endpoint,
                 port: status.port,
+                remediation_hint: status.remediation_hint,
+                startup_order: status.startup_order,
+                running: status.running,
             })
             .collect()
     })
@@ -1258,8 +1274,51 @@ pub async fn start_managed_services() -> Result<Vec<LocalServiceStatusResponse>,
                 healthy: status.healthy,
                 health_endpoint: status.health_endpoint,
                 port: status.port,
+                remediation_hint: status.remediation_hint,
+                startup_order: status.startup_order,
+                running: status.running,
             })
             .collect()
+    })
+}
+
+#[tauri::command]
+pub async fn start_dependency(service_name: String) -> Result<LocalServiceStatusResponse, String> {
+    local_control_plane::start_dependency(&service_name).map(|status| LocalServiceStatusResponse {
+        name: status.name,
+        required: status.required,
+        healthy: status.healthy,
+        health_endpoint: status.health_endpoint,
+        port: status.port,
+        remediation_hint: status.remediation_hint,
+        startup_order: status.startup_order,
+        running: status.running,
+    })
+}
+
+#[tauri::command]
+pub async fn stop_dependency(service_name: String) -> Result<LocalServiceStatusResponse, String> {
+    local_control_plane::stop_dependency(&service_name).map(|status| LocalServiceStatusResponse {
+        name: status.name,
+        required: status.required,
+        healthy: status.healthy,
+        health_endpoint: status.health_endpoint,
+        port: status.port,
+        remediation_hint: status.remediation_hint,
+        startup_order: status.startup_order,
+        running: status.running,
+    })
+}
+
+#[tauri::command]
+pub async fn retry_dependency(service_name: String) -> Result<ServiceReadinessResponse, String> {
+    local_control_plane::retry_dependency(&service_name).map(|readiness| ServiceReadinessResponse {
+        name: readiness.name,
+        healthy: readiness.healthy,
+        attempts: readiness.attempts,
+        elapsed_ms: readiness.elapsed_ms,
+        last_error: readiness.last_error,
+        remediation_hint: readiness.remediation_hint,
     })
 }
 

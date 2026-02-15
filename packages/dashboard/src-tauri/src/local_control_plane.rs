@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
@@ -21,6 +22,10 @@ pub struct StartupPolicy {
     pub health_poll_interval_ms: u64,
     pub service_start_grace_period_ms: u64,
     pub service_health_timeout_secs: u64,
+    #[serde(default = "default_max_retries")]
+    pub health_check_retries: u32,
+    #[serde(default = "default_retry_backoff_ms")]
+    pub retry_backoff_ms: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -30,13 +35,17 @@ pub struct ManagedService {
     pub required: bool,
     pub port: u16,
     pub health_endpoint: String,
+    #[serde(default)]
+    pub remediation_hint: String,
+    #[serde(default)]
+    pub depends_on: Vec<String>,
     pub working_dir: String,
     pub start_command: String,
 }
 
 #[derive(Debug)]
 pub struct LocalControlPlaneRuntime {
-    spawned_children: Vec<Child>,
+    spawned_children: HashMap<String, Child>,
 }
 
 static MANAGED_RUNTIME: OnceLock<Mutex<LocalControlPlaneRuntime>> = OnceLock::new();
@@ -48,11 +57,24 @@ pub struct ServiceStatus {
     pub healthy: bool,
     pub health_endpoint: String,
     pub port: u16,
+    pub remediation_hint: String,
+    pub startup_order: u32,
+    pub running: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ServiceReadiness {
+    pub name: String,
+    pub healthy: bool,
+    pub attempts: u32,
+    pub elapsed_ms: u128,
+    pub last_error: Option<String>,
+    pub remediation_hint: String,
 }
 
 impl Drop for LocalControlPlaneRuntime {
     fn drop(&mut self) {
-        for child in &mut self.spawned_children {
+        for child in self.spawned_children.values_mut() {
             if let Err(error) = child.kill() {
                 log::warn!(
                     "Failed to stop local control plane child process: {}",
@@ -71,7 +93,7 @@ pub fn bootstrap_local_control_plane() -> Result<LocalControlPlaneRuntime, Strin
             mode
         );
         return Ok(LocalControlPlaneRuntime {
-            spawned_children: Vec::new(),
+            spawned_children: HashMap::new(),
         });
     }
 
@@ -88,7 +110,7 @@ pub fn bootstrap_local_control_plane() -> Result<LocalControlPlaneRuntime, Strin
     let mut services = manifest.services;
     services.sort_by_key(|service| service.startup_order);
 
-    let mut spawned_children = Vec::new();
+    let mut spawned_children = HashMap::new();
 
     for service in services {
         if is_service_healthy(&service.health_endpoint, service.port) {
@@ -101,13 +123,13 @@ pub fn bootstrap_local_control_plane() -> Result<LocalControlPlaneRuntime, Strin
             service.name,
             service.start_command
         );
-        spawned_children.push(spawn_service(&service)?);
+        spawned_children.insert(service.name.clone(), spawn_service(&service)?);
 
         thread::sleep(Duration::from_millis(
             manifest.startup.service_start_grace_period_ms,
         ));
 
-        wait_for_service_health(&service, &manifest.startup)?;
+        ensure_service_health(&service, &manifest.startup)?;
     }
 
     Ok(LocalControlPlaneRuntime { spawned_children })
@@ -116,7 +138,7 @@ pub fn bootstrap_local_control_plane() -> Result<LocalControlPlaneRuntime, Strin
 pub fn initialize_managed_runtime() {
     MANAGED_RUNTIME.get_or_init(|| {
         Mutex::new(LocalControlPlaneRuntime {
-            spawned_children: Vec::new(),
+            spawned_children: HashMap::new(),
         })
     });
 }
@@ -150,6 +172,13 @@ pub fn ensure_local_data_dirs() -> Result<Vec<String>, String> {
 
 pub fn check_service_statuses() -> Result<Vec<ServiceStatus>, String> {
     let manifest = read_manifest(&resolve_manifest_path()?)?;
+    initialize_managed_runtime();
+    let runtime = MANAGED_RUNTIME
+        .get()
+        .expect("managed runtime must be initialized")
+        .lock()
+        .map_err(|_| "Failed to lock managed runtime".to_string())?;
+
     Ok(manifest
         .services
         .iter()
@@ -159,6 +188,9 @@ pub fn check_service_statuses() -> Result<Vec<ServiceStatus>, String> {
             healthy: is_service_healthy(&service.health_endpoint, service.port),
             health_endpoint: service.health_endpoint.clone(),
             port: service.port,
+            remediation_hint: service.remediation_hint.clone(),
+            startup_order: service.startup_order,
+            running: runtime.spawned_children.contains_key(&service.name),
         })
         .collect())
 }
@@ -180,11 +212,17 @@ pub fn start_managed_services() -> Result<Vec<ServiceStatus>, String> {
             continue;
         }
 
-        runtime.spawned_children.push(spawn_service(service)?);
+        if runtime.spawned_children.contains_key(&service.name) {
+            continue;
+        }
+
+        runtime
+            .spawned_children
+            .insert(service.name.clone(), spawn_service(service)?);
         thread::sleep(Duration::from_millis(
             manifest.startup.service_start_grace_period_ms,
         ));
-        wait_for_service_health(service, &manifest.startup)?;
+        ensure_service_health(service, &manifest.startup)?;
     }
 
     Ok(services
@@ -195,8 +233,106 @@ pub fn start_managed_services() -> Result<Vec<ServiceStatus>, String> {
             healthy: is_service_healthy(&service.health_endpoint, service.port),
             health_endpoint: service.health_endpoint.clone(),
             port: service.port,
+            remediation_hint: service.remediation_hint.clone(),
+            startup_order: service.startup_order,
+            running: runtime.spawned_children.contains_key(&service.name),
         })
         .collect())
+}
+
+pub fn start_dependency(service_name: &str) -> Result<ServiceStatus, String> {
+    initialize_managed_runtime();
+    let manifest = read_manifest(&resolve_manifest_path()?)?;
+    let service = manifest
+        .services
+        .iter()
+        .find(|service| service.name == service_name)
+        .ok_or_else(|| format!("Service '{}' not found in manifest", service_name))?;
+
+    let mut runtime = MANAGED_RUNTIME
+        .get()
+        .expect("managed runtime must be initialized")
+        .lock()
+        .map_err(|_| "Failed to lock managed runtime".to_string())?;
+
+    if !runtime.spawned_children.contains_key(service_name)
+        && !is_service_healthy(&service.health_endpoint, service.port)
+    {
+        runtime
+            .spawned_children
+            .insert(service.name.clone(), spawn_service(service)?);
+        thread::sleep(Duration::from_millis(
+            manifest.startup.service_start_grace_period_ms,
+        ));
+    }
+
+    let readiness = ensure_service_health(service, &manifest.startup)?;
+    Ok(ServiceStatus {
+        name: service.name.clone(),
+        required: service.required,
+        healthy: readiness.healthy,
+        health_endpoint: service.health_endpoint.clone(),
+        port: service.port,
+        remediation_hint: service.remediation_hint.clone(),
+        startup_order: service.startup_order,
+        running: runtime.spawned_children.contains_key(service_name),
+    })
+}
+
+pub fn stop_dependency(service_name: &str) -> Result<ServiceStatus, String> {
+    initialize_managed_runtime();
+    let manifest = read_manifest(&resolve_manifest_path()?)?;
+    let service = manifest
+        .services
+        .iter()
+        .find(|service| service.name == service_name)
+        .ok_or_else(|| format!("Service '{}' not found in manifest", service_name))?;
+
+    let mut runtime = MANAGED_RUNTIME
+        .get()
+        .expect("managed runtime must be initialized")
+        .lock()
+        .map_err(|_| "Failed to lock managed runtime".to_string())?;
+
+    if let Some(mut child) = runtime.spawned_children.remove(service_name) {
+        let _ = child.kill();
+    }
+
+    Ok(ServiceStatus {
+        name: service.name.clone(),
+        required: service.required,
+        healthy: is_service_healthy(&service.health_endpoint, service.port),
+        health_endpoint: service.health_endpoint.clone(),
+        port: service.port,
+        remediation_hint: service.remediation_hint.clone(),
+        startup_order: service.startup_order,
+        running: runtime.spawned_children.contains_key(service_name),
+    })
+}
+
+pub fn retry_dependency(service_name: &str) -> Result<ServiceReadiness, String> {
+    stop_dependency(service_name)?;
+    let manifest = read_manifest(&resolve_manifest_path()?)?;
+    let service = manifest
+        .services
+        .iter()
+        .find(|service| service.name == service_name)
+        .ok_or_else(|| format!("Service '{}' not found in manifest", service_name))?;
+
+    initialize_managed_runtime();
+    let mut runtime = MANAGED_RUNTIME
+        .get()
+        .expect("managed runtime must be initialized")
+        .lock()
+        .map_err(|_| "Failed to lock managed runtime".to_string())?;
+    runtime
+        .spawned_children
+        .insert(service.name.clone(), spawn_service(service)?);
+    thread::sleep(Duration::from_millis(
+        manifest.startup.service_start_grace_period_ms,
+    ));
+
+    ensure_service_health(service, &manifest.startup)
 }
 
 pub fn stop_managed_services() -> Result<(), String> {
@@ -207,7 +343,7 @@ pub fn stop_managed_services() -> Result<(), String> {
         .lock()
         .map_err(|_| "Failed to lock managed runtime".to_string())?;
 
-    for child in &mut runtime.spawned_children {
+    for child in runtime.spawned_children.values_mut() {
         let _ = child.kill();
     }
     runtime.spawned_children.clear();
@@ -307,27 +443,59 @@ fn spawn_service(service: &ManagedService) -> Result<Child, String> {
         })
 }
 
-fn wait_for_service_health(
+fn ensure_service_health(
     service: &ManagedService,
     startup: &StartupPolicy,
-) -> Result<(), String> {
-    let timeout = Duration::from_secs(startup.service_health_timeout_secs);
-    let poll_interval = Duration::from_millis(startup.health_poll_interval_ms);
-    let started = Instant::now();
+) -> Result<ServiceReadiness, String> {
+    let max_attempts = startup.health_check_retries + 1;
+    let total_started = Instant::now();
+    let mut last_error = None;
 
-    while started.elapsed() < timeout {
-        if is_service_healthy(&service.health_endpoint, service.port) {
-            log::info!("Service {} is healthy", service.name);
-            return Ok(());
+    for attempt in 1..=max_attempts {
+        let timeout = Duration::from_secs(startup.service_health_timeout_secs);
+        let poll_interval = Duration::from_millis(startup.health_poll_interval_ms);
+        let started = Instant::now();
+
+        while started.elapsed() < timeout {
+            if is_service_healthy(&service.health_endpoint, service.port) {
+                log::info!(
+                    "Service {} is healthy on attempt {}/{}",
+                    service.name,
+                    attempt,
+                    max_attempts
+                );
+                return Ok(ServiceReadiness {
+                    name: service.name.clone(),
+                    healthy: true,
+                    attempts: attempt,
+                    elapsed_ms: total_started.elapsed().as_millis(),
+                    last_error: None,
+                    remediation_hint: service.remediation_hint.clone(),
+                });
+            }
+
+            thread::sleep(poll_interval);
         }
 
-        thread::sleep(poll_interval);
+        last_error = Some(format!(
+            "Service '{}' failed health checks at {} within {} seconds (attempt {}/{})",
+            service.name,
+            service.health_endpoint,
+            startup.service_health_timeout_secs,
+            attempt,
+            max_attempts
+        ));
+        if attempt < max_attempts {
+            thread::sleep(Duration::from_millis(startup.retry_backoff_ms));
+        }
     }
 
     if service.required {
         Err(format!(
-            "Local control plane service '{}' failed health checks at {} within {} seconds",
-            service.name, service.health_endpoint, startup.service_health_timeout_secs
+            "{}. Remediation hint: {}",
+            last_error
+                .unwrap_or_else(|| format!("Service '{}' did not become healthy", service.name)),
+            service.remediation_hint
         ))
     } else {
         log::warn!(
@@ -335,7 +503,14 @@ fn wait_for_service_health(
             service.name,
             service.health_endpoint
         );
-        Ok(())
+        Ok(ServiceReadiness {
+            name: service.name.clone(),
+            healthy: false,
+            attempts: max_attempts,
+            elapsed_ms: total_started.elapsed().as_millis(),
+            last_error,
+            remediation_hint: service.remediation_hint.clone(),
+        })
     }
 }
 
@@ -396,4 +571,12 @@ fn is_service_healthy(health_endpoint: &str, fallback_port: u16) -> bool {
         }
         _ => false,
     }
+}
+
+fn default_max_retries() -> u32 {
+    2
+}
+
+fn default_retry_backoff_ms() -> u64 {
+    1250
 }
