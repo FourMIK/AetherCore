@@ -64,6 +64,30 @@ cd packages/dashboard
 pnpm tauri dev
 ```
 
+### Docker Compose Development Stack (Engineering)
+
+For development and testing of backend services:
+
+```bash
+# Navigate to docker directory
+cd infra/docker
+
+# Copy environment configuration
+cp .env.example .env
+
+# Start services
+docker compose up -d
+
+# View logs
+docker compose logs -f
+```
+
+**See [Docker Compose Guide](docs/DOCKER_COMPOSE_GUIDE.md) for:**
+- Port configuration to avoid conflicts
+- Running multiple stacks side-by-side
+- Troubleshooting and cleanup procedures
+- Development workflows
+
 ---
 
 ## Documentation
@@ -73,6 +97,7 @@ pnpm tauri dev
 * [Architecture](ARCHITECTURE.md): System design and data flow.
 * [Security](SECURITY.md): Threat models and reporting vulnerabilities.
 * [Protocol Overview](PROTOCOL_OVERVIEW.md): Deep dive into the consensus mechanism.
+* [Docker Compose Guide](docs/DOCKER_COMPOSE_GUIDE.md): Development environment setup and troubleshooting.
 * [TPM Configuration](docs/TPM_CONFIGURATION.md): TPM runtime configuration and security implications.
 * [Product Profiles](docs/PRODUCT_PROFILES.md): Commander Edition default profile and engineering appendix.
 * [Copilot MCP Configuration](docs/COPILOT_MCP_CONFIGURATION.md): GitHub Copilot Model Context Protocol setup.
