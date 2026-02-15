@@ -74,24 +74,22 @@ Before installing AetherCore Tactical Glass, ensure:
 - [ ] Admin/sudo privileges available (for system-wide installation)
 - [ ] Firewall configured to allow required ports
 - [ ] Existing antivirus software won't block the application
-- [ ] Downloaded installer verified against checksums (see releases page)
+- [ ] Downloaded installer is listed in `release-manifest.json` for the selected release tag
 - [ ] SBOM artifacts reviewed (see [PROVENANCE.md](PROVENANCE.md))
 
-**Security Verification:**
+**Security Verification (manifest-first):**
 
 ```bash
-# Download checksums from GitHub release
-# For Linux/macOS:
-shasum -a 256 tactical-glass.AppImage
-shasum -a 256 tactical-glass.dmg
-
-# For Windows (PowerShell):
-Get-FileHash tactical-glass.msi -Algorithm SHA256
+# 1) Download release-manifest.json + signature from the release tag
+# 2) Verify manifest signature + all artifact hashes before install
+python3 scripts/verify-release-manifest.py   --manifest ./release-manifest.json   --artifacts-dir .   --public-key ./release-manifest-public.pem
 ```
 
-Compare output with the release-attached `SHA256SUMS-macos.txt` / `SHA256SUMS-windows.txt` and verify detached signatures (`.sig`) before installation. Provenance JSON attestations are published as `provenance-macos.json` and `provenance-windows.json` assets on each release (details in [PROVENANCE.md](PROVENANCE.md)).
+Only install `.dmg` and `.msi` artifacts that are explicitly listed in `release-manifest.json` for the selected tag. Provenance JSON and checksum bundles remain attached for audit workflows (details in [PROVENANCE.md](PROVENANCE.md)).
 
 **Release integrity assets (per tag):**
+- `release-manifest.json`
+- `release-manifest.json.sig`
 - `SHA256SUMS-macos.txt`
 - `SHA256SUMS-macos.txt.sig`
 - `SHA256SUMS-windows.txt`
@@ -105,6 +103,8 @@ Compare output with the release-attached `SHA256SUMS-macos.txt` / `SHA256SUMS-wi
 
 ### Linux (Ubuntu/Debian)
 
+> Linux desktop binaries are not distributed as release handoff artifacts. Build from source for Linux environments.
+
 #### Method 1: AppImage (Recommended)
 
 **1. Download the AppImage:**
@@ -117,7 +117,7 @@ wget https://github.com/FourMIK/AetherCore/releases/latest/download/aethercore-t
 
 ```bash
 shasum -a 256 aethercore-tactical-glass_amd64.AppImage
-# Compare with published checksum
+# Validate with scripts/verify-release-manifest.py output
 ```
 
 **3. Make executable:**
@@ -177,13 +177,13 @@ file aethercore-tactical-glass_amd64.AppImage
 
 **1. Download the DMG file:**
 
-Visit [GitHub Releases](https://github.com/FourMIK/AetherCore/releases/latest) and download `aethercore-tactical-glass.dmg` (Universal Binary - supports Intel and Apple Silicon).
+Visit [GitHub Releases](https://github.com/FourMIK/AetherCore/releases/latest), open `release-manifest.json`, and download the `.dmg` artifact entry listed for `platform: macos`.
 
 **2. Verify integrity:**
 
 ```bash
 shasum -a 256 aethercore-tactical-glass.dmg
-# Compare with published checksum
+# Validate with scripts/verify-release-manifest.py output
 ```
 
 **3. Open the DMG:**
@@ -217,14 +217,14 @@ Launch from `/Applications` normally. Production release builds are Developer ID
 
 **1. Download the MSI installer:**
 
-Visit [GitHub Releases](https://github.com/FourMIK/AetherCore/releases/latest) and download `aethercore-tactical-glass.msi`.
+Visit [GitHub Releases](https://github.com/FourMIK/AetherCore/releases/latest), open `release-manifest.json`, and download the `.msi` artifact entry listed for `platform: windows`.
 
 **2. Verify integrity:**
 
 Open PowerShell and run:
 ```powershell
 Get-FileHash aethercore-tactical-glass.msi -Algorithm SHA256
-# Compare with published checksum
+# Validate with scripts/verify-release-manifest.py output
 ```
 
 **3. Run the installer:**
@@ -542,3 +542,13 @@ After successful installation:
 **Status:** INSTALLATION PROCEDURES DOCUMENTED ✅  
 **Maintainer:** AetherCore Security Team  
 **Review Cycle:** Quarterly or upon major release
+
+
+## IT Deployment Handoff Requirement
+
+`release-manifest.json` is the required handoff artifact for enterprise distribution pipelines:
+- **Intune**: ingest manifest, verify signature/hash, deploy only listed `.msi`.
+- **Jamf**: ingest manifest, verify signature/hash, deploy only listed `.dmg`.
+- **Manual distribution**: operators must run manifest verification before install.
+
+Pipelines should fail closed if the manifest signature fails, an artifact hash mismatches, or an installer is missing from the manifest.

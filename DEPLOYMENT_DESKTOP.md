@@ -279,6 +279,17 @@ file tactical-glass.AppImage  # Verify it's x86-64
 3. Hold device steady for 2-3 seconds
 4. Verify camera is functional
 
+
+## Release Handoff Contract (Required)
+
+All IT deployment channels must use `release-manifest.json` as the source of truth for desktop installers.
+
+- **Intune**: deploy only `.msi` files listed in manifest after signature/hash verification.
+- **Jamf**: deploy only `.dmg` files listed in manifest after signature/hash verification.
+- **Manual distribution**: operators must verify manifest + hashes before installation.
+
+Pipelines must fail closed when manifest validation fails or artifact hashes do not match.
+
 ## Build from Source
 
 See [README.md](README.md) for build instructions.

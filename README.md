@@ -30,7 +30,11 @@ AetherCore replaces "trust by policy" with **Cryptographic Certainty**. It is de
 ## Quick Start
 
 ### Download Binaries
-For the latest installers (macOS .dmg, Windows .msi, Linux .AppImage), please visit our [Releases Page](https://github.com/FourMIK/AetherCore/releases).
+For the latest desktop installers, use only assets listed in each release's `release-manifest.json` on the [Releases Page](https://github.com/FourMIK/AetherCore/releases). Current managed artifacts are:
+- macOS `.dmg`
+- Windows `.msi`
+
+Each listed artifact is manifest-backed with SHA-256 and signature metadata for deployment validation.
 
 ### Installation
 See the [Installation Guide](INSTALLATION.md) for detailed setup instructions.
