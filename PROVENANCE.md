@@ -1,7 +1,7 @@
 # AetherCore Provenance & Build Attestation
 
 **Classification:** COSMIC  
-**Last Updated:** 2026-02-12  
+**Last Updated:** 2026-02-15  
 **Scope:** Field-test production release validation artifacts and provenance policy.
 
 ## Table of Contents
@@ -22,7 +22,7 @@ This document records how AetherCore establishes provenance for source, dependen
 - Source provenance is tied to Git commit history and signed release tags.
 - Dependency provenance is tied to lock files (`Cargo.lock`, `pnpm-lock.yaml` or `package-lock.json`) and SBOM manifests.
 - Build provenance is tied to deterministic scripts in `scripts/` with CI-run verification.
-- Artifact provenance is tied to generated SBOM outputs and hash manifests in `sbom-artifacts/`.
+- Artifact provenance is tied to generated SBOM outputs, signed hash manifests (`SHA256SUMS-macos.txt`/`SHA256SUMS-windows.txt` and `.sig`), and per-platform provenance JSON (`provenance-macos.json`, `provenance-windows.json`).
 
 ## Build Inputs
 A production candidate release requires immutable build inputs: exact Rust crate versions, exact JS package graph, pinned toolchain versions, and explicit configuration manifests. Any mutable or unpinned dependency source is disallowed for clean release promotion.
@@ -35,6 +35,18 @@ A production candidate release requires immutable build inputs: exact Rust crate
 
 ## Release Attestation Workflow
 - Run `scripts/release-checklist.sh` for go/no-go decisioning.
+- Enforce platform trust-chain gates in `.github/workflows/desktop-release.yml`:
+  - macOS: Developer ID signature verification, notarization success, and stapling validation.
+  - Windows: Authenticode signature verification with trusted timestamp validation.
+- Execute post-build clean-runner validation on macOS and Windows by installing produced artifacts, launching with `--bootstrap`, and asserting first-run bootstrap reaches ready-state persistence.
+- Publish release integrity artifacts for each tag:
+  - `SHA256SUMS-macos.txt`
+  - `SHA256SUMS-macos.txt.sig`
+  - `SHA256SUMS-windows.txt`
+  - `SHA256SUMS-windows.txt.sig`
+  - `provenance-macos.json`
+  - `provenance-windows.json`
+- Attach SBOM evidence and GitHub build provenance attestations to the release.
 - Ensure documentation completeness (including this file), test health, supply-chain evidence, and manifest consistency.
 - For field tests where TPM is disabled, document TPM mode and ensure non-TPM controls remain fully active.
 - Produce release commit and PR traceability with summary of all checks and known environment constraints.
@@ -47,6 +59,7 @@ Some development environments lack system GUI dependencies (e.g., `glib-2.0`) re
 - Supply chain hardening policy: `docs/SUPPLY_CHAIN_SECURITY.md`
 - Deployment readiness and field execution: `DEPLOYMENT_DESKTOP.md`
 - Installation and setup details: `INSTALLATION.md`
+- Release workflow implementation: `.github/workflows/desktop-release.yml`
 
 ## Appendix A: Security Excerpts
 

@@ -8,45 +8,61 @@ on:
 jobs:
   release:
     name: Build Desktop App (${{ matrix.platform }})
-    timeout-minutes: 60
+    timeout-minutes: 90
     permissions:
       contents: write
+      attestations: write
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest'
+          - platform: macos
             os: macos-latest
-            target: 'universal-apple-darwin'
-          - platform: 'windows-latest'
+            artifact_glob: "packages/dashboard/src-tauri/target/release/bundle/**/*.dmg"
+            tauri_args: "--target universal-apple-darwin"
+          - platform: windows
             os: windows-latest
-            target: 'x86_64-pc-windows-msvc'
-    
+            artifact_glob: "packages/dashboard/src-tauri/target/release/bundle/**/*.msi"
+            tauri_args: ""
+
     runs-on: ${{ matrix.os }}
-    
+
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      WINDOWS_SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
+      CHECKSUM_SIGNING_PRIVATE_KEY: ${{ secrets.CHECKSUM_SIGNING_PRIVATE_KEY }}
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Check required network endpoints
         run: ./scripts/check-network-prereqs.sh
-      
+
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Setup Rust Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          targets: ${{ matrix.os == 'windows-latest' && 'x86_64-pc-windows-msvc' || '' }}
-      
+          targets: ${{ matrix.platform == 'windows' && 'x86_64-pc-windows-msvc' || '' }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'pnpm'
-      
+
       - name: Cache Rust Dependencies
         uses: actions/cache@v3
         with:
@@ -58,7 +74,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-desktop-
             ${{ runner.os }}-cargo-
-      
+
       - name: Cache Node Modules
         uses: actions/cache@v3
         with:
@@ -70,256 +86,209 @@ jobs:
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-
-      
+
       - name: Install Dependencies (macOS)
-        if: matrix.os == 'macos-latest'
+        if: matrix.platform == 'macos'
         run: |
-          # Install Apple Silicon and Intel targets for universal binary
           rustup target add aarch64-apple-darwin
           rustup target add x86_64-apple-darwin
-      
+
       - name: Enable Corepack
         run: corepack enable
-      
+
       - name: Install npm Dependencies
         run: pnpm install --frozen-lockfile
-      
+
       - name: Run environment checks
         run: pnpm doctor
-      
+
       - name: "🛡️ Operation Ironclad: Comprehensive Release Checklist"
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🛡️  Operation Ironclad: Release Validation Gate"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
-          echo "Executing comprehensive pre-release validation..."
-          echo "This checks:"
-          echo "  - Documentation completeness"
-          echo "  - Test suite execution (Rust + TypeScript)"
-          echo "  - SBOM generation and supply chain security"
-          echo "  - Code signing configuration"
-          echo "  - Version consistency"
-          echo "  - Lock file integrity"
-          echo "  - Build validation"
-          echo ""
-          
           chmod +x ./scripts/release-checklist.sh
           ./scripts/release-checklist.sh
-          
-          if [ $? -ne 0 ]; then
-            echo ""
-            echo "❌ RELEASE BLOCKED: Checklist validation failed"
-            echo "All checks must pass before desktop release can proceed."
-            echo "See output above for specific failures."
-            exit 1
-          fi
-          
-          echo ""
-          echo "✅ Release validation passed - proceeding with build"
+
+      - name: Enforce signing and notarization secrets (macOS)
+        if: matrix.platform == 'macos'
         shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      
-      - name: "🛡️ Install Supply Chain Tools"
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📦 Installing Supply Chain Security Tools"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          
-          # Install SBOM generation tools (fail fast on errors)
-          echo "📦 Installing cargo-audit..."
-          cargo install cargo-audit --locked
-          
-          echo "📦 Installing cargo-deny (license compliance)..."
-          cargo install cargo-deny --locked
-          
-          echo "📦 Installing cargo-cyclonedx..."
-          cargo install cargo-cyclonedx --locked
-          
-          echo "📦 Installing cyclonedx-npm..."
-          npm install -g @cyclonedx/cyclonedx-npm
-          
-          echo "📦 Installing b3sum (BLAKE3 hashing)..."
-          if ! cargo install b3sum --locked; then
-            echo "⚠️  b3sum installation failed, script will use SHA-256 fallback"
-            # Create a marker file to indicate fallback mode
-            FALLBACK_DIR="${TMPDIR:-${TEMP:-${TMP:-/tmp}}}/aethercore-sbom-logs"
-            mkdir -p "$FALLBACK_DIR"
-            echo "USE_FALLBACK=true" > "$FALLBACK_DIR/sbom-fallback-mode"
-          fi
-          
-          echo ""
-          echo "✅ Supply chain tools installed successfully"
-        shell: bash
-      
-      - name: "🛡️ Operation Legal Shield: License Compliance Check"
+          required=(APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID CHECKSUM_SIGNING_PRIVATE_KEY)
+          for key in "${required[@]}"; do
+            if [ -z "${!key}" ]; then
+              echo "❌ Missing required secret: $key"
+              exit 1
+            fi
+          done
+
+      - name: Enforce signing secrets (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🛡️  Operation Legal Shield: License Compliance"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          
-          echo "📋 Enforcing license whitelist (deny.toml)..."
-          cargo deny check licenses
-          
-          echo ""
-          echo "🔍 Checking for security advisories..."
-          cargo deny check advisories
-          
-          echo ""
-          echo "🚫 Checking for banned dependencies..."
-          cargo deny check bans
-          
-          echo ""
-          echo "✅ License compliance verified - all dependencies approved"
-        shell: bash
-      
+          $required = @('WINDOWS_CERTIFICATE', 'WINDOWS_CERTIFICATE_PASSWORD', 'CHECKSUM_SIGNING_PRIVATE_KEY', 'WINDOWS_SIGNING_TIMESTAMP_URL')
+          foreach ($key in $required) {
+            $value = (Get-Item -Path "Env:$key" -ErrorAction SilentlyContinue).Value
+            if ([string]::IsNullOrWhiteSpace($value)) {
+              throw "Missing required secret: $key"
+            }
+          }
+
       - name: Build Frontend (TypeScript)
         run: |
           cd packages/dashboard
           pnpm run build
-      
-      - name: Setup Code Signing (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          IS_PRERELEASE=false
-          # Validate semver format and check for pre-release suffix
-          if [[ "${{ github.ref_name }}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$ ]]; then
-            if [[ "${{ github.ref_name }}" =~ -(alpha|beta|rc|dev|pre) ]]; then
-              IS_PRERELEASE=true
-            fi
-          fi
-          
-          if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ] && [ -n "${{ secrets.APPLE_SIGNING_IDENTITY }}" ] && [ -n "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ]; then
-            echo "✅ Code signing configured for macOS"
-            # In production, import certificate and set up signing identity
-          elif [ "$IS_PRERELEASE" = "true" ]; then
-            echo "⚠️  Code signing not configured, but this is a pre-release build"
-            echo "   Pre-release tag detected: ${{ github.ref_name }}"
-            echo "   Proceeding without code signing for testing purposes"
-          else
-            echo "❌ RELEASE BLOCKED: Code signing not configured"
-            echo "   Production macOS releases must be signed and notarized."
-            echo "   Required secrets: APPLE_CERTIFICATE, APPLE_SIGNING_IDENTITY, APPLE_CERTIFICATE_PASSWORD"
-            echo ""
-            echo "To bypass this check for testing, use a pre-release tag (e.g., v1.0.0-alpha, v1.0.0-beta)"
-            exit 1
-          fi
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      
-      - name: Setup Code Signing (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          $isPreRelease = $false
-          # Validate semver format and check for pre-release suffix
-          if ("${{ github.ref_name }}" -match '^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$') {
-            if ("${{ github.ref_name }}" -match '-(alpha|beta|rc|dev|pre)') {
-              $isPreRelease = $true
-            }
-          }
-          
-          if ("${{ secrets.WINDOWS_CERTIFICATE }}") {
-            Write-Output "✅ Code signing configured for Windows"
-          } elseif ($isPreRelease) {
-            Write-Output "⚠️  Code signing not configured, but this is a pre-release build"
-            Write-Output "   Pre-release tag detected: ${{ github.ref_name }}"
-            Write-Output "   Proceeding without code signing for testing purposes"
-          } else {
-            Write-Output "❌ RELEASE BLOCKED: Code signing not configured"
-            Write-Output "   Production Windows releases must be signed with a valid certificate."
-            Write-Output "   Required secrets: WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD"
-            Write-Output ""
-            Write-Output "To bypass this check for testing, use a pre-release tag (e.g., v1.0.0-alpha, v1.0.0-beta)"
-            exit 1
-          }
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-      
+
       - name: Build & Package Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
           projectPath: "./packages/dashboard"
           tagName: ${{ github.ref_name }}
           releaseName: "AetherCore Tactical Glass ${{ github.ref_name }}"
           releaseBody: |
             ## AetherCore Tactical Glass Release ${{ github.ref_name }}
-            
+
             ### Desktop Applications
-            - **Windows**: NSIS Installer (currentUser mode)
-            - **macOS**: Universal DMG (Intel + Apple Silicon)
-            
+            - **Windows**: Authenticode signed installer + trusted RFC3161 timestamp
+            - **macOS**: Developer ID signed, notarized, and stapled universal DMG
+
             ### Security Notes
-            - All binaries use BLAKE3 for integrity verification
-            - Ed25519 signatures for Zero-Touch enrollment
-            - TPM-backed keys recommended for production deployment
-            
+            - Release checksums are cryptographically signed
+            - SBOM and provenance attestations are attached to every release
+
             ### Installation
-            See [DEPLOYMENT_DESKTOP.md](https://github.com/FourMIK/AetherCore/blob/main/DEPLOYMENT_DESKTOP.md) for detailed installation instructions.
-            
-            ### Verification
-            SHA-256 checksums are published below for The Great Gospel ledger verification.
+            See [INSTALLATION.md](https://github.com/FourMIK/AetherCore/blob/main/INSTALLATION.md).
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.os == 'macos-latest' && '--target universal-apple-darwin' || '' }}
-      
-      - name: Generate SHA-256 Checksums (Windows)
-        if: matrix.os == 'windows-latest'
+          args: ${{ matrix.tauri_args }}
+
+      - name: "Gate: verify macOS code signing + notarization + stapling"
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="$(find packages/dashboard/src-tauri/target/release/bundle -name '*.dmg' | head -n 1)"
+          app="$(find packages/dashboard/src-tauri/target/release/bundle -name '*.app' | head -n 1)"
+
+          test -n "$dmg" && test -n "$app"
+
+          codesign --verify --deep --strict --verbose=4 "$app"
+          spctl --assess --type execute --verbose=4 "$app"
+          xcrun stapler validate "$dmg"
+
+      - name: "Gate: verify Windows Authenticode + trusted timestamp"
+        if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          Write-Output "=== Windows Build Artifacts Checksums ==="
-          Get-ChildItem -Path "packages/dashboard/src-tauri/target/release/bundle" -Recurse -Include "*.msi","*.exe" | ForEach-Object {
-            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash
-            Write-Output "$($_.Name): $hash"
-          }
-      
-      - name: Generate SHA-256 Checksums (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          echo "=== macOS Build Artifacts Checksums ==="
-          find packages/dashboard/src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app" \) -exec sh -c '
-            for file; do
-              echo "$(basename "$file"): $(shasum -a 256 "$file" | cut -d " " -f 1)"
-            done
-          ' sh {} +
-      
-      - name: Performance Budget Check
-        run: |
-          SECONDS=0
-          echo "Build process monitoring enabled"
-          # Note: Actual build time is tracked by GitHub Actions automatically
-          # To enforce 15-minute budget, set job timeout at job level
+          $msi = Get-ChildItem -Path "packages/dashboard/src-tauri/target/release/bundle" -Recurse -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { throw "No MSI artifact found" }
+
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $signtool) { throw "signtool.exe not found" }
+
+          & $signtool.FullName verify /pa /tw /v $msi.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Authenticode or timestamp verification failed" }
+
+      - name: "Validation Gate: install + launch + bootstrap ready (macOS)"
+        if: matrix.platform == 'macos'
         shell: bash
-      
-      - name: "📦 Upload Supply Chain Evidence (SBOM Artifacts)"
+        run: |
+          set -euo pipefail
+          dmg="$(find packages/dashboard/src-tauri/target/release/bundle -name '*.dmg' | head -n 1)"
+          mount_dir="$(mktemp -d)"
+          hdiutil attach "$dmg" -mountpoint "$mount_dir"
+          app_path="$(find "$mount_dir" -maxdepth 1 -name '*.app' | head -n 1)"
+          cp -R "$app_path" /Applications/
+          hdiutil detach "$mount_dir"
+
+          APP_BIN="/Applications/$(basename "$app_path")/Contents/MacOS/$(basename "$app_path" .app)"
+          AETHERCORE_SKIP_SENTINEL_FOR_CI=1 CI=1 "$APP_BIN" --bootstrap > /tmp/aethercore-macos-launch.log 2>&1 &
+          APP_PID=$!
+          sleep 25
+          kill "$APP_PID" || true
+
+          CONFIG_FILE="$HOME/Library/Application Support/com.aethercore.tactical-glass-dev/runtime-config.json"
+          test -f "$CONFIG_FILE"
+
+      - name: "Validation Gate: install + launch + bootstrap ready (Windows)"
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem -Path "packages/dashboard/src-tauri/target/release/bundle" -Recurse -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { throw "No MSI artifact found" }
+
+          Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart" -Wait -NoNewWindow
+
+          $exe = Get-ChildItem -Path "$env:LOCALAPPDATA\Programs" -Recurse -Filter "*.exe" |
+            Where-Object { $_.Name -like "*Tactical*" -or $_.Name -like "*aethercore*" } |
+            Select-Object -First 1
+          if (-not $exe) { throw "Installed executable not found" }
+
+          $launch = Start-Process -FilePath $exe.FullName -ArgumentList "--bootstrap" -PassThru -Environment @{
+            CI = '1'
+            AETHERCORE_SKIP_SENTINEL_FOR_CI = '1'
+          }
+          Start-Sleep -Seconds 25
+          if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
+
+          $configPath = Join-Path $env:APPDATA "com.aethercore.tactical-glass-dev\runtime-config.json"
+          if (-not (Test-Path $configPath)) {
+            throw "Bootstrap ready-state config not found at $configPath"
+          }
+
+      - name: Build checksum + signature + provenance bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+
+          checksum_file="release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt"
+          signature_file="${checksum_file}.sig"
+
+          while IFS= read -r -d '' file; do
+            shasum -a 256 "$file" >> "$checksum_file"
+          done < <(find packages/dashboard/src-tauri/target/release/bundle -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.app' -o -name '*.exe' \) -print0)
+
+          printf '%s' "$CHECKSUM_SIGNING_PRIVATE_KEY" > release-artifacts/checksum-signing.pem
+          openssl dgst -sha256 -sign release-artifacts/checksum-signing.pem -out "$signature_file" "$checksum_file"
+          rm -f release-artifacts/checksum-signing.pem
+
+          cat > "release-artifacts/provenance-${{ matrix.platform }}.json" <<EOF
+          {
+            "tag": "${{ github.ref_name }}",
+            "platform": "${{ matrix.platform }}",
+            "commit": "${{ github.sha }}",
+            "workflow": "${{ github.workflow }}",
+            "run_id": "${{ github.run_id }}",
+            "signed_checksums": "$(basename "$signature_file")"
+          }
+          EOF
+
+      - name: Upload signed checksum + provenance artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sbom-${{ matrix.platform }}
+          name: release-integrity-${{ matrix.platform }}
           path: |
-            sbom-artifacts/tauri-sbom.json
-            sbom-artifacts/frontend-sbom.json
-            sbom-artifacts/LICENSE_MANIFEST.txt
-            sbom-artifacts/SUPPLY_CHAIN_MANIFEST.md
+            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt
+            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt.sig
+            release-artifacts/provenance-${{ matrix.platform }}.json
           if-no-files-found: error
           retention-days: 90
-      
-      - name: "🔒 Attach SBOM to GitHub Release"
+
+      - name: Generate build provenance attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: ${{ matrix.artifact_glob }}
+
+      - name: Attach integrity + provenance assets to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: |
+            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt
+            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt.sig
+            release-artifacts/provenance-${{ matrix.platform }}.json
             sbom-artifacts/tauri-sbom.json
             sbom-artifacts/frontend-sbom.json
             sbom-artifacts/LICENSE_MANIFEST.txt
