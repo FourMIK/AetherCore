@@ -18,6 +18,9 @@ interface ServiceStatus {
   healthy: boolean;
   health_endpoint: string;
   port: number;
+  remediation_hint: string;
+  startup_order: number;
+  running: boolean;
 }
 
 interface ConnectivityCheck {
@@ -44,6 +47,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
   ]);
   const [errorSummary, setErrorSummary] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [latestServiceStatus, setLatestServiceStatus] = useState<ServiceStatus[]>([]);
 
   const updateStep = useCallback((id: string, patch: Partial<BootstrapStep>) => {
     setSteps((prev) => prev.map((step) => (step.id === id ? { ...step, ...patch } : step)));
@@ -94,6 +98,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
         await invoke<ServiceStatus[]>('start_managed_services');
         return invoke<ServiceStatus[]>('check_local_service_status');
       });
+      setLatestServiceStatus(serviceStatuses);
 
       const unhealthyRequired = serviceStatuses.filter((svc) => svc.required && !svc.healthy);
       if (unhealthyRequired.length > 0) {
@@ -133,6 +138,25 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
       setIsRunning(false);
     }
   }, [onReady, runWithRetry, updateStep]);
+
+  const repairDeployment = useCallback(async () => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    setErrorSummary(null);
+    setIsRunning(true);
+    try {
+      await invoke('stop_managed_services');
+      await invoke<ServiceStatus[]>('start_managed_services');
+      await executeFlow();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorSummary(message);
+    } finally {
+      setIsRunning(false);
+    }
+  }, [executeFlow]);
 
   useEffect(() => {
     void executeFlow();
@@ -178,6 +202,15 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
               <li>Run `pnpm --dir services/gateway dev` and `pnpm --dir services/collaboration dev` manually.</li>
               <li>Confirm API `/health` and WebSocket endpoints are reachable from this host.</li>
             </ul>
+            {latestServiceStatus.length > 0 && (
+              <ul className="mt-3 space-y-1 text-xs">
+                {latestServiceStatus.map((service) => (
+                  <li key={service.name}>
+                    {service.name}: {service.healthy ? 'healthy' : 'unhealthy'} — {service.remediation_hint}
+                  </li>
+                ))}
+              </ul>
+            )}
             <p className="mt-2 text-xs">Last error: {errorSummary}</p>
           </div>
         )}
@@ -190,6 +223,14 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
             className="rounded bg-overmatch px-4 py-2 text-carbon disabled:opacity-50"
           >
             Retry checks
+          </button>
+          <button
+            type="button"
+            onClick={() => void repairDeployment()}
+            disabled={isRunning}
+            className="rounded border border-jamming/50 px-4 py-2 disabled:opacity-50"
+          >
+            Repair deployment
           </button>
           <button
             type="button"
