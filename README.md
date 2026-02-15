@@ -11,7 +11,7 @@
 
 ## ⚠️ Alpha Release Notice
 This is a **Developer Preview (v0.1.0)**. While the cryptographic core is verified, this software is intended for evaluation and testing in controlled environments. 
-* **Dev Mode:** The desktop application currently runs in "Dev Mode" by default, simulating hardware roots of trust.
+* **Production profile default:** Release artifacts ship as **AetherCore Commander**. Dev-channel branding is isolated to build-time overrides for engineering workflows.
 * **Compatibility:** Hardware pairing requires Firmware v0.1.0+.
 
 ---

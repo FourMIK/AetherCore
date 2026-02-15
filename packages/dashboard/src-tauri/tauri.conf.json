@@ -1,8 +1,8 @@
 {
   "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "AetherCore Tactical Glass (Dev Mode)",
+  "productName": "AetherCore Commander",
   "version": "0.2.0",
-  "identifier": "com.aethercore.tactical-glass-dev",
+  "identifier": "com.aethercore.commander",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "AetherCore Tactical Glass - Dev Mode",
+        "title": "AetherCore Commander",
         "width": 1200,
         "height": 800,
         "resizable": true,
@@ -35,8 +35,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "shortDescription": "AetherCore Tactical Glass - Development Mode Desktop Application",
-    "longDescription": "AetherCore Tactical Glass Dev Mode is a desktop application for development, testing, and controlled demonstrations. This version does not implement production security features such as TPM attestation or hardware-backed identity. Production versions implement TPM-backed security, hardware-rooted identity, and remote attestation.",
+    "shortDescription": "AetherCore Commander Desktop Application",
+    "longDescription": "AetherCore Commander is the production desktop command application for secure fleet operations with TPM-backed security, hardware-rooted identity, and remote attestation.",
     "windows": {
       "webviewInstallMode": {
         "type": "offlineInstaller"

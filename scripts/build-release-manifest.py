@@ -90,6 +90,7 @@ def main() -> int:
     parser.add_argument("--health-timeout-seconds", type=int, default=30)
     parser.add_argument("--health-endpoint", default="http://127.0.0.1:8080/healthz")
     parser.add_argument("--private-key-path", help="Optional PEM key to sign manifest")
+    parser.add_argument("--bundle-identifier", default="com.aethercore.commander", help="Desktop bundle identifier used for app runtime config paths")
     args = parser.parse_args()
 
     bundle_dir = Path(args.bundle_dir).resolve()
@@ -138,9 +139,9 @@ def main() -> int:
         "health_contract": {
             "bootstrap_argument": "--bootstrap",
             "ready_state_files": {
-                "macos": "~/Library/Application Support/com.aethercore.tactical-glass-dev/runtime-config.json",
-                "windows": "%APPDATA%/com.aethercore.tactical-glass-dev/runtime-config.json",
-                "linux": "~/.config/com.aethercore.tactical-glass-dev/runtime-config.json",
+                "macos": f"~/Library/Application Support/{args.bundle_identifier}/runtime-config.json",
+                "windows": f"%APPDATA%/{args.bundle_identifier}/runtime-config.json",
+                "linux": f"~/.config/{args.bundle_identifier}/runtime-config.json",
             },
             "health_endpoint": args.health_endpoint,
             "startup_timeout_seconds": args.health_timeout_seconds,

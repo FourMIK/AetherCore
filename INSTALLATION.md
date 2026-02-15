@@ -125,26 +125,26 @@ For provenance verification policy and attestation details, see [PROVENANCE.md](
 **1. Download the AppImage:**
 
 ```bash
-wget https://github.com/FourMIK/AetherCore/releases/latest/download/aethercore-tactical-glass_amd64.AppImage
+wget https://github.com/FourMIK/AetherCore/releases/latest/download/aethercore-commander_amd64.AppImage
 ```
 
 **2. Verify integrity:**
 
 ```bash
-shasum -a 256 aethercore-tactical-glass_amd64.AppImage
+shasum -a 256 aethercore-commander_amd64.AppImage
 # Validate with scripts/verify-release-manifest.py output
 ```
 
 **3. Make executable:**
 
 ```bash
-chmod +x aethercore-tactical-glass_amd64.AppImage
+chmod +x aethercore-commander_amd64.AppImage
 ```
 
 **4. Run the application:**
 
 ```bash
-./aethercore-tactical-glass_amd64.AppImage
+./aethercore-commander_amd64.AppImage
 ```
 
 **5. (Optional) Install system dependencies for native look:**
@@ -158,10 +158,10 @@ sudo apt-get install -y libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-
 
 ```bash
 # Create desktop entry for app launcher
-cat > ~/.local/share/applications/tactical-glass.desktop << EOF
+cat > ~/.local/share/applications/aethercore-commander.desktop << EOF
 [Desktop Entry]
-Name=AetherCore Tactical Glass
-Exec=/path/to/aethercore-tactical-glass_amd64.AppImage
+Name=AetherCore Commander
+Exec=/path/to/aethercore-commander_amd64.AppImage
 Icon=application-x-executable
 Type=Application
 Categories=Network;Utility;
@@ -180,7 +180,7 @@ sudo apt-get install fuse libfuse2
 **Solution:**
 ```bash
 # Verify architecture
-file aethercore-tactical-glass_amd64.AppImage
+file aethercore-commander_amd64.AppImage
 # Should show "x86-64" or "x86_64"
 ```
 
@@ -197,7 +197,7 @@ Visit [GitHub Releases](https://github.com/FourMIK/AetherCore/releases/latest), 
 **2. Verify integrity:**
 
 ```bash
-shasum -a 256 aethercore-tactical-glass.dmg
+shasum -a 256 aethercore-commander.dmg
 # Validate with scripts/verify-release-manifest.py output
 ```
 
@@ -207,7 +207,7 @@ Double-click the downloaded `.dmg` file to mount it.
 
 **4. Install the application:**
 
-Drag "Tactical Glass" icon to the "Applications" folder shortcut in the DMG window.
+Drag "AetherCore Commander" to the "Applications" folder shortcut in the DMG window.
 
 **5. First launch:**
 
@@ -238,7 +238,7 @@ Visit [GitHub Releases](https://github.com/FourMIK/AetherCore/releases/latest), 
 
 Open PowerShell and run:
 ```powershell
-Get-FileHash aethercore-tactical-glass.msi -Algorithm SHA256
+Get-FileHash aethercore-commander.msi -Algorithm SHA256
 # Validate with scripts/verify-release-manifest.py output
 ```
 
@@ -252,13 +252,13 @@ Production MSI artifacts are Authenticode-signed with trusted timestamping. Smar
 
 **5. Follow installation wizard:**
 
-- Choose installation location (default: `C:\Program Files\Tactical Glass\`)
+- Choose installation location (default: `C:\Program Files\AetherCore Commander\`)
 - Select "Install for all users" or "Install for current user only"
 - Click "Install"
 
 **6. Launch:**
 
-- From Start Menu: Search "Tactical Glass"
+- From Start Menu: Search "AetherCore Commander"
 - From Desktop: Double-click shortcut (if created during installation)
 
 #### Silent Installation (Enterprise Deployment)
@@ -266,7 +266,7 @@ Production MSI artifacts are Authenticode-signed with trusted timestamping. Smar
 For automated/silent installation:
 
 ```batch
-msiexec /i aethercore-tactical-glass.msi /quiet /qn /norestart
+msiexec /i aethercore-commander.msi /quiet /qn /norestart
 ```
 
 #### Troubleshooting Windows Installation
@@ -339,7 +339,7 @@ For production deployments, refer to:
 
 **1. Application launches successfully**
 
-The Tactical Glass window should open without errors.
+The AetherCore Commander window should open without errors.
 
 **2. Check version information**
 
@@ -355,12 +355,12 @@ Expected result: "Connected to testnet successfully"
 
 ```bash
 # From application logs (location varies by platform):
-# Linux: ~/.config/tactical-glass/logs/
-# macOS: ~/Library/Logs/tactical-glass/
-# Windows: %APPDATA%\tactical-glass\logs\
+# Linux: ~/.config/aethercore-commander/logs/
+# macOS: ~/Library/Logs/aethercore-commander/
+# Windows: %APPDATA%\aethercore-commander\logs\
 
 # Look for successful Ed25519 key generation:
-grep "Ed25519 key pair generated" tactical-glass.log
+grep "Ed25519 key pair generated" aethercore-commander.log
 ```
 
 ### Installation Verification Script
@@ -371,7 +371,7 @@ grep "Ed25519 key pair generated" tactical-glass.log
 echo "=== AetherCore Installation Verification ==="
 
 # Check if binary exists
-if [ -f "./aethercore-tactical-glass_amd64.AppImage" ]; then
+if [ -f "./aethercore-commander_amd64.AppImage" ]; then
     echo "✓ Application binary found"
 else
     echo "✗ Application binary not found"
@@ -379,7 +379,7 @@ else
 fi
 
 # Check if executable
-if [ -x "./aethercore-tactical-glass_amd64.AppImage" ]; then
+if [ -x "./aethercore-commander_amd64.AppImage" ]; then
     echo "✓ Application is executable"
 else
     echo "✗ Application is not executable"
@@ -477,42 +477,42 @@ Visit [AetherCore Issues](https://github.com/FourMIK/AetherCore/issues) and crea
 **AppImage:**
 ```bash
 # Simply delete the AppImage file
-rm ~/Downloads/aethercore-tactical-glass_amd64.AppImage
+rm ~/Downloads/aethercore-commander_amd64.AppImage
 
 # Remove desktop entry (if created)
-rm ~/.local/share/applications/tactical-glass.desktop
+rm ~/.local/share/applications/aethercore-commander.desktop
 
 # Remove application data
-rm -rf ~/.config/tactical-glass/
-rm -rf ~/.local/share/tactical-glass/
+rm -rf ~/.config/aethercore-commander/
+rm -rf ~/.local/share/aethercore-commander/
 ```
 
 ### macOS
 
 **1. Delete the application:**
 ```bash
-sudo rm -rf /Applications/Tactical\ Glass.app
+sudo rm -rf /Applications/AetherCore\ Commander.app
 ```
 
 **2. Remove application data:**
 ```bash
-rm -rf ~/Library/Application\ Support/tactical-glass/
-rm -rf ~/Library/Caches/tactical-glass/
-rm -rf ~/Library/Logs/tactical-glass/
-rm -rf ~/Library/Preferences/com.aethercore.tactical-glass.plist
+rm -rf ~/Library/Application\ Support/com.aethercore.commander/
+rm -rf ~/Library/Caches/com.aethercore.commander/
+rm -rf ~/Library/Logs/aethercore-commander/
+rm -rf ~/Library/Preferences/com.aethercore.commander.plist
 ```
 
 ### Windows
 
 **1. Using Control Panel:**
 - Open Control Panel → Programs and Features
-- Find "AetherCore Tactical Glass"
+- Find "AetherCore Commander"
 - Click "Uninstall" and follow prompts
 
 **2. Using PowerShell (silent uninstall):**
 ```powershell
 # Find product code
-Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -like "*Tactical Glass*" }
+Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -like "*AetherCore Commander*" }
 
 # Uninstall using product code
 msiexec /x {PRODUCT-CODE-GUID} /quiet /qn /norestart

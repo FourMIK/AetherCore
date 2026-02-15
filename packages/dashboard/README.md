@@ -70,8 +70,8 @@ The desktop app now enforces a deterministic first-run bootstrap flow before ren
 
 Installer integrations should launch with `--bootstrap` for post-install first open:
 
-- **Windows Start Menu post-install launch**: `AetherCore Tactical Glass.exe --bootstrap`
-- **macOS launch prompt**: `open -a "AetherCore Tactical Glass" --args --bootstrap`
+- **Windows Start Menu post-install launch**: `AetherCore Commander.exe --bootstrap`
+- **macOS launch prompt**: `open -a "AetherCore Commander" --args --bootstrap`
 
 The app inspects this flag via the `installer_bootstrap_requested` Tauri command and forces bootstrap even before persisted completion state is present.
 
