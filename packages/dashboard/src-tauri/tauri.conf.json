@@ -47,13 +47,13 @@
       "nsis": null,
       "certificateThumbprint": "$WINDOWS_CERTIFICATE_THUMBPRINT",
       "digestAlgorithm": "sha256",
-      "timestampUrl": "http://timestamp.digicert.com"
+      "timestampUrl": "$WINDOWS_SIGNING_TIMESTAMP_URL"
     },
     "macOS": {
       "frameworks": [],
       "minimumSystemVersion": "11.0",
       "exceptionDomain": "",
-      "signingIdentity": "Developer ID Application",
+      "signingIdentity": "$APPLE_SIGNING_IDENTITY",
       "providerShortName": "$APPLE_TEAM_ID",
       "entitlements": "entitlements.plist",
       "dmg": {

@@ -22,7 +22,7 @@ This document records how AetherCore establishes provenance for source, dependen
 - Source provenance is tied to Git commit history and signed release tags.
 - Dependency provenance is tied to lock files (`Cargo.lock`, `pnpm-lock.yaml` or `package-lock.json`) and SBOM manifests.
 - Build provenance is tied to deterministic scripts in `scripts/` with CI-run verification.
-- Artifact provenance is tied to generated SBOM outputs, signed hash manifests (`SHA256SUMS.txt` + `SHA256SUMS.txt.sig`), and per-platform provenance JSON (`provenance-macos.json`, `provenance-windows.json`).
+- Artifact provenance is tied to generated SBOM outputs, signed hash manifests (`SHA256SUMS-macos.txt`/`SHA256SUMS-windows.txt` and `.sig`), and per-platform provenance JSON (`provenance-macos.json`, `provenance-windows.json`).
 
 ## Build Inputs
 A production candidate release requires immutable build inputs: exact Rust crate versions, exact JS package graph, pinned toolchain versions, and explicit configuration manifests. Any mutable or unpinned dependency source is disallowed for clean release promotion.
@@ -40,8 +40,10 @@ A production candidate release requires immutable build inputs: exact Rust crate
   - Windows: Authenticode signature verification with trusted timestamp validation.
 - Execute post-build clean-runner validation on macOS and Windows by installing produced artifacts, launching with `--bootstrap`, and asserting first-run bootstrap reaches ready-state persistence.
 - Publish release integrity artifacts for each tag:
-  - `SHA256SUMS.txt`
-  - `SHA256SUMS.txt.sig`
+  - `SHA256SUMS-macos.txt`
+  - `SHA256SUMS-macos.txt.sig`
+  - `SHA256SUMS-windows.txt`
+  - `SHA256SUMS-windows.txt.sig`
   - `provenance-macos.json`
   - `provenance-windows.json`
 - Attach SBOM evidence and GitHub build provenance attestations to the release.

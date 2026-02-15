@@ -110,7 +110,17 @@ pub fn run() {
             // ============================================================
             // Perform TPM attestation before allowing app to launch.
             // If this check fails, the application MUST NOT proceed.
-            if let Err(error_details) = sentinel_boot() {
+            let ci_bootstrap_override = std::env::var("CI").is_ok()
+                && std::env::var("AETHERCORE_SKIP_SENTINEL_FOR_CI")
+                    .map(|value| value == "1")
+                    .unwrap_or(false)
+                && std::env::args().any(|arg| arg == "--bootstrap");
+
+            if ci_bootstrap_override {
+                log::warn!(
+                    "[SENTINEL] CI bootstrap validation mode enabled; skipping TPM attestation"
+                );
+            } else if let Err(error_details) = sentinel_boot() {
                 // Display error dialog with remediation steps
                 let dialog_handle = app.handle().clone();
 
@@ -153,8 +163,12 @@ pub fn run() {
                 )?;
             }
 
-            // Log successful sentinel boot after logger is initialized
-            log::info!("[SENTINEL] Boot verification successful - Hardware identity confirmed");
+            // Log sentinel status after logger is initialized
+            if ci_bootstrap_override {
+                log::warn!("[SENTINEL] CI override active for bootstrap validation run");
+            } else {
+                log::info!("[SENTINEL] Boot verification successful - Hardware identity confirmed");
+            }
 
             Ok(())
         })

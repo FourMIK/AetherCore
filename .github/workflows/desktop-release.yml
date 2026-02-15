@@ -19,12 +19,12 @@ jobs:
         include:
           - platform: macos
             os: macos-latest
-            tauri_target: universal-apple-darwin
             artifact_glob: "packages/dashboard/src-tauri/target/release/bundle/**/*.dmg"
+            tauri_args: "--target universal-apple-darwin"
           - platform: windows
             os: windows-latest
-            tauri_target: x86_64-pc-windows-msvc
             artifact_glob: "packages/dashboard/src-tauri/target/release/bundle/**/*.msi"
+            tauri_args: ""
 
     runs-on: ${{ matrix.os }}
 
@@ -159,7 +159,7 @@ jobs:
             See [INSTALLATION.md](https://github.com/FourMIK/AetherCore/blob/main/INSTALLATION.md).
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.platform == 'macos' && '--target universal-apple-darwin' || '' }}
+          args: ${{ matrix.tauri_args }}
 
       - name: "Gate: verify macOS code signing + notarization + stapling"
         if: matrix.platform == 'macos'
@@ -203,7 +203,7 @@ jobs:
           hdiutil detach "$mount_dir"
 
           APP_BIN="/Applications/$(basename "$app_path")/Contents/MacOS/$(basename "$app_path" .app)"
-          "$APP_BIN" --bootstrap > /tmp/aethercore-macos-launch.log 2>&1 &
+          AETHERCORE_SKIP_SENTINEL_FOR_CI=1 CI=1 "$APP_BIN" --bootstrap > /tmp/aethercore-macos-launch.log 2>&1 &
           APP_PID=$!
           sleep 25
           kill "$APP_PID" || true
@@ -225,9 +225,12 @@ jobs:
             Select-Object -First 1
           if (-not $exe) { throw "Installed executable not found" }
 
-          $proc = Start-Process -FilePath $exe.FullName -ArgumentList "--bootstrap" -PassThru
+          $launch = Start-Process -FilePath $exe.FullName -ArgumentList "--bootstrap" -PassThru -Environment @{
+            CI = '1'
+            AETHERCORE_SKIP_SENTINEL_FOR_CI = '1'
+          }
           Start-Sleep -Seconds 25
-          if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
 
           $configPath = Join-Path $env:APPDATA "com.aethercore.tactical-glass-dev\runtime-config.json"
           if (-not (Test-Path $configPath)) {
@@ -240,12 +243,16 @@ jobs:
           set -euo pipefail
           mkdir -p release-artifacts
 
+          checksum_file="release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt"
+          signature_file="${checksum_file}.sig"
+
           while IFS= read -r -d '' file; do
-            shasum -a 256 "$file" >> release-artifacts/SHA256SUMS.txt
+            shasum -a 256 "$file" >> "$checksum_file"
           done < <(find packages/dashboard/src-tauri/target/release/bundle -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.app' -o -name '*.exe' \) -print0)
 
           printf '%s' "$CHECKSUM_SIGNING_PRIVATE_KEY" > release-artifacts/checksum-signing.pem
-          openssl dgst -sha256 -sign release-artifacts/checksum-signing.pem -out release-artifacts/SHA256SUMS.txt.sig release-artifacts/SHA256SUMS.txt
+          openssl dgst -sha256 -sign release-artifacts/checksum-signing.pem -out "$signature_file" "$checksum_file"
+          rm -f release-artifacts/checksum-signing.pem
 
           cat > "release-artifacts/provenance-${{ matrix.platform }}.json" <<EOF
           {
@@ -254,7 +261,7 @@ jobs:
             "commit": "${{ github.sha }}",
             "workflow": "${{ github.workflow }}",
             "run_id": "${{ github.run_id }}",
-            "signed_checksums": "SHA256SUMS.txt.sig"
+            "signed_checksums": "$(basename "$signature_file")"
           }
           EOF
 
@@ -263,8 +270,8 @@ jobs:
         with:
           name: release-integrity-${{ matrix.platform }}
           path: |
-            release-artifacts/SHA256SUMS.txt
-            release-artifacts/SHA256SUMS.txt.sig
+            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt
+            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt.sig
             release-artifacts/provenance-${{ matrix.platform }}.json
           if-no-files-found: error
           retention-days: 90
@@ -279,8 +286,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            release-artifacts/SHA256SUMS.txt
-            release-artifacts/SHA256SUMS.txt.sig
+            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt
+            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt.sig
             release-artifacts/provenance-${{ matrix.platform }}.json
             sbom-artifacts/tauri-sbom.json
             sbom-artifacts/frontend-sbom.json

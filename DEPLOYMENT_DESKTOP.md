@@ -251,7 +251,7 @@ file tactical-glass.AppImage  # Verify it's x86-64
 
 **Cause**: Download corruption or trust chain mismatch
 
-**Fix**: Re-download from the official release, then validate `SHA256SUMS.txt` and `SHA256SUMS.txt.sig` before relaunch.
+**Fix**: Re-download from the official release, then validate the matching platform checksum file (`SHA256SUMS-<platform>.txt`) and signature (`.sig`) before relaunch.
 
 ### Windows: "VCRUNTIME140.dll was not found"
 

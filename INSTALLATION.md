@@ -89,11 +89,13 @@ shasum -a 256 tactical-glass.dmg
 Get-FileHash tactical-glass.msi -Algorithm SHA256
 ```
 
-Compare output with the release-attached `SHA256SUMS.txt` file and verify the detached signature (`SHA256SUMS.txt.sig`) before installation. Provenance JSON attestations are published as `provenance-macos.json` and `provenance-windows.json` assets on each release (details in [PROVENANCE.md](PROVENANCE.md)).
+Compare output with the release-attached `SHA256SUMS-macos.txt` / `SHA256SUMS-windows.txt` and verify detached signatures (`.sig`) before installation. Provenance JSON attestations are published as `provenance-macos.json` and `provenance-windows.json` assets on each release (details in [PROVENANCE.md](PROVENANCE.md)).
 
 **Release integrity assets (per tag):**
-- `SHA256SUMS.txt`
-- `SHA256SUMS.txt.sig`
+- `SHA256SUMS-macos.txt`
+- `SHA256SUMS-macos.txt.sig`
+- `SHA256SUMS-windows.txt`
+- `SHA256SUMS-windows.txt.sig`
 - `provenance-macos.json`
 - `provenance-windows.json`
 
@@ -199,7 +201,7 @@ Launch from `/Applications` normally. Production release builds are Developer ID
 #### Troubleshooting macOS Installation
 
 **Issue:** "App is damaged and can't be opened"  
-**Solution:** Re-download from the official GitHub release, then verify `SHA256SUMS.txt` and `SHA256SUMS.txt.sig` before retrying. If the issue persists, confirm your macOS trust store and date/time are correct.
+**Solution:** Re-download from the official GitHub release, then verify the matching platform checksum file and signature (`SHA256SUMS-<platform>.txt` + `.sig`) before retrying. If the issue persists, confirm your macOS trust store and date/time are correct.
 
 **Issue:** "Code signature invalid"  
 **Solution:** Re-download the DMG from official GitHub releases. Verify checksum matches.
