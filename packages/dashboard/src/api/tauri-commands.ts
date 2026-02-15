@@ -143,7 +143,7 @@ export const TauriCommands = {
     errorTitle: 'Connection Error',
   }),
   
-  connectToTestnet: (endpoint: string) => safeInvoke<string>('connect_to_testnet', { endpoint }, {
+  connectToTestnet: (endpoint?: string) => safeInvoke<string>('connect_to_testnet', { endpoint }, {
     errorTitle: 'Connection Error',
   }),
   
@@ -168,14 +168,18 @@ export const TauriCommands = {
 export interface AppConfig {
   schema_version: number;
   product_profile: 'commander_edition' | string;
-  profile: 'local_control_plane' | 'testnet' | 'production_mesh';
+  profile: 'commander-local' | 'training-testnet' | 'enterprise-remote';
   connection: {
-    api_url: string;
+    api_endpoint: string;
     mesh_endpoint: string;
   };
-  tpm: {
-    mode: 'required' | 'optional' | 'disabled' | string;
+  tpm_policy: {
+    mode: 'required' | 'optional' | 'disabled';
     enforce_hardware: boolean;
+  };
+  ports: {
+    api: number;
+    mesh: number;
   };
   features: {
     allow_insecure_localhost: boolean;

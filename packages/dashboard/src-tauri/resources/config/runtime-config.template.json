@@ -1,14 +1,18 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "product_profile": "commander_edition",
-  "profile": "local_control_plane",
+  "profile": "commander-local",
   "connection": {
-    "api_url": "http://127.0.0.1:3000",
+    "api_endpoint": "http://127.0.0.1:3000",
     "mesh_endpoint": "ws://127.0.0.1:8080"
   },
-  "tpm": {
+  "tpm_policy": {
     "mode": "optional",
     "enforce_hardware": false
+  },
+  "ports": {
+    "api": 3000,
+    "mesh": 8080
   },
   "features": {
     "allow_insecure_localhost": true,

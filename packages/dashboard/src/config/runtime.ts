@@ -1,16 +1,23 @@
 import { invoke } from '@tauri-apps/api/core';
 
+export type UnifiedProfile = 'commander-local' | 'training-testnet' | 'enterprise-remote';
+export type TpmMode = 'required' | 'optional' | 'disabled';
+
 export interface UnifiedRuntimeConfig {
   schema_version: number;
   product_profile: 'commander_edition' | string;
-  profile: 'local_control_plane' | 'testnet' | 'production_mesh';
+  profile: UnifiedProfile;
   connection: {
-    api_url: string;
+    api_endpoint: string;
     mesh_endpoint: string;
   };
-  tpm: {
-    mode: 'required' | 'optional' | 'disabled' | string;
+  tpm_policy: {
+    mode: TpmMode;
     enforce_hardware: boolean;
+  };
+  ports: {
+    api: number;
+    mesh: number;
   };
   features: {
     allow_insecure_localhost: boolean;
@@ -34,39 +41,44 @@ const runtimeEnv = (globalThis as unknown as Window & { __ENV__?: RuntimeEnv }).
 let runtimeConfigCache: UnifiedRuntimeConfig | null = null;
 
 function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
-  if (value === undefined || value === '') {
-    return defaultValue;
-  }
+  if (value === undefined || value === '') return defaultValue;
   const normalized = value.toLowerCase().trim();
-  if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') {
-    return false;
-  }
-  if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
-    return true;
-  }
-  console.warn(`Invalid boolean environment variable value: "${value}". Using default: ${defaultValue}`);
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
   return defaultValue;
 }
 
+export function validateUnifiedRuntimeConfig(input: UnifiedRuntimeConfig): UnifiedRuntimeConfig {
+  if (![3, 2].includes(input.schema_version)) throw new Error('Unsupported runtime config schema version');
+  if (!['commander-local', 'training-testnet', 'enterprise-remote'].includes(input.profile)) {
+    throw new Error('Invalid profile');
+  }
+  if (input.ports.api < 1 || input.ports.api > 65535 || input.ports.mesh < 1 || input.ports.mesh > 65535) {
+    throw new Error('ports.api and ports.mesh must be in range 1-65535');
+  }
+  return input;
+}
+
 function buildEnvFallbackConfig(): UnifiedRuntimeConfig {
-  const apiUrl = runtimeEnv.REACT_APP_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
+  const apiEndpoint = runtimeEnv.REACT_APP_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
   const meshEndpoint = runtimeEnv.REACT_APP_WS_URL || import.meta.env.VITE_GATEWAY_URL || 'ws://127.0.0.1:8080';
-  const enforceHardware = parseBooleanEnv(
-    runtimeEnv.REACT_APP_TPM_ENABLED || import.meta.env.VITE_TPM_ENABLED,
-    true
-  );
+  const enforceHardware = parseBooleanEnv(runtimeEnv.REACT_APP_TPM_ENABLED || import.meta.env.VITE_TPM_ENABLED, true);
 
   return {
-    schema_version: 2,
+    schema_version: 3,
     product_profile: 'commander_edition',
-    profile: 'local_control_plane',
+    profile: 'commander-local',
     connection: {
-      api_url: apiUrl,
+      api_endpoint: apiEndpoint,
       mesh_endpoint: meshEndpoint,
     },
-    tpm: {
+    tpm_policy: {
       mode: enforceHardware ? 'required' : 'optional',
       enforce_hardware: enforceHardware,
+    },
+    ports: {
+      api: 3000,
+      mesh: 8080,
     },
     features: {
       allow_insecure_localhost: parseBooleanEnv(import.meta.env.VITE_DEV_ALLOW_INSECURE_LOCALHOST, false),
@@ -85,9 +97,7 @@ function isTauriRuntime(): boolean {
 }
 
 export async function loadUnifiedRuntimeConfig(): Promise<UnifiedRuntimeConfig> {
-  if (runtimeConfigCache) {
-    return runtimeConfigCache;
-  }
+  if (runtimeConfigCache) return runtimeConfigCache;
 
   if (!isTauriRuntime()) {
     runtimeConfigCache = buildEnvFallbackConfig();
@@ -95,7 +105,7 @@ export async function loadUnifiedRuntimeConfig(): Promise<UnifiedRuntimeConfig> 
   }
 
   try {
-    runtimeConfigCache = await invoke<UnifiedRuntimeConfig>('get_config');
+    runtimeConfigCache = validateUnifiedRuntimeConfig(await invoke<UnifiedRuntimeConfig>('get_config'));
   } catch (error) {
     console.warn('Failed to load unified runtime config from Tauri, using env fallback:', error);
     runtimeConfigCache = buildEnvFallbackConfig();
@@ -105,7 +115,7 @@ export async function loadUnifiedRuntimeConfig(): Promise<UnifiedRuntimeConfig> 
 }
 
 export function setRuntimeConfig(config: UnifiedRuntimeConfig): void {
-  runtimeConfigCache = config;
+  runtimeConfigCache = validateUnifiedRuntimeConfig(config);
 }
 
 export function getRuntimeConfig() {
@@ -113,9 +123,9 @@ export function getRuntimeConfig() {
 
   return {
     unified,
-    apiUrl: unified.connection.api_url,
+    apiUrl: unified.connection.api_endpoint,
     wsUrl: unified.connection.mesh_endpoint,
-    tpmEnabled: unified.tpm.enforce_hardware,
+    tpmEnabled: unified.tpm_policy.enforce_hardware,
     devAllowInsecureLocalhost: unified.features.allow_insecure_localhost,
   };
 }

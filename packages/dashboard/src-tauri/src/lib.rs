@@ -161,7 +161,7 @@ pub fn run() {
                 let mut first_launch_config = config_manager
                     .load()
                     .map_err(|e| tauri::Error::Setup(e.to_string()))?;
-                first_launch_config.profile = crate::config::ConnectionProfile::LocalControlPlane;
+                first_launch_config.profile = crate::config::ConnectionProfile::CommanderLocal;
                 first_launch_config.features.bootstrap_on_startup = true;
                 config_manager
                     .save(&first_launch_config)
