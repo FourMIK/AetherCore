@@ -142,13 +142,22 @@ This starts:
 
 ### Container DNS defaults for C2/Bunker endpoints
 
-Within Docker Compose, services must connect to each other by service DNS name (not `localhost`).
+**Automatic Container Detection**: Services now automatically detect when running in Docker and default to the correct service DNS names. No manual configuration needed!
 
-Expected defaults in the local stack:
-- `C2_ADDR=c2-router:50051`
-- `AETHER_BUNKER_ENDPOINT=c2-router:50051`
+- **In containers** (Docker/K8s): Defaults to `c2-router:50051` automatically
+- **Outside containers** (local dev): Defaults to `localhost:50051` automatically
 
-Why: inside a container, `localhost` points back to the same container, not to sibling services.
+Services detect containers via:
+- `/.dockerenv` file existence
+- `RUNNING_IN_CONTAINER=true` environment variable
+- `CONTAINER=true` environment variable
+
+**Why this matters**: Inside a container, `localhost` points to the container itself, not sibling services. The automatic detection ensures services connect correctly in all environments.
+
+**Manual override**: You can still explicitly set environment variables to override defaults:
+- `C2_ADDR=custom-service:50051`
+- `AETHER_BUNKER_ENDPOINT=custom-service:50051`
+- `IDENTITY_REGISTRY_ADDRESS=custom-service:50051`
 
 ### Health Check Endpoints
 

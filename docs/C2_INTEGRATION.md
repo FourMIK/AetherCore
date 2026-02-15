@@ -339,12 +339,17 @@ Placeholder signing is used for development.
 
 **Cause**: When running in Docker Compose, `localhost:50051` points to the current container, not the C2 service.
 
-**Solution**:
+**Solution (Automatic)**:
+- As of the latest version, services automatically detect containers and use `c2-router:50051`
+- No manual configuration required in docker-compose environments
+
+**Manual Override** (if needed):
 - Set `C2_ADDR=c2-router:50051`
 - Set `AETHER_BUNKER_ENDPOINT=c2-router:50051`
+- Set `IDENTITY_REGISTRY_ADDRESS=c2-router:50051` (for collaboration service)
 - Use your compose service DNS name if your gRPC service name differs from `c2-router`
 
-If gateway detects `localhost` while running in container, it logs a warning with the recommended endpoint format.
+If gateway detects `localhost` while running in container (due to explicit misconfiguration), it logs a warning with the recommended endpoint format.
 
 ### "WebSocket connection error"
 
