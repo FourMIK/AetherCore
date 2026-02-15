@@ -153,8 +153,8 @@ pub fn run() {
                     config_manager.get_config_path()
                 );
 
-                // Commander Mode is the only first-launch path.
-                // Force bootstrap to run with local control plane defaults on initial install.
+                // Commander Edition is the only first-launch path.
+                // Force bootstrap to run with local control plane defaults on initial install with no endpoint/manual technical prompts.
                 let mut first_launch_config = config_manager
                     .load()
                     .map_err(|e| tauri::Error::Setup(e.to_string()))?;
@@ -163,7 +163,7 @@ pub fn run() {
                 config_manager
                     .save(&first_launch_config)
                     .map_err(|e| tauri::Error::Setup(e.to_string()))?;
-                log::info!("First launch pinned to Commander Mode bootstrap defaults");
+                log::info!("First launch pinned to Commander Edition bootstrap defaults");
             }
 
             if let Err(error) = commands::verify_node_runtime_startup(&app.handle()) {

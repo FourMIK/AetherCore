@@ -12,8 +12,8 @@ This guide provides comprehensive installation instructions for AetherCore Tacti
 
 ## Table of Contents
 
-- [Commander Mode (Default First-Run Path)](#commander-mode-default-first-run-path)
-- [Advanced Non-Default Paths](#advanced-non-default-paths)
+- [Commander Edition (Default First-Run Path)](#commander-edition-default-first-run-path)
+- [Appendix A: Advanced/Engineering Paths](#appendix-a-advancedengineering-paths)
 - [System Requirements](#system-requirements)
 - [Pre-Installation Checklist](#pre-installation-checklist)
 - [Platform-Specific Installation](#platform-specific-installation)
@@ -27,17 +27,19 @@ This guide provides comprehensive installation instructions for AetherCore Tacti
 
 ---
 
-## Commander Mode (Default First-Run Path)
+## Commander Edition (Default First-Run Path)
 
-**Commander Mode** is the only supported first-run default for Tactical Glass desktop operators.
+**Commander Edition** is the only supported first-run default for Tactical Glass desktop operators.
 
 - Backed by the Local Control Plane startup contract in [docs/LOCAL_CONTROL_PLANE.md](docs/LOCAL_CONTROL_PLANE.md).
 - Boots required local services and blocks UI readiness until health checks pass.
 - Runs first-launch bootstrap automatically (no mode selection required).
 
-## Advanced Non-Default Paths
+**Acceptance criteria:** A non-technical user can complete first deployment from the desktop UI without terminal usage.
 
-Use these only when explicitly needed after Commander Mode onboarding:
+## Appendix A: Advanced/Engineering Paths
+
+Use these only when explicitly needed after Commander Edition onboarding:
 
 - **Cloud/internal mode (advanced):** Connect Tactical Glass to pre-existing remote/internal services.
 - **Dev-only compose mode (advanced):** Use `infra/docker/docker-compose.yml` only for development/test workflows.
@@ -290,18 +292,11 @@ msiexec /i aethercore-tactical-glass.msi /quiet /qn /norestart
 
 Open the application using your platform's standard method.
 
-**Desktop default behavior:** Tactical Glass now boots in **Commander Mode** and blocks UI readiness until required local services are healthy. Commander Mode uses the Local Control Plane manifest (`config/local-control-plane.toml`), including startup order and health gates (see [docs/LOCAL_CONTROL_PLANE.md](docs/LOCAL_CONTROL_PLANE.md)).
+**Desktop default behavior:** Tactical Glass now boots in **Commander Edition** and blocks UI readiness until required local services are healthy. Commander Edition uses the Local Control Plane manifest (`config/local-control-plane.toml`), including startup order and health gates (see [docs/LOCAL_CONTROL_PLANE.md](docs/LOCAL_CONTROL_PLANE.md)).
 
 **2. First-Run Configuration Wizard**
 
-On first launch, you'll be prompted to configure:
-
-- **Testnet Endpoint**: Default is `wss://testnet.aethercore.local:8443`
-- **Identity Mode**: 
-  - **Ephemeral Keys** (default for testing)
-  - **TPM-Backed Keys** (production only, requires TPM 2.0)
-- **Operator Identity**: Your operator ID (e.g., `operator-001`)
-- **Squad Assignment**: Your squad ID (e.g., `squad-alpha`)
+Commander Edition first launch is guided and automatic. The app performs environment checks, starts required local services, validates mesh/dashboard connectivity, and deploys the first node without manual endpoint entry or terminal usage.
 
 **3. Network Configuration**
 
@@ -324,7 +319,7 @@ New-NetFirewallRule -DisplayName "AetherCore Mesh" -Direction Inbound -LocalPort
 New-NetFirewallRule -DisplayName "AetherCore Mesh UDP" -Direction Inbound -LocalPort 7000-7100 -Protocol UDP -Action Allow
 ```
 
-### Production Configuration
+### Production Configuration (Engineering Appendix)
 
 For production deployments, refer to:
 - **Security hardening**: [SECURITY.md](SECURITY.md)

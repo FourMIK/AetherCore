@@ -59,7 +59,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
   const [flowComplete, setFlowComplete] = useState(false);
   const [latestServiceStatus, setLatestServiceStatus] = useState<ServiceStatus[]>([]);
 
-  const recommendedProfile = 'commander-local';
+  const recommendedProfile = 'commander-edition';
   const recommendedMeshEndpoint = 'ws://127.0.0.1:8080';
   const firstNodeId = 'first-node';
 
@@ -220,7 +220,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
         title: 'Node runtime is missing, so first node deployment cannot complete.',
         instructions: [
           'Reinstall or repair the desktop package so the node binary is bundled.',
-          'Advanced users can set NODE_BINARY_PATH to the aethercore-node binary.',
+          'Engineering appendix users can set NODE_BINARY_PATH to the aethercore-node binary.',
         ],
       };
     }
@@ -308,13 +308,13 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
   return (
     <div className="min-h-screen bg-carbon text-tungsten p-8">
       <div className="mx-auto max-w-3xl rounded-lg border border-overmatch/40 bg-carbon-2 p-6">
-        <h1 className="text-2xl font-display mb-2">Commander Mode Setup</h1>
+        <h1 className="text-2xl font-display mb-2">Commander Edition Setup</h1>
         <p className="text-sm text-tungsten/80 mb-4">
-          Tactical Glass follows a single supported first-run path: Commander Mode bootstrap.
+          Tactical Glass follows a single supported first-run path: Commander Edition bootstrap.
         </p>
 
         <div className="mb-4 rounded border border-overmatch/30 bg-carbon p-3 text-xs">
-          <p className="font-semibold">Commander Mode defaults (auto-applied)</p>
+          <p className="font-semibold">Commander Edition defaults (auto-applied)</p>
           <p>Profile: <span className="font-mono">{recommendedProfile}</span></p>
           <p>Mesh endpoint: <span className="font-mono">{recommendedMeshEndpoint}</span></p>
           <p className="text-tungsten/70 mt-1">Advanced options are non-default and hidden during first run for a deterministic setup path.</p>
@@ -365,6 +365,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
           <div className="mt-4 rounded border border-overmatch bg-overmatch/10 p-4">
             <p className="font-semibold">System Ready: Dashboard + Mesh + Node deployment validated</p>
             <p className="text-sm mt-1">Success criteria met. You can open the dashboard or run quick self-tests anytime.</p>
+            <p className="text-xs mt-2 text-tungsten/80">Acceptance criteria: a non-technical user can complete first deployment from this guided flow without terminal usage.</p>
             <div className="mt-3 flex gap-3">
               <button
                 type="button"

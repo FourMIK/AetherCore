@@ -66,6 +66,9 @@ export const TopBar: React.FC<TopBarProps> = ({
           <Activity className={statusColor} size={16} />
           <span className={`${statusBadge} whitespace-nowrap`}>{systemStatus.toUpperCase()}</span>
         </div>
+        <span className="badge-info whitespace-nowrap" aria-label="Supported operator mode">
+          Commander Edition
+        </span>
       </div>
 
       <div className="flex items-center gap-4 ml-4">

@@ -1,7 +1,7 @@
 //! Configuration Management Integration Tests
 
 use tactical_glass_lib::config::{
-    AppConfig, ConnectionProfile, RetryConfig, CONFIG_SCHEMA_VERSION,
+    AppConfig, ConnectionProfile, ProductProfile, RetryConfig, CONFIG_SCHEMA_VERSION,
 };
 
 #[test]
@@ -9,6 +9,7 @@ fn test_default_config() {
     let config = AppConfig::default();
 
     assert_eq!(config.schema_version, CONFIG_SCHEMA_VERSION);
+    assert_eq!(config.product_profile, ProductProfile::CommanderEdition);
     assert_eq!(config.profile, ConnectionProfile::LocalControlPlane);
     assert!(!config.connection.api_url.is_empty());
     assert!(!config.connection.mesh_endpoint.is_empty());
@@ -22,6 +23,7 @@ fn test_config_serialization() {
     let deserialized: AppConfig = serde_json::from_str(&json).unwrap();
 
     assert_eq!(deserialized.schema_version, CONFIG_SCHEMA_VERSION);
+    assert_eq!(deserialized.product_profile, ProductProfile::CommanderEdition);
     assert_eq!(deserialized.profile, ConnectionProfile::ProductionMesh);
     assert!(deserialized.connection.mesh_endpoint.starts_with("wss://"));
 }
