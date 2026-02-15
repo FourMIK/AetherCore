@@ -8,9 +8,8 @@ import { MapProvider } from './map-engine/MapContext';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { useTacticalStore } from './store/useTacticalStore';
 import { initializeComms } from './store/initComms';
-import { initDummyData } from './store/initDummyData';
 import { getWebSocketManager } from './services/api/WebSocketManager';
-import { getRuntimeConfig } from './config/runtime';
+import { getRuntimeConfig, loadUnifiedRuntimeConfig, setRuntimeConfig } from './config/runtime';
 import {
   BootstrapOnboarding,
   shouldRunBootstrapOnboarding,
@@ -51,17 +50,12 @@ export const App: React.FC = () => {
     }
 
     // Add a small delay to ensure store is hydrated
-    setTimeout(() => {
+    setTimeout(async () => {
+      await loadUnifiedRuntimeConfig().then(setRuntimeConfig).catch(() => undefined);
+
       // Initialize communications
       initializeComms();
       
-      // Initialize dummy data for demos/screenshots
-      try {
-        initDummyData();
-      } catch (err) {
-        console.error('Failed to initialize dummy data:', err);
-      }
-
       // Initialize Aetheric Link (signed heartbeat protocol)
       // In production, use wss:// endpoint from environment or config
       const { wsUrl } = getRuntimeConfig();

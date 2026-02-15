@@ -51,21 +51,35 @@ pub struct AppState {
 /// the endpoint and stores it for later connection establishment.
 #[tauri::command]
 pub async fn connect_to_mesh(
-    endpoint: String,
+    endpoint: Option<String>,
+    app_handle: tauri::AppHandle,
     state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<String, String> {
     async fn inner(
-        endpoint: String,
+        endpoint: Option<String>,
+        app_handle: tauri::AppHandle,
         state: tauri::State<'_, Arc<Mutex<AppState>>>,
     ) -> Result<String> {
-        log::info!("Connecting to production C2 mesh endpoint: {}", endpoint);
+        let resolved_endpoint = match endpoint {
+            Some(value) if !value.trim().is_empty() => value,
+            _ => {
+                let manager = ConfigManager::new(&app_handle)?;
+                let config = manager.load()?;
+                config.connection.mesh_endpoint
+            }
+        };
+
+        log::info!(
+            "Connecting to production C2 mesh endpoint: {}",
+            resolved_endpoint
+        );
 
         // Validate endpoint format and security requirements
-        validation::require_non_empty(&endpoint, "endpoint")?;
-        validation::validate_ws_url(&endpoint, true)?;
+        validation::require_non_empty(&resolved_endpoint, "endpoint")?;
+        validation::validate_ws_url(&resolved_endpoint, true)?;
 
         // Parse and validate endpoint URL
-        let url = url::Url::parse(&endpoint)?;
+        let url = url::Url::parse(&resolved_endpoint)?;
 
         // Validate host is present
         if url.host_str().is_none() {
@@ -76,7 +90,7 @@ pub async fn connect_to_mesh(
 
         // Store the endpoint in state
         let app_state = state.lock().await;
-        *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
+        *app_state.mesh_endpoint.lock().await = Some(resolved_endpoint.clone());
 
         // In production, this would:
         // 1. Initialize TacticalMesh with the endpoint as a seed peer
@@ -90,16 +104,18 @@ pub async fn connect_to_mesh(
 
         log::info!(
             "Production C2 mesh endpoint validated and stored: {}",
-            endpoint
+            resolved_endpoint
         );
 
         Ok(format!(
             "Connected to C2 mesh at {} (validation successful, TPM attestation pending)",
-            endpoint
+            resolved_endpoint
         ))
     }
 
-    inner(endpoint, state).await.map_err(|e| e.to_string())
+    inner(endpoint, app_handle, state)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Connect to Testnet P2P Network (DEPRECATED - Use connect_to_mesh)
@@ -154,7 +170,7 @@ pub async fn connect_to_testnet(
 
         // Store the endpoint in state
         let app_state = state.lock().await;
-        *app_state.mesh_endpoint.lock().await = Some(endpoint.clone());
+        *app_state.mesh_endpoint.lock().await = Some(resolved_endpoint.clone());
 
         log::info!("Testnet endpoint validated and stored: {}", endpoint);
 
@@ -164,7 +180,9 @@ pub async fn connect_to_testnet(
         ))
     }
 
-    inner(endpoint, state).await.map_err(|e| e.to_string())
+    inner(endpoint, app_handle, state)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Generate Genesis Bundle for Zero-Touch Enrollment
@@ -1253,10 +1271,21 @@ pub async fn stop_managed_services() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn verify_dashboard_connectivity(
-    api_health_endpoint: String,
-    websocket_endpoint: String,
+    api_health_endpoint: Option<String>,
+    websocket_endpoint: Option<String>,
+    app_handle: tauri::AppHandle,
 ) -> Result<ConnectivityCheckResult, String> {
     let mut details = Vec::new();
+
+    let config_manager = ConfigManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize config manager: {}", e))?;
+    let config = config_manager
+        .load()
+        .map_err(|e| format!("Failed to load configuration: {}", e))?;
+
+    let api_health_endpoint = api_health_endpoint
+        .unwrap_or_else(|| format!("{}/health", config.connection.api_url.trim_end_matches('/')));
+    let websocket_endpoint = websocket_endpoint.unwrap_or(config.connection.mesh_endpoint);
 
     let api_healthy = match local_control_plane::verify_http_endpoint(&api_health_endpoint, 3000) {
         Ok(_) => {

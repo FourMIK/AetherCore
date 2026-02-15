@@ -8,15 +8,51 @@ import { GlassPanel } from '../hud/GlassPanel';
 import { Radio, Wifi, Activity, TrendingUp, Signal } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { useMeshStore } from '../../store/useMeshStore';
+import { useCommStore } from '../../store/useCommStore';
 
 export const MeshNetworkView: React.FC = () => {
   const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const nodeArray = Array.from(nodes.values());
+
   const meshStats = useMeshStore((s) => s.meshStats);
   const linkMetrics = useMeshStore((s) => s.linkMetrics);
+  const updateLinkMetrics = useMeshStore((s) => s.updateLinkMetrics);
+  const removePeer = useMeshStore((s) => s.removePeer);
   const linkMetricsArray = Array.from(linkMetrics.values());
-  
-  // Format bandwidth for display
+
+  const c2State = useCommStore((state) => state.c2State);
+  const getC2Status = useCommStore((state) => state.getC2Status);
+
+  useEffect(() => {
+    const syncC2LinkMetrics = () => {
+      const status = getC2Status();
+      if (!status) {
+        return;
+      }
+
+      if (status.state === 'IDLE' || status.state === 'DISCONNECTED') {
+        removePeer('c2-gateway');
+        return;
+      }
+
+      const trustScore =
+        status.state === 'CONNECTED' ? 1 : status.state === 'DEGRADED' ? 0.6 : 0.4;
+      const packetLossPercent = Math.min(status.missedHeartbeats / 3, 1);
+
+      updateLinkMetrics('c2-gateway', {
+        peerName: 'C2 Gateway',
+        rttMs: status.rttMs ?? 0,
+        packetLossPercent,
+        trustScore,
+        lastMeasured: new Date(),
+      });
+    };
+
+    syncC2LinkMetrics();
+    const interval = window.setInterval(syncC2LinkMetrics, 1000);
+    return () => window.clearInterval(interval);
+  }, [c2State, getC2Status, removePeer, updateLinkMetrics]);
+
   const formatBandwidth = (mbps: number): string => {
     if (mbps >= 1000) {
       return `${(mbps / 1000).toFixed(2)} Gb/s`;
@@ -24,7 +60,6 @@ export const MeshNetworkView: React.FC = () => {
     return `${mbps.toFixed(1)} Mb/s`;
   };
 
-  // Format latency for display
   const formatLatency = (ms: number): string => {
     if (ms < 1) {
       return '<1ms';
@@ -32,7 +67,6 @@ export const MeshNetworkView: React.FC = () => {
     return `${Math.round(ms)}ms`;
   };
 
-  // Get quality color
   const getQualityColor = (quality: string): string => {
     switch (quality) {
       case 'excellent':
@@ -57,7 +91,6 @@ export const MeshNetworkView: React.FC = () => {
           Mesh Network
         </h1>
 
-        {/* Network Stats */}
         <div className="grid grid-cols-4 gap-4">
           <GlassPanel variant="light" className="p-4">
             <div className="flex items-start justify-between">
@@ -94,7 +127,7 @@ export const MeshNetworkView: React.FC = () => {
                   {formatBandwidth(meshStats.totalBandwidthMbps)}
                 </div>
                 <div className="text-xs text-tungsten/50 mt-1">
-                  Estimated capacity
+                  Estimated from live link quality
                 </div>
               </div>
               <TrendingUp className="text-overmatch" size={24} />
@@ -117,7 +150,6 @@ export const MeshNetworkView: React.FC = () => {
           </GlassPanel>
         </div>
 
-        {/* Link Quality Details */}
         {linkMetricsArray.length > 0 && (
           <GlassPanel variant="light" className="p-6">
             <div className="flex items-center gap-3 mb-4">
@@ -172,11 +204,15 @@ export const MeshNetworkView: React.FC = () => {
                   <div className="mt-2 h-2 bg-carbon rounded-full overflow-hidden">
                     <div
                       className={`h-full transition-all duration-500 ${
-                        link.linkQuality === 'excellent' ? 'bg-verified-green' :
-                        link.linkQuality === 'good' ? 'bg-verified-green' :
-                        link.linkQuality === 'fair' ? 'bg-overmatch' :
-                        link.linkQuality === 'poor' ? 'bg-red-500' :
-                        'bg-red-700'
+                        link.linkQuality === 'excellent'
+                          ? 'bg-verified-green'
+                          : link.linkQuality === 'good'
+                          ? 'bg-verified-green'
+                          : link.linkQuality === 'fair'
+                          ? 'bg-overmatch'
+                          : link.linkQuality === 'poor'
+                          ? 'bg-red-500'
+                          : 'bg-red-700'
                       }`}
                       style={{ width: `${link.linkScore * 100}%` }}
                     />
@@ -187,7 +223,6 @@ export const MeshNetworkView: React.FC = () => {
           </GlassPanel>
         )}
 
-        {/* Mesh Topology */}
         <GlassPanel variant="light" className="p-6">
           <div className="flex items-center gap-3 mb-4">
             <Radio className="text-overmatch" size={24} />
@@ -200,42 +235,11 @@ export const MeshNetworkView: React.FC = () => {
               <Wifi className="mx-auto mb-2" size={48} />
               <div>Mesh Topology Visualization</div>
               <div className="text-sm mt-1">
-                {nodeArray.length > 0 
-                  ? `${nodeArray.length} nodes, ${meshStats.connectedPeers} active links` 
-                  : 'Add nodes to visualize mesh topology'}
+                {nodeArray.length > 0
+                  ? `${nodeArray.length} nodes, ${meshStats.connectedPeers} active links`
+                  : 'Waiting for node telemetry...'}
               </div>
             </div>
-          </div>
-        </GlassPanel>
-
-        {/* RF Channels */}
-        <GlassPanel variant="light" className="p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Activity className="text-overmatch" size={24} />
-            <h2 className="font-display text-xl font-semibold text-tungsten">
-              RF Channel Status
-            </h2>
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            {['2.4 GHz', '5.8 GHz', '900 MHz'].map((freq, i) => (
-              <div key={freq} className="p-4 bg-carbon/30 border border-tungsten/10 rounded-lg">
-                <div className="text-tungsten/70 text-sm mb-2">{freq}</div>
-                <div className="flex items-center justify-between">
-                  <div className="font-display text-xl font-bold text-verified-green">
-                    Active
-                  </div>
-                  <div className="text-xs text-tungsten/50">
-                    {i === 0 ? '11' : i === 1 ? '45' : '3'} channels
-                  </div>
-                </div>
-                <div className="mt-2 h-1 bg-carbon rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-verified-green" 
-                    style={{ width: `${60 + i * 10}%` }}
-                  />
-                </div>
-              </div>
-            ))}
           </div>
         </GlassPanel>
       </div>

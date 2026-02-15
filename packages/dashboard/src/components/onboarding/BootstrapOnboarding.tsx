@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { getRuntimeConfig } from '../../config/runtime';
+import { loadUnifiedRuntimeConfig, getRuntimeConfig, setRuntimeConfig } from '../../config/runtime';
 
 type StepState = 'pending' | 'running' | 'success' | 'error';
 
@@ -81,6 +81,12 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void }> = ({ onReady
     setErrorSummary(null);
 
     try {
+      const unified = await loadUnifiedRuntimeConfig();
+      setRuntimeConfig(unified);
+      if (!unified.features.bootstrap_on_startup) {
+        onReady();
+        return;
+      }
       const dirs = await runWithRetry('dirs', async () => invoke<string[]>('initialize_local_data_dirs'));
       updateStep('dirs', { state: 'success', detail: `Ready (${dirs.length} directories)` });
 

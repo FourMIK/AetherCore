@@ -1,3 +1,27 @@
+import { invoke } from '@tauri-apps/api/core';
+
+export interface UnifiedRuntimeConfig {
+  schema_version: number;
+  profile: 'local_control_plane' | 'testnet' | 'production_mesh';
+  connection: {
+    api_url: string;
+    mesh_endpoint: string;
+  };
+  tpm: {
+    mode: 'required' | 'optional' | 'disabled' | string;
+    enforce_hardware: boolean;
+  };
+  features: {
+    allow_insecure_localhost: boolean;
+    bootstrap_on_startup: boolean;
+  };
+  connection_retry: {
+    max_retries: number;
+    initial_delay_ms: number;
+    max_delay_ms: number;
+  };
+}
+
 interface RuntimeEnv {
   REACT_APP_API_URL?: string;
   REACT_APP_WS_URL?: string;
@@ -6,13 +30,8 @@ interface RuntimeEnv {
 
 const runtimeEnv = (globalThis as unknown as Window & { __ENV__?: RuntimeEnv }).__ENV__ ?? {};
 
-/**
- * Parse boolean environment variable with standard rules:
- * - "false", "0", "no", "off" (case-insensitive) -> false
- * - "true", "1", "yes", "on" (case-insensitive) -> true
- * - undefined/empty -> defaultValue
- * - invalid value -> defaultValue (with console warning)
- */
+let runtimeConfigCache: UnifiedRuntimeConfig | null = null;
+
 function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined || value === '') {
     return defaultValue;
@@ -24,22 +43,77 @@ function parseBooleanEnv(value: string | undefined, defaultValue: boolean): bool
   if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
     return true;
   }
-  // Invalid value - log warning
-  console.warn(`Invalid boolean environment variable value: "${value}". Valid values: true/false, 1/0, yes/no, on/off. Using default: ${defaultValue}`);
+  console.warn(`Invalid boolean environment variable value: "${value}". Using default: ${defaultValue}`);
   return defaultValue;
 }
 
-export function getRuntimeConfig() {
+function buildEnvFallbackConfig(): UnifiedRuntimeConfig {
+  const apiUrl = runtimeEnv.REACT_APP_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
+  const meshEndpoint = runtimeEnv.REACT_APP_WS_URL || import.meta.env.VITE_GATEWAY_URL || 'ws://127.0.0.1:8080';
+  const enforceHardware = parseBooleanEnv(
+    runtimeEnv.REACT_APP_TPM_ENABLED || import.meta.env.VITE_TPM_ENABLED,
+    true
+  );
+
   return {
-    apiUrl: runtimeEnv.REACT_APP_API_URL || import.meta.env.VITE_API_URL || '',
-    wsUrl: runtimeEnv.REACT_APP_WS_URL || import.meta.env.VITE_GATEWAY_URL || 'ws://localhost:8080',
-    tpmEnabled: parseBooleanEnv(
-      runtimeEnv.REACT_APP_TPM_ENABLED || import.meta.env.VITE_TPM_ENABLED,
-      true // Default: TPM enabled
-    ),
-    devAllowInsecureLocalhost: parseBooleanEnv(
-      import.meta.env.VITE_DEV_ALLOW_INSECURE_LOCALHOST,
-      false // Default: disallow insecure localhost
-    ),
+    schema_version: 2,
+    profile: 'local_control_plane',
+    connection: {
+      api_url: apiUrl,
+      mesh_endpoint: meshEndpoint,
+    },
+    tpm: {
+      mode: enforceHardware ? 'required' : 'optional',
+      enforce_hardware: enforceHardware,
+    },
+    features: {
+      allow_insecure_localhost: parseBooleanEnv(import.meta.env.VITE_DEV_ALLOW_INSECURE_LOCALHOST, false),
+      bootstrap_on_startup: true,
+    },
+    connection_retry: {
+      max_retries: 10,
+      initial_delay_ms: 1000,
+      max_delay_ms: 30000,
+    },
+  };
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+export async function loadUnifiedRuntimeConfig(): Promise<UnifiedRuntimeConfig> {
+  if (runtimeConfigCache) {
+    return runtimeConfigCache;
+  }
+
+  if (!isTauriRuntime()) {
+    runtimeConfigCache = buildEnvFallbackConfig();
+    return runtimeConfigCache;
+  }
+
+  try {
+    runtimeConfigCache = await invoke<UnifiedRuntimeConfig>('get_config');
+  } catch (error) {
+    console.warn('Failed to load unified runtime config from Tauri, using env fallback:', error);
+    runtimeConfigCache = buildEnvFallbackConfig();
+  }
+
+  return runtimeConfigCache;
+}
+
+export function setRuntimeConfig(config: UnifiedRuntimeConfig): void {
+  runtimeConfigCache = config;
+}
+
+export function getRuntimeConfig() {
+  const unified = runtimeConfigCache ?? buildEnvFallbackConfig();
+
+  return {
+    unified,
+    apiUrl: unified.connection.api_url,
+    wsUrl: unified.connection.mesh_endpoint,
+    tpmEnabled: unified.tpm.enforce_hardware,
+    devAllowInsecureLocalhost: unified.features.allow_insecure_localhost,
   };
 }

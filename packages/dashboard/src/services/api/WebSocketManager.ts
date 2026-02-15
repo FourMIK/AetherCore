@@ -50,9 +50,9 @@ export class WebSocketManager {
   private connectionState: ConnectionState = 'disconnected';
   private deviceId: string | null = null; // Cached hardware ID
   private reconnectAttempts: number = 0;
-  private readonly maxReconnectAttempts: number = 10;
-  private readonly initialRetryDelay: number = 1000; // 1 second
-  private readonly maxRetryDelay: number = 30000; // 30 seconds
+  private readonly maxReconnectAttempts: number;
+  private readonly initialRetryDelay: number; // 1 second
+  private readonly maxRetryDelay: number; // 30 seconds
   private lastHeartbeatAck: number = 0; // Timestamp of last successful heartbeat ack
   private readonly intermittentThreshold: number = 500; // 500ms threshold for intermittent
   private readonly disconnectedThreshold: number = 2000; // 2000ms threshold for disconnected
@@ -67,7 +67,12 @@ export class WebSocketManager {
     }
     
     this.url = url;
-    
+
+    const { unified } = getRuntimeConfig();
+    this.maxReconnectAttempts = unified.connection_retry.max_retries;
+    this.initialRetryDelay = unified.connection_retry.initial_delay_ms;
+    this.maxRetryDelay = unified.connection_retry.max_delay_ms;
+
     // Log security posture
     if (validation.isLocalhost && validation.protocol === 'ws') {
       console.warn(
