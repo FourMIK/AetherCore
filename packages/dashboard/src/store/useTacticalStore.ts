@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import { GeoPosition, ViewMode, MapProviderType } from '../map-engine/types';
+import { getRuntimeConfig } from '../config/runtime';
 
 // Node Types
 export interface TacticalNode {
@@ -222,9 +223,8 @@ export const useTacticalStore = create<TacticalStore>()(
       // WebSocket connection using TLS 1.3 and mutual TPM attestation.
       connectToMesh: async () => {
         try {
-          // Production endpoint from config/production.yaml
-          const endpoint = import.meta.env.VITE_C2_ENDPOINT || 'wss://c2.aethercore.local:8443';
-          const result = await invoke<string>('connect_to_mesh', { endpoint });
+          const { wsUrl } = getRuntimeConfig();
+          const result = await invoke<string>('connect_to_mesh', { endpoint: wsUrl });
           return { success: true, nodeId: result };
         } catch (error) {
           console.error('Failed to connect to C2 mesh:', error);

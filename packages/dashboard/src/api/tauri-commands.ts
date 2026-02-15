@@ -166,9 +166,20 @@ export const TauriCommands = {
  * Type definitions matching Rust structs
  */
 export interface AppConfig {
-  mesh_endpoint: string | null;
-  testnet_endpoint: string | null;
-  enforce_tpm: boolean;
+  schema_version: number;
+  profile: 'local_control_plane' | 'testnet' | 'production_mesh';
+  connection: {
+    api_url: string;
+    mesh_endpoint: string;
+  };
+  tpm: {
+    mode: 'required' | 'optional' | 'disabled' | string;
+    enforce_hardware: boolean;
+  };
+  features: {
+    allow_insecure_localhost: boolean;
+    bootstrap_on_startup: boolean;
+  };
   connection_retry: {
     max_retries: number;
     initial_delay_ms: number;

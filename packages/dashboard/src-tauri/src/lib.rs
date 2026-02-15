@@ -132,6 +132,18 @@ pub fn run() {
 
             local_control_plane::initialize_managed_runtime();
 
+            let config_manager = crate::config::ConfigManager::new(&app.handle())
+                .map_err(|e| tauri::Error::Setup(e.to_string()))?;
+            if config_manager
+                .ensure_install_time_config()
+                .map_err(|e| tauri::Error::Setup(e.to_string()))?
+            {
+                log::info!(
+                    "Created first-run runtime config at {:?}",
+                    config_manager.get_config_path()
+                );
+            }
+
             // TPM verification successful - continue with normal initialization
             if cfg!(debug_assertions) {
                 app.handle().plugin(

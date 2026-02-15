@@ -152,7 +152,7 @@ export const TacticalMap: React.FC = () => {
   const selectNode = useTacticalStore((s) => s.selectNode);
   const viewMode = useTacticalStore((s) => s.viewMode);
 
-  // Set origin to San Francisco Bay Area center for our dummy data
+  // Default origin until live node telemetry populates the map
   const origin = { latitude: 37.7749, longitude: -122.4194, altitude: 0 };
 
   return (
