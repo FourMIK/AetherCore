@@ -334,6 +334,18 @@ Placeholder signing is used for development.
 
 **Solution**: Check endpoint URL format and TLS settings (see TLS_ENFORCEMENT.md)
 
+
+### Containerized Local Stack Uses Service DNS (Not localhost)
+
+**Cause**: When running in Docker Compose, `localhost:50051` points to the current container, not the C2 service.
+
+**Solution**:
+- Set `C2_ADDR=c2-router:50051`
+- Set `AETHER_BUNKER_ENDPOINT=c2-router:50051`
+- Use your compose service DNS name if your gRPC service name differs from `c2-router`
+
+If gateway detects `localhost` while running in container, it logs a warning with the recommended endpoint format.
+
 ### "WebSocket connection error"
 
 **Cause**: Network unreachable, certificate invalid, or server not running

@@ -1,6 +1,24 @@
 version: '3.9'
 
 services:
+  # Mock C2 Router gRPC Service for local stack bring-up
+  c2-router:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.c2-router-mock
+    container_name: aethercore-c2-router
+    environment:
+      PORT: 50051
+    ports:
+      - "50051:50051"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect({host:'127.0.0.1',port:50051}).on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - aethercore
+
   # PostgreSQL 16
   postgres:
     image: postgres:16-alpine
@@ -49,9 +67,13 @@ services:
       DATABASE_URL: postgresql://aethercore:aethercore_dev_password@postgres:5432/aethercore
       REDIS_URL: redis://redis:6379
       AUTH_SERVICE_URL: http://auth:3001
+      C2_ADDR: c2-router:50051
+      AETHER_BUNKER_ENDPOINT: c2-router:50051
     ports:
       - "3000:3000"
     depends_on:
+      c2-router:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -77,9 +99,12 @@ services:
       DATABASE_URL: postgresql://aethercore:aethercore_dev_password@postgres:5432/aethercore
       REDIS_URL: redis://redis:6379
       JWT_SECRET: dev_jwt_secret_change_in_production
+      AETHER_BUNKER_ENDPOINT: c2-router:50051
     ports:
       - "3001:3001"
     depends_on:
+      c2-router:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:

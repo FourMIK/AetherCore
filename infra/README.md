@@ -130,6 +130,7 @@ docker-compose up
 ```
 
 This starts:
+- C2 Router gRPC mock service on port 50051
 - PostgreSQL 16 on port 5432
 - Redis 7 on port 6379
 - Gateway service on port 3000
@@ -137,6 +138,17 @@ This starts:
 - Collaboration service on port 8080
 
 **Note**: The enrollment service is not included in the Docker Compose stack. Enrollment functionality must be added and configured separately if required.
+
+
+### Container DNS defaults for C2/Bunker endpoints
+
+Within Docker Compose, services must connect to each other by service DNS name (not `localhost`).
+
+Expected defaults in the local stack:
+- `C2_ADDR=c2-router:50051`
+- `AETHER_BUNKER_ENDPOINT=c2-router:50051`
+
+Why: inside a container, `localhost` points back to the same container, not to sibling services.
 
 ### Health Check Endpoints
 
@@ -243,6 +255,23 @@ View container logs:
 ```bash
 aws logs tail /ecs/aethercore-internal/gateway --since 10m
 ```
+
+
+### Backend remains unreachable in local Docker stack
+
+Symptoms:
+- Gateway logs warning about `C2_ADDR`/`AETHER_BUNKER_ENDPOINT` pointing to localhost
+- Gateway backend state stays `UNREACHABLE`
+
+Resolution:
+- Use container DNS service naming in compose networking
+- Ensure endpoint variables resolve to `c2-router:50051` (or your actual in-stack gRPC service name)
+- Recreate stack after config changes:
+  ```bash
+  cd infra/docker
+  docker compose down -v
+  docker compose up --build
+  ```
 
 ### Cannot connect to database
 

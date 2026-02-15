@@ -40,6 +40,17 @@ jobs:
           chmod +x verify-monorepo.sh
           ./verify-monorepo.sh
 
+
+  compose-local-smoke:
+    needs: [network-prerequisites]
+    name: Compose Local Stack Smoke (Backend CONNECTED)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run compose smoke check (no endpoint overrides)
+        run: ./scripts/compose-smoke-connected.sh
+
   rust-workspace:
     needs: [network-prerequisites]
     name: Rust Workspace
