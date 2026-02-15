@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   # Mock C2 Router gRPC Service for local stack bring-up
   c2-router:
