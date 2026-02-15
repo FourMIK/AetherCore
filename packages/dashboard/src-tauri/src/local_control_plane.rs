@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::net::TcpStream;
 #[cfg(unix)]
@@ -124,14 +124,39 @@ pub fn bootstrap_local_control_plane() -> Result<LocalControlPlaneRuntime, Strin
         manifest_path.display()
     );
 
-    let mut services = manifest.services;
-    services.sort_by_key(|service| service.startup_order);
+    let ordered = ordered_services(&manifest.services)?;
+    let services_by_name = manifest
+        .services
+        .iter()
+        .map(|service| (service.name.clone(), service))
+        .collect::<HashMap<_, _>>();
+    let mut health_by_name = manifest
+        .services
+        .iter()
+        .map(|service| {
+            (
+                service.name.clone(),
+                is_service_healthy(&service.health_endpoint, service.port),
+            )
+        })
+        .collect::<HashMap<_, _>>();
 
     let mut spawned_children = HashMap::new();
 
-    for service in services {
+    for service in ordered {
+        if let Some(blocking_dependency) =
+            first_unhealthy_dependency(service, &services_by_name, &health_by_name)
+        {
+            return Err(dependency_block_error(
+                service,
+                &blocking_dependency,
+                &services_by_name,
+            ));
+        }
+
         if is_service_healthy(&service.health_endpoint, service.port) {
             log::info!("Service {} already healthy", service.name);
+            health_by_name.insert(service.name.clone(), true);
             continue;
         }
 
@@ -140,13 +165,14 @@ pub fn bootstrap_local_control_plane() -> Result<LocalControlPlaneRuntime, Strin
             service.name,
             service.start_executable
         );
-        spawned_children.insert(service.name.clone(), spawn_service(&service)?);
+        spawned_children.insert(service.name.clone(), spawn_service(service)?);
 
         thread::sleep(Duration::from_millis(
             manifest.startup.service_start_grace_period_ms,
         ));
 
-        ensure_service_health(&service, &manifest.startup)?;
+        let readiness = ensure_service_health(service, &manifest.startup)?;
+        health_by_name.insert(service.name.clone(), readiness.healthy);
     }
 
     Ok(LocalControlPlaneRuntime { spawned_children })
@@ -215,17 +241,49 @@ pub fn check_service_statuses() -> Result<Vec<ServiceStatus>, String> {
 pub fn evaluate_stack_readiness() -> Result<StackReadiness, String> {
     let manifest = read_manifest(&resolve_manifest_path()?)?;
     let statuses = check_service_statuses()?;
+    let services_by_name = manifest
+        .services
+        .iter()
+        .map(|service| (service.name.clone(), service))
+        .collect::<HashMap<_, _>>();
+    let health_by_name = statuses
+        .iter()
+        .map(|status| (status.name.clone(), status.healthy))
+        .collect::<HashMap<_, _>>();
 
     let readiness = manifest
         .services
         .iter()
-        .map(|service| ServiceReadiness {
-            name: service.name.clone(),
-            healthy: is_service_healthy(&service.health_endpoint, service.port),
-            attempts: 0,
-            elapsed_ms: 0,
-            last_error: None,
-            remediation_hint: service.remediation_hint.clone(),
+        .map(|service| {
+            let direct_health = is_service_healthy(&service.health_endpoint, service.port);
+            if let Some(blocking_dependency) =
+                first_unhealthy_dependency(service, &services_by_name, &health_by_name)
+            {
+                ServiceReadiness {
+                    name: service.name.clone(),
+                    healthy: false,
+                    attempts: 0,
+                    elapsed_ms: 0,
+                    last_error: Some(format!(
+                        "Dependency '{}' is unhealthy and blocks startup readiness",
+                        blocking_dependency
+                    )),
+                    remediation_hint: dependency_block_error(
+                        service,
+                        &blocking_dependency,
+                        &services_by_name,
+                    ),
+                }
+            } else {
+                ServiceReadiness {
+                    name: service.name.clone(),
+                    healthy: direct_health,
+                    attempts: 0,
+                    elapsed_ms: 0,
+                    last_error: None,
+                    remediation_hint: service.remediation_hint.clone(),
+                }
+            }
         })
         .collect::<Vec<_>>();
 
@@ -247,8 +305,22 @@ pub fn evaluate_stack_readiness() -> Result<StackReadiness, String> {
 pub fn start_managed_services() -> Result<Vec<ServiceStatus>, String> {
     initialize_managed_runtime();
     let manifest = read_manifest(&resolve_manifest_path()?)?;
-    let mut services = manifest.services;
-    services.sort_by_key(|service| service.startup_order);
+    let services = ordered_services(&manifest.services)?;
+    let services_by_name = manifest
+        .services
+        .iter()
+        .map(|service| (service.name.clone(), service))
+        .collect::<HashMap<_, _>>();
+    let mut health_by_name = manifest
+        .services
+        .iter()
+        .map(|service| {
+            (
+                service.name.clone(),
+                is_service_healthy(&service.health_endpoint, service.port),
+            )
+        })
+        .collect::<HashMap<_, _>>();
 
     let mut runtime = MANAGED_RUNTIME
         .get()
@@ -257,11 +329,24 @@ pub fn start_managed_services() -> Result<Vec<ServiceStatus>, String> {
         .map_err(|_| "Failed to lock managed runtime".to_string())?;
 
     for service in &services {
+        if let Some(blocking_dependency) =
+            first_unhealthy_dependency(service, &services_by_name, &health_by_name)
+        {
+            return Err(dependency_block_error(
+                service,
+                &blocking_dependency,
+                &services_by_name,
+            ));
+        }
+
         if is_service_healthy(&service.health_endpoint, service.port) {
+            health_by_name.insert(service.name.clone(), true);
             continue;
         }
 
         if runtime.spawned_children.contains_key(&service.name) {
+            let readiness = ensure_service_health(service, &manifest.startup)?;
+            health_by_name.insert(service.name.clone(), readiness.healthy);
             continue;
         }
 
@@ -271,7 +356,8 @@ pub fn start_managed_services() -> Result<Vec<ServiceStatus>, String> {
         thread::sleep(Duration::from_millis(
             manifest.startup.service_start_grace_period_ms,
         ));
-        ensure_service_health(service, &manifest.startup)?;
+        let readiness = ensure_service_health(service, &manifest.startup)?;
+        health_by_name.insert(service.name.clone(), readiness.healthy);
     }
 
     Ok(services
@@ -297,6 +383,31 @@ pub fn start_dependency(service_name: &str) -> Result<ServiceStatus, String> {
         .iter()
         .find(|service| service.name == service_name)
         .ok_or_else(|| format!("Service '{}' not found in manifest", service_name))?;
+    let services_by_name = manifest
+        .services
+        .iter()
+        .map(|entry| (entry.name.clone(), entry))
+        .collect::<HashMap<_, _>>();
+    let health_by_name = manifest
+        .services
+        .iter()
+        .map(|entry| {
+            (
+                entry.name.clone(),
+                is_service_healthy(&entry.health_endpoint, entry.port),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    if let Some(blocking_dependency) =
+        first_unhealthy_dependency(service, &services_by_name, &health_by_name)
+    {
+        return Err(dependency_block_error(
+            service,
+            &blocking_dependency,
+            &services_by_name,
+        ));
+    }
 
     let mut runtime = MANAGED_RUNTIME
         .get()
@@ -460,13 +571,197 @@ pub fn read_manifest(path: &Path) -> Result<LocalControlPlaneManifest, String> {
         )
     })?;
 
-    toml::from_str::<LocalControlPlaneManifest>(&contents).map_err(|error| {
+    let manifest = toml::from_str::<LocalControlPlaneManifest>(&contents).map_err(|error| {
         format!(
             "Unable to parse local control plane manifest {}: {}",
             path.display(),
             error
         )
-    })
+    })?;
+
+    validate_dependency_graph(&manifest.services)?;
+
+    Ok(manifest)
+}
+
+fn validate_dependency_graph(services: &[ManagedService]) -> Result<(), String> {
+    let services_by_name = services
+        .iter()
+        .map(|service| (service.name.clone(), service))
+        .collect::<HashMap<_, _>>();
+
+    for service in services {
+        for dependency in &service.depends_on {
+            if !services_by_name.contains_key(dependency) {
+                return Err(format!(
+                    "Service '{}' depends on missing service '{}'. Remediation hint: {}",
+                    service.name, dependency, service.remediation_hint
+                ));
+            }
+        }
+    }
+
+    fn dfs_cycle<'a>(
+        service_name: &'a str,
+        services_by_name: &HashMap<String, &'a ManagedService>,
+        visited: &mut HashSet<String>,
+        stack: &mut Vec<String>,
+        stack_set: &mut HashSet<String>,
+    ) -> Option<Vec<String>> {
+        if stack_set.contains(service_name) {
+            if let Some(index) = stack.iter().position(|name| name == service_name) {
+                let mut cycle = stack[index..].to_vec();
+                cycle.push(service_name.to_string());
+                return Some(cycle);
+            }
+        }
+
+        if !visited.insert(service_name.to_string()) {
+            return None;
+        }
+
+        stack.push(service_name.to_string());
+        stack_set.insert(service_name.to_string());
+
+        if let Some(service) = services_by_name.get(service_name) {
+            for dependency in &service.depends_on {
+                if let Some(cycle) =
+                    dfs_cycle(dependency, services_by_name, visited, stack, stack_set)
+                {
+                    return Some(cycle);
+                }
+            }
+        }
+
+        stack.pop();
+        stack_set.remove(service_name);
+        None
+    }
+
+    let mut visited = HashSet::new();
+    let mut stack = Vec::new();
+    let mut stack_set = HashSet::new();
+    for service in services {
+        if let Some(cycle) = dfs_cycle(
+            &service.name,
+            &services_by_name,
+            &mut visited,
+            &mut stack,
+            &mut stack_set,
+        ) {
+            return Err(format!(
+                "Dependency cycle detected in local control plane manifest: {}",
+                cycle.join(" -> ")
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn ordered_services<'a>(services: &'a [ManagedService]) -> Result<Vec<&'a ManagedService>, String> {
+    let mut services_by_name = HashMap::new();
+    let mut indegree = HashMap::new();
+    let mut reverse_edges: HashMap<String, Vec<String>> = HashMap::new();
+
+    for service in services {
+        services_by_name.insert(service.name.clone(), service);
+        indegree.entry(service.name.clone()).or_insert(0_u32);
+    }
+
+    for service in services {
+        for dependency in &service.depends_on {
+            *indegree.entry(service.name.clone()).or_insert(0) += 1;
+            reverse_edges
+                .entry(dependency.clone())
+                .or_default()
+                .push(service.name.clone());
+        }
+    }
+
+    let mut ready = services
+        .iter()
+        .filter(|service| *indegree.get(&service.name).unwrap_or(&0) == 0)
+        .collect::<Vec<_>>();
+    ready.sort_by_key(|service| (service.startup_order, service.name.clone()));
+
+    let mut ordered = Vec::with_capacity(services.len());
+
+    while let Some(service) = ready.first().copied() {
+        ready.remove(0);
+        ordered.push(service);
+
+        if let Some(dependents) = reverse_edges.get(&service.name) {
+            for dependent in dependents {
+                if let Some(next) = indegree.get_mut(dependent) {
+                    *next = next.saturating_sub(1);
+                    if *next == 0 {
+                        if let Some(candidate) = services_by_name.get(dependent) {
+                            ready.push(candidate);
+                        }
+                    }
+                }
+            }
+            ready.sort_by_key(|candidate| (candidate.startup_order, candidate.name.clone()));
+        }
+    }
+
+    if ordered.len() != services.len() {
+        return Err("Unable to resolve startup ordering due to dependency cycle".to_string());
+    }
+
+    Ok(ordered)
+}
+
+fn first_unhealthy_dependency(
+    service: &ManagedService,
+    services_by_name: &HashMap<String, &ManagedService>,
+    health_by_name: &HashMap<String, bool>,
+) -> Option<String> {
+    fn walk(
+        service_name: &str,
+        services_by_name: &HashMap<String, &ManagedService>,
+        health_by_name: &HashMap<String, bool>,
+        visited: &mut HashSet<String>,
+    ) -> Option<String> {
+        if !visited.insert(service_name.to_string()) {
+            return None;
+        }
+
+        let service = services_by_name.get(service_name)?;
+        for dependency in &service.depends_on {
+            if !health_by_name.get(dependency).copied().unwrap_or(false) {
+                return Some(dependency.clone());
+            }
+            if let Some(blocker) = walk(dependency, services_by_name, health_by_name, visited) {
+                return Some(blocker);
+            }
+        }
+        None
+    }
+
+    walk(
+        &service.name,
+        services_by_name,
+        health_by_name,
+        &mut HashSet::new(),
+    )
+}
+
+fn dependency_block_error(
+    service: &ManagedService,
+    blocking_dependency: &str,
+    services_by_name: &HashMap<String, &ManagedService>,
+) -> String {
+    let dependency_hint = services_by_name
+        .get(blocking_dependency)
+        .map(|dependency| dependency.remediation_hint.as_str())
+        .unwrap_or("Investigate dependency health checks and startup logs");
+
+    format!(
+        "Service '{}' is blocked by unhealthy dependency '{}'. Service hint: {}. Upstream hint: {}",
+        service.name, blocking_dependency, service.remediation_hint, dependency_hint
+    )
 }
 
 fn spawn_service(service: &ManagedService) -> Result<Child, String> {
@@ -769,4 +1064,98 @@ fn default_max_retries() -> u32 {
 
 fn default_retry_backoff_ms() -> u64 {
     1250
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_service(name: &str, startup_order: u32, depends_on: Vec<&str>) -> ManagedService {
+        ManagedService {
+            name: name.to_string(),
+            startup_order,
+            required: true,
+            port: 1000 + startup_order as u16,
+            health_endpoint: format!("http://127.0.0.1:{}/health", 1000 + startup_order as u16),
+            remediation_hint: format!("fix {}", name),
+            depends_on: depends_on.into_iter().map(|dep| dep.to_string()).collect(),
+            health_check_timeout_secs: Some(1),
+            health_check_retries: Some(0),
+            working_dir: ".".to_string(),
+            start_executable: "/bin/echo".to_string(),
+            start_args: vec![],
+        }
+    }
+
+    #[test]
+    fn detects_missing_dependency_reference() {
+        let services = vec![
+            test_service("alpha", 2, vec!["missing"]),
+            test_service("beta", 1, vec![]),
+        ];
+
+        let error = validate_dependency_graph(&services).unwrap_err();
+        assert!(error.contains("missing service 'missing'"));
+    }
+
+    #[test]
+    fn detects_dependency_cycle() {
+        let services = vec![
+            test_service("alpha", 1, vec!["beta"]),
+            test_service("beta", 2, vec!["gamma"]),
+            test_service("gamma", 3, vec!["alpha"]),
+        ];
+
+        let error = validate_dependency_graph(&services).unwrap_err();
+        assert!(error.contains("Dependency cycle detected"));
+        assert!(error.contains("alpha -> beta -> gamma -> alpha"));
+    }
+
+    #[test]
+    fn orders_services_by_dependencies_before_startup_order() {
+        let services = vec![
+            test_service("api", 1, vec!["db"]),
+            test_service("db", 50, vec![]),
+            test_service("cache", 2, vec![]),
+        ];
+
+        let ordered = ordered_services(&services).expect("ordering should succeed");
+        let names = ordered
+            .into_iter()
+            .map(|service| service.name.clone())
+            .collect::<Vec<_>>();
+
+        let db_index = names.iter().position(|name| name == "db").unwrap();
+        let api_index = names.iter().position(|name| name == "api").unwrap();
+        assert!(
+            db_index < api_index,
+            "dependency should start before dependent"
+        );
+    }
+
+    #[test]
+    fn finds_transitive_unhealthy_dependency_for_gating() {
+        let database = test_service("database", 1, vec![]);
+        let backend = test_service("backend", 2, vec!["database"]);
+        let frontend = test_service("frontend", 3, vec!["backend"]);
+
+        let services = vec![database.clone(), backend.clone(), frontend.clone()];
+        let services_by_name = services
+            .iter()
+            .map(|service| (service.name.clone(), service))
+            .collect::<HashMap<_, _>>();
+        let health_by_name = HashMap::from([
+            ("database".to_string(), false),
+            ("backend".to_string(), true),
+            ("frontend".to_string(), false),
+        ]);
+
+        let blocker = first_unhealthy_dependency(&frontend, &services_by_name, &health_by_name)
+            .expect("frontend should be blocked by unhealthy dependency");
+        assert_eq!(blocker, "database");
+
+        let error = dependency_block_error(&frontend, &blocker, &services_by_name);
+        assert!(error.contains("unhealthy dependency 'database'"));
+        assert!(error.contains("Upstream hint: fix database"));
+    }
 }
