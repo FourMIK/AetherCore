@@ -12,11 +12,12 @@ COPY packages/shared/package.json ./packages/shared/
 # Install dependencies
 RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --filter @aethercore/gateway --filter @aethercore/shared
 
-# Copy source code
+# Copy source code and authoritative proto source used by gateway asset sync
 COPY services/gateway ./services/gateway
 COPY packages/shared ./packages/shared
+COPY crates/c2-router/proto ./crates/c2-router/proto
 
-# Build the service
+# Build the service (includes proto sync + generated TS stubs + packaged proto asset copy)
 RUN pnpm --filter @aethercore/gateway run build
 
 # Production stage

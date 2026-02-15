@@ -31,7 +31,7 @@ export type C2RouterClient = grpc.Client & {
   ): void;
 };
 
-const PROTO_PATH = path.resolve(__dirname, '../../../crates/c2-router/proto/c2.proto');
+const PROTO_PATH = path.resolve(__dirname, 'proto/c2.proto');
 
 export function loadC2RouterClientConstructor(protoPath = PROTO_PATH) {
   const packageDefinition = protoLoader.loadSync(protoPath, {
