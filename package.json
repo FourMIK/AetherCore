@@ -10,7 +10,7 @@
     "services/*"
   ],
   "scripts": {
-    "preinstall": "node -e \"const fs=require('fs');const cp=require('child_process');const p='scripts/verify-toolchain.js';try{fs.accessSync(p);cp.execSync('node '+p,{stdio:'inherit'})}catch(e){if(e.code==='ENOENT'){console.log('ℹ Skipping toolchain verification (scripts/ not available yet)');process.exit(0)}throw e}\"",
+    "preinstall": "node -e \"if(process.env.SKIP_TOOLCHAIN_CHECK==='1'){console.log('ℹ Skipping toolchain verification (SKIP_TOOLCHAIN_CHECK=1)');process.exit(0)}const fs=require('fs');const cp=require('child_process');const p='scripts/verify-toolchain.js';try{fs.accessSync(p);cp.execSync('node '+p,{stdio:'inherit'})}catch(e){if(e.code==='ENOENT'){console.log('ℹ Skipping toolchain verification (scripts/ not available yet)');process.exit(0)}throw e}\"",
     "setup": "pnpm install --frozen-lockfile && node scripts/doctor.js",
     "doctor": "node scripts/doctor.js",
     "build": "pnpm run build --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",

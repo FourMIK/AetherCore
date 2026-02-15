@@ -65,9 +65,15 @@ This is verified by the root `preinstall` hook (`scripts/verify-toolchain.js`).
 
 ### Docker builds
 
-The preinstall hook is resilient to missing files during Docker layer caching. When `scripts/verify-toolchain.js` is not yet present in the filesystem (e.g., when `package.json` is copied before the `scripts/` directory), the hook gracefully skips verification with an informational message.
+The preinstall hook is resilient to missing files during Docker layer caching. The hook checks three conditions in order:
 
-For explicit control, Docker build stages may also set `SKIP_TOOLCHAIN_CHECK=1` to bypass verification. This is recommended for container image builds to clearly document intent.
+1. **SKIP_TOOLCHAIN_CHECK=1**: If set, skips verification immediately (explicit bypass)
+2. **scripts/ missing**: If `scripts/verify-toolchain.js` doesn't exist, skips gracefully (Docker layer caching)
+3. **scripts/ present**: If the script exists, runs full toolchain verification
+
+**Note**: The preinstall hook uses an inline JavaScript snippet rather than a separate wrapper script to avoid a chicken-and-egg problem where the wrapper itself would need to be present before package.json can be processed. While this makes the script less readable, it ensures maximum compatibility with Docker layer caching strategies.
+
+For explicit control in Dockerfiles, you may set `SKIP_TOOLCHAIN_CHECK=1` to clearly document intent, though the hook will now gracefully handle missing scripts automatically.
 
 - **Local development:** do **not** set `SKIP_TOOLCHAIN_CHECK`
 - **TypeScript CI job (`pnpm install --frozen-lockfile`)**: does **not** set `SKIP_TOOLCHAIN_CHECK`
