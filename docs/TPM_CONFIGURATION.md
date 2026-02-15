@@ -107,7 +107,7 @@ export REACT_APP_TPM_ENABLED=false
 
 # Start services
 cargo run --bin identity-server
-pnpm run dev --filter packages/dashboard
+pnpm run --filter @aethercore/dashboard dev
 ```
 
 ### Docker Compose

@@ -186,10 +186,10 @@ cargo test --workspace -- --nocapture
 
 ```bash
 # Run all tests
-pnpm run test --recursive
+pnpm -r run test
 
 # Run specific package tests
-pnpm run test --filter packages/my-package
+pnpm run --filter @aethercore/my-package test
 ```
 
 ## Pull Request Process
