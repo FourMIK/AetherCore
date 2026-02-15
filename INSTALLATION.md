@@ -263,7 +263,10 @@ You don't need VS Code. Use any editor you prefer:
 Or edit files inline with `sed`:
 ```bash
 # Example: Replace text in a file
+# macOS:
 sed -i '' 's/old-text/new-text/g' filename.txt
+# Linux:
+sed -i 's/old-text/new-text/g' filename.txt
 ```
 
 ---
