@@ -252,7 +252,6 @@ jobs:
 
           printf '%s' "$CHECKSUM_SIGNING_PRIVATE_KEY" > release-artifacts/checksum-signing.pem
           openssl dgst -sha256 -sign release-artifacts/checksum-signing.pem -out "$signature_file" "$checksum_file"
-          rm -f release-artifacts/checksum-signing.pem
 
           cat > "release-artifacts/provenance-${{ matrix.platform }}.json" <<EOF
           {
@@ -265,6 +264,25 @@ jobs:
           }
           EOF
 
+      - name: Build release manifest from CI artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tauri_version="$(awk -F'"' '/^tauri = /{print $2; exit}' packages/dashboard/src-tauri/Cargo.toml)"
+          rust_version="$(rustc --version | awk '{print $2}')"
+          node_version="$(node --version | sed 's/^v//')"
+
+          python3 ./scripts/build-release-manifest.py \
+            --bundle-dir packages/dashboard/src-tauri/target/release/bundle \
+            --output-dir release-artifacts \
+            --tag "${{ github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --tauri-version "${tauri_version:-2.x}" \
+            --rust-version "$rust_version" \
+            --node-version "$node_version" \
+            --private-key-path release-artifacts/checksum-signing.pem
+
       - name: Upload signed checksum + provenance artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -273,6 +291,8 @@ jobs:
             release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt
             release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt.sig
             release-artifacts/provenance-${{ matrix.platform }}.json
+            release-artifacts/release-manifest.json
+            release-artifacts/release-manifest.json.sig
           if-no-files-found: error
           retention-days: 90
 
@@ -281,14 +301,24 @@ jobs:
         with:
           subject-path: ${{ matrix.artifact_glob }}
 
+
+      - name: Cleanup release signing key material
+        if: always()
+        shell: bash
+        run: rm -f release-artifacts/checksum-signing.pem
+
       - name: Attach integrity + provenance assets to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: |
+            release-artifacts/*.dmg
+            release-artifacts/*.msi
             release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt
             release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt.sig
             release-artifacts/provenance-${{ matrix.platform }}.json
+            release-artifacts/release-manifest.json
+            release-artifacts/release-manifest.json.sig
             sbom-artifacts/tauri-sbom.json
             sbom-artifacts/frontend-sbom.json
             sbom-artifacts/LICENSE_MANIFEST.txt

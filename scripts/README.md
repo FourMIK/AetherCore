@@ -364,3 +364,54 @@ Scripts themselves are part of the supply chain:
 
 **Last Updated:** 2026-01-04  
 **Maintained By:** AetherCore Team
+
+---
+
+### `build-release-manifest.py`
+
+**Release Artifact Orchestrator + Manifest Emitter**
+
+Collects desktop installers from CI output folders, copies them into `release-artifacts/`, computes SHA-256 hashes, and emits `release-manifest.json` (+ optional detached signature).
+
+**Usage:**
+```bash
+python3 ./scripts/build-release-manifest.py \
+  --bundle-dir packages/dashboard/src-tauri/target/release/bundle \
+  --output-dir release-artifacts \
+  --tag v0.2.0 \
+  --commit "$(git rev-parse HEAD)" \
+  --tauri-version 2.9.5 \
+  --rust-version "$(rustc --version | awk '{print $2}')" \
+  --node-version "$(node --version | sed 's/^v//')" \
+  --private-key-path ./release-signing.pem
+```
+
+**Manifest includes:**
+- Artifact names and SHA-256 hashes
+- Minimum OS versions
+- Bundled runtime versions (Tauri/Rust/Node)
+- Health contract (bootstrap arg + readiness contract)
+
+---
+
+### `verify-release-manifest.py`
+
+**Release Artifact Verifier (pre-install gate)**
+
+Validates detached manifest signature and artifact hashes before installation.
+
+**Usage:**
+```bash
+python3 ./scripts/verify-release-manifest.py \
+  --manifest ./release-manifest.json \
+  --artifacts-dir . \
+  --public-key ./release-manifest-public.pem
+```
+
+**Fails when:**
+- Manifest signature verification fails
+- Any artifact hash mismatches manifest
+- A required artifact is missing
+
+**Deployment policy:**
+This verifier is the required pre-install gate for Intune, Jamf, and manual distribution workflows.
