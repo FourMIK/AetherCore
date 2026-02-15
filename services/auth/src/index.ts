@@ -5,6 +5,7 @@
 import pino from 'pino';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import { getDefaultC2Endpoint } from '@aethercore/shared';
 
 dotenv.config();
 
@@ -21,7 +22,7 @@ const logger = pino({
     : { transport: { target: 'pino-pretty', options: { colorize: true } } }),
 });
 
-const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || 'localhost:50051';
+const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || getDefaultC2Endpoint();
 const DEFAULT_JWT_ISSUER = 'aethercore-auth';
 const DEFAULT_JWT_AUDIENCE = 'aethercore-services';
 

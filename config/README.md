@@ -25,13 +25,15 @@ See `config.json` for a complete example.
 
 ## Environment Variables
 
-- `AETHER_BUNKER_ENDPOINT`: Backend endpoint URL (default: `localhost:50051`)
+- `AETHER_BUNKER_ENDPOINT`: Backend endpoint URL (default: `c2-router:50051` in containers, `localhost:50051` otherwise)
 - `RUST_LOG`: Log level (default: `info`)
   - Possible values: `error`, `warn`, `info`, `debug`, `trace`
 - `AETHER_LOG_JSON`: Enable JSON log output (`1` or `true`)
 - `AETHER_DATA_DIR`: Base directory for data files (default: `./data`)
 - `AETHER_NODE_ID`: Node identifier (default: `node-001`)
 - `AETHER_MESH_ID`: Mesh identifier (default: `mesh-001`)
+
+**Container-Aware Defaults**: Services automatically detect containerized environments (via `/.dockerenv` or `RUNNING_IN_CONTAINER`/`CONTAINER` env vars) and default to `c2-router:50051` for Docker service DNS resolution. Outside containers, `localhost:50051` is used for local development.
 
 ## Usage
 

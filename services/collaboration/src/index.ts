@@ -11,7 +11,7 @@
  * 
  * Environment Variables:
  * - PORT: WebSocket server port (default: 8080)
- * - IDENTITY_REGISTRY_ADDRESS: gRPC address for Identity Registry (default: localhost:50051)
+ * - IDENTITY_REGISTRY_ADDRESS: gRPC address for Identity Registry (default: c2-router:50051 in containers, localhost:50051 otherwise)
  */
 
 // Export production components
@@ -20,6 +20,7 @@ export { VerificationService, ConsoleSecurityEventHandler } from './Verification
 export * from './IdentityRegistryClient';
 
 import { SignalingServer } from './SignalingServer';
+import { getDefaultC2Endpoint } from '@aethercore/shared';
 
 /**
  * Start the collaboration service (Production Mode with gRPC)
@@ -35,7 +36,7 @@ export function startCollaborationService(
 ): SignalingServer {
   // Read from environment variables or use defaults
   const serverPort = port ?? parseInt(process.env.PORT || '8080', 10);
-  const registryAddress = identityRegistryAddress ?? process.env.IDENTITY_REGISTRY_ADDRESS ?? 'localhost:50051';
+  const registryAddress = identityRegistryAddress ?? process.env.IDENTITY_REGISTRY_ADDRESS ?? getDefaultC2Endpoint();
 
   console.log('='.repeat(80));
   console.log('[CollaborationService] Starting Mission Guardian Collaboration Service');

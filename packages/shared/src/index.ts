@@ -15,6 +15,11 @@ export const utils = {
 export default utils;
 
 /**
+ * Container Detection Utilities
+ */
+export * from './container-utils';
+
+/**
  * Mission Guardian Protocol Types
  */
 export * from './types/guardian';

@@ -65,8 +65,35 @@ impl Default for BackendConfig {
     fn default() -> Self {
         Self {
             endpoint: std::env::var("AETHER_BUNKER_ENDPOINT")
-                .unwrap_or_else(|_| "localhost:50051".to_string()),
+                .unwrap_or_else(|_| get_default_bunker_endpoint()),
         }
+    }
+}
+
+/// Detect if running in a container environment
+fn is_running_in_container() -> bool {
+    // Check for explicit environment variables
+    let running_in_container = std::env::var("RUNNING_IN_CONTAINER")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+    let container_var = std::env::var("CONTAINER")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+    
+    // Check for Docker marker file
+    let dockerenv_exists = std::path::Path::new("/.dockerenv").exists();
+    
+    running_in_container || container_var || dockerenv_exists
+}
+
+/// Get default bunker endpoint based on environment
+fn get_default_bunker_endpoint() -> String {
+    // In containerized environments, default to service DNS name
+    // Outside containers, use localhost for local development
+    if is_running_in_container() {
+        "c2-router:50051".to_string()
+    } else {
+        "localhost:50051".to_string()
     }
 }
 

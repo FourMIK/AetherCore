@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import pino from 'pino';
 import { parseTpmEnabled } from './tpm';
 import { createC2RouterClient, dispatchCommand } from './c2-client';
+import { isRunningInContainer, getDefaultC2Endpoint, isLocalhostTarget } from '@aethercore/shared';
 
 dotenv.config();
 
@@ -31,19 +32,9 @@ if (parsedTpmEnabled.warning) {
 const TPM_ENABLED = parsedTpmEnabled.value;
 
 const PORT = process.env.PORT || 3000;
-const C2_GRPC_TARGET = process.env.C2_ADDR || 'localhost:50051';
+const C2_GRPC_TARGET = process.env.C2_ADDR || getDefaultC2Endpoint();
 // Backend endpoint for future integration with AetherBunker services
-const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || process.env.C2_ADDR || 'localhost:50051';
-
-
-function isLocalhostTarget(target: string): boolean {
-  const normalized = target.trim().toLowerCase();
-  return normalized.startsWith('localhost:') || normalized.startsWith('127.0.0.1:') || normalized.startsWith('[::1]:');
-}
-
-function isRunningInContainer(): boolean {
-  return process.env.RUNNING_IN_CONTAINER === 'true' || process.env.CONTAINER === 'true' || fs.existsSync('/.dockerenv');
-}
+const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || process.env.C2_ADDR || getDefaultC2Endpoint();
 
 function warnOnLocalhostTargetInContainer(target: string, variableName: string): void {
   if (isRunningInContainer() && isLocalhostTarget(target)) {

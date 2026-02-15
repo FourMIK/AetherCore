@@ -125,6 +125,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-aethercore}:${POSTGRES_PASSWORD:-aethercore_dev_password}@postgres:5432/${POSTGRES_DB:-aethercore}
       REDIS_URL: redis://redis:6379
       AUTH_SERVICE_URL: http://auth:3001
+      IDENTITY_REGISTRY_ADDRESS: c2-router:50051
     ports:
       - "${COLLABORATION_PORT:-8080}:8080"
     depends_on:
