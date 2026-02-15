@@ -13,6 +13,7 @@ use ssh2::Session;
 use std::io::Read;
 use std::net::TcpStream;
 use std::path::Path;
+use tauri::{path::BaseDirectory, Manager};
 
 /// Genesis message from provisioned remote device
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,7 +51,12 @@ pub struct GenesisIdentity {
 /// # Fail-Visible Philosophy
 /// All SSH/SCP errors are explicit. Authentication failures are immediately
 /// reported as "Bad Password" to guide operator troubleshooting.
-pub async fn inject_pi(ip: String, user: String, pass: String) -> Result<GenesisIdentity, String> {
+pub async fn inject_pi(
+    app_handle: &tauri::AppHandle,
+    ip: String,
+    user: String,
+    pass: String,
+) -> Result<GenesisIdentity, String> {
     log::info!("Starting SSH injection to {}@{}", user, ip);
 
     // STEP 1: Establish TCP connection
@@ -103,7 +109,8 @@ pub async fn inject_pi(ip: String, user: String, pass: String) -> Result<Genesis
     log::info!("SSH authentication successful");
 
     // STEP 4: Locate the payload binary
-    let payload_path = find_payload_binary().map_err(|e| format!("FAIL-VISIBLE: {}", e))?;
+    let payload_path =
+        find_payload_binary(app_handle).map_err(|e| format!("FAIL-VISIBLE: {}", e))?;
 
     log::info!("Using payload: {}", payload_path.display());
 
@@ -122,28 +129,19 @@ pub async fn inject_pi(ip: String, user: String, pass: String) -> Result<Genesis
 }
 
 /// Find the coderalphie-linux-arm64 binary in resources/payloads/
-fn find_payload_binary() -> Result<std::path::PathBuf, String> {
-    // Try multiple possible locations
-    let candidates = vec![
-        "resources/payloads/coderalphie-linux-arm64",
-        "../resources/payloads/coderalphie-linux-arm64",
-        "../../resources/payloads/coderalphie-linux-arm64",
-        "/home/runner/work/AetherCore/AetherCore/packages/dashboard/src-tauri/resources/payloads/coderalphie-linux-arm64",
-    ];
+fn find_payload_binary(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let resource_path = app_handle
+        .path()
+        .resolve("payloads/coderalphie-linux-arm64", BaseDirectory::Resource)
+        .map_err(|e| format!("Failed to resolve payload resource path: {e}"))?;
 
-    for path_str in candidates {
-        let path = Path::new(path_str);
-        if path.exists() {
-            return Ok(path.to_path_buf());
-        }
+    if resource_path.exists() {
+        return Ok(resource_path);
     }
 
-    // If not found, provide clear error message
-    Err(format!(
-        "CodeRalphie binary not found in resources/payloads/. \
-         Please ensure coderalphie-linux-arm64 is present before provisioning. \
-         This is a CRITICAL failure."
-    ))
+    Err(
+        "CodeRalphie binary not found in bundled resources/payloads/. Please ensure coderalphie-linux-arm64 is bundled before provisioning. This is a CRITICAL failure.".to_string(),
+    )
 }
 
 /// SCP file to remote system

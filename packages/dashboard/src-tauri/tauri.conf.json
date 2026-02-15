@@ -73,7 +73,9 @@
       }
     },
     "resources": [
-      "resources/aethercore-node*",
+      "resources/windows/**",
+      "resources/macos/**",
+      "resources/linux/**",
       "resources/payloads/**"
     ]
   }

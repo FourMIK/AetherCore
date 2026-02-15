@@ -154,6 +154,15 @@ pub fn run() {
                 );
             }
 
+            if let Err(error) = commands::verify_node_runtime_startup(&app.handle()) {
+                commands::show_node_binary_remediation_dialog(
+                    &app.handle(),
+                    "AetherCore Runtime Compatibility Check Failed",
+                    &error.to_string(),
+                );
+                return Err(tauri::Error::Setup(error.to_string()));
+            }
+
             // TPM verification successful - continue with normal initialization
             if cfg!(debug_assertions) {
                 app.handle().plugin(

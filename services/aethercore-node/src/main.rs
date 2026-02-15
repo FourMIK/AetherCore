@@ -4,10 +4,12 @@ use std::thread;
 use std::time::Duration;
 
 const NODE_PROTOCOL_VERSION: u32 = 1;
+const NODE_RUNTIME_VERSION: u32 = 1;
 
 #[derive(Debug, Serialize)]
 struct NodeVersionHandshake {
     version: &'static str,
+    runtime_version: u32,
     protocol_version: u32,
 }
 
@@ -26,6 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.iter().any(|arg| arg == "--version-json") {
         let handshake = NodeVersionHandshake {
             version: env!("CARGO_PKG_VERSION"),
+            runtime_version: NODE_RUNTIME_VERSION,
             protocol_version: NODE_PROTOCOL_VERSION,
         };
         println!("{}", serde_json::to_string(&handshake)?);

@@ -60,17 +60,13 @@ fn bundle_node_binary() -> Result<(), String> {
     let resources_dir = manifest_dir.join("resources");
     fs::create_dir_all(&resources_dir).map_err(|e| e.to_string())?;
 
-    let platform_specific_name = platform_binary_name(&target_triple, binary_name);
-    let platform_specific_path = resources_dir.join(platform_specific_name);
-    fs::copy(&compiled_binary, &platform_specific_path)
-        .map_err(|e| format!("failed to copy platform-specific node binary: {e}"))?;
+    let platform_dir = resources_dir.join(platform_resource_dir(&target_triple));
+    fs::create_dir_all(&platform_dir).map_err(|e| e.to_string())?;
 
-    let default_resource_path = resources_dir.join(binary_name);
-    fs::copy(&compiled_binary, &default_resource_path)
-        .map_err(|e| format!("failed to copy default node binary resource: {e}"))?;
-
-    set_executable(&platform_specific_path);
-    set_executable(&default_resource_path);
+    let platform_binary_path = platform_dir.join(binary_name);
+    fs::copy(&compiled_binary, &platform_binary_path)
+        .map_err(|e| format!("failed to copy platform node binary: {e}"))?;
+    set_executable(&platform_binary_path);
 
     println!(
         "cargo:rerun-if-changed={}",
@@ -80,12 +76,13 @@ fn bundle_node_binary() -> Result<(), String> {
     Ok(())
 }
 
-fn platform_binary_name(target_triple: &str, binary_name: &str) -> String {
-    if binary_name.ends_with(".exe") {
-        let stem = binary_name.trim_end_matches(".exe");
-        format!("{stem}-{target_triple}.exe")
+fn platform_resource_dir(target_triple: &str) -> &'static str {
+    if target_triple.contains("windows") {
+        "windows"
+    } else if target_triple.contains("apple") {
+        "macos"
     } else {
-        format!("{binary_name}-{target_triple}")
+        "linux"
     }
 }
 
