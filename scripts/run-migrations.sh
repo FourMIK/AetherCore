@@ -122,11 +122,11 @@ if [ -d "packages/db" ] || [ -d "services/auth/migrations" ] || [ -d "services/f
     if [ -d "packages/db" ] && [ -f "packages/db/package.json" ]; then
         cd "packages/db"
         if grep -q "\"db:migrate\"" package.json; then
-            npm run db:migrate
+            pnpm run db:migrate
             echo "✓ packages/db migrations completed"
             MIGRATION_EXECUTED=true
         elif grep -q "\"migrate\"" package.json; then
-            npm run migrate
+            pnpm run migrate
             echo "✓ packages/db migrations completed"
             MIGRATION_EXECUTED=true
         fi
@@ -139,11 +139,11 @@ if [ -d "packages/db" ] || [ -d "services/auth/migrations" ] || [ -d "services/f
         if [ -d "${SERVICE_DIR}" ] && [ -f "${SERVICE_DIR}/package.json" ]; then
             cd "${SERVICE_DIR}"
             if grep -q "\"db:migrate\"" package.json; then
-                npm run db:migrate
+                pnpm run db:migrate
                 echo "✓ ${service} service migrations completed"
                 MIGRATION_EXECUTED=true
             elif grep -q "\"migrate\"" package.json; then
-                npm run migrate
+                pnpm run migrate
                 echo "✓ ${service} service migrations completed"
                 MIGRATION_EXECUTED=true
             fi

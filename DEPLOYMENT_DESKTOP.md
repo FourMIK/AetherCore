@@ -317,7 +317,7 @@ pnpm install --frozen-lockfile
 
 # Build desktop app
 cd packages/dashboard
-npm run tauri:build
+pnpm run tauri:build
 ```
 
 Build artifacts will be in `packages/dashboard/src-tauri/target/release/bundle/`

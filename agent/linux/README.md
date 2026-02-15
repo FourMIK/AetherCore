@@ -44,7 +44,7 @@ agent/linux/
 
 ```bash
 pnpm install --frozen-lockfile
-npm run build
+pnpm run build
 ```
 
 ### Warhead Build (Self-Contained Binary)
@@ -55,10 +55,10 @@ The "Warhead" build creates a self-contained executable with embedded Node.js ru
 ./build-warhead.sh
 ```
 
-Or use npm scripts:
+Or use pnpm scripts:
 
 ```bash
-npm run build:full
+pnpm run build:full
 ```
 
 This will:

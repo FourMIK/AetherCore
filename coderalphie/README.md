@@ -276,13 +276,13 @@ sudo -u ralphie node index.js
 
 ```bash
 pnpm install --frozen-lockfile
-npm run build
+pnpm run build
 ```
 
 ### Run locally
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 ### Test enrollment flow
@@ -292,7 +292,7 @@ npm run dev
 sudo rm /etc/ralphie/identity.json
 
 # Run with dev mode
-AETHERCORE_PRODUCTION=0 npm run dev
+AETHERCORE_PRODUCTION=0 pnpm run dev
 ```
 
 ## License

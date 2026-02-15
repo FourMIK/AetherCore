@@ -127,14 +127,14 @@ All requirements from the problem statement have been successfully implemented.
 ```bash
 cd services/gateway
 pnpm install --frozen-lockfile
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
 ### Start Desktop Client
 ```bash
 cd packages/dashboard
-npm run tauri:dev
+pnpm run tauri:dev
 ```
 
 ### Expected Behavior

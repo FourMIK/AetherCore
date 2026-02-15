@@ -220,7 +220,7 @@ Test full connection flow:
 ```bash
 # Start test server with TLS
 cd tests/mock-servers
-npm run start:tls
+pnpm run start:tls
 
 # Run dashboard tests
 cd packages/dashboard

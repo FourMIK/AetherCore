@@ -56,10 +56,10 @@ This will:
 # On operator workstation:
 cd /workspaces/AetherCore/packages/dashboard
 
-# Build and run (requires Node.js 20+, npm)
+# Build and run (requires Node.js 20+, pnpm)
 pnpm install --frozen-lockfile
-npm run build
-npm run tauri dev
+pnpm run build
+pnpm run tauri dev
 
 # Or run pre-built binary (if available)
 ./Tactical\ Glass.AppImage

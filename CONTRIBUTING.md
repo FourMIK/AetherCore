@@ -21,8 +21,8 @@ Be respectful, collaborative, and professional in all interactions.
 ### Prerequisites
 
 - **Rust** 1.70 or higher
-- **Node.js** 18 or higher
-- **npm** 9 or higher
+- **Node.js** 20 or higher
+- **pnpm** 9.15.0
 - Git
 
 ### Initial Setup
@@ -39,7 +39,7 @@ pnpm install --frozen-lockfile
 cargo build --workspace
 
 # Build TypeScript workspace
-npm run build
+pnpm run build
 ```
 
 ## MonoRepo Structure
@@ -119,10 +119,10 @@ mkdir -p packages/my-package/src
 pnpm install --frozen-lockfile
 
 # Build
-npm run build
+pnpm run build
 
 # Test
-npm run test
+pnpm run test
 ```
 
 ## Coding Standards
@@ -186,10 +186,10 @@ cargo test --workspace -- --nocapture
 
 ```bash
 # Run all tests
-npm run test --workspaces
+pnpm run test --recursive
 
 # Run specific package tests
-npm run test -w packages/my-package
+pnpm run test --filter packages/my-package
 ```
 
 ## Pull Request Process
@@ -199,7 +199,7 @@ npm run test -w packages/my-package
    ./verify-monorepo.sh
    cargo check --workspace
    cargo test --workspace
-   npm run build
+   pnpm run build
    ```
 
 2. **Update documentation**

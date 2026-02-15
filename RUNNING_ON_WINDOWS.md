@@ -109,7 +109,7 @@ cargo build --workspace --release
 cd packages\dashboard
 
 # Build Tauri application
-npm run tauri:build
+pnpm run tauri:build
 ```
 
 **Build time:** Approximately 10-15 minutes.
@@ -248,7 +248,7 @@ Edit configuration file before launch:
 
 ### Build Failures
 
-**Symptom:** `cargo build` or `npm run tauri:build` fails
+**Symptom:** `cargo build` or `pnpm run tauri:build` fails
 
 **Causes & Solutions:**
 
@@ -363,7 +363,7 @@ For rapid iteration during development:
 
 ```powershell
 cd packages\dashboard
-npm run tauri:dev
+pnpm run tauri:dev
 ```
 
 This starts Tauri in development mode:
@@ -407,13 +407,13 @@ cargo test --workspace
 **TypeScript Tests:**
 ```powershell
 cd packages\dashboard
-npm run test
+pnpm run test
 ```
 
 **End-to-End Tests:**
 ```powershell
 cd packages\dashboard
-npm run test:e2e
+pnpm run test:e2e
 ```
 
 ## Performance Optimization

@@ -241,8 +241,8 @@ Edit `/etc/aethercore/dashboard/config.json`:
 
 ```bash
 cd /opt/aethercore/packages/dashboard
-npm run build
-npm run start -- --port 8443 --tls
+pnpm run build
+pnpm run start -- --port 8443 --tls
 ```
 
 **Access Dashboard**:
