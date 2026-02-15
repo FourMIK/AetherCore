@@ -34,7 +34,7 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 # Create non-root user
-RUN addgroup -g 1000 nonroot && adduser -D -u 1000 -G nonroot nonroot
+RUN addgroup -g 1001 nonroot && adduser -D -u 1001 -G nonroot nonroot
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
