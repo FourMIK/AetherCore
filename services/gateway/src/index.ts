@@ -1,5 +1,6 @@
 import express from 'express';
 import { createServer } from 'http';
+import fs from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import { z } from 'zod';
 import cors from 'cors';
@@ -34,12 +35,37 @@ const C2_GRPC_TARGET = process.env.C2_ADDR || 'localhost:50051';
 // Backend endpoint for future integration with AetherBunker services
 const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || process.env.C2_ADDR || 'localhost:50051';
 
+
+function isLocalhostTarget(target: string): boolean {
+  const normalized = target.trim().toLowerCase();
+  return normalized.startsWith('localhost:') || normalized.startsWith('127.0.0.1:') || normalized.startsWith('[::1]:');
+}
+
+function isRunningInContainer(): boolean {
+  return process.env.RUNNING_IN_CONTAINER === 'true' || process.env.CONTAINER === 'true' || fs.existsSync('/.dockerenv');
+}
+
+function warnOnLocalhostTargetInContainer(target: string, variableName: string): void {
+  if (isRunningInContainer() && isLocalhostTarget(target)) {
+    logger.warn(
+      {
+        variable: variableName,
+        configured_target: target,
+        recommended_target: 'c2-router:50051',
+      },
+      `Containerized gateway is configured with ${variableName}=${target}. Use Docker service DNS (for example c2-router:50051) instead of localhost to reach sibling containers.`,
+    );
+  }
+}
 logger.info({
   port: PORT,
   c2_target: C2_GRPC_TARGET,
   bunker_endpoint: AETHER_BUNKER_ENDPOINT,
   tpm_enabled: TPM_ENABLED,
 }, 'Gateway service configuration loaded');
+
+warnOnLocalhostTargetInContainer(C2_GRPC_TARGET, 'C2_ADDR');
+warnOnLocalhostTargetInContainer(AETHER_BUNKER_ENDPOINT, 'AETHER_BUNKER_ENDPOINT');
 
 if (!TPM_ENABLED) {
   logger.warn('TPM is DISABLED - Hardware-rooted trust features are not active. Security guarantees reduced.');
