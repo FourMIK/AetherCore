@@ -10,6 +10,7 @@ use ed25519_dalek::VerifyingKey;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -20,6 +21,58 @@ use tokio::sync::Mutex;
 
 const DASHBOARD_NODE_PROTOCOL_VERSION: u32 = 1;
 const DASHBOARD_NODE_RUNTIME_VERSION: u32 = 1;
+
+const DIAGNOSTIC_SCHEMA_VERSION: u32 = 1;
+const SUPPORT_BUNDLE_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiagnosticCheck {
+    pub id: String,
+    pub label: String,
+    pub status: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeVersionInfo {
+    pub name: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TroubleshootingCard {
+    pub failure_class: String,
+    pub title: String,
+    pub steps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiagnosticsReport {
+    pub schema_version: u32,
+    pub generated_at_unix_secs: u64,
+    pub checks: Vec<DiagnosticCheck>,
+    pub runtime_versions: Vec<RuntimeVersionInfo>,
+    pub troubleshooting_cards: Vec<TroubleshootingCard>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupportBundleMetadata {
+    pub schema_version: u32,
+    pub generated_at_unix_secs: u64,
+    pub platform: String,
+    pub arch: String,
+    pub app_version: String,
+    pub ci: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupportBundleSummary {
+    pub schema_version: u32,
+    pub bundle_path: String,
+    pub generated_at_unix_secs: u64,
+    pub file_count: usize,
+    pub diagnostics: DiagnosticsReport,
+}
 
 /// Genesis Bundle for Zero-Touch Enrollment
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1778,6 +1831,343 @@ fn build_stack_status(app_handle: &tauri::AppHandle) -> Result<StackStatusRespon
             .collect(),
         persisted_state,
     })
+}
+
+fn diagnose_cert_state() -> DiagnosticCheck {
+    let certs = [
+        std::env::var("AETHERCORE_TLS_CERT_PATH").ok(),
+        std::env::var("SSL_CERT_FILE").ok(),
+    ];
+
+    let discovered = certs
+        .iter()
+        .flatten()
+        .find(|path| !path.trim().is_empty())
+        .cloned();
+
+    match discovered {
+        Some(path) => {
+            let exists = Path::new(&path).exists();
+            DiagnosticCheck {
+                id: "cert_state".to_string(),
+                label: "Certificate state".to_string(),
+                status: if exists { "pass" } else { "warn" }.to_string(),
+                detail: if exists {
+                    format!("Certificate path detected: {}", path)
+                } else {
+                    format!("Configured certificate path not found: {}", path)
+                },
+            }
+        }
+        None => DiagnosticCheck {
+            id: "cert_state".to_string(),
+            label: "Certificate state".to_string(),
+            status: "warn".to_string(),
+            detail: "No certificate path configured in environment variables".to_string(),
+        },
+    }
+}
+
+fn diagnose_disk_space(app_handle: &tauri::AppHandle) -> DiagnosticCheck {
+    let app_data_dir = match app_handle.path().resolve(".", BaseDirectory::AppData) {
+        Ok(path) => path,
+        Err(error) => {
+            return DiagnosticCheck {
+                id: "disk_space".to_string(),
+                label: "Disk space".to_string(),
+                status: "warn".to_string(),
+                detail: format!("Unable to resolve app data path: {}", error),
+            }
+        }
+    };
+
+    #[cfg(target_family = "unix")]
+    {
+        let output = Command::new("df").arg("-Pk").arg(&app_data_dir).output();
+        if let Ok(result) = output {
+            if result.status.success() {
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                if let Some(line) = stdout.lines().nth(1) {
+                    let fields: Vec<&str> = line.split_whitespace().collect();
+                    if fields.len() >= 6 {
+                        let available_kb = fields[3].parse::<u64>().unwrap_or(0);
+                        let status = if available_kb > 500_000 {
+                            "pass"
+                        } else {
+                            "warn"
+                        };
+                        return DiagnosticCheck {
+                            id: "disk_space".to_string(),
+                            label: "Disk space".to_string(),
+                            status: status.to_string(),
+                            detail: format!(
+                                "{} KB available on filesystem mounted at {}",
+                                available_kb, fields[5]
+                            ),
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    DiagnosticCheck {
+        id: "disk_space".to_string(),
+        label: "Disk space".to_string(),
+        status: "warn".to_string(),
+        detail: format!(
+            "Disk telemetry unavailable for {} (platform limitation)",
+            app_data_dir.display()
+        ),
+    }
+}
+
+fn collect_runtime_versions() -> Vec<RuntimeVersionInfo> {
+    let mut versions = vec![RuntimeVersionInfo {
+        name: "dashboard".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    }];
+
+    let rustc_version = Command::new("rustc")
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    versions.push(RuntimeVersionInfo {
+        name: "rustc".to_string(),
+        version: rustc_version,
+    });
+
+    let node_version = Command::new("node")
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .unwrap_or_else(|| "not-installed".to_string());
+
+    versions.push(RuntimeVersionInfo {
+        name: "node".to_string(),
+        version: node_version,
+    });
+
+    versions
+}
+
+fn troubleshooting_cards() -> Vec<TroubleshootingCard> {
+    vec![
+        TroubleshootingCard {
+            failure_class: "service-unreachable".to_string(),
+            title: "Services unreachable".to_string(),
+            steps: vec![
+                "Verify all local services report healthy in the diagnostics panel.".to_string(),
+                "Run Repair Installation to restart services in dependency order.".to_string(),
+                "If still unhealthy, collect a support bundle and escalate to support.".to_string(),
+            ],
+        },
+        TroubleshootingCard {
+            failure_class: "port-conflict".to_string(),
+            title: "Port conflict".to_string(),
+            steps: vec![
+                "Inspect the conflicting port in the diagnostics panel.".to_string(),
+                "Stop conflicting local software (databases, web servers, old dashboard instances).".to_string(),
+                "Run Reset Local Stack to clear stale processes and start clean.".to_string(),
+            ],
+        },
+        TroubleshootingCard {
+            failure_class: "certificate-issue".to_string(),
+            title: "Certificate / trust chain issue".to_string(),
+            steps: vec![
+                "Confirm TLS certificate paths are set in environment variables.".to_string(),
+                "Reinstall or rotate local certificates using your offline key media.".to_string(),
+                "Retry startup and include cert diagnostics in support bundle if failure persists.".to_string(),
+            ],
+        },
+    ]
+}
+
+fn build_diagnostics_report(app_handle: &tauri::AppHandle) -> Result<DiagnosticsReport, String> {
+    let stack = build_stack_status(app_handle)?;
+    let mut checks = Vec::new();
+
+    checks.push(DiagnosticCheck {
+        id: "service_health".to_string(),
+        label: "Service health".to_string(),
+        status: if stack.ready { "pass" } else { "warn" }.to_string(),
+        detail: format!(
+            "{}/{} required services healthy",
+            stack.healthy_required_services, stack.required_services
+        ),
+    });
+
+    let blocked_ports: Vec<String> = stack
+        .services
+        .iter()
+        .filter(|svc| !svc.healthy)
+        .map(|svc| format!("{}:{}", svc.name, svc.port))
+        .collect();
+    checks.push(DiagnosticCheck {
+        id: "ports".to_string(),
+        label: "Port checks".to_string(),
+        status: if blocked_ports.is_empty() {
+            "pass"
+        } else {
+            "warn"
+        }
+        .to_string(),
+        detail: if blocked_ports.is_empty() {
+            "All managed service ports responded to health checks".to_string()
+        } else {
+            format!(
+                "Unhealthy or blocked service ports: {}",
+                blocked_ports.join(", ")
+            )
+        },
+    });
+
+    checks.push(diagnose_cert_state());
+    checks.push(diagnose_disk_space(app_handle));
+
+    let runtime_versions = collect_runtime_versions();
+    checks.push(DiagnosticCheck {
+        id: "runtime_versions".to_string(),
+        label: "Runtime versions".to_string(),
+        status: "pass".to_string(),
+        detail: runtime_versions
+            .iter()
+            .map(|entry| format!("{}={}", entry.name, entry.version))
+            .collect::<Vec<_>>()
+            .join(", "),
+    });
+
+    Ok(DiagnosticsReport {
+        schema_version: DIAGNOSTIC_SCHEMA_VERSION,
+        generated_at_unix_secs: now_unix_secs(),
+        checks,
+        runtime_versions,
+        troubleshooting_cards: troubleshooting_cards(),
+    })
+}
+
+#[tauri::command]
+pub async fn diagnostics_report(app_handle: tauri::AppHandle) -> Result<DiagnosticsReport, String> {
+    build_diagnostics_report(&app_handle)
+}
+
+#[tauri::command]
+pub async fn collect_support_bundle(
+    app_handle: tauri::AppHandle,
+) -> Result<SupportBundleSummary, String> {
+    let diagnostics = build_diagnostics_report(&app_handle)?;
+    let app_data_dir = app_handle
+        .path()
+        .resolve(".", BaseDirectory::AppData)
+        .map_err(|e| format!("Failed to resolve app data directory: {}", e))?;
+
+    let bundles_dir = app_data_dir.join("support-bundles");
+    fs::create_dir_all(&bundles_dir)
+        .map_err(|e| format!("Failed to create support bundle directory: {}", e))?;
+
+    let timestamp = now_unix_secs();
+    let bundle_dir = bundles_dir.join(format!("bundle-{}", timestamp));
+    fs::create_dir_all(&bundle_dir)
+        .map_err(|e| format!("Failed to create support bundle path: {}", e))?;
+
+    let metadata = SupportBundleMetadata {
+        schema_version: SUPPORT_BUNDLE_SCHEMA_VERSION,
+        generated_at_unix_secs: timestamp,
+        platform: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        ci: std::env::var("CI").is_ok(),
+    };
+
+    let metadata_path = bundle_dir.join("metadata.json");
+    fs::write(
+        &metadata_path,
+        serde_json::to_vec_pretty(&metadata)
+            .map_err(|e| format!("Failed to serialize bundle metadata: {}", e))?,
+    )
+    .map_err(|e| format!("Failed to write metadata.json: {}", e))?;
+
+    let diagnostics_path = bundle_dir.join("health-report.json");
+    fs::write(
+        &diagnostics_path,
+        serde_json::to_vec_pretty(&diagnostics)
+            .map_err(|e| format!("Failed to serialize diagnostics: {}", e))?,
+    )
+    .map_err(|e| format!("Failed to write health report: {}", e))?;
+
+    let config = ConfigManager::new(&app_handle)
+        .map_err(|e| format!("Failed to initialize config manager: {}", e))?
+        .load()
+        .map_err(|e| format!("Failed to load configuration for bundle: {}", e))?;
+    let config_path = bundle_dir.join("config-snapshot.json");
+    fs::write(
+        &config_path,
+        serde_json::to_vec_pretty(&config)
+            .map_err(|e| format!("Failed to serialize config snapshot: {}", e))?,
+    )
+    .map_err(|e| format!("Failed to write config snapshot: {}", e))?;
+
+    let logs_dir = app_data_dir.join("logs");
+    let target_logs_dir = bundle_dir.join("logs");
+    fs::create_dir_all(&target_logs_dir)
+        .map_err(|e| format!("Failed to create logs directory in bundle: {}", e))?;
+
+    if logs_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&logs_dir) {
+            for entry in entries.flatten().take(20) {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(name) = path.file_name() {
+                        let _ = fs::copy(&path, target_logs_dir.join(name));
+                    }
+                }
+            }
+        }
+    }
+
+    let file_count = fs::read_dir(&bundle_dir)
+        .map(|iter| iter.count())
+        .unwrap_or(0);
+
+    Ok(SupportBundleSummary {
+        schema_version: SUPPORT_BUNDLE_SCHEMA_VERSION,
+        bundle_path: bundle_dir.to_string_lossy().to_string(),
+        generated_at_unix_secs: timestamp,
+        file_count,
+        diagnostics,
+    })
+}
+
+#[tauri::command]
+pub async fn repair_installation(
+    app_handle: tauri::AppHandle,
+) -> Result<StackStatusResponse, String> {
+    repair_stack(app_handle).await
+}
+
+#[tauri::command]
+pub async fn reset_local_stack(
+    app_handle: tauri::AppHandle,
+) -> Result<StackStatusResponse, String> {
+    local_control_plane::stop_managed_services()?;
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    local_control_plane::start_managed_services()?;
+    let status = build_stack_status(&app_handle)?;
+    persist_stack_state(
+        &app_handle,
+        &StackState {
+            desired_running: true,
+            last_ready: status.ready,
+            updated_at_unix_secs: now_unix_secs(),
+        },
+    )?;
+    Ok(status)
 }
 
 pub fn attempt_stack_auto_recover(app_handle: &tauri::AppHandle) -> Result<(), String> {

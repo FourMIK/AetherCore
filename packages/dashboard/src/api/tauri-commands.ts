@@ -160,7 +160,60 @@ export const TauriCommands = {
   signHeartbeatPayload: (nonce: string) => safeInvoke<string>('sign_heartbeat_payload', { nonce }, {
     errorTitle: 'TPM Signing Error',
   }),
+
+  // Diagnostics and supportability
+  diagnosticsReport: () => safeInvoke<DiagnosticsReport>('diagnostics_report', undefined, {
+    errorTitle: 'Diagnostics Error',
+  }),
+
+  collectSupportBundle: () => safeInvoke<SupportBundleSummary>('collect_support_bundle', undefined, {
+    errorTitle: 'Support Bundle Error',
+  }),
+
+  repairInstallation: () => safeInvoke<unknown>('repair_installation', undefined, {
+    errorTitle: 'Repair Failed',
+  }),
+
+  resetLocalStack: () => safeInvoke<unknown>('reset_local_stack', undefined, {
+    errorTitle: 'Reset Failed',
+  }),
 };
+
+
+
+export interface DiagnosticCheck {
+  id: string;
+  label: string;
+  status: 'pass' | 'warn' | 'fail' | string;
+  detail: string;
+}
+
+export interface RuntimeVersionInfo {
+  name: string;
+  version: string;
+}
+
+export interface TroubleshootingCard {
+  failure_class: string;
+  title: string;
+  steps: string[];
+}
+
+export interface DiagnosticsReport {
+  schema_version: number;
+  generated_at_unix_secs: number;
+  checks: DiagnosticCheck[];
+  runtime_versions: RuntimeVersionInfo[];
+  troubleshooting_cards: TroubleshootingCard[];
+}
+
+export interface SupportBundleSummary {
+  schema_version: number;
+  bundle_path: string;
+  generated_at_unix_secs: number;
+  file_count: number;
+  diagnostics: DiagnosticsReport;
+}
 
 /**
  * Type definitions matching Rust structs
