@@ -4,20 +4,20 @@ FROM node:18-alpine AS builder
 WORKDIR /app
 
 # Copy package files and toolchain scripts required by preinstall
-COPY package*.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY scripts ./scripts
-COPY services/gateway/package*.json ./services/gateway/
-COPY packages/shared/package*.json ./packages/shared/
+COPY services/gateway/package.json ./services/gateway/
+COPY packages/shared/package.json ./packages/shared/
 
 # Install dependencies
-RUN SKIP_TOOLCHAIN_CHECK=1 npm ci --workspace=@aethercore/gateway --workspace=@aethercore/shared
+RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --filter @aethercore/gateway --filter @aethercore/shared
 
 # Copy source code
 COPY services/gateway ./services/gateway
 COPY packages/shared ./packages/shared
 
 # Build the service
-RUN npm run build --workspace=@aethercore/gateway
+RUN pnpm --filter @aethercore/gateway run build
 
 # Production stage
 FROM node:18-alpine
@@ -26,7 +26,7 @@ WORKDIR /app
 
 # Copy built artifacts and dependencies
 COPY --from=builder /app/services/gateway/dist ./dist
-COPY --from=builder /app/services/gateway/package*.json ./
+COPY --from=builder /app/services/gateway/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
 # Environment variables

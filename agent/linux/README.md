@@ -43,7 +43,7 @@ agent/linux/
 ### Development Build
 
 ```bash
-npm install
+pnpm install --frozen-lockfile
 npm run build
 ```
 

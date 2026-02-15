@@ -200,7 +200,7 @@ Dependencies managed in root `Cargo.toml` workspace configuration.
 
 ```bash
 # Install dependencies (all workspaces)
-npm install
+pnpm install --frozen-lockfile
 
 # Build all packages and services
 npm run build

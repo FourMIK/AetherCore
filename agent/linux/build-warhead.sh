@@ -15,10 +15,10 @@ echo "╚═══════════════════════�
 echo ""
 
 echo "[Build] Step 1: Installing dependencies..."
-npm install
+pnpm install --frozen-lockfile
 
 echo "[Build] Step 2: Building TypeScript..."
-npm run build
+pnpm run build
 
 echo "[Build] Step 3: Creating self-contained binary with pkg..."
 # Note: pkg may not work in all environments. For production, run on appropriate build machine.
@@ -52,7 +52,7 @@ fi
 
 echo ""
 echo "[Build] Step 4: Copying payloads to dashboard resources..."
-npm run package:payloads
+pnpm run package:payloads
 
 echo ""
 echo "╔════════════════════════════════════════════════════════════════╗"

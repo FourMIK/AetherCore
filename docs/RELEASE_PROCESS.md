@@ -44,21 +44,21 @@ Following 4MIK architectural invariants:
    
    # Supply chain tools (optional for local testing)
    cargo install cargo-audit cargo-cyclonedx b3sum --locked
-   npm install -g @cyclonedx/cyclonedx-npm
+   pnpm add -g @cyclonedx/cyclonedx-npm
    ```
 
 2. **Clone Repository**
    ```bash
    git clone https://github.com/FourMIK/AetherCore.git
    cd AetherCore
-   npm ci
+   pnpm install --frozen-lockfile
    ```
 
 3. **Verify Local Build**
    ```bash
    # Build and test locally
    cd packages/dashboard
-   npm run tauri:build
+   pnpm run tauri:build
    ```
 
 ### Code Signing Credentials
@@ -137,7 +137,7 @@ vim packages/dashboard/src-tauri/Cargo.toml  # Set version = "0.2.0"
 vim packages/dashboard/src-tauri/tauri.conf.json  # Set "version": "0.2.0"
 
 # Update lock files
-npm install
+pnpm install --frozen-lockfile
 cargo update -w
 ```
 
@@ -196,7 +196,7 @@ See [DEPLOYMENT_DESKTOP.md](DEPLOYMENT_DESKTOP.md) for installation instructions
 ```bash
 # Commit version changes
 git add package.json packages/dashboard/src-tauri/Cargo.toml packages/dashboard/src-tauri/tauri.conf.json
-git add package-lock.json Cargo.lock
+git add pnpm-lock.yaml Cargo.lock
 git commit -m "chore: bump version to v0.2.0"
 
 # Create signed tag (recommended)
@@ -355,7 +355,7 @@ grep 'version = ' packages/dashboard/src-tauri/Cargo.toml
 jq '.version' packages/dashboard/src-tauri/tauri.conf.json
 
 # Update to match, then regenerate lock files
-npm install
+pnpm install --frozen-lockfile
 cargo update -w
 ```
 

@@ -33,7 +33,7 @@ git clone https://github.com/FourMIK/AetherCore.git
 cd AetherCore
 
 # Install Node.js dependencies
-npm install
+pnpm install --frozen-lockfile
 
 # Build Rust workspace
 cargo build --workspace
@@ -68,8 +68,8 @@ This is verified by the root `preinstall` hook (`scripts/verify-toolchain.js`).
 Some Docker build stages intentionally set `SKIP_TOOLCHAIN_CHECK=1` for dependency installation. This bypass is limited to container image builds so images can install dependencies in controlled builder environments without weakening local/CI enforcement.
 
 - **Local development:** do **not** set `SKIP_TOOLCHAIN_CHECK`
-- **TypeScript CI job (`pnpm install`)**: does **not** set `SKIP_TOOLCHAIN_CHECK`
-- **Dockerfiles:** may set `SKIP_TOOLCHAIN_CHECK=1` only on `npm ci`/`pnpm install` build steps
+- **TypeScript CI job (`pnpm install --frozen-lockfile`)**: does **not** set `SKIP_TOOLCHAIN_CHECK`
+- **Dockerfiles:** may set `SKIP_TOOLCHAIN_CHECK=1` only on `pnpm install --frozen-lockfile` build steps
 
 
 ### Creating a New Branch
@@ -116,7 +116,7 @@ mkdir -p packages/my-package/src
 # Create package.json and tsconfig.json
 
 # Install dependencies
-npm install
+pnpm install --frozen-lockfile
 
 # Build
 npm run build

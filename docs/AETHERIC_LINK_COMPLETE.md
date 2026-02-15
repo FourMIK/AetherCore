@@ -126,7 +126,7 @@ All requirements from the problem statement have been successfully implemented.
 ### Start Gateway Service
 ```bash
 cd services/gateway
-npm install
+pnpm install --frozen-lockfile
 npm run build
 npm start
 ```

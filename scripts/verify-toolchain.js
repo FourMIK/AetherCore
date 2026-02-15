@@ -65,7 +65,7 @@ function checkPnpmVersion() {
       'npm and yarn are not supported.\n\n' +
       'To install pnpm:\n' +
       '  1. Enable corepack: corepack enable\n' +
-      '  2. Or install globally: npm install -g pnpm@9.15.0\n\n' +
+      '  2. Or run: corepack prepare pnpm@9.15.0 --activate\n\n' +
       'Then run: pnpm install'
     );
   }
@@ -79,7 +79,7 @@ function checkPnpmVersion() {
       `Required version: pnpm ${requiredVersion}\n\n` +
       'Please ensure you are using pnpm 9.15.0:\n' +
       '  - Enable corepack: corepack enable\n' +
-      '  - Or update: pnpm install -g pnpm@9.15.0'
+      '  - Or update: corepack prepare pnpm@9.15.0 --activate'
     );
   }
   
@@ -93,7 +93,7 @@ function checkPnpmVersion() {
       'To fix this:\n' +
       '  1. Enable corepack: corepack enable\n' +
       '  2. Corepack will automatically use the version specified in package.json\n' +
-      '  3. Or manually install: pnpm install -g pnpm@9.15.0'
+      '  3. Or manually install: corepack prepare pnpm@9.15.0 --activate'
     );
   }
   

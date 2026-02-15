@@ -16,6 +16,16 @@ jobs:
       - name: Check required network endpoints
         run: ./scripts/check-network-prereqs.sh
 
+  package-manager-policy:
+    needs: [network-prerequisites]
+    name: Enforce pnpm Package Manager Policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate pnpm-only policy
+        run: ./scripts/enforce-pnpm-policy.sh
+
   verify-documentation:
     needs: [network-prerequisites]
     name: Verify Documentation Completeness
@@ -332,7 +342,7 @@ jobs:
     name: Build Desktop App (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-    needs: [verify-documentation, rust-workspace, typescript-workspace, license-compliance]
+    needs: [verify-documentation, rust-workspace, typescript-workspace, license-compliance, package-manager-policy]
     strategy:
       fail-fast: false
       matrix:

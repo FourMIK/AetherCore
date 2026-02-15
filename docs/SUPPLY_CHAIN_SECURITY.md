@@ -27,7 +27,7 @@ AetherCore implements comprehensive Software Bill of Materials (SBOM) generation
 ┌──────────────────────────────────────────────────────┐
 │          Operation Glass Fortress                    │
 ├──────────────────────────────────────────────────────┤
-│  [1] Dependency Pinning     (Cargo.lock, package-lock)
+│  [1] Dependency Pinning     (Cargo.lock, pnpm-lock.yaml)
 │  [2] Vulnerability Audit    (cargo-audit, npm audit)  
 │  [3] SBOM Generation        (CycloneDX v1.4+)         
 │  [4] License Hashing        (BLAKE3)                  
@@ -86,7 +86,7 @@ The SBOM generation is integrated into `.github/workflows/desktop-release.yml` a
     # Install SBOM tools
     cargo install cargo-audit --locked
     cargo install cargo-cyclonedx --locked
-    npm install -g @cyclonedx/cyclonedx-npm
+    pnpm add -g @cyclonedx/cyclonedx-npm
     cargo install b3sum --locked
     
     # Execute supply chain verification
@@ -122,7 +122,7 @@ SBOM artifacts are:
 2. Verify the integrity of lock files:
    ```bash
    b3sum Cargo.lock
-   b3sum package-lock.json
+   b3sum pnpm-lock.yaml
    ```
 3. Compare hashes with those in `SUPPLY_CHAIN_MANIFEST.md`
 4. Review `tauri-sbom.json` and `frontend-sbom.json` for known vulnerabilities

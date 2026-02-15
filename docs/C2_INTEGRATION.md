@@ -214,7 +214,7 @@ A mock WebSocket server is provided for testing:
 
 ```bash
 cd tests/mock-servers
-npm install
+pnpm install --frozen-lockfile
 npm start
 ```
 

@@ -189,7 +189,7 @@ echo "────────────────────────�
 # Check if cyclonedx-npm is installed globally or locally
 if ! command -v cyclonedx-npm &> /dev/null && ! npx --no-install cyclonedx-npm --version &> /dev/null; then
     echo "⚠️  @cyclonedx/cyclonedx-npm not found. Installing globally..."
-    if ! npm install -g @cyclonedx/cyclonedx-npm; then
+    if ! pnpm add -g @cyclonedx/cyclonedx-npm; then
         echo "⚠️  Failed to install @cyclonedx/cyclonedx-npm. Falling back to npm ls metadata output."
         SKIP_FRONTEND_SBOM=true
     fi
@@ -239,9 +239,9 @@ echo ""
 cd "$REPO_ROOT/packages/dashboard"
 
 # For the dashboard package, we need to generate SBOM based on what's actually installed
-# Using the --package-lock-only flag to work with lock file
-if [ -f "package-lock.json" ] || [ -f "pnpm-lock.yaml" ]; then
-    echo "Using local package-lock.json in packages/dashboard"
+# Using pnpm lockfile context for workspace dependency metadata
+if [ -f "pnpm-lock.yaml" ]; then
+    echo "Using monorepo root pnpm-lock.yaml"
     if [ "${SKIP_FRONTEND_SBOM}" = "true" ]; then
         echo "Generating fallback frontend dependency metadata..."
         npm ls --all --json > "$SBOM_OUTPUT_DIR/frontend-sbom-metadata.json" || true
@@ -258,8 +258,8 @@ if [ -f "package-lock.json" ] || [ -f "pnpm-lock.yaml" ]; then
             exit 1
         fi
     fi
-elif [ -f "../../package-lock.json" ] || [ -f "../../pnpm-lock.yaml" ]; then
-    echo "Using monorepo root package-lock.json"
+elif [ -f "../../pnpm-lock.yaml" ]; then
+    echo "Using monorepo root pnpm-lock.yaml"
     # If using monorepo structure, generate from root
     cd "$REPO_ROOT"
     # Create SBOM from root - this will include all workspace dependencies
@@ -278,7 +278,7 @@ elif [ -f "../../package-lock.json" ] || [ -f "../../pnpm-lock.yaml" ]; then
         fi
     fi
 else
-    echo "⚠️  No npm lockfile found for cyclonedx generation; creating fallback frontend metadata"
+    echo "⚠️  No pnpm lockfile found for cyclonedx generation; creating fallback frontend metadata"
     npm ls --all --json > "$SBOM_OUTPUT_DIR/frontend-sbom-metadata.json" || true
 fi
 
@@ -411,10 +411,10 @@ else
     CARGO_LOCK_HASH="ERROR: Cargo.lock not found"
 fi
 
-if [ -f "package-lock.json" ] || [ -f "pnpm-lock.yaml" ]; then
-    PACKAGE_LOCK_HASH=$(b3sum package-lock.json 2>/dev/null || sha256sum package-lock.json | cut -d' ' -f1)
+if [ -f "pnpm-lock.yaml" ]; then
+    PACKAGE_LOCK_HASH=$(b3sum pnpm-lock.yaml 2>/dev/null || sha256sum pnpm-lock.yaml | cut -d' ' -f1)
 else
-    PACKAGE_LOCK_HASH="ERROR: package-lock.json not found"
+    PACKAGE_LOCK_HASH="ERROR: pnpm-lock.yaml not found"
 fi
 
 # Count SBOM components with explicit error handling
@@ -467,7 +467,7 @@ in the AetherCore Tactical Glass desktop application.
 **Cargo.lock hash:**
 $CARGO_LOCK_HASH
 
-**package-lock.json hash:**
+**pnpm-lock.yaml hash:**
 $PACKAGE_LOCK_HASH
 
 ---

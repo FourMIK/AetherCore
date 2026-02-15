@@ -49,7 +49,7 @@ Generate cryptographically signed Genesis Bundles for IoT device provisioning:
 ```bash
 # Install dependencies
 cd packages/dashboard
-npm install
+pnpm install --frozen-lockfile
 
 # Development mode with hot reload
 npm run tauri:dev

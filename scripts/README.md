@@ -243,14 +243,14 @@ Cross-compiles Rust crates for ARM64 (IoT edge devices).
 ```bash
 # Install required tools
 cargo install cargo-audit cargo-cyclonedx b3sum --locked
-npm install -g @cyclonedx/cyclonedx-npm
+pnpm add -g @cyclonedx/cyclonedx-npm
 
 # Clone repository
 git clone https://github.com/FourMIK/AetherCore.git
 cd AetherCore
 
 # Install dependencies
-npm ci
+pnpm install --frozen-lockfile
 ```
 
 ### Before Release
@@ -309,7 +309,7 @@ Install required tools:
 cargo install cargo-audit cargo-cyclonedx b3sum --locked
 
 # npm tools
-npm install -g @cyclonedx/cyclonedx-npm
+pnpm add -g @cyclonedx/cyclonedx-npm
 ```
 
 ### SBOM Generation Fails
@@ -317,7 +317,7 @@ npm install -g @cyclonedx/cyclonedx-npm
 Check for:
 - Network connectivity (tools need to download)
 - Disk space for cargo cache
-- Valid `Cargo.lock` and `package-lock.json`
+- Valid `Cargo.lock` and `pnpm-lock.yaml`
 
 ### Tests Fail in Checklist
 
