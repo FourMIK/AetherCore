@@ -11,7 +11,9 @@
         "macos": "macos/aethercore-node",
         "windows": "windows/aethercore-node.exe"
       },
-      "version_check_args": ["--version-json"],
+      "version_check_args": [
+        "--version-json"
+      ],
       "version_compatibility": "dashboard_runtime"
     },
     {
@@ -24,7 +26,9 @@
         "macos": "macos/esptool",
         "windows": "windows/esptool.exe"
       },
-      "version_check_args": ["--version"],
+      "version_check_args": [
+        "--version"
+      ],
       "version_compatibility": "invocation_success"
     },
     {
@@ -58,6 +62,43 @@
         "linux": "config/local-control-plane.template.toml",
         "macos": "config/local-control-plane.template.toml",
         "windows": "config/local-control-plane.template.toml"
+      }
+    },
+    {
+      "id": "local-control-plane-node-runtime",
+      "kind": "runtime",
+      "description": "Bundled Node.js runtime used by local control-plane services.",
+      "required": true,
+      "platform_paths": {
+        "linux": "linux/local-control-plane/node",
+        "macos": "macos/local-control-plane/node",
+        "windows": "windows/local-control-plane/node.exe"
+      },
+      "version_check_args": [
+        "--version"
+      ],
+      "version_compatibility": "service_runtime"
+    },
+    {
+      "id": "local-control-plane-gateway-launcher",
+      "kind": "launcher",
+      "description": "Deterministic gateway launcher for the bundled local control-plane runtime.",
+      "required": true,
+      "platform_paths": {
+        "linux": "linux/local-control-plane/launchers/gateway-launcher",
+        "macos": "macos/local-control-plane/launchers/gateway-launcher",
+        "windows": "windows/local-control-plane/launchers/gateway-launcher.cmd"
+      }
+    },
+    {
+      "id": "local-control-plane-collaboration-launcher",
+      "kind": "launcher",
+      "description": "Deterministic collaboration launcher for the bundled local control-plane runtime.",
+      "required": true,
+      "platform_paths": {
+        "linux": "linux/local-control-plane/launchers/collaboration-launcher",
+        "macos": "macos/local-control-plane/launchers/collaboration-launcher",
+        "windows": "windows/local-control-plane/launchers/collaboration-launcher.cmd"
       }
     }
   ]
