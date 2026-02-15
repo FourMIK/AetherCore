@@ -5,6 +5,7 @@
 
 import React, { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { TauriCommands, SentinelTrustStatus } from './api/tauri-commands';
 import { MapProvider } from './map-engine/MapContext';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { useTacticalStore } from './store/useTacticalStore';
@@ -35,6 +36,7 @@ export const App: React.FC = () => {
   const [stackReady, setStackReady] = React.useState(false);
   const [stackCheckComplete, setStackCheckComplete] = React.useState(false);
   const [stackError, setStackError] = React.useState<string | null>(null);
+  const [sentinelTrustStatus, setSentinelTrustStatus] = React.useState<SentinelTrustStatus | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -97,6 +99,25 @@ export const App: React.FC = () => {
     };
   }, [bootstrapCheckComplete, bootstrapReady]);
 
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    let mounted = true;
+    TauriCommands.getSentinelTrustStatus().then((result) => {
+      if (!mounted || !result.success) {
+        return;
+      }
+      setSentinelTrustStatus(result.data);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Apply theme
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -152,7 +173,7 @@ export const App: React.FC = () => {
 
   return (
     <MapProvider>
-      <DashboardLayout />
+      <DashboardLayout sentinelTrustStatus={sentinelTrustStatus} />
     </MapProvider>
   );
 };

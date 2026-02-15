@@ -23,11 +23,20 @@ import { RalphieNodeProvisioning } from '../RalphieNodeProvisioning';
 import { VideoCallPanel } from '../comms/VideoCallPanel';
 import { SettingsPanel } from '../SettingsPanel';
 import { ConnectionStatusIndicator } from '../ConnectionStatus';
+import { SentinelTrustBanner } from './SentinelTrustBanner';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { useCommStore } from '../../store/useCommStore';
 import { Plus } from 'lucide-react';
 
-export const DashboardLayout: React.FC = () => {
+interface DashboardLayoutProps {
+  sentinelTrustStatus?: {
+    reduced_trust: boolean;
+    headline: string;
+    detail: string;
+  } | null;
+}
+
+export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ sentinelTrustStatus = null }) => {
   const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const byzantineAlert = useTacticalStore((s) => s.byzantineAlert);
   const verificationFailure = useTacticalStore((s) => s.verificationFailure);
@@ -102,6 +111,12 @@ export const DashboardLayout: React.FC = () => {
 
       {/* Main Content Wrapper */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {sentinelTrustStatus?.reduced_trust && (
+          <SentinelTrustBanner
+            headline={sentinelTrustStatus.headline}
+            detail={sentinelTrustStatus.detail}
+          />
+        )}
         {/* TopBar - Fixed Height */}
         <div className="flex items-center gap-4 p-4 pb-2 flex-shrink-0">
           <NavigationMenu currentView={currentView} onViewChange={setCurrentView} />

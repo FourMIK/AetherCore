@@ -137,6 +137,10 @@ export const TauriCommands = {
   getConfigPath: () => safeInvoke<string>('get_config_path', undefined, {
     silent: true,
   }),
+
+  getSentinelTrustStatus: () => safeInvoke<SentinelTrustStatus>('get_sentinel_trust_status', undefined, {
+    silent: true,
+  }),
   
   // Connection commands
   connectToMesh: (endpoint: string) => safeInvoke<string>('connect_to_mesh', { endpoint }, {
@@ -243,6 +247,13 @@ export interface AppConfig {
     initial_delay_ms: number;
     max_delay_ms: number;
   };
+}
+
+export interface SentinelTrustStatus {
+  trust_level: string;
+  reduced_trust: boolean;
+  headline: string;
+  detail: string;
 }
 
 export interface GenesisBundle {
