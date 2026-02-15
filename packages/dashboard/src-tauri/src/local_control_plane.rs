@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, OnceLock};
@@ -44,7 +46,9 @@ pub struct ManagedService {
     #[serde(default)]
     pub health_check_retries: Option<u32>,
     pub working_dir: String,
-    pub start_command: String,
+    pub start_executable: String,
+    #[serde(default)]
+    pub start_args: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -134,7 +138,7 @@ pub fn bootstrap_local_control_plane() -> Result<LocalControlPlaneRuntime, Strin
         log::info!(
             "Starting local service {} ({})",
             service.name,
-            service.start_command
+            service.start_executable
         );
         spawned_children.insert(service.name.clone(), spawn_service(&service)?);
 
@@ -472,9 +476,12 @@ fn spawn_service(service: &ManagedService) -> Result<Child, String> {
         .join("..");
     let working_directory = repo_root.join(&service.working_dir);
 
-    Command::new("bash")
-        .arg("-lc")
-        .arg(service.start_command.clone())
+    validate_service_startup(service, &working_directory)?;
+
+    let executable = expand_runtime_tokens(&service.start_executable, &working_directory)?;
+
+    Command::new(&executable)
+        .args(service.start_args.iter())
         .current_dir(working_directory)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -482,10 +489,139 @@ fn spawn_service(service: &ManagedService) -> Result<Child, String> {
         .spawn()
         .map_err(|error| {
             format!(
-                "Failed to start service {} using command '{}': {}",
-                service.name, service.start_command, error
+                "Failed to start service {} using executable '{}' and args {:?}: {}",
+                service.name,
+                executable.display(),
+                service.start_args,
+                error
             )
         })
+}
+
+fn validate_service_startup(
+    service: &ManagedService,
+    working_directory: &Path,
+) -> Result<(), String> {
+    if !working_directory.exists() {
+        return Err(format!(
+            "Service '{}' working directory does not exist: {}. Remediation hint: {}",
+            service.name,
+            working_directory.display(),
+            service.remediation_hint
+        ));
+    }
+
+    let executable = expand_runtime_tokens(&service.start_executable, working_directory)?;
+    if !executable.exists() {
+        return Err(format!(
+            "Service '{}' executable is missing at {}. Remediation hint: {}",
+            service.name,
+            executable.display(),
+            service.remediation_hint
+        ));
+    }
+
+    if !executable.is_file() {
+        return Err(format!(
+            "Service '{}' executable path is not a file: {}. Remediation hint: {}",
+            service.name,
+            executable.display(),
+            service.remediation_hint
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        let metadata = std::fs::metadata(&executable).map_err(|error| {
+            format!(
+                "Unable to read metadata for service '{}' executable {}: {}",
+                service.name,
+                executable.display(),
+                error
+            )
+        })?;
+        let mode = metadata.permissions().mode();
+        if mode & 0o111 == 0 {
+            return Err(format!(
+                "Service '{}' executable is not marked executable: {}. Remediation hint: {}",
+                service.name,
+                executable.display(),
+                service.remediation_hint
+            ));
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let is_exe = executable
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| {
+                ext.eq_ignore_ascii_case("exe")
+                    || ext.eq_ignore_ascii_case("cmd")
+                    || ext.eq_ignore_ascii_case("bat")
+            })
+            .unwrap_or(false);
+        if !is_exe {
+            return Err(format!(
+                "Service '{}' executable must be .exe, .cmd, or .bat on Windows: {}. Remediation hint: {}",
+                service.name,
+                executable.display(),
+                service.remediation_hint
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn runtime_root() -> PathBuf {
+    if let Ok(path) = std::env::var("AETHERCORE_RUNTIME_ROOT") {
+        return PathBuf::from(path);
+    }
+
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join(current_platform_dir())
+}
+
+fn current_platform_dir() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    }
+}
+
+fn expand_runtime_tokens(raw: &str, working_directory: &Path) -> Result<PathBuf, String> {
+    let runtime_root = runtime_root();
+    let rendered = raw
+        .replace(
+            "${AETHERCORE_RUNTIME_ROOT}",
+            &runtime_root.to_string_lossy(),
+        )
+        .replace("${WORKING_DIR}", &working_directory.to_string_lossy());
+    let candidate = PathBuf::from(rendered);
+
+    let mut resolved = if candidate.is_absolute() {
+        candidate
+    } else {
+        working_directory.join(candidate)
+    };
+
+    #[cfg(windows)]
+    {
+        if resolved.extension().is_none() {
+            let cmd_candidate = resolved.with_extension("cmd");
+            if cmd_candidate.exists() {
+                resolved = cmd_candidate;
+            }
+        }
+    }
+
+    Ok(resolved)
 }
 
 fn ensure_service_health(

@@ -27,7 +27,7 @@ On launch, Tactical Glass:
 2. Sorts services by `startup_order`.
 3. For each required service:
    - checks `health_endpoint`,
-   - starts service with `start_command` in `working_dir` if needed,
+   - starts service by invoking `start_executable` + `start_args` in `working_dir` if needed,
    - blocks until healthy or timeout.
 4. Fails visible and exits if a required service does not become healthy.
 
@@ -49,7 +49,8 @@ On launch, Tactical Glass:
   - `port`
   - `health_endpoint`
   - `working_dir`
-  - `start_command`
+  - `start_executable`
+  - `start_args`
 
 ## Deprecation notice
 
