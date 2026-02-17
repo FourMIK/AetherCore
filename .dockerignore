@@ -1,0 +1,12 @@
+.git
+.gitignore
+**/node_modules
+**/dist
+**/coverage
+**/.turbo
+**/.cache
+**/.DS_Store
+**/*.log
+packages/dashboard/src-tauri/target
+packages/dashboard/target
+target
