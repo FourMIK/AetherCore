@@ -281,6 +281,9 @@ importers:
 
   services/gateway:
     dependencies:
+      '@aethercore/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@grpc/grpc-js':
         specifier: ^1.14.3
         version: 1.14.3
