@@ -1,0 +1,29 @@
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    AWS_ACCOUNT_ID: "565919382365"
+    AWS_REGION: "us-east-1"
+
+phases:
+  install:
+    runtime-versions:
+      docker: 24
+    commands:
+      - echo "Build started on $(date)"
+      - chmod +x scripts/build-tag-all.sh scripts/push-ecr-all.sh scripts/verify-ecr.sh
+  pre_build:
+    commands:
+      - export GIT_SHA="${CODEBUILD_RESOLVED_SOURCE_VERSION:0:8}"
+      - export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      - echo "Using tag ${GIT_SHA}"
+  build:
+    commands:
+      - ./scripts/build-tag-all.sh
+      - ./scripts/push-ecr-all.sh
+      - ./scripts/verify-ecr.sh
+
+artifacts:
+  files:
+    - docs/container-deploy.md

@@ -10,7 +10,9 @@ RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --f
 
 COPY services/gateway ./services/gateway
 COPY packages/shared ./packages/shared
-RUN pnpm --filter @aethercore/gateway run build
+RUN pnpm --filter @aethercore/shared run build \
+  && pnpm --filter @aethercore/gateway run build \
+  && pnpm --filter @aethercore/gateway --prod deploy /prod/gateway
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
@@ -18,9 +20,7 @@ WORKDIR /app
 RUN apk add --no-cache dumb-init wget \
   && addgroup -S aether && adduser -S -G aether aether
 
-COPY --from=builder /app/services/gateway/dist ./dist
-COPY --from=builder /app/services/gateway/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /prod/gateway ./
 
 ENV NODE_ENV=production PORT=3000
 EXPOSE 3000

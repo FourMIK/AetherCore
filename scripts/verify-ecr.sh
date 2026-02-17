@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-AWS_REGION="us-east-1"
-GIT_SHA="$(git rev-parse --short=8 HEAD)"
+AWS_REGION="${AWS_REGION:-us-east-1}"
+GIT_SHA="${GIT_SHA:-$(git rev-parse --short=8 HEAD)}"
 
 REPOS=(
   "aethercore-dashboard"
@@ -38,7 +38,6 @@ for repo in "${REPOS[@]}"; do
     --image-ids imageTag="${GIT_SHA}" \
     --query 'imageDetails[0].imageTags' \
     --output text >/dev/null
-
 done
 
 echo "Verified: latest and ${GIT_SHA} tags exist in ECR for all repositories."

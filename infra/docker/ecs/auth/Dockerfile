@@ -10,7 +10,9 @@ RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --f
 
 COPY services/auth ./services/auth
 COPY packages/shared ./packages/shared
-RUN pnpm --filter @aethercore/auth run build
+RUN pnpm --filter @aethercore/shared run build \
+  && pnpm --filter @aethercore/auth run build \
+  && pnpm --filter @aethercore/auth --prod deploy /prod/auth
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
@@ -18,9 +20,7 @@ WORKDIR /app
 RUN apk add --no-cache dumb-init wget \
   && addgroup -S aether && adduser -S -G aether aether
 
-COPY --from=builder /app/services/auth/dist ./dist
-COPY --from=builder /app/services/auth/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /prod/auth ./
 
 ENV NODE_ENV=production PORT=3001
 EXPOSE 3001
