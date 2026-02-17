@@ -10,7 +10,9 @@ RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --f
 
 COPY services/collaboration ./services/collaboration
 COPY packages/shared ./packages/shared
-RUN pnpm --filter @aethercore/collaboration run build
+RUN pnpm --filter @aethercore/shared run build \
+  && pnpm --filter @aethercore/collaboration run build \
+  && pnpm --filter @aethercore/collaboration --prod deploy /prod/collaboration
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
@@ -18,10 +20,7 @@ WORKDIR /app
 RUN apk add --no-cache dumb-init wget \
   && addgroup -S aether && adduser -S -G aether aether
 
-COPY --from=builder /app/services/collaboration/dist ./dist
-COPY --from=builder /app/services/collaboration/proto ./proto
-COPY --from=builder /app/services/collaboration/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /prod/collaboration ./
 
 ENV NODE_ENV=production PORT=8080
 EXPOSE 8080

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-AWS_ACCOUNT_ID="565919382365"
-AWS_REGION="us-east-1"
-ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-GIT_SHA="$(git rev-parse --short=8 HEAD)"
+AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-565919382365}"
+AWS_REGION="${AWS_REGION:-us-east-1}"
+ECR_REGISTRY="${ECR_REGISTRY:-${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com}"
+GIT_SHA="${GIT_SHA:-$(git rev-parse --short=8 HEAD)}"
 
 REPOS=(
   "aethercore-dashboard"
