@@ -1,10 +1,10 @@
 # Multi-stage Rust build for h2-ingest service
-FROM rust:1.75-slim as builder
+FROM rust:1.75-slim AS builder
 
 WORKDIR /app
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -17,22 +17,22 @@ COPY services/h2-ingest/ ./services/h2-ingest/
 # Build release binary
 RUN cargo build --release --bin h2-ingest
 
-# Runtime stage - distroless for minimal attack surface
-FROM gcr.io/distroless/cc-debian12
+# Runtime stage compatible with ECS Fargate and container health checks
+FROM debian:bookworm-slim AS runtime
 
-# Copy binary
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /usr/sbin/nologin appuser
+
 COPY --from=builder /app/target/release/h2-ingest /usr/local/bin/h2-ingest
 
-# Run as non-root user (distroless nonroot user UID 65532)
-USER 65532:65532
-
+USER appuser
 EXPOSE 8090
 
-# Note: Distroless doesn't support HEALTHCHECK with shell commands
-# Use Kubernetes liveness/readiness probes or external monitoring instead:
-# livenessProbe:
-#   tcpSocket:
-#     port: 8090
-#   initialDelaySeconds: 10
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:${PORT:-8090}/health" >/dev/null || exit 1
 
 CMD ["/usr/local/bin/h2-ingest"]
