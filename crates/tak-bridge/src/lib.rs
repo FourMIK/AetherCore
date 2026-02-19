@@ -9,7 +9,77 @@ use aethercore_unit_status::{
     HealthMetrics, MeshEvent, MeshHealthPayload, RevocationPayload, UnitStatus,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+/// Signing interface for TAK bridge payloads.
+pub trait PayloadSigner {
+    /// Signs canonicalized payload bytes and returns an encoded signature.
+    fn sign(&self, payload: &[u8]) -> String;
+
+    /// Verifies canonicalized payload bytes against an encoded signature.
+    fn verify(&self, payload: &[u8], signature: &str) -> bool;
+}
+
+/// Signed envelope for TAK-exported payloads.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SignedTakPayload<T> {
+    /// Key identifier used by receivers to resolve signer public key material.
+    pub key_id: String,
+    /// Signature over the canonicalized payload content.
+    pub signature: String,
+    /// Canonical timestamp included in signature input and freshness checks.
+    pub timestamp_ns: u64,
+    /// Original payload.
+    pub payload: T,
+}
+
+/// Errors returned by freshness validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FreshnessError {
+    /// Payload timestamp is outside the configured freshness window.
+    Stale,
+    /// Same payload digest was seen before inside the freshness window.
+    Replay,
+}
+
+/// Stateful freshness validator based on timestamp window + replay cache.
+#[derive(Debug)]
+pub struct FreshnessValidator {
+    window_ns: u64,
+    seen: HashMap<Vec<u8>, u64>,
+}
+
+impl FreshnessValidator {
+    /// Creates validator with accepted age window.
+    pub fn new(window: Duration) -> Self {
+        Self {
+            window_ns: u64::try_from(window.as_nanos()).unwrap_or(u64::MAX),
+            seen: HashMap::new(),
+        }
+    }
+
+    /// Validates timestamp freshness and rejects replayed payload digests.
+    pub fn validate_and_record(
+        &mut self,
+        payload_digest: Vec<u8>,
+        timestamp_ns: u64,
+        now_ns: u64,
+    ) -> Result<(), FreshnessError> {
+        let cutoff = now_ns.saturating_sub(self.window_ns);
+        if timestamp_ns < cutoff || timestamp_ns > now_ns.saturating_add(self.window_ns) {
+            return Err(FreshnessError::Stale);
+        }
+
+        self.seen.retain(|_, seen_ts| *seen_ts >= cutoff);
+        if self.seen.contains_key(&payload_digest) {
+            return Err(FreshnessError::Replay);
+        }
+
+        self.seen.insert(payload_digest, timestamp_ns);
+        Ok(())
+    }
+}
 
 /// TAK-oriented view of node trust and integrity state.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -54,6 +124,16 @@ pub enum TakTrustLevel {
     Quarantined,
 }
 
+impl TakTrustLevel {
+    fn as_canonical_str(self) -> &'static str {
+        match self {
+            TakTrustLevel::Healthy => "HEALTHY",
+            TakTrustLevel::Suspect => "SUSPECT",
+            TakTrustLevel::Quarantined => "QUARANTINED",
+        }
+    }
+}
+
 /// Stable integrity labels for TAK serialization.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -66,6 +146,17 @@ pub enum TakMeshIntegrity {
     Compromised,
     /// Integrity metrics are unavailable or stale; TAK consumers should apply zero-trust defaults.
     Unknown,
+}
+
+impl TakMeshIntegrity {
+    fn as_canonical_str(self) -> &'static str {
+        match self {
+            TakMeshIntegrity::Healthy => "HEALTHY",
+            TakMeshIntegrity::Degraded => "DEGRADED",
+            TakMeshIntegrity::Compromised => "COMPROMISED",
+            TakMeshIntegrity::Unknown => "UNKNOWN",
+        }
+    }
 }
 
 /// Build a TAK snapshot from trust mesh and unit-status models.
@@ -124,6 +215,95 @@ pub fn revocation_event_from(payload: RevocationPayload) -> MeshEvent {
     MeshEvent::Revocation(payload)
 }
 
+/// Canonicalizes snapshot signing input using strict field order.
+///
+/// Canonicalization rules:
+/// 1. Field order is fixed and must be exactly:
+///    `node_id,trust_score_0_100,trust_level,mesh_integrity,root_agreement_ratio_bits,`
+///    `chain_break_count,signature_failure_count,telemetry_trust_score_0_1_bits,`
+///    `telemetry_trust_score_0_100,lat_bits,lon_bits,alt_m_bits,last_seen_ns,timestamp_ns,key_id`.
+/// 2. `timestamp_ns` is treated as an unsigned integer in nanoseconds and serialized
+///    as a base-10 integer string with no rounding or unit conversion.
+/// 3. Floating-point fields are canonicalized using raw IEEE-754 bit patterns so precision
+///    is preserved and formatting drift cannot invalidate signatures.
+pub fn canonicalize_snapshot_input(
+    snapshot: &TakNodeSnapshot,
+    timestamp_ns: u64,
+    key_id: &str,
+) -> Vec<u8> {
+    format!(
+        concat!(
+            "node_id={};trust_score_0_100={};trust_level={};mesh_integrity={};",
+            "root_agreement_ratio_bits={};chain_break_count={};signature_failure_count={};",
+            "telemetry_trust_score_0_1_bits={};telemetry_trust_score_0_100={};",
+            "lat_bits={};lon_bits={};alt_m_bits={};",
+            "last_seen_ns={};timestamp_ns={};key_id={}",
+        ),
+        snapshot.node_id,
+        snapshot.trust_score_0_100,
+        snapshot.trust_level.as_canonical_str(),
+        snapshot.mesh_integrity.as_canonical_str(),
+        snapshot.root_agreement_ratio.to_bits(),
+        snapshot.chain_break_count,
+        snapshot.signature_failure_count,
+        snapshot
+            .telemetry_trust_score_0_1
+            .map(f32::to_bits)
+            .map_or_else(|| "null".to_owned(), |v| v.to_string()),
+        snapshot
+            .telemetry_trust_score_0_100
+            .map_or_else(|| "null".to_owned(), |v| v.to_string()),
+        snapshot
+            .lat
+            .map(f64::to_bits)
+            .map_or_else(|| "null".to_owned(), |v| v.to_string()),
+        snapshot
+            .lon
+            .map(f64::to_bits)
+            .map_or_else(|| "null".to_owned(), |v| v.to_string()),
+        snapshot
+            .alt_m
+            .map(f32::to_bits)
+            .map_or_else(|| "null".to_owned(), |v| v.to_string()),
+        snapshot.last_seen_ns,
+        timestamp_ns,
+        key_id,
+    )
+    .into_bytes()
+}
+
+/// Builds signed TAK snapshot payload with `key_id` and `signature` fields.
+pub fn signed_snapshot_from(
+    trust: &TrustScore,
+    health: &NodeHealth,
+    unit: &UnitStatus,
+    signer: &dyn PayloadSigner,
+    key_id: impl Into<String>,
+    timestamp_ns: u64,
+) -> SignedTakPayload<TakNodeSnapshot> {
+    let payload = snapshot_from(trust, health, unit);
+    let key_id = key_id.into();
+    let canonical = canonicalize_snapshot_input(&payload, timestamp_ns, &key_id);
+    let signature = signer.sign(&canonical);
+
+    SignedTakPayload {
+        key_id,
+        signature,
+        timestamp_ns,
+        payload,
+    }
+}
+
+/// Verifies signed snapshot using canonicalized payload bytes.
+pub fn verify_signed_snapshot(
+    signed: &SignedTakPayload<TakNodeSnapshot>,
+    signer: &dyn PayloadSigner,
+) -> bool {
+    let canonical =
+        canonicalize_snapshot_input(&signed.payload, signed.timestamp_ns, &signed.key_id);
+    signer.verify(&canonical, &signed.signature)
+}
+
 fn scale_trust_score_0_100(score_0_1: f64) -> u8 {
     (score_0_1.clamp(0.0, 1.0) * 100.0).round() as u8
 }
@@ -171,6 +351,18 @@ mod tests {
         UnitStatus, UnitTelemetry,
     };
     use std::collections::HashMap;
+
+    struct Blake3Signer;
+
+    impl PayloadSigner for Blake3Signer {
+        fn sign(&self, payload: &[u8]) -> String {
+            blake3::hash(payload).to_hex().to_string()
+        }
+
+        fn verify(&self, payload: &[u8], signature: &str) -> bool {
+            self.sign(payload) == signature
+        }
+    }
 
     fn test_unit(gps: Option<Coordinate>) -> UnitStatus {
         UnitStatus {
@@ -370,5 +562,96 @@ mod tests {
         });
 
         assert_eq!(json, expected);
+    }
+
+    #[test]
+    fn canonicalization_uses_stable_field_order_and_timestamp_decimal_encoding() {
+        let snapshot = snapshot_from(
+            &test_trust(0.555),
+            &test_health(NodeHealthStatus::DEGRADED, current_timestamp_ms()),
+            &test_unit(None),
+        );
+
+        let canonical = String::from_utf8(canonicalize_snapshot_input(
+            &snapshot,
+            1700000000000000123,
+            "key-a",
+        ))
+        .unwrap();
+
+        assert!(canonical.starts_with(
+            "node_id=node-1;trust_score_0_100=56;trust_level=SUSPECT;mesh_integrity=DEGRADED;"
+        ));
+        assert!(canonical.contains("root_agreement_ratio_bits=4605741266919258849;"));
+        assert!(
+            canonical.contains("last_seen_ns=123;timestamp_ns=1700000000000000123;key_id=key-a")
+        );
+    }
+
+    #[test]
+    fn signed_payload_includes_signature_and_key_id_fields() {
+        let signed = signed_snapshot_from(
+            &test_trust(0.8),
+            &test_health(NodeHealthStatus::HEALTHY, current_timestamp_ms()),
+            &test_unit(None),
+            &Blake3Signer,
+            "ops-key-1",
+            1700000000000000000,
+        );
+
+        let json = serde_json::to_value(&signed).unwrap();
+        assert_eq!(json["key_id"], "ops-key-1");
+        assert!(json["signature"].as_str().unwrap().len() > 10);
+        assert_eq!(json["timestamp_ns"], 1700000000000000000u64);
+        assert_eq!(json["payload"]["node_id"], "node-1");
+    }
+
+    #[test]
+    fn tampered_field_is_rejected_by_signature_verification() {
+        let signer = Blake3Signer;
+        let signed = signed_snapshot_from(
+            &test_trust(0.8),
+            &test_health(NodeHealthStatus::HEALTHY, current_timestamp_ms()),
+            &test_unit(None),
+            &signer,
+            "ops-key-1",
+            1700000000000000000,
+        );
+
+        assert!(verify_signed_snapshot(&signed, &signer));
+
+        let mut tampered = signed.payload.clone();
+        tampered.chain_break_count += 1;
+        let canonical = canonicalize_snapshot_input(&tampered, signed.timestamp_ns, &signed.key_id);
+
+        assert!(!signer.verify(&canonical, &signed.signature));
+    }
+
+    #[test]
+    fn stale_payload_is_rejected_by_freshness_validator() {
+        let mut validator = FreshnessValidator::new(Duration::from_secs(60));
+        let digest = blake3::hash(b"payload").as_bytes().to_vec();
+        let now = 1_700_000_000_000_000_000u64;
+        let stale_ts = now - 120_000_000_000;
+
+        let result = validator.validate_and_record(digest, stale_ts, now);
+        assert_eq!(result, Err(FreshnessError::Stale));
+    }
+
+    #[test]
+    fn replayed_payload_is_rejected_by_freshness_validator() {
+        let mut validator = FreshnessValidator::new(Duration::from_secs(60));
+        let digest = blake3::hash(b"payload").as_bytes().to_vec();
+        let now = 1_700_000_000_000_000_000u64;
+        let ts = now - 1_000_000_000;
+
+        assert_eq!(
+            validator.validate_and_record(digest.clone(), ts, now),
+            Ok(())
+        );
+        assert_eq!(
+            validator.validate_and_record(digest, ts + 1, now),
+            Err(FreshnessError::Replay)
+        );
     }
 }
