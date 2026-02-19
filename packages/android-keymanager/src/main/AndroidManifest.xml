@@ -1,1 +1,19 @@
-<manifest package="com.aethercore.security" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.aethercore.security">
+
+    <permission
+        android:name="com.aethercore.security.permission.SNAPSHOT_STREAM_BIND"
+        android:protectionLevel="signature" />
+
+    <application>
+        <service
+            android:name=".ipc.SnapshotStreamService"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="com.aethercore.security.permission.SNAPSHOT_STREAM_BIND">
+            <intent-filter>
+                <action android:name="com.aethercore.security.ipc.SNAPSHOT_STREAM" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
