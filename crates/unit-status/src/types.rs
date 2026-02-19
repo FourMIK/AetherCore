@@ -96,7 +96,7 @@ pub struct UnitStatus {
     pub device_type: PlatformType,
     /// Operational state
     pub operational_state: OperationalState,
-    /// Trust score (0.0 to 1.0)
+    /// Telemetry-reported trust score (0.0 to 1.0); not the trust-mesh integrity score.
     pub trust_score: f32,
     /// Last seen timestamp in nanoseconds since epoch
     pub last_seen_ns: u64,
@@ -116,7 +116,7 @@ impl UnitStatus {
         (current_time_ns - self.last_seen_ns) > STALE_THRESHOLD_NS
     }
 
-    /// Check if trust score is low (< 0.5)
+    /// Check if telemetry trust score is low (< 0.5).
     pub fn is_low_trust(&self) -> bool {
         self.trust_score < 0.5
     }
