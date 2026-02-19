@@ -1,26 +1,17 @@
 /**
  * AethericSweep.tsx
- * 
+ *
  * Tactical Glass visualization for the Aetheric Sweep protocol.
  * Renders node purge animations with fail-visible design principles.
- * 
- * ## Design Philosophy
- * - Hardware-Rooted Trust: Only display nodes with valid TPM attestation
- * - Fail-Visible: All integrity violations projected with sub-second latency
- * - Byzantine Detection: Visual feedback for Identity Collapse signatures
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 
-// Animation constants
 const PULSE_ANIMATION_PERIOD_MS = 200;
 const PURGE_ANIMATION_DURATION_MS = 5000;
 const SWEEP_CIRCLE_COUNT = 3;
 const SWEEP_CIRCLE_DELAY = 0.3;
 
-/**
- * Revocation reason enumeration (matches Rust backend)
- */
 export enum RevocationReason {
   AttestationFailure = 'AttestationFailure',
   ByzantineDetection = 'ByzantineDetection',
@@ -28,9 +19,6 @@ export enum RevocationReason {
   IdentityCollapse = 'IdentityCollapse',
 }
 
-/**
- * Node health status (matches crates/trust_mesh/src/node_health.rs)
- */
 export enum NodeHealthStatus {
   HEALTHY = 'HEALTHY',
   DEGRADED = 'DEGRADED',
@@ -38,9 +26,6 @@ export enum NodeHealthStatus {
   UNKNOWN = 'UNKNOWN',
 }
 
-/**
- * Node visualization state
- */
 interface Node {
   id: string;
   x: number;
@@ -58,21 +43,15 @@ interface Node {
   purgeReason?: RevocationReason;
 }
 
-/**
- * Revocation certificate from Gospel ledger
- */
 interface RevocationCertificate {
   node_id: string;
   revocation_reason: RevocationReason;
   issuer_id: string;
   timestamp_ns: number;
-  signature: string; // Hex-encoded Ed25519 signature
-  merkle_root: string; // Hex-encoded BLAKE3 root
+  signature: string;
+  merkle_root: string;
 }
 
-/**
- * WebSocket message from unit-status service
- */
 interface MeshHealthMessage {
   node_id: string;
   status: NodeHealthStatus;
@@ -89,7 +68,6 @@ interface MeshHealthMessage {
 }
 
 type SeverityLevel = 'high' | 'medium' | 'low';
-
 const STALE_PAYLOAD_THRESHOLD_MS = 30_000;
 
 const getSeverityLevel = (trustPercent: number): SeverityLevel => {
@@ -133,40 +111,23 @@ const getMeshIntegrityLabel = (node: Node): string => {
 
 const getNodeVisualStatus = (node: Node): NodeHealthStatus => {
   if (hasInvalidPayloadSignature(node)) return NodeHealthStatus.COMPROMISED;
-  if (isNodePayloadStale(node) && node.status === NodeHealthStatus.HEALTHY) {
-    return NodeHealthStatus.DEGRADED;
-  }
+  if (isNodePayloadStale(node) && node.status === NodeHealthStatus.HEALTHY) return NodeHealthStatus.DEGRADED;
   return node.status;
 };
 
-/**
- * Props for AethericSweep component
- */
+const isTrustedNode = (node: Node): boolean => {
+  const trustPercent = Math.max(0, Math.min(100, node.trustScore * 100));
+  const notTrustedByState = getNodeVisualStatus(node) === NodeHealthStatus.COMPROMISED || hasInvalidPayloadSignature(node);
+  return !notTrustedByState && trustPercent >= 80;
+};
+
 interface AethericSweepProps {
-  /** WebSocket endpoint for mesh health feed */
   websocketUrl: string;
-  /** Update frequency in Hz (1 Hz normal, 10 Hz during sweep) */
   updateFrequencyHz?: number;
-  /** Canvas width in pixels */
   width?: number;
-  /** Canvas height in pixels */
   height?: number;
 }
 
-/**
- * AethericSweep: Real-time mesh health visualization with node purge animations
- * 
- * ## Protocol Behavior
- * - Connects to WSS endpoint for encrypted telemetry feed
- * - Displays nodes as icons with color-coded trust scores
- * - Animates purge propagation with expanding concentric circles
- * - Marks revoked nodes as grayed out with PURGED status
- * 
- * ## Fail-Visible Design
- * - STATUS_UNVERIFIED → Yellow warning icon
- * - STATUS_SPOOFED → Red alert icon with pulsing effect
- * - Attestation failures → Immediate visual feedback
- */
 export const AethericSweep: React.FC<AethericSweepProps> = ({
   websocketUrl,
   updateFrequencyHz = 1,
@@ -176,15 +137,12 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
   const [nodes, setNodes] = useState<Map<string, Node>>(new Map());
   const [purgeAnimations, setPurgeAnimations] = useState<Map<string, number>>(new Map());
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const animationFrameRef = useRef<number>();
 
-  /**
-   * Establish WebSocket connection with auto-reconnect
-   */
   useEffect(() => {
-    // Skip WebSocket connection if URL is empty (web mode)
     if (!websocketUrl) {
       console.info('[AethericSweep] Running in demo mode (no WebSocket)');
       return;
@@ -193,7 +151,7 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
     const connectWebSocket = () => {
       try {
         const ws = new WebSocket(websocketUrl);
-        
+
         ws.onopen = () => {
           console.info('[AethericSweep] WebSocket connected');
         };
@@ -201,12 +159,9 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
         ws.onmessage = (event) => {
           try {
             const message: MeshHealthMessage | RevocationCertificate = JSON.parse(event.data);
-            
-            // Handle revocation certificate (Aetheric Sweep)
             if ('revocation_reason' in message) {
               handleRevocationCertificate(message as RevocationCertificate);
             } else {
-              // Handle node health update
               handleMeshHealthUpdate(message as MeshHealthMessage);
             }
           } catch (error) {
@@ -231,23 +186,15 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
     };
 
     connectWebSocket();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
+    return () => wsRef.current?.close();
   }, [websocketUrl]);
 
-  /**
-   * Handle incoming mesh health update
-   */
   const handleMeshHealthUpdate = useCallback((message: MeshHealthMessage) => {
     setNodes((prevNodes) => {
       const newNodes = new Map(prevNodes);
       const existingNode = newNodes.get(message.node_id);
 
-      const node: Node = {
+      newNodes.set(message.node_id, {
         id: message.node_id,
         x: existingNode?.x ?? Math.random() * (width - 100) + 50,
         y: existingNode?.y ?? Math.random() * (height - 100) + 50,
@@ -262,40 +209,32 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
         isStalePayload: message.stale_payload,
         beingPurged: existingNode?.beingPurged ?? false,
         purgeReason: existingNode?.purgeReason,
-      };
+      });
 
-      newNodes.set(message.node_id, node);
       return newNodes;
     });
   }, [width, height]);
 
-  /**
-   * Handle incoming revocation certificate (Aetheric Sweep initiated)
-   */
   const handleRevocationCertificate = useCallback((cert: RevocationCertificate) => {
     console.warn(`[AethericSweep] Node purge initiated: ${cert.node_id}, reason: ${cert.revocation_reason}`);
 
     setNodes((prevNodes) => {
       const newNodes = new Map(prevNodes);
       const node = newNodes.get(cert.node_id);
-
       if (node) {
         node.beingPurged = true;
         node.purgeReason = cert.revocation_reason;
         newNodes.set(cert.node_id, node);
       }
-
       return newNodes;
     });
 
-    // Start purge animation
     setPurgeAnimations((prev) => {
       const newAnimations = new Map(prev);
       newAnimations.set(cert.node_id, Date.now());
       return newAnimations;
     });
 
-    // Remove animation after completion
     setTimeout(() => {
       setPurgeAnimations((prev) => {
         const newAnimations = new Map(prev);
@@ -305,22 +244,16 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
     }, PURGE_ANIMATION_DURATION_MS);
   }, []);
 
-  /**
-   * Animation loop for canvas rendering
-   */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const render = () => {
-      // Clear canvas
       ctx.fillStyle = '#0a0e1a';
       ctx.fillRect(0, 0, width, height);
 
-      // Draw grid
       ctx.strokeStyle = '#1a2332';
       ctx.lineWidth = 1;
       for (let x = 0; x < width; x += 40) {
@@ -336,76 +269,45 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
         ctx.stroke();
       }
 
-      // Draw nodes
-      nodes.forEach((node) => {
-        drawNode(ctx, node);
-      });
-
-      // Draw purge animations
+      nodes.forEach((node) => drawNode(ctx, node));
       purgeAnimations.forEach((startTime, nodeId) => {
         const node = nodes.get(nodeId);
-        if (node) {
-          drawPurgeAnimation(ctx, node, startTime);
-        }
+        if (node) drawPurgeAnimation(ctx, node, startTime);
       });
 
       animationFrameRef.current = requestAnimationFrame(render);
     };
 
     render();
+    return () => animationFrameRef.current && cancelAnimationFrame(animationFrameRef.current);
+  }, [nodes, purgeAnimations, width, height, updateFrequencyHz]);
 
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [nodes, purgeAnimations, width, height]);
-
-  /**
-   * Draw individual node on canvas
-   */
   const drawNode = (ctx: CanvasRenderingContext2D, node: Node) => {
     const radius = 12;
-
-    // Determine color based on status and trust score
-    let color = '#00ff88'; // HEALTHY (green)
+    let color = '#00ff88';
     const visualStatus = getNodeVisualStatus(node);
 
-    if (node.beingPurged) {
-      color = '#ff0044'; // PURGED (red)
-    } else if (visualStatus === NodeHealthStatus.COMPROMISED) {
-      color = '#ff4400';
-    } else if (visualStatus === NodeHealthStatus.DEGRADED) {
-      color = '#ffaa00';
-    } else if (visualStatus === NodeHealthStatus.UNKNOWN) {
-      color = '#888888';
-    }
+    if (node.beingPurged) color = '#ff0044';
+    else if (visualStatus === NodeHealthStatus.COMPROMISED) color = '#ff4400';
+    else if (visualStatus === NodeHealthStatus.DEGRADED) color = '#ffaa00';
+    else if (visualStatus === NodeHealthStatus.UNKNOWN) color = '#888888';
 
-    // Draw node circle
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
     ctx.fill();
 
-    // Draw trust score indicator
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(node.x, node.y, radius + 4, 0, 2 * Math.PI * node.trustScore);
     ctx.stroke();
 
-    // Draw node ID
     ctx.fillStyle = '#ffffff';
     ctx.font = '10px monospace';
     ctx.textAlign = 'center';
     ctx.fillText(node.id, node.x, node.y + radius + 15);
 
-    const trustPercent = Math.max(0, Math.min(100, node.trustScore * 100));
-    const trustLevel = getTrustLevelLabel(getSeverityLevel(trustPercent));
-    ctx.fillStyle = '#9cc4ff';
-    ctx.fillText(`${trustPercent.toFixed(0)}% • ${trustLevel}`, node.x, node.y - radius - 10);
-
-    // Pulsing effect for purged nodes
     if (node.beingPurged) {
       const pulse = Math.sin(Date.now() / PULSE_ANIMATION_PERIOD_MS) * 0.3 + 0.7;
       ctx.globalAlpha = pulse;
@@ -418,18 +320,10 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
     }
   };
 
-  /**
-   * Draw expanding concentric circles for purge propagation
-   */
-  const drawPurgeAnimation = (
-    ctx: CanvasRenderingContext2D,
-    node: Node,
-    startTime: number
-  ) => {
+  const drawPurgeAnimation = (ctx: CanvasRenderingContext2D, node: Node, startTime: number) => {
     const elapsed = Date.now() - startTime;
     const progress = Math.min(elapsed / PURGE_ANIMATION_DURATION_MS, 1.0);
 
-    // Draw 3 expanding circles
     for (let i = 0; i < SWEEP_CIRCLE_COUNT; i++) {
       const delay = i * SWEEP_CIRCLE_DELAY;
       const circleProgress = Math.max(0, Math.min((progress - delay) / (1 - delay), 1.0));
@@ -443,6 +337,8 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
       ctx.stroke();
     }
   };
+
+  const selectedNode = selectedNodeId ? nodes.get(selectedNodeId) : null;
 
   return (
     <div style={{ position: 'relative', width, height, backgroundColor: '#0a0e1a' }}>
@@ -467,9 +363,11 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
           });
 
           setSelectedNodeId(nearestId);
+          setShowDetails(false);
         }}
         style={{ display: 'block' }}
       />
+
       <div
         style={{
           position: 'absolute',
@@ -525,37 +423,59 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
             const stale = isNodePayloadStale(node);
             const invalidSignature = hasInvalidPayloadSignature(node);
             const integrity = getMeshIntegrityLabel(node);
+            const trusted = isTrustedNode(node);
 
             return (
               <>
                 <div style={{ marginBottom: 8, fontWeight: 700 }}>Node {node.id}</div>
-                <div>Trust Percent: <span style={{ color: trustColor }}>{trustPercent.toFixed(0)}%</span></div>
                 <div>
-                  Trust Level: <span style={{ color: trustColor, border: `1px solid ${trustColor}`, padding: '0 6px', borderRadius: 999 }}>{getTrustLevelLabel(severity)}</span>
+                  Trusted: <span style={{ color: trusted ? '#00ff88' : '#ff4400', fontWeight: 700 }}>{trusted ? 'Trusted' : 'Not Trusted'}</span>
                 </div>
-                <div>
-                  Mesh Integrity Status:{' '}
-                  <span style={{ color: invalidSignature ? '#ff4400' : stale ? '#ffaa00' : '#00ff88' }}>
-                    {integrity}
-                  </span>
-                </div>
-                <div>
-                  Freshness Indicator:{' '}
-                  <span style={{ color: stale ? '#ffaa00' : '#00ff88' }}>
-                    {stale ? 'Stale' : 'Fresh'} ({freshnessMs.toFixed(0)}ms)
-                  </span>
-                </div>
-                <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.16)', paddingTop: 8 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Integrity Metrics</div>
-                  <div>Root Agreement: {((node.rootAgreementRatio ?? 0) * 100).toFixed(1)}%</div>
-                  <div>Chain Breaks: {node.chainBreakCount ?? 0}</div>
-                  <div>Signature Failures: {node.signatureFailureCount ?? 0}</div>
-                </div>
-                {invalidSignature && (
-                  <div style={{ marginTop: 8, color: '#ff4400' }}>Error: Invalid signature payload</div>
-                )}
-                {!invalidSignature && stale && (
-                  <div style={{ marginTop: 8, color: '#ffaa00' }}>Warning: Stale payload window exceeded</div>
+                {invalidSignature && <div style={{ marginTop: 6, color: '#ff4400' }}>Error: Invalid signature payload</div>}
+                {!invalidSignature && stale && <div style={{ marginTop: 6, color: '#ffaa00' }}>Warning: Stale payload window exceeded</div>}
+
+                <button
+                  type="button"
+                  onClick={() => setShowDetails((prev) => !prev)}
+                  style={{
+                    marginTop: 8,
+                    color: '#9cc4ff',
+                    background: 'transparent',
+                    border: '1px solid rgba(156,196,255,0.5)',
+                    borderRadius: 4,
+                    padding: '2px 8px',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: '11px',
+                  }}
+                >
+                  {showDetails ? 'Hide Details' : 'Show Details'}
+                </button>
+
+                {showDetails && (
+                  <div data-testid="node-detail-expanded" style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.16)', paddingTop: 8 }}>
+                    <div>Trust Percent: <span style={{ color: trustColor }}>{trustPercent.toFixed(0)}%</span></div>
+                    <div>
+                      Trust Level:{' '}
+                      <span style={{ color: trustColor, border: `1px solid ${trustColor}`, padding: '0 6px', borderRadius: 999 }}>
+                        {getTrustLevelLabel(severity)}
+                      </span>
+                    </div>
+                    <div>
+                      Mesh Integrity Status:{' '}
+                      <span style={{ color: invalidSignature ? '#ff4400' : stale ? '#ffaa00' : '#00ff88' }}>{integrity}</span>
+                    </div>
+                    <div>
+                      Freshness Indicator:{' '}
+                      <span style={{ color: stale ? '#ffaa00' : '#00ff88' }}>{stale ? 'Stale' : 'Fresh'} ({freshnessMs.toFixed(0)}ms)</span>
+                    </div>
+                    <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.16)', paddingTop: 8 }}>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>Integrity Metrics</div>
+                      <div>Root Agreement: {((node.rootAgreementRatio ?? 0) * 100).toFixed(1)}%</div>
+                      <div>Chain Breaks: {node.chainBreakCount ?? 0}</div>
+                      <div>Signature Failures: {node.signatureFailureCount ?? 0}</div>
+                    </div>
+                  </div>
                 )}
               </>
             );
