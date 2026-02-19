@@ -263,6 +263,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aethercore-tak-bridge"
+version = "0.2.0"
+dependencies = [
+ "aethercore-identity",
+ "aethercore-trust-mesh",
+ "aethercore-unit-status",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aethercore-trust-mesh"
 version = "0.2.0"
 dependencies = [

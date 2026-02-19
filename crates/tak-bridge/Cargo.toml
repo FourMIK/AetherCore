@@ -1,0 +1,16 @@
+[package]
+name = "aethercore-tak-bridge"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aethercore-trust-mesh = { path = "../trust_mesh" }
+aethercore-unit-status = { path = "../unit-status" }
+serde = { workspace = true }
+
+[dev-dependencies]
+aethercore-identity = { path = "../identity" }
+serde_json = { workspace = true }
