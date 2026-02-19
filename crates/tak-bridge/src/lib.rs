@@ -5,7 +5,9 @@
 use aethercore_trust_mesh::{
     HealthThresholds, NodeHealth, NodeHealthStatus, TrustLevel, TrustScore,
 };
-use aethercore_unit_status::UnitStatus;
+use aethercore_unit_status::{
+    HealthMetrics, MeshEvent, MeshHealthPayload, RevocationPayload, UnitStatus,
+};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -98,6 +100,30 @@ pub fn snapshot_from(
     }
 }
 
+/// Build a TAK bridge mesh health event aligned with websocket payload semantics.
+pub fn mesh_health_event_from(
+    trust: &TrustScore,
+    health: &NodeHealth,
+    unit: &UnitStatus,
+) -> MeshEvent {
+    MeshEvent::MeshHealth(MeshHealthPayload {
+        node_id: trust.node_id.clone(),
+        status: format!("{:?}", effective_node_health_status(health)),
+        trust_score: unit.trust_score,
+        last_seen_ns: unit.last_seen_ns,
+        metrics: HealthMetrics {
+            root_agreement_ratio: health.metrics.root_agreement_ratio,
+            chain_break_count: health.metrics.chain_break_count,
+            signature_failure_count: health.metrics.signature_failure_count,
+        },
+    })
+}
+
+/// Build a TAK bridge revocation event aligned with websocket payload semantics.
+pub fn revocation_event_from(payload: RevocationPayload) -> MeshEvent {
+    MeshEvent::Revocation(payload)
+}
+
 fn scale_trust_score_0_100(score_0_1: f64) -> u8 {
     (score_0_1.clamp(0.0, 1.0) * 100.0).round() as u8
 }
@@ -141,7 +167,8 @@ mod tests {
     use super::*;
     use aethercore_trust_mesh::{IntegrityMetrics, NodeHealth, NodeHealthStatus, TrustScore};
     use aethercore_unit_status::{
-        ConnectivityState, Coordinate, OperationalState, PlatformType, UnitStatus, UnitTelemetry,
+        ConnectivityState, Coordinate, OperationalState, PlatformType, SchemaRevocationReason,
+        UnitStatus, UnitTelemetry,
     };
     use std::collections::HashMap;
 
@@ -297,5 +324,51 @@ mod tests {
         );
 
         assert_eq!(snapshot.mesh_integrity, TakMeshIntegrity::Unknown);
+    }
+
+    #[test]
+    fn mesh_health_event_serializes_to_expected_fixture_shape() {
+        let event = mesh_health_event_from(
+            &test_trust(0.73),
+            &test_health(NodeHealthStatus::DEGRADED, current_timestamp_ms()),
+            &test_unit(None),
+        );
+
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["type"], "mesh_health");
+        assert_eq!(json["node_id"], "node-1");
+        assert_eq!(json["status"], "DEGRADED");
+        assert_eq!(json["last_seen_ns"], 123);
+        assert_eq!(json["metrics"]["root_agreement_ratio"], 0.84);
+        assert_eq!(json["metrics"]["chain_break_count"], 2);
+        assert_eq!(json["metrics"]["signature_failure_count"], 3);
+
+        let trust_score = json["trust_score"].as_f64().unwrap();
+        assert!((trust_score - 0.8).abs() < 1e-5);
+    }
+
+    #[test]
+    fn revocation_event_serializes_to_expected_fixture_shape() {
+        let event = revocation_event_from(RevocationPayload {
+            node_id: "node-1".into(),
+            revocation_reason: SchemaRevocationReason::ByzantineDetection,
+            issuer_id: "authority-1".into(),
+            timestamp_ns: 1700000000000000000,
+            signature: "deadbeef".into(),
+            merkle_root: "beadfeed".into(),
+        });
+
+        let json = serde_json::to_value(&event).unwrap();
+        let expected = serde_json::json!({
+            "type": "revocation",
+            "node_id": "node-1",
+            "revocation_reason": "ByzantineDetection",
+            "issuer_id": "authority-1",
+            "timestamp_ns": 1700000000000000000u64,
+            "signature": "deadbeef",
+            "merkle_root": "beadfeed"
+        });
+
+        assert_eq!(json, expected);
     }
 }

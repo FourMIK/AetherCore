@@ -15,8 +15,9 @@ use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{error, info, warn};
 
-use aethercore_trust_mesh::node_health::NodeHealthComputer;
+use crate::schema::{HealthMetrics, MeshEvent, MeshHealthPayload, RevocationPayload};
 use crate::types::UnitStatus;
+use aethercore_trust_mesh::node_health::NodeHealthComputer;
 
 /// WebSocket message types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,11 +25,11 @@ use crate::types::UnitStatus;
 pub enum WsMessage {
     /// Node health update
     #[serde(rename = "mesh_health")]
-    MeshHealth(MeshHealthMessage),
+    MeshHealth(MeshHealthPayload),
 
     /// Revocation certificate (Aetheric Sweep)
     #[serde(rename = "revocation")]
-    Revocation(RevocationCertificate),
+    Revocation(RevocationPayload),
 
     /// Connection acknowledgment
     #[serde(rename = "ack")]
@@ -38,60 +39,20 @@ pub enum WsMessage {
     },
 }
 
-/// Mesh health message format
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MeshHealthMessage {
-    /// Node identifier
-    pub node_id: String,
-    /// Mesh health state (HEALTHY, DEGRADED, COMPROMISED, UNKNOWN)
-    pub status: String,
-    /// Trust score emitted by trust mesh
-    pub trust_score: f32,
-    /// Last time the node was seen (ns)
-    pub last_seen_ns: u64,
-    /// Health metrics bundle
-    pub metrics: HealthMetrics,
-}
+/// Backward-compatible alias for legacy websocket naming.
+pub type MeshHealthMessage = MeshHealthPayload;
+/// Backward-compatible alias for legacy websocket naming.
+pub type RevocationCertificate = RevocationPayload;
+/// Backward-compatible alias for legacy websocket naming.
+pub type RevocationReason = crate::schema::RevocationReason;
 
-/// Health metrics from trust_mesh
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HealthMetrics {
-    /// Ratio of root hash agreement across nodes
-    pub root_agreement_ratio: f64,
-    /// Count of detected chain breaks
-    pub chain_break_count: u64,
-    /// Count of signature failures
-    pub signature_failure_count: u64,
-}
-
-/// Revocation certificate (matches docs/trust-mesh-design.md)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RevocationCertificate {
-    /// Node being revoked
-    pub node_id: String,
-    /// Reason for revocation
-    pub revocation_reason: RevocationReason,
-    /// Authority issuing revocation
-    pub issuer_id: String,
-    /// Timestamp in nanoseconds
-    pub timestamp_ns: u64,
-    /// Hex-encoded Ed25519 signature
-    pub signature: String,
-    /// Hex-encoded BLAKE3 Merkle root
-    pub merkle_root: String,
-}
-
-/// Revocation reasons
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RevocationReason {
-    /// TPM attestation failed
-    AttestationFailure,
-    /// Byzantine detection triggered
-    ByzantineDetection,
-    /// Operator initiated override
-    OperatorOverride,
-    /// Duplicate or conflicting identity observed
-    IdentityCollapse,
+impl From<MeshEvent> for WsMessage {
+    fn from(value: MeshEvent) -> Self {
+        match value {
+            MeshEvent::MeshHealth(payload) => WsMessage::MeshHealth(payload),
+            MeshEvent::Revocation(payload) => WsMessage::Revocation(payload),
+        }
+    }
 }
 
 /// WebSocket server state
@@ -226,7 +187,7 @@ impl WsServer {
         let node_health = self.health_computer.get_node_health(&node_id);
 
         // Broadcast health update with real metrics
-        let health_msg = WsMessage::MeshHealth(MeshHealthMessage {
+        let health_msg = WsMessage::MeshHealth(MeshHealthPayload {
             node_id: node_id.clone(),
             status: format!("{:?}", node_health.status),
             trust_score: status.trust_score,
@@ -243,7 +204,7 @@ impl WsServer {
     }
 
     /// Broadcast revocation certificate (Aetheric Sweep)
-    pub async fn broadcast_revocation(&self, cert: RevocationCertificate) {
+    pub async fn broadcast_revocation(&self, cert: RevocationPayload) {
         let revocation_msg = WsMessage::Revocation(cert);
 
         // Broadcast (ignore errors if no receivers)
