@@ -50,7 +50,8 @@ pub use enrollment::{
     EnrollmentContext, EnrollmentRequest, PlatformType, CHALLENGE_WINDOW_MS, REQUIRED_PCRS,
 };
 pub use enrollment_state::{
-    EnrollmentError, EnrollmentState, EnrollmentStateMachine, StateTransition,
+    DiagnosticSeverity, EnrollmentDiagnosticEvent, EnrollmentError, EnrollmentState,
+    EnrollmentStateMachine, FailureClass, OperatorStatusHook, StateTransition,
 };
 pub use error::{IdentityError, IdentityResult};
 pub use federation::{FederatedIdentity, FederationRegistry, TrustLevel};
