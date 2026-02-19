@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct TakNodeSnapshot {
     /// Mesh node identifier.
     pub node_id: String,
-    /// Trust score normalized to 0-100 integer scale.
+    /// Primary mesh-integrity trust score from `aethercore_trust_mesh::TrustScore`, normalized to 0-100.
     pub trust_score_0_100: u8,
     /// Trust level preserving trust mesh semantics.
     pub trust_level: TakTrustLevel,
@@ -23,6 +23,10 @@ pub struct TakNodeSnapshot {
     pub chain_break_count: u64,
     /// Total signature failures observed for the node.
     pub signature_failure_count: u64,
+    /// Optional secondary telemetry-reported trust score in 0.0-1.0 scale.
+    pub telemetry_trust_score_0_1: Option<f32>,
+    /// Optional secondary telemetry-reported trust score in 0-100 scale.
+    pub telemetry_trust_score_0_100: Option<u8>,
     /// Optional latitude.
     pub lat: Option<f64>,
     /// Optional longitude.
@@ -59,7 +63,11 @@ pub enum TakMeshIntegrity {
     Unknown,
 }
 
-/// Build a TAK snapshot from existing trust mesh and unit status models.
+/// Build a TAK snapshot from trust mesh and unit-status models.
+///
+/// Primary trust fields (`trust_score_0_100`, `trust_level`) always derive from
+/// `crates/trust_mesh/src/trust.rs` via [`TrustScore`].
+/// Unit-status trust is retained only as optional telemetry metadata.
 pub fn snapshot_from(
     trust: &TrustScore,
     health: &NodeHealth,
@@ -75,6 +83,8 @@ pub fn snapshot_from(
         root_agreement_ratio: health.metrics.root_agreement_ratio,
         chain_break_count: health.metrics.chain_break_count,
         signature_failure_count: health.metrics.signature_failure_count,
+        telemetry_trust_score_0_1: Some(unit.trust_score),
+        telemetry_trust_score_0_100: Some(scale_trust_score_0_100(unit.trust_score as f64)),
         lat: gps.map(|c| c.lat),
         lon: gps.map(|c| c.lon),
         alt_m: gps.and_then(|c| c.alt),
@@ -196,7 +206,19 @@ mod tests {
         let json = serde_json::to_string(&snapshot).unwrap();
         assert_eq!(
             json,
-            r#"{"node_id":"node-1","trust_score_0_100":56,"trust_level":"SUSPECT","mesh_integrity":"DEGRADED","root_agreement_ratio":0.84,"chain_break_count":2,"signature_failure_count":3,"lat":10.0,"lon":20.0,"alt_m":30.0,"last_seen_ns":123}"#
+            r#"{"node_id":"node-1","trust_score_0_100":56,"trust_level":"SUSPECT","mesh_integrity":"DEGRADED","root_agreement_ratio":0.84,"chain_break_count":2,"signature_failure_count":3,"telemetry_trust_score_0_1":0.8,"telemetry_trust_score_0_100":80,"lat":10.0,"lon":20.0,"alt_m":30.0,"last_seen_ns":123}"#
         );
+    }
+
+    #[test]
+    fn snapshot_primary_trust_uses_mesh_trust_not_telemetry_trust() {
+        let mut unit = test_unit(None);
+        unit.trust_score = 0.99;
+
+        let snapshot = snapshot_from(&test_trust(0.22), &test_health(), &unit);
+
+        assert_eq!(snapshot.trust_score_0_100, 22);
+        assert_eq!(snapshot.telemetry_trust_score_0_1, Some(0.99));
+        assert_eq!(snapshot.telemetry_trust_score_0_100, Some(99));
     }
 }
