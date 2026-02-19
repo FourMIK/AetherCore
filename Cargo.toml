@@ -16,6 +16,7 @@ members = [
     "crates/h2-domain",
     "crates/c2-router",
     "crates/unit-status",
+    "crates/tak-bridge",
     "services/h2-ingest",
     "services/aethercore-node",
     "packages/dashboard/src-tauri",
