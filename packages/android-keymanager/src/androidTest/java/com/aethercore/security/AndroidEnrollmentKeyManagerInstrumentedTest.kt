@@ -26,8 +26,8 @@ class AndroidEnrollmentKeyManagerInstrumentedTest {
         val challenge = byteArrayOf(1, 2, 3)
         val payload = manager.buildEnrollmentProvePayload(challenge)
 
-        assertEquals("sb-alias", payload.alias)
-        assertEquals(SecurityLevel.STRONGBOX.name, payload.securityLevel)
+        assertEquals("sb-alias", payload.keyAlias)
+        assertEquals(SecurityLevel.STRONGBOX.name, payload.keySecurityLevel)
         assertEquals(listOf(true), keyStore.generationRequests)
         assertEquals("sb-alias", store.readAlias())
         assertEquals(SecurityLevel.STRONGBOX, store.readSecurityLevel())
