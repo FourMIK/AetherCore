@@ -382,11 +382,22 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
         }}
       >
         <div>Mesh Nodes: {nodes.size}</div>
-        <div>Trusted: {Array.from(nodes.values()).filter((node) => isTrustedNode(node)).length}</div>
-        <div>Not Trusted: {Array.from(nodes.values()).filter((node) => !isTrustedNode(node)).length}</div>
+        <div>
+          Healthy:{' '}
+          {Array.from(nodes.values()).filter((n) => getNodeVisualStatus(n) === NodeHealthStatus.HEALTHY).length}
+        </div>
+        <div>
+          Degraded:{' '}
+          {Array.from(nodes.values()).filter((n) => getNodeVisualStatus(n) === NodeHealthStatus.DEGRADED).length}
+        </div>
+        <div>
+          Compromised:{' '}
+          {Array.from(nodes.values()).filter((n) => getNodeVisualStatus(n) === NodeHealthStatus.COMPROMISED)
+            .length}
+        </div>
+        <div>Active Purges: {purgeAnimations.size}</div>
       </div>
-
-      {selectedNode && (
+      {selectedNodeId && nodes.get(selectedNodeId) && (
         <div
           data-testid="node-detail-panel"
           style={{
@@ -404,7 +415,7 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
           }}
         >
           {(() => {
-            const node = selectedNode;
+            const node = nodes.get(selectedNodeId)!;
             const trustPercent = Math.max(0, Math.min(100, node.trustScore * 100));
             const severity = getSeverityLevel(trustPercent);
             const trustColor = severity === 'high' ? '#00ff88' : severity === 'medium' ? '#ffaa00' : '#ff4400';
