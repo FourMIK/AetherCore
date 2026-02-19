@@ -101,6 +101,7 @@ docker compose logs -f
 * [TPM Configuration](docs/TPM_CONFIGURATION.md): TPM runtime configuration and security implications.
 * [Product Profiles](docs/PRODUCT_PROFILES.md): Commander Edition default profile and engineering appendix.
 * [Copilot MCP Configuration](docs/COPILOT_MCP_CONFIGURATION.md): GitHub Copilot Model Context Protocol setup.
+* [TAK Bridge Integration](crates/tak-bridge/README.md): External JSON contract and downstream transport patterns.
 
 ## Contributing
 We welcome contributions from the community. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting Pull Requests.
