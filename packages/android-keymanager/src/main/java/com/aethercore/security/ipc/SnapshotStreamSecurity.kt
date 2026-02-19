@@ -2,6 +2,7 @@ package com.aethercore.security.ipc
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Binder
 import android.util.Log
 import java.nio.charset.StandardCharsets
@@ -43,21 +44,63 @@ interface CallerIdentityProvider {
 }
 
 class AndroidCallerIdentityProvider(private val context: Context) : CallerIdentityProvider {
+    private val tag = "AetherSnapshotIpc"
+
     override fun uid(): Int = Binder.getCallingUid()
 
     override fun packagesForUid(uid: Int): Array<String> =
         context.packageManager.getPackagesForUid(uid) ?: emptyArray()
 
-    override fun signingDigestsSha256(packageName: String): Set<String> {
+    override fun signingDigestsSha256(packageName: String): Set<String> = signingDigestsSha256(
+        packageName = packageName,
+        sdkInt = Build.VERSION.SDK_INT,
+        getSignersApi33 = ::getSignersApi33,
+        getSignersLegacy = ::getSignersLegacy,
+        onWarning = { message, error -> Log.w(tag, message, error) }
+    )
+
+    private fun getSignersApi33(packageName: String): Array<ByteArray> {
         val pkgInfo = context.packageManager.getPackageInfo(
             packageName,
             PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
         )
-        val signers = pkgInfo.signingInfo.apkContentsSigners ?: return emptySet()
-        return signers.map { sig ->
-            MessageDigest.getInstance("SHA-256").digest(sig.toByteArray()).toHex()
-        }.toSet()
+        return pkgInfo.signingInfo?.apkContentsSigners?.map { it.toByteArray() }?.toTypedArray() ?: emptyArray()
     }
+
+    @Suppress("DEPRECATION")
+    private fun getSignersLegacy(packageName: String): Array<ByteArray> {
+        val pkgInfo = context.packageManager.getPackageInfo(
+            packageName,
+            PackageManager.GET_SIGNING_CERTIFICATES
+        )
+        return pkgInfo.signingInfo?.apkContentsSigners?.map { it.toByteArray() }?.toTypedArray() ?: emptyArray()
+    }
+}
+
+internal fun signingDigestsSha256(
+    packageName: String,
+    sdkInt: Int,
+    getSignersApi33: (String) -> Array<ByteArray>,
+    getSignersLegacy: (String) -> Array<ByteArray>,
+    onWarning: (String, Throwable) -> Unit
+): Set<String> {
+    val signerBytes = try {
+        if (sdkInt >= Build.VERSION_CODES.TIRAMISU) {
+            getSignersApi33(packageName)
+        } else {
+            getSignersLegacy(packageName)
+        }
+    } catch (error: PackageManager.NameNotFoundException) {
+        onWarning("Unable to resolve package signatures for $packageName", error)
+        return emptySet()
+    } catch (error: SecurityException) {
+        onWarning("No permission to read package signatures for $packageName", error)
+        return emptySet()
+    }
+
+    return signerBytes.map { sig ->
+        MessageDigest.getInstance("SHA-256").digest(sig).toHex()
+    }.toSet()
 }
 
 class BindAccessController(
