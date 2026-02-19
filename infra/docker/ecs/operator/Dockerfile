@@ -10,6 +10,7 @@ RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --f
 
 COPY services/operator ./services/operator
 COPY packages/shared ./packages/shared
+RUN pnpm --filter @aethercore/shared run build
 RUN pnpm --filter @aethercore/operator run build
 
 FROM node:20-alpine AS runtime
