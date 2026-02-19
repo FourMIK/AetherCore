@@ -32,6 +32,60 @@ use std::collections::VecDeque;
 
 /// Maximum number of state transitions to track in history.
 const MAX_HISTORY_SIZE: usize = 100;
+/// Maximum number of diagnostic events to keep in memory.
+const MAX_DIAGNOSTICS_SIZE: usize = 100;
+
+/// Explicit hard failure classification for fail-visible handling.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FailureClass {
+    /// Cryptographic integrity checks failed (tamper/spoof/mismatch).
+    IntegrityFailure,
+    /// Enrollment protocol failed and cannot proceed safely.
+    EnrollmentFailure,
+    /// Trust bootstrap material or chain could not be established.
+    TrustBootstrapFailure,
+    /// Signing or key-use operation failed for trusted publication.
+    SigningFailure,
+}
+
+/// Visibility level for operator-facing diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DiagnosticSeverity {
+    /// High-visibility event requiring operator intervention.
+    Critical,
+    /// Important, but not red-mode critical.
+    Warning,
+}
+
+/// Operator/event stream diagnostic entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnrollmentDiagnosticEvent {
+    /// Timestamp when event was emitted.
+    pub timestamp: u64,
+    /// Severity for UI rendering.
+    pub severity: DiagnosticSeverity,
+    /// Event type code for machine consumption.
+    pub code: String,
+    /// Human-readable message for operators.
+    pub message: String,
+    /// Optional classified failure category.
+    pub failure_class: Option<FailureClass>,
+}
+
+/// ATAK/plugin-friendly operational status hook.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperatorStatusHook {
+    /// Identity under management if known.
+    pub identity_id: Option<String>,
+    /// Current enrollment state label.
+    pub state: String,
+    /// Whether red mode is active.
+    pub red_mode: bool,
+    /// Active failure class when in red mode.
+    pub failure_class: Option<FailureClass>,
+    /// Most recent high-visibility diagnostic message.
+    pub latest_diagnostic: Option<String>,
+}
 
 /// Enrollment state for a platform.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -118,6 +172,18 @@ pub enum EnrollmentState {
         /// When failure occurred
         failed_at: u64,
     },
+
+    /// Fail-visible state for hard failures; trust publication must be blocked.
+    RedMode {
+        /// Identity ID (if available)
+        identity_id: Option<String>,
+        /// Explicit hard failure class.
+        failure_class: FailureClass,
+        /// Operator-facing failure detail.
+        error: String,
+        /// When red mode was entered.
+        entered_at: u64,
+    },
 }
 
 /// Errors that can occur during enrollment.
@@ -159,6 +225,10 @@ pub enum EnrollmentError {
     #[error("Invalid state transition: {0}")]
     InvalidTransition(String),
 
+    /// Operation is blocked because system is in red mode.
+    #[error("Red mode active: trust publication blocked ({0})")]
+    RedModeActive(String),
+
     /// Generic enrollment error
     #[error("Enrollment error: {0}")]
     Other(String),
@@ -185,6 +255,8 @@ pub struct EnrollmentStateMachine {
     current_state: EnrollmentState,
     /// History of state transitions for audit
     history: VecDeque<StateTransition>,
+    /// High-visibility diagnostics for operator consumption.
+    diagnostics: VecDeque<EnrollmentDiagnosticEvent>,
 }
 
 impl EnrollmentStateMachine {
@@ -193,6 +265,7 @@ impl EnrollmentStateMachine {
         Self {
             current_state: EnrollmentState::Uninitialized,
             history: VecDeque::with_capacity(MAX_HISTORY_SIZE),
+            diagnostics: VecDeque::with_capacity(MAX_DIAGNOSTICS_SIZE),
         }
     }
 
@@ -204,6 +277,16 @@ impl EnrollmentStateMachine {
     /// Get the state transition history.
     pub fn history(&self) -> &VecDeque<StateTransition> {
         &self.history
+    }
+
+    /// Get operator-facing diagnostics/events.
+    pub fn diagnostics(&self) -> &VecDeque<EnrollmentDiagnosticEvent> {
+        &self.diagnostics
+    }
+
+    /// Whether the platform is currently in fail-visible red mode.
+    pub fn is_in_red_mode(&self) -> bool {
+        matches!(self.current_state, EnrollmentState::RedMode { .. })
     }
 
     /// Check if the platform is in a trusted state.
@@ -343,6 +426,18 @@ impl EnrollmentStateMachine {
         certificate_serial: String,
         trust_score: f64,
     ) -> Result<(), EnrollmentError> {
+        if self.is_in_red_mode() {
+            self.emit_diagnostic(
+                DiagnosticSeverity::Critical,
+                "TRUST_PUBLICATION_BLOCKED",
+                "Trust publication blocked while red mode is active".to_string(),
+                self.active_failure_class(),
+            );
+            return Err(EnrollmentError::RedModeActive(
+                "certificate validation denied".to_string(),
+            ));
+        }
+
         match &self.current_state {
             EnrollmentState::Provisioned { identity_id, .. } => {
                 let now = current_timestamp();
@@ -374,7 +469,83 @@ impl EnrollmentStateMachine {
             failed_at: now,
         };
         self.transition(new_state, Some(format!("Enrollment failed: {}", error)))?;
+        self.emit_diagnostic(
+            DiagnosticSeverity::Warning,
+            "ENROLLMENT_FAILURE",
+            error.to_string(),
+            None,
+        );
         Ok(())
+    }
+
+    /// Transition: Any → RedMode for hard failures.
+    pub fn on_hard_failure(
+        &mut self,
+        failure_class: FailureClass,
+        error: String,
+    ) -> Result<(), EnrollmentError> {
+        let identity_id = self.extract_identity_id();
+        let now = current_timestamp();
+        let failure_class_for_event = failure_class.clone();
+
+        let new_state = EnrollmentState::RedMode {
+            identity_id,
+            failure_class,
+            error: error.clone(),
+            entered_at: now,
+        };
+
+        self.transition(
+            new_state,
+            Some(format!("Hard failure triggered red mode: {}", error)),
+        )?;
+
+        self.emit_diagnostic(
+            DiagnosticSeverity::Critical,
+            "RED_MODE_ENTERED",
+            error,
+            Some(failure_class_for_event),
+        );
+
+        Ok(())
+    }
+
+    /// Clear red mode after operator intervention.
+    pub fn clear_red_mode_to_uninitialized(&mut self) -> Result<(), EnrollmentError> {
+        match self.current_state {
+            EnrollmentState::RedMode { .. } => {
+                self.transition(
+                    EnrollmentState::Uninitialized,
+                    Some("Operator cleared red mode".to_string()),
+                )?;
+                self.emit_diagnostic(
+                    DiagnosticSeverity::Warning,
+                    "RED_MODE_CLEARED",
+                    "Operator cleared red mode; enrollment reset".to_string(),
+                    None,
+                );
+                Ok(())
+            }
+            _ => Err(EnrollmentError::InvalidTransition(
+                "Can only clear red mode from RedMode state".to_string(),
+            )),
+        }
+    }
+
+    /// Trust publication gate.
+    pub fn can_publish_trust(&self) -> bool {
+        !self.is_in_red_mode() && self.is_trusted()
+    }
+
+    /// Build operator-visible status for ATAK plugin consumption.
+    pub fn operator_status_hook(&self) -> OperatorStatusHook {
+        OperatorStatusHook {
+            identity_id: self.extract_identity_id(),
+            state: format!("{:?}", self.current_state),
+            red_mode: self.is_in_red_mode(),
+            failure_class: self.active_failure_class(),
+            latest_diagnostic: self.diagnostics.back().map(|d| d.message.clone()),
+        }
     }
 
     /// Execute Great Gospel - revoke the platform (any state → Revoked).
@@ -444,7 +615,34 @@ impl EnrollmentStateMachine {
             EnrollmentState::Trusted { identity_id, .. } => Some(identity_id.clone()),
             EnrollmentState::Revoked { identity_id, .. } => Some(identity_id.clone()),
             EnrollmentState::Failed { identity_id, .. } => identity_id.clone(),
+            EnrollmentState::RedMode { identity_id, .. } => identity_id.clone(),
         }
+    }
+
+    fn active_failure_class(&self) -> Option<FailureClass> {
+        match &self.current_state {
+            EnrollmentState::RedMode { failure_class, .. } => Some(failure_class.clone()),
+            _ => None,
+        }
+    }
+
+    fn emit_diagnostic(
+        &mut self,
+        severity: DiagnosticSeverity,
+        code: &str,
+        message: String,
+        failure_class: Option<FailureClass>,
+    ) {
+        if self.diagnostics.len() >= MAX_DIAGNOSTICS_SIZE {
+            self.diagnostics.pop_front();
+        }
+        self.diagnostics.push_back(EnrollmentDiagnosticEvent {
+            timestamp: current_timestamp(),
+            severity,
+            code: code.to_string(),
+            message,
+            failure_class,
+        });
     }
 }
 
@@ -631,6 +829,80 @@ mod tests {
         .unwrap();
 
         assert!(matches!(sm.current_state(), EnrollmentState::Failed { .. }));
+        assert!(matches!(
+            sm.diagnostics().back(),
+            Some(EnrollmentDiagnosticEvent {
+                code,
+                severity: DiagnosticSeverity::Warning,
+                ..
+            }) if code == "ENROLLMENT_FAILURE"
+        ));
+    }
+
+    #[test]
+    fn test_hard_failure_enters_red_mode_and_blocks_trust_publication() {
+        let mut sm = EnrollmentStateMachine::new();
+        sm.on_identity_generated("platform-red-001".to_string())
+            .unwrap();
+
+        sm.on_hard_failure(
+            FailureClass::IntegrityFailure,
+            "TPM quote did not match baseline".to_string(),
+        )
+        .unwrap();
+
+        assert!(sm.is_in_red_mode());
+        assert!(!sm.can_publish_trust());
+        assert!(matches!(
+            sm.current_state(),
+            EnrollmentState::RedMode { .. }
+        ));
+
+        let validation = sm.on_certificate_validated("cert-blocked".to_string(), 1.0);
+        assert!(matches!(validation, Err(EnrollmentError::RedModeActive(_))));
+
+        let latest = sm.diagnostics().back().unwrap();
+        assert_eq!(latest.code, "TRUST_PUBLICATION_BLOCKED");
+        assert_eq!(latest.severity, DiagnosticSeverity::Critical);
+    }
+
+    #[test]
+    fn test_operator_hook_exposes_red_mode_for_atak_plugin() {
+        let mut sm = EnrollmentStateMachine::new();
+        sm.on_identity_generated("platform-red-002".to_string())
+            .unwrap();
+        sm.on_hard_failure(
+            FailureClass::SigningFailure,
+            "Device key refused signing operation".to_string(),
+        )
+        .unwrap();
+
+        let hook = sm.operator_status_hook();
+        assert!(hook.red_mode);
+        assert_eq!(hook.failure_class, Some(FailureClass::SigningFailure));
+        assert!(hook
+            .latest_diagnostic
+            .unwrap()
+            .contains("Device key refused signing operation"));
+    }
+
+    #[test]
+    fn test_transition_out_of_red_mode_by_operator_reset() {
+        let mut sm = EnrollmentStateMachine::new();
+        sm.on_identity_generated("platform-red-003".to_string())
+            .unwrap();
+        sm.on_hard_failure(
+            FailureClass::TrustBootstrapFailure,
+            "Missing bootstrap root certificate".to_string(),
+        )
+        .unwrap();
+
+        sm.clear_red_mode_to_uninitialized().unwrap();
+        assert_eq!(*sm.current_state(), EnrollmentState::Uninitialized);
+        assert!(!sm.is_in_red_mode());
+
+        let last = sm.diagnostics().back().unwrap();
+        assert_eq!(last.code, "RED_MODE_CLEARED");
     }
 
     #[test]
