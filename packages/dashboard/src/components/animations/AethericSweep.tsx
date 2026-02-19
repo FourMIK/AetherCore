@@ -48,6 +48,12 @@ interface Node {
   status: NodeHealthStatus;
   trustScore: number;
   lastSeenNs: number;
+  rootAgreementRatio?: number;
+  chainBreakCount?: number;
+  signatureFailureCount?: number;
+  payloadFreshnessMs?: number;
+  payloadSignatureValid?: boolean;
+  isStalePayload?: boolean;
   beingPurged?: boolean;
   purgeReason?: RevocationReason;
 }
@@ -77,7 +83,61 @@ interface MeshHealthMessage {
     chain_break_count: number;
     signature_failure_count: number;
   };
+  payload_freshness_ms?: number;
+  payload_signature_valid?: boolean;
+  stale_payload?: boolean;
 }
+
+type SeverityLevel = 'high' | 'medium' | 'low';
+
+const STALE_PAYLOAD_THRESHOLD_MS = 30_000;
+
+const getSeverityLevel = (trustPercent: number): SeverityLevel => {
+  if (trustPercent >= 80) return 'high';
+  if (trustPercent >= 50) return 'medium';
+  return 'low';
+};
+
+const getTrustLevelLabel = (severity: SeverityLevel): string => {
+  if (severity === 'high') return 'High';
+  if (severity === 'medium') return 'Medium';
+  return 'Low';
+};
+
+const getNodeFreshnessAgeMs = (node: Node): number => {
+  const lastSeenMs = Math.floor(node.lastSeenNs / 1_000_000);
+  return Math.max(Date.now() - lastSeenMs, 0);
+};
+
+const isNodePayloadStale = (node: Node): boolean => {
+  if (node.isStalePayload) return true;
+  if (typeof node.payloadFreshnessMs === 'number') {
+    return node.payloadFreshnessMs > STALE_PAYLOAD_THRESHOLD_MS;
+  }
+  return getNodeFreshnessAgeMs(node) > STALE_PAYLOAD_THRESHOLD_MS;
+};
+
+const hasInvalidPayloadSignature = (node: Node): boolean => {
+  if (node.payloadSignatureValid === false) return true;
+  return (node.signatureFailureCount ?? 0) > 0;
+};
+
+const getMeshIntegrityLabel = (node: Node): string => {
+  if (hasInvalidPayloadSignature(node)) return 'Invalid signature';
+  if (isNodePayloadStale(node)) return 'Stale payload';
+  if (node.status === NodeHealthStatus.COMPROMISED) return 'Compromised';
+  if (node.status === NodeHealthStatus.DEGRADED) return 'Degraded';
+  if (node.status === NodeHealthStatus.UNKNOWN) return 'Unknown';
+  return 'Healthy';
+};
+
+const getNodeVisualStatus = (node: Node): NodeHealthStatus => {
+  if (hasInvalidPayloadSignature(node)) return NodeHealthStatus.COMPROMISED;
+  if (isNodePayloadStale(node) && node.status === NodeHealthStatus.HEALTHY) {
+    return NodeHealthStatus.DEGRADED;
+  }
+  return node.status;
+};
 
 /**
  * Props for AethericSweep component
@@ -115,6 +175,7 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
 }) => {
   const [nodes, setNodes] = useState<Map<string, Node>>(new Map());
   const [purgeAnimations, setPurgeAnimations] = useState<Map<string, number>>(new Map());
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const animationFrameRef = useRef<number>();
@@ -193,6 +254,12 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
         status: message.status,
         trustScore: message.trust_score,
         lastSeenNs: message.last_seen_ns,
+        rootAgreementRatio: message.metrics.root_agreement_ratio,
+        chainBreakCount: message.metrics.chain_break_count,
+        signatureFailureCount: message.metrics.signature_failure_count,
+        payloadFreshnessMs: message.payload_freshness_ms,
+        payloadSignatureValid: message.payload_signature_valid,
+        isStalePayload: message.stale_payload,
         beingPurged: existingNode?.beingPurged ?? false,
         purgeReason: existingNode?.purgeReason,
       };
@@ -302,13 +369,15 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
 
     // Determine color based on status and trust score
     let color = '#00ff88'; // HEALTHY (green)
+    const visualStatus = getNodeVisualStatus(node);
+
     if (node.beingPurged) {
       color = '#ff0044'; // PURGED (red)
-    } else if (node.status === NodeHealthStatus.COMPROMISED) {
+    } else if (visualStatus === NodeHealthStatus.COMPROMISED) {
       color = '#ff4400';
-    } else if (node.status === NodeHealthStatus.DEGRADED) {
+    } else if (visualStatus === NodeHealthStatus.DEGRADED) {
       color = '#ffaa00';
-    } else if (node.status === NodeHealthStatus.UNKNOWN) {
+    } else if (visualStatus === NodeHealthStatus.UNKNOWN) {
       color = '#888888';
     }
 
@@ -330,6 +399,11 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
     ctx.font = '10px monospace';
     ctx.textAlign = 'center';
     ctx.fillText(node.id, node.x, node.y + radius + 15);
+
+    const trustPercent = Math.max(0, Math.min(100, node.trustScore * 100));
+    const trustLevel = getTrustLevelLabel(getSeverityLevel(trustPercent));
+    ctx.fillStyle = '#9cc4ff';
+    ctx.fillText(`${trustPercent.toFixed(0)}% • ${trustLevel}`, node.x, node.y - radius - 10);
 
     // Pulsing effect for purged nodes
     if (node.beingPurged) {
@@ -376,6 +450,24 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
         ref={canvasRef}
         width={width}
         height={height}
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const clickX = event.clientX - rect.left;
+          const clickY = event.clientY - rect.top;
+
+          let nearestId: string | null = null;
+          let nearestDistance = Number.POSITIVE_INFINITY;
+
+          nodes.forEach((node) => {
+            const distance = Math.hypot(node.x - clickX, node.y - clickY);
+            if (distance < 24 && distance < nearestDistance) {
+              nearestDistance = distance;
+              nearestId = node.id;
+            }
+          });
+
+          setSelectedNodeId(nearestId);
+        }}
         style={{ display: 'block' }}
       />
       <div
@@ -394,19 +486,82 @@ export const AethericSweep: React.FC<AethericSweepProps> = ({
         <div>Mesh Nodes: {nodes.size}</div>
         <div>
           Healthy:{' '}
-          {Array.from(nodes.values()).filter((n) => n.status === NodeHealthStatus.HEALTHY).length}
+          {Array.from(nodes.values()).filter((n) => getNodeVisualStatus(n) === NodeHealthStatus.HEALTHY).length}
         </div>
         <div>
           Degraded:{' '}
-          {Array.from(nodes.values()).filter((n) => n.status === NodeHealthStatus.DEGRADED).length}
+          {Array.from(nodes.values()).filter((n) => getNodeVisualStatus(n) === NodeHealthStatus.DEGRADED).length}
         </div>
         <div>
           Compromised:{' '}
-          {Array.from(nodes.values()).filter((n) => n.status === NodeHealthStatus.COMPROMISED)
+          {Array.from(nodes.values()).filter((n) => getNodeVisualStatus(n) === NodeHealthStatus.COMPROMISED)
             .length}
         </div>
         <div>Active Purges: {purgeAnimations.size}</div>
       </div>
+      {selectedNodeId && nodes.get(selectedNodeId) && (
+        <div
+          data-testid="node-detail-panel"
+          style={{
+            position: 'absolute',
+            top: 10,
+            right: 10,
+            color: '#d8e6ff',
+            fontFamily: 'monospace',
+            fontSize: '12px',
+            backgroundColor: 'rgba(9, 14, 26, 0.92)',
+            border: '1px solid rgba(255,255,255,0.16)',
+            padding: '10px 12px',
+            borderRadius: '6px',
+            minWidth: '230px',
+          }}
+        >
+          {(() => {
+            const node = nodes.get(selectedNodeId)!;
+            const trustPercent = Math.max(0, Math.min(100, node.trustScore * 100));
+            const severity = getSeverityLevel(trustPercent);
+            const trustColor = severity === 'high' ? '#00ff88' : severity === 'medium' ? '#ffaa00' : '#ff4400';
+            const freshnessMs = node.payloadFreshnessMs ?? getNodeFreshnessAgeMs(node);
+            const stale = isNodePayloadStale(node);
+            const invalidSignature = hasInvalidPayloadSignature(node);
+            const integrity = getMeshIntegrityLabel(node);
+
+            return (
+              <>
+                <div style={{ marginBottom: 8, fontWeight: 700 }}>Node {node.id}</div>
+                <div>Trust Percent: <span style={{ color: trustColor }}>{trustPercent.toFixed(0)}%</span></div>
+                <div>
+                  Trust Level: <span style={{ color: trustColor, border: `1px solid ${trustColor}`, padding: '0 6px', borderRadius: 999 }}>{getTrustLevelLabel(severity)}</span>
+                </div>
+                <div>
+                  Mesh Integrity Status:{' '}
+                  <span style={{ color: invalidSignature ? '#ff4400' : stale ? '#ffaa00' : '#00ff88' }}>
+                    {integrity}
+                  </span>
+                </div>
+                <div>
+                  Freshness Indicator:{' '}
+                  <span style={{ color: stale ? '#ffaa00' : '#00ff88' }}>
+                    {stale ? 'Stale' : 'Fresh'} ({freshnessMs.toFixed(0)}ms)
+                  </span>
+                </div>
+                <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.16)', paddingTop: 8 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Integrity Metrics</div>
+                  <div>Root Agreement: {((node.rootAgreementRatio ?? 0) * 100).toFixed(1)}%</div>
+                  <div>Chain Breaks: {node.chainBreakCount ?? 0}</div>
+                  <div>Signature Failures: {node.signatureFailureCount ?? 0}</div>
+                </div>
+                {invalidSignature && (
+                  <div style={{ marginTop: 8, color: '#ff4400' }}>Error: Invalid signature payload</div>
+                )}
+                {!invalidSignature && stale && (
+                  <div style={{ marginTop: 8, color: '#ffaa00' }}>Warning: Stale payload window exceeded</div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 };
