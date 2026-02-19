@@ -64,10 +64,10 @@ class AndroidEnrollmentKeyManager(
     fun buildEnrollmentProvePayload(challenge: ByteArray): EnrollmentProvePayload {
         val artifact = collectAttestation(challenge)
         return EnrollmentProvePayload(
-            alias = artifact.alias,
-            securityLevel = artifact.securityLevel.name,
+            keyAlias = artifact.alias,
+            keySecurityLevel = artifact.securityLevel.name,
             challengeB64 = challenge.toB64(),
-            certificateChainB64 = artifact.certificateChainDer.map { it.toB64() }
+            attestationChainB64 = artifact.certificateChainDer.map { it.toB64() }
         )
     }
 }

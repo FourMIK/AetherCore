@@ -14,8 +14,8 @@ data class AttestationArtifact(
 )
 
 data class EnrollmentProvePayload(
-    val alias: String,
-    val securityLevel: String,
+    val keyAlias: String,
+    val keySecurityLevel: String,
     val challengeB64: String,
-    val certificateChainB64: List<String>
+    val attestationChainB64: List<String>
 )
