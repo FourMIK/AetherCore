@@ -7,6 +7,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::{TrustPolicyTier, TrustReasonCode};
+
 /// Trust level for federated identities based on attestation strength
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrustLevel {
@@ -52,6 +54,37 @@ impl TrustLevel {
             TrustLevel::FederatedDegraded
         } else {
             TrustLevel::FederatedVerified
+        }
+    }
+
+    /// Compute trust level from evaluated device policy.
+    pub fn from_policy(
+        tier: TrustPolicyTier,
+        reason_codes: &[TrustReasonCode],
+        schema_valid: bool,
+        is_stale: bool,
+    ) -> Self {
+        if !schema_valid {
+            return TrustLevel::Spoofed;
+        }
+        if is_stale {
+            return TrustLevel::FederatedDegraded;
+        }
+        if reason_codes.iter().any(|code| {
+            matches!(
+                code,
+                TrustReasonCode::BootStateUnverified
+                    | TrustReasonCode::BootloaderUnlocked
+                    | TrustReasonCode::PatchLevelMissing
+                    | TrustReasonCode::PatchLevelTooOld
+            )
+        }) {
+            return TrustLevel::FederatedDegraded;
+        }
+
+        match tier {
+            TrustPolicyTier::Highest | TrustPolicyTier::MediumHigh => TrustLevel::HardwareAttested,
+            TrustPolicyTier::LowUnverified => TrustLevel::FederatedDegraded,
         }
     }
 }
@@ -252,6 +285,31 @@ mod tests {
         );
         assert_eq!(
             TrustLevel::from_attestation(false, false, false),
+            TrustLevel::Spoofed
+        );
+    }
+
+    #[test]
+    fn test_trust_level_from_policy() {
+        assert_eq!(
+            TrustLevel::from_policy(TrustPolicyTier::Highest, &[], true, false),
+            TrustLevel::HardwareAttested
+        );
+        assert_eq!(
+            TrustLevel::from_policy(
+                TrustPolicyTier::MediumHigh,
+                &[TrustReasonCode::PatchLevelTooOld],
+                true,
+                false,
+            ),
+            TrustLevel::FederatedDegraded
+        );
+        assert_eq!(
+            TrustLevel::from_policy(TrustPolicyTier::LowUnverified, &[], true, false),
+            TrustLevel::FederatedDegraded
+        );
+        assert_eq!(
+            TrustLevel::from_policy(TrustPolicyTier::Highest, &[], false, false),
             TrustLevel::Spoofed
         );
     }
