@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.aethercore.atak.trustoverlay">
+
+    <application
+        android:allowBackup="false"
+        android:label="AetherCore Trust Overlay"
+        android:supportsRtl="true">
+
+        <meta-data
+            android:name="com.atakmap.android.plugin"
+            android:resource="@xml/trust_overlay_plugin" />
+
+        <receiver
+            android:name=".core.TrustOverlayPluginReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.atakmap.android.maps.MAP_COMPONENT" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<plugin
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/trust_overlay_description"
+    android:label="@string/trust_overlay_name">
+
+    <component
+        android:name="com.aethercore.atak.trustoverlay.core.TrustOverlayMapComponent"
+        android:value="mapComponent" />
+
+    <meta-data
+        android:name="trustWidgetEnabledByDefault"
+        android:value="true" />
+</plugin>
