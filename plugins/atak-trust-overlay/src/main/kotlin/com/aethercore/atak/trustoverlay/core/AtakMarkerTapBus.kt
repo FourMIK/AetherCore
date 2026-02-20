@@ -43,8 +43,12 @@ class AtakMarkerTapBus(
         ) { _, _, args ->
             val event = args?.firstOrNull() ?: return@newProxyInstance null
             val item = invokeIfPresent(event, "getItem") ?: invokeIfPresent(event, "getMapItem")
-            val rawUid = extractUid(item) ?: extractUid(event) ?: return@newProxyInstance null
-            val markerId = if (rawUid.startsWith(TRUST_MARKER_PREFIX)) rawUid else "$TRUST_MARKER_PREFIX$rawUid"
+            val markerId = TrustMarkerTapFilter.extractTrustMarkerId(item, event)
+            if (markerId == null) {
+                val rawUid = extractUid(item) ?: extractUid(event)
+                logger.d("Ignoring non-trust marker tap uid=${rawUid ?: "unknown"}")
+                return@newProxyInstance null
+            }
             handler(MarkerHandle(markerId))
             null
         }
@@ -124,6 +128,58 @@ class AtakMarkerTapBus(
 
     private companion object {
         val DEFAULT_TAP_EVENT_TYPES = listOf("ITEM_CLICK", "ITEM_TAP")
-        const val TRUST_MARKER_PREFIX = "trust:"
+        const val TRUST_MARKER_PREFIX = TrustMarkerTapFilter.TRUST_MARKER_PREFIX
     }
+}
+
+internal object TrustMarkerTapFilter {
+    const val TRUST_MARKER_PREFIX = "trust:"
+    private val TRUST_METADATA_KEYS = listOf("trust.present", "trust.marker", "aethercore.trust")
+
+    fun extractTrustMarkerId(item: Any?, event: Any?): String? {
+        val rawUid = extractUid(item) ?: extractUid(event) ?: return null
+        if (rawUid.startsWith(TRUST_MARKER_PREFIX)) {
+            return rawUid
+        }
+
+        val isTrustTap = hasTrustMetadataFlag(item) || hasTrustMetadataFlag(event)
+        return rawUid.takeIf { isTrustTap }
+    }
+
+    private fun extractUid(target: Any?): String? {
+        if (target == null) {
+            return null
+        }
+
+        val uid = invokeIfPresent(target, "getUID") as? String
+            ?: invokeIfPresent(target, "getUid") as? String
+            ?: invokeIfPresent(target, "getMetaString", "uid", "") as? String
+            ?: invokeIfPresent(target, "getMetaString", "UID", "") as? String
+
+        return uid?.takeIf { it.isNotBlank() }
+    }
+
+    private fun hasTrustMetadataFlag(target: Any?): Boolean {
+        if (target == null) {
+            return false
+        }
+
+        return TRUST_METADATA_KEYS.any { key ->
+            val boolValue = invokeIfPresent(target, "getMetaBoolean", key, false) as? Boolean
+            if (boolValue == true) {
+                true
+            } else {
+                val stringValue = invokeIfPresent(target, "getMetaString", key, "") as? String
+                stringValue.isTrustTruthyValue()
+            }
+        }
+    }
+}
+
+private fun String?.isTrustTruthyValue(): Boolean {
+    val value = this?.trim()?.lowercase() ?: return false
+    if (value.isEmpty()) {
+        return false
+    }
+    return value != "false" && value != "0" && value != "no"
 }
