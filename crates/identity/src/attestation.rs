@@ -192,7 +192,7 @@ pub mod event {
     pub struct AttestationMetadata {
         /// Protocol version used
         pub protocol_version: u32,
-        /// Attestation type (TPM, Software, None)
+        /// Attestation type (TPM, Android, Software, None)
         pub attestation_type: String,
         /// Certificate chain length
         pub cert_chain_length: usize,
@@ -374,7 +374,7 @@ impl AttestationManager {
                     attestation_data: vec![],
                 })
             }
-            _ => None,
+            Attestation::Software { .. } | Attestation::Android { .. } | Attestation::None => None,
         };
 
         // Update state
@@ -901,7 +901,10 @@ fn verify_tpm_quote(quote: &crate::TpmQuote, identity: &PlatformIdentity) -> boo
         Attestation::Tpm { pcrs, .. } if !pcrs.is_empty() => {
             serde_json::from_slice::<Vec<crate::PcrValue>>(pcrs).ok()
         }
-        _ => None,
+        Attestation::Tpm { .. }
+        | Attestation::Software { .. }
+        | Attestation::Android { .. }
+        | Attestation::None => None,
     };
 
     if let Some(expected_pcrs) = expected_pcrs {
@@ -962,6 +965,7 @@ fn is_timestamp_fresh(timestamp: u64, now: u64, window_ms: u64) -> bool {
 fn calculate_trust_score(attestation: &Attestation) -> f64 {
     match attestation {
         Attestation::Tpm { .. } => 1.0,      // Highest trust
+        Attestation::Android { .. } => 0.9,  // High trust
         Attestation::Software { .. } => 0.7, // Medium trust
         Attestation::None => 0.0,            // No trust
     }

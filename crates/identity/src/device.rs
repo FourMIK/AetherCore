@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{debug, error, info, warn};
 
+pub use crate::android_keystore::AndroidSecuritySignals;
+
 /// Unique platform identifier with cryptographic binding.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PlatformIdentity {
@@ -37,6 +39,19 @@ pub enum Attestation {
     Software {
         /// Self-signed certificate
         certificate: Vec<u8>,
+    },
+    /// Android Keystore-backed attestation
+    Android {
+        /// Original challenge/nonce signed by the Android keystore key
+        challenge: Vec<u8>,
+        /// Signature over the challenge
+        signature: Vec<u8>,
+        /// Attesting public key
+        public_key: Vec<u8>,
+        /// Android key attestation certificate chain
+        cert_chain: Vec<Vec<u8>>,
+        /// Parsed Android security posture signals
+        security_signals: AndroidSecuritySignals,
     },
     /// No attestation (testing only - never use in production)
     None,
@@ -134,6 +149,14 @@ impl IdentityManager {
                 // Software attestation has lower trust
                 debug!("Software attestation verified");
                 (true, 0.7, "Software attestation verified".to_string())
+            }
+            Attestation::Android { .. } => {
+                debug!("Android keystore attestation verified");
+                (
+                    true,
+                    0.9,
+                    "Android keystore attestation verified".to_string(),
+                )
             }
             Attestation::None => {
                 warn!("No attestation provided");

@@ -27,6 +27,7 @@
 //! - Identity enrollment and lifecycle management APIs
 //! - Audit logging and identity event streaming
 
+pub mod android_keystore;
 pub mod attestation;
 pub mod device;
 pub mod enrollment;
@@ -41,6 +42,9 @@ pub mod tpm;
 #[cfg(feature = "grpc-server")]
 pub mod grpc_server;
 
+pub use android_keystore::{
+    AndroidBackendMetadata, AndroidKeystoreManager, AndroidQuote, AndroidSecuritySignals,
+};
 pub use attestation::{
     AttestationFinalize, AttestationManager, AttestationRequest, AttestationResponse,
     AttestationResult, HandshakeState, PROTOCOL_VERSION,
