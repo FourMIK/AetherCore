@@ -10,14 +10,6 @@
         <meta-data
             android:name="com.atakmap.android.plugin"
             android:resource="@xml/trust_overlay_plugin" />
-
-        <receiver
-            android:name=".core.TrustOverlayPluginReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.atakmap.app.COMPONENTS_CREATED" />
-            </intent-filter>
-        </receiver>
     </application>
 
 </manifest>
