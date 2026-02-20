@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-pub const CONFIG_SCHEMA_VERSION: u32 = 3;
+pub const CONFIG_SCHEMA_VERSION: u32 = 4;
 const LEGACY_CONFIG_FILE: &str = "config.json";
 const RUNTIME_CONFIG_FILE: &str = "runtime-config.json";
 
@@ -62,10 +62,29 @@ pub struct RuntimePorts {
     pub mesh: u16,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RuntimeTpmPolicy {
     pub mode: String,
     pub enforce_hardware: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeAttestationBackendPolicy {
+    pub mode: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeAttestationBackends {
+    pub tpm: RuntimeAttestationBackendPolicy,
+    #[serde(default)]
+    pub android_keystore: RuntimeAttestationBackendPolicy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RuntimeAttestationPolicy {
+    pub mode: String,
+    pub enforce_hardware: bool,
+    pub backends: RuntimeAttestationBackends,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,6 +114,8 @@ pub struct AppConfig {
     pub connection: RuntimeConnection,
     #[serde(default, alias = "tpm")]
     pub tpm_policy: RuntimeTpmPolicy,
+    #[serde(default, alias = "attestation")]
+    pub attestation_policy: RuntimeAttestationPolicy,
     #[serde(default)]
     pub ports: RuntimePorts,
     pub features: RuntimeFeatureFlags,
@@ -178,6 +199,44 @@ impl Default for RuntimeTpmPolicy {
     }
 }
 
+impl Default for RuntimeAttestationBackendPolicy {
+    fn default() -> Self {
+        Self {
+            mode: "optional".to_string(),
+        }
+    }
+}
+
+impl Default for RuntimeAttestationBackends {
+    fn default() -> Self {
+        Self {
+            tpm: RuntimeAttestationBackendPolicy::default(),
+            android_keystore: RuntimeAttestationBackendPolicy::default(),
+        }
+    }
+}
+
+impl RuntimeAttestationPolicy {
+    fn from_tpm_policy(tpm_policy: &RuntimeTpmPolicy) -> Self {
+        Self {
+            mode: tpm_policy.mode.clone(),
+            enforce_hardware: tpm_policy.enforce_hardware,
+            backends: RuntimeAttestationBackends {
+                tpm: RuntimeAttestationBackendPolicy {
+                    mode: tpm_policy.mode.clone(),
+                },
+                android_keystore: RuntimeAttestationBackendPolicy::default(),
+            },
+        }
+    }
+}
+
+impl Default for RuntimeAttestationPolicy {
+    fn default() -> Self {
+        Self::from_tpm_policy(&RuntimeTpmPolicy::default())
+    }
+}
+
 impl AppConfig {
     pub fn commander_local() -> Self {
         Self {
@@ -189,6 +248,7 @@ impl AppConfig {
                 mesh_endpoint: "ws://127.0.0.1:8080".to_string(),
             },
             tpm_policy: RuntimeTpmPolicy::default(),
+            attestation_policy: RuntimeAttestationPolicy::default(),
             ports: RuntimePorts::default(),
             features: RuntimeFeatureFlags {
                 allow_insecure_localhost: true,
@@ -210,6 +270,11 @@ impl AppConfig {
             tpm_policy: RuntimeTpmPolicy {
                 mode: "optional".to_string(),
                 enforce_hardware: false,
+            },
+            attestation_policy: RuntimeAttestationPolicy {
+                mode: "optional".to_string(),
+                enforce_hardware: false,
+                backends: RuntimeAttestationBackends::default(),
             },
             ports: RuntimePorts {
                 api: 443,
@@ -235,6 +300,16 @@ impl AppConfig {
             tpm_policy: RuntimeTpmPolicy {
                 mode: "required".to_string(),
                 enforce_hardware: true,
+            },
+            attestation_policy: RuntimeAttestationPolicy {
+                mode: "required".to_string(),
+                enforce_hardware: true,
+                backends: RuntimeAttestationBackends {
+                    tpm: RuntimeAttestationBackendPolicy {
+                        mode: "required".to_string(),
+                    },
+                    android_keystore: RuntimeAttestationBackendPolicy::default(),
+                },
             },
             ports: RuntimePorts {
                 api: 443,
@@ -289,6 +364,7 @@ impl AppConfig {
             } else {
                 "optional".to_string()
             };
+            self.attestation_policy = RuntimeAttestationPolicy::from_tpm_policy(&self.tpm_policy);
         }
 
         if let Ok(allow_insecure) = std::env::var("VITE_DEV_ALLOW_INSECURE_LOCALHOST") {
@@ -337,6 +413,22 @@ impl AppConfig {
                 .ok()
                 .and_then(|url| url.port_or_known_default())
                 .unwrap_or(default_mesh_port());
+        }
+
+        if self.attestation_policy == RuntimeAttestationPolicy::default()
+            && self.tpm_policy != RuntimeTpmPolicy::default()
+        {
+            self.attestation_policy = RuntimeAttestationPolicy::from_tpm_policy(&self.tpm_policy);
+        } else {
+            self.tpm_policy.mode = self.attestation_policy.backends.tpm.mode.clone();
+            self.tpm_policy.enforce_hardware = self.attestation_policy.enforce_hardware
+                && self
+                    .attestation_policy
+                    .backends
+                    .tpm
+                    .mode
+                    .to_ascii_lowercase()
+                    != "disabled";
         }
 
         self
@@ -504,6 +596,59 @@ impl ConfigManager {
             ));
         }
 
+        let attestation_mode = config.attestation_policy.mode.to_ascii_lowercase();
+        if attestation_mode != "required"
+            && attestation_mode != "optional"
+            && attestation_mode != "disabled"
+        {
+            return Err(ConfigError::ValidationError(
+                "attestation_policy.mode must be one of: required, optional, disabled".to_string(),
+            ));
+        }
+
+        let tpm_backend_mode = config
+            .attestation_policy
+            .backends
+            .tpm
+            .mode
+            .to_ascii_lowercase();
+        let android_backend_mode = config
+            .attestation_policy
+            .backends
+            .android_keystore
+            .mode
+            .to_ascii_lowercase();
+        for (backend, backend_mode) in [
+            ("tpm", tpm_backend_mode.as_str()),
+            ("android_keystore", android_backend_mode.as_str()),
+        ] {
+            if backend_mode != "required"
+                && backend_mode != "optional"
+                && backend_mode != "disabled"
+            {
+                return Err(ConfigError::ValidationError(format!(
+                    "attestation_policy.backends.{}.mode must be one of: required, optional, disabled",
+                    backend
+                )));
+            }
+
+            if attestation_mode == "disabled" && backend_mode == "required" {
+                return Err(ConfigError::ValidationError(format!(
+                    "attestation_policy.backends.{}.mode cannot be required when attestation_policy.mode is disabled",
+                    backend
+                )));
+            }
+        }
+
+        if attestation_mode == "required"
+            && tpm_backend_mode == "disabled"
+            && android_backend_mode == "disabled"
+        {
+            return Err(ConfigError::ValidationError(
+                "attestation_policy.mode is required but all backends are disabled".to_string(),
+            ));
+        }
+
         if config.connection_retry.max_retries == 0 {
             return Err(ConfigError::ValidationError(
                 "max_retries must be greater than 0".to_string(),
@@ -587,6 +732,33 @@ mod tests {
         let enterprise = AppConfig::enterprise_remote();
         assert_eq!(enterprise.profile, ConnectionProfile::EnterpriseRemote);
         assert!(enterprise.tpm_policy.enforce_hardware);
+    }
+
+    #[test]
+    fn test_migrate_tpm_policy_to_attestation_policy() {
+        let mut config = AppConfig::commander_local();
+        config.attestation_policy = RuntimeAttestationPolicy::default();
+        config.tpm_policy.mode = "required".to_string();
+        config.tpm_policy.enforce_hardware = true;
+
+        let migrated = config.migrate_legacy();
+
+        assert_eq!(migrated.attestation_policy.mode, "required");
+        assert_eq!(migrated.attestation_policy.backends.tpm.mode, "required");
+        assert!(migrated.attestation_policy.enforce_hardware);
+    }
+
+    #[test]
+    fn test_migrate_attestation_policy_to_tpm_policy_alias() {
+        let mut config = AppConfig::commander_local();
+        config.attestation_policy.mode = "optional".to_string();
+        config.attestation_policy.enforce_hardware = true;
+        config.attestation_policy.backends.tpm.mode = "disabled".to_string();
+
+        let migrated = config.migrate_legacy();
+
+        assert_eq!(migrated.tpm_policy.mode, "disabled");
+        assert!(!migrated.tpm_policy.enforce_hardware);
     }
 
     #[test]
