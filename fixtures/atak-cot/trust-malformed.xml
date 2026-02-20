@@ -1,0 +1,17 @@
+<event version="2.0"
+       uid="trust-malformed-001"
+       type="a-f-AETHERCORE-TRUST"
+       how="m-g"
+       time="2026-01-14T10:18:00Z"
+       start="2026-01-14T10:18:00Z"
+       stale="2026-01-14T10:16:00Z">
+  <point lat="34.120000" lon="-117.120000" hae="0.0" ce="50.0" le="50.0"/>
+  <detail>
+    <trust trust_score="1.30"
+           last_updated="2026-01-14T10:19:00Z"
+           trust_level="healthy"
+           integrity_packet_loss="-0.10"
+           integrity_clock_skew_ms="900000"
+           integrity_signature_fail_rate="1.50"/>
+  </detail>
+</event>
