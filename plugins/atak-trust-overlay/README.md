@@ -61,3 +61,20 @@ Required tools for JNI builds:
 ### 3) Preflight guards
 
 Both CMake and Gradle fail fast with clear errors when the JNI crate path is missing or invalid (`Cargo.toml` not found), so broken local setup is detected before long native builds run.
+
+
+## Troubleshooting JNI setup
+
+Common fail-fast errors and fixes:
+
+- **"AetherCore JNI crate not found" (Gradle/CMake)**
+  - Confirm the crate exists at `external/aethercore-jni`, or set `aethercore.jni.dir=/abs/path` in `plugins/atak-trust-overlay/local.properties`.
+  - If building from CMake directly, pass `-DAETHERCORE_JNI_DIR=/abs/path`.
+- **"missing Cargo.toml"**
+  - Ensure `Cargo.toml` is at the crate root and that it defines a library target named `aethercore_jni` with `crate-type = ["cdylib"]`.
+- **"cargo was not found on PATH"**
+  - Install Rust via `rustup` and restart Android Studio so its integrated terminal inherits the updated `PATH`.
+- **"cargo-ndk is required but was not found"**
+  - Install with `cargo install cargo-ndk` and verify with `cargo ndk --version`.
+- **Android NDK/CMake toolchain errors**
+  - Install the Android NDK from Android Studio SDK Manager and ensure your project points to that SDK/NDK installation.
