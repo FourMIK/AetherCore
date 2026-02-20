@@ -5,8 +5,8 @@
     android:label="@string/trust_overlay_name">
 
     <component
-        android:name="com.aethercore.atak.trustoverlay.core.TrustOverlayMapComponent"
-        android:value="mapComponent" />
+        android:name="com.aethercore.atak.trustoverlay.core.TrustOverlayLifecycle"
+        android:value="lifecycle" />
 
     <meta-data
         android:name="trustWidgetEnabledByDefault"
