@@ -9,6 +9,9 @@ import com.aethercore.atak.trustoverlay.atak.Subscription
 import com.atakmap.comms.CotServiceRemote
 import com.atakmap.coremap.cot.event.CotEvent
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class AtakCotBus(
@@ -18,7 +21,11 @@ class AtakCotBus(
 ) : CotBus {
     private val subscriptions = CopyOnWriteArrayList<SubscriptionState>()
     private val bound = AtomicBoolean(false)
+    private val stopped = AtomicBoolean(false)
     private val cotRemote = CotServiceRemote()
+    private val retryExecutor = Executors.newSingleThreadScheduledExecutor()
+    @Volatile
+    private var pendingRetry: ScheduledFuture<*>? = null
 
     init {
         bindWithBackoff()
@@ -37,6 +44,9 @@ class AtakCotBus(
     fun isBound(): Boolean = bound.get()
 
     fun stop() {
+        stopped.set(true)
+        pendingRetry?.cancel(false)
+        retryExecutor.shutdownNow()
         runCatching {
             cotRemote.setCotEventListener(null)
             bound.set(false)
@@ -48,24 +58,48 @@ class AtakCotBus(
     }
 
     private fun bindWithBackoff(maxAttempts: Int = 4, initialDelayMs: Long = 250L) {
-        var delayMs = initialDelayMs
-        var attempt = 1
-        while (attempt <= maxAttempts && !bound.get()) {
-            if (attempt > 1) {
-                Thread.sleep(delayMs)
-                delayMs *= 2
-            }
-            bindOnce(attempt)
-            attempt += 1
-        }
-
-        if (!bound.get()) {
-            onFeedDegraded("CoT listener unavailable after retries")
-        }
+        scheduleBindAttempt(attempt = 1, maxAttempts = maxAttempts, initialDelayMs = initialDelayMs, delayMs = 0L)
     }
 
-    private fun bindOnce(attempt: Int) {
-        runCatching {
+    private fun scheduleBindAttempt(
+        attempt: Int,
+        maxAttempts: Int,
+        initialDelayMs: Long,
+        delayMs: Long,
+    ) {
+        if (stopped.get() || bound.get()) {
+            return
+        }
+
+        pendingRetry = retryExecutor.schedule({
+            if (stopped.get() || bound.get()) {
+                return@schedule
+            }
+
+            val boundOnAttempt = bindOnce(attempt)
+            if (boundOnAttempt || stopped.get()) {
+                return@schedule
+            }
+
+            if (attempt >= maxAttempts) {
+                if (!bound.get() && !stopped.get()) {
+                    onFeedDegraded("CoT listener unavailable after retries")
+                }
+                return@schedule
+            }
+
+            val nextDelayMs = initialDelayMs * (1L shl (attempt - 1))
+            scheduleBindAttempt(
+                attempt = attempt + 1,
+                maxAttempts = maxAttempts,
+                initialDelayMs = initialDelayMs,
+                delayMs = nextDelayMs,
+            )
+        }, delayMs, TimeUnit.MILLISECONDS)
+    }
+
+    private fun bindOnce(attempt: Int): Boolean {
+        return runCatching {
             cotRemote.setCotEventListener(object : CotServiceRemote.CotEventListener {
                 override fun onCotEvent(event: CotEvent, extra: Bundle) {
                     val envelope = event.toEnvelope()
@@ -74,10 +108,11 @@ class AtakCotBus(
             })
             bound.set(true)
             logger.d("ATAK CoT listener bound on attempt $attempt")
+            true
         }.onFailure { throwable ->
             bound.set(false)
             onFeedDegraded("CoT bind attempt $attempt failed: ${throwable.message}")
-        }
+        }.getOrDefault(false)
     }
 
     private fun dispatch(envelope: CotEventEnvelope) {
