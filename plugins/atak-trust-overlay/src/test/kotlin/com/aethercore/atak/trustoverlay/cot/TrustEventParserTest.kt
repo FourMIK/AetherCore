@@ -5,6 +5,7 @@ import com.aethercore.atak.trustoverlay.atak.Logger
 import com.aethercore.atak.trustoverlay.core.TrustLevel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TrustEventParserTest {
@@ -20,8 +21,19 @@ class TrustEventParserTest {
 
         assertEquals(TrustLevel.HIGH, healthy?.level)
         assertEquals(95, healthy?.score)
+        assertEquals(0.95, healthy?.trustScore)
         assertEquals(TrustLevel.MEDIUM, suspect?.level)
         assertEquals(TrustLevel.LOW, quarantined?.level)
+    }
+
+    @Test
+    fun `extracts metrics and source metadata when present`() {
+        val parser = TrustEventParser(logger, allowedSources = setOf("aethercore"))
+        val event = parser.parse(baseEnvelope())
+
+        assertEquals(0.02, event?.metrics?.get("packet_loss"))
+        assertEquals("mesh-gw-1", event?.sourceMetadata?.get("gateway"))
+        assertTrue(event?.sourceMetadata?.containsKey("cluster") == true)
     }
 
     @Test
@@ -32,6 +44,7 @@ class TrustEventParserTest {
         val malformed = baseEnvelope(score = "1.3")
         assertNull(parser.parse(malformed))
         assertEquals(before + 1L, parser.badEventCount())
+        assertEquals("trust_score_out_of_bounds", parser.mostRecentBadEventReason())
     }
 
     @Test
@@ -64,6 +77,8 @@ class TrustEventParserTest {
             "trust.uid" to detailUid,
             "detail" to "present",
             "integrity_packet_loss" to "0.02",
+            "source_meta.gateway" to "mesh-gw-1",
+            "event.source.cluster" to "alpha",
         ),
     )
 

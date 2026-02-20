@@ -5,6 +5,7 @@ import com.aethercore.atak.trustoverlay.atak.MarkerModel
 import com.aethercore.atak.trustoverlay.core.ResolvedTrustState
 import com.aethercore.atak.trustoverlay.core.TrustEvent
 import com.aethercore.atak.trustoverlay.core.TrustLevel
+import java.util.Locale
 
 class TrustMarkerRenderer(
     private val mapView: MapView,
@@ -18,11 +19,11 @@ class TrustMarkerRenderer(
                 lon = event.lon,
                 title = event.callsign,
                 subtitle = if (state.stale) {
-                    "Trust ${event.score} (Unknown/Stale)"
+                    "Trust ${formatTrustScore(event.trustScore)} (Stale)"
                 } else {
-                    "Trust ${event.score} (${state.displayLevel.name})"
+                    "Trust ${formatTrustScore(event.trustScore)} (${labelFor(state.displayLevel)})"
                 },
-                iconKey = iconFor(state.displayLevel),
+                iconKey = iconFor(state.displayLevel, state.stale),
             ),
         )
     }
@@ -45,12 +46,27 @@ class TrustMarkerRenderer(
         mapView.removeMarker(markerId(uid))
     }
 
-    private fun iconFor(level: TrustLevel): String = when (level) {
-        TrustLevel.HIGH -> "trust_marker_green"
-        TrustLevel.MEDIUM -> "trust_marker_yellow"
-        TrustLevel.LOW -> "trust_marker_red"
-        TrustLevel.UNKNOWN -> "trust_marker_gray"
+    private fun iconFor(level: TrustLevel, stale: Boolean): String {
+        if (stale || level == TrustLevel.LOW || level == TrustLevel.UNKNOWN) {
+            return "trust_marker_red"
+        }
+
+        return when (level) {
+            TrustLevel.HIGH -> "trust_marker_green"
+            TrustLevel.MEDIUM -> "trust_marker_amber"
+            TrustLevel.LOW -> "trust_marker_red"
+            TrustLevel.UNKNOWN -> "trust_marker_red"
+        }
     }
+
+    private fun labelFor(level: TrustLevel): String = when (level) {
+        TrustLevel.HIGH -> "Healthy"
+        TrustLevel.MEDIUM -> "Suspect"
+        TrustLevel.LOW -> "Quarantined"
+        TrustLevel.UNKNOWN -> "Unknown"
+    }
+
+    private fun formatTrustScore(score: Double): String = String.format(Locale.US, "%.2f", score)
 
     private fun markerId(uid: String): String = "trust:$uid"
 }

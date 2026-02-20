@@ -12,14 +12,22 @@ class TrustCoTSubscriber(
     private var subscription: Subscription? = null
     private val parser = TrustEventParser(logger)
 
-    fun start(onTrustEvent: (TrustEvent) -> Unit) {
+    fun start(
+        onTrustEvent: (TrustEvent) -> Unit,
+        onMalformedEvent: (Long, String?) -> Unit = { _, _ -> },
+    ) {
         if (subscription != null) {
             logger.w("Trust CoT subscriber already active")
             return
         }
 
         subscription = cotBus.subscribe(TRUST_COT_TYPE) { envelope ->
-            parser.parse(envelope)?.let(onTrustEvent)
+            val parsedEvent = parser.parse(envelope)
+            if (parsedEvent != null) {
+                onTrustEvent(parsedEvent)
+            } else {
+                onMalformedEvent(parser.badEventCount(), parser.mostRecentBadEventReason())
+            }
         }
 
         logger.d("Subscribed to CoT type=$TRUST_COT_TYPE")
