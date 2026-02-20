@@ -49,7 +49,7 @@ class TrustOverlayLifecycle(
             override val mapView = AtakMapViewAdapter(mapView, AndroidLogger)
             override val cotBus = atakCotBus
             override val markerTapBus: MarkerTapBus = UnsupportedMarkerTapBus
-            override val widgetHost = AtakWidgetHost(AndroidLogger)
+            override val widgetHost = AtakWidgetHost(mapView, AndroidLogger)
             override val logger: Logger = AndroidLogger
             override val settings: PluginSettings = DefaultPluginSettings
         }

@@ -15,6 +15,8 @@ class TrustOverlayMapComponent : AtakMapComponent {
     private var widgetController: TrustFeedHealthWidgetController? = null
     private var markerTapSubscription: Subscription? = null
     private var stateStore: TrustStateStore? = null
+    private var mapArtifacts: UiArtifactCache? = null
+    private var widgetArtifacts: UiArtifactCache? = null
     private var configuredTtlSeconds: Long = TrustStateStore.DEFAULT_TTL_SECONDS
 
     override fun onCreate(context: PluginContext) {
@@ -27,12 +29,14 @@ class TrustOverlayMapComponent : AtakMapComponent {
         stateStore = TrustStateStore(ttlSeconds = configuredTtlSeconds)
 
         markerRenderer = TrustMarkerRenderer(context.mapView)
+        mapArtifacts = context.mapView as? UiArtifactCache
         detailPanel = TrustDetailPanelController(context.logger)
         cotSubscriber = TrustCoTSubscriber(context.cotBus, context.logger)
         widgetController = TrustFeedHealthWidgetController(
             widgetHost = context.widgetHost,
             enabled = true,
         )
+        widgetArtifacts = context.widgetHost as? UiArtifactCache
 
         widgetController?.start()
         widgetController?.onFeedStatus(
@@ -83,6 +87,8 @@ class TrustOverlayMapComponent : AtakMapComponent {
         markerTapSubscription = null
 
         widgetController?.stop()
+        widgetArtifacts?.clearAllArtifacts()
+        mapArtifacts?.clearAllArtifacts()
         detailPanel?.clear()
 
         cotSubscriber = null
@@ -90,6 +96,8 @@ class TrustOverlayMapComponent : AtakMapComponent {
         detailPanel = null
         widgetController = null
         stateStore = null
+        mapArtifacts = null
+        widgetArtifacts = null
     }
 
     companion object {
