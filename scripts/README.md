@@ -219,6 +219,37 @@ Executes database migrations for backend services.
 
 ---
 
+
+---
+
+### `check-android-se-readiness.sh`
+
+**Android Secure Element / StrongBox Readiness Probe**
+
+One-command probe that emits machine-readable `key=value` output for CI and manual operations.
+
+**Usage:**
+```bash
+./scripts/check-android-se-readiness.sh
+```
+
+**StrongBox-required mode:**
+```bash
+REQUIRE_STRONGBOX=1 ./scripts/check-android-se-readiness.sh
+```
+
+**Outputs include:**
+- `status` (`READY_STRONGBOX`, `READY_TEE_FALLBACK`, `NOT_READY`)
+- `reason` (when not ready)
+- device properties (`android_sdk`, `security_patch`, `verified_boot_state`)
+- keystore capability flags (`keystore_hw_feature`, `strongbox_feature`)
+
+**Exit codes:**
+- `0` for ready states (or fallback when StrongBox not required)
+- non-zero when not ready
+
+**Rollout documentation:**
+See [docs/ANDROID_SE_ROLLOUT_PLAN.md](../docs/ANDROID_SE_ROLLOUT_PLAN.md).
 ### `build_arm.sh`
 
 **ARM64 Cross-Compilation**
