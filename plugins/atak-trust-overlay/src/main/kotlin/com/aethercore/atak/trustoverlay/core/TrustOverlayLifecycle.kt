@@ -4,11 +4,9 @@ import android.content.Context
 import android.content.res.Configuration
 import android.util.Log
 import com.aethercore.atak.trustoverlay.atak.Logger
-import com.aethercore.atak.trustoverlay.atak.MarkerHandle
 import com.aethercore.atak.trustoverlay.atak.MarkerTapBus
 import com.aethercore.atak.trustoverlay.atak.PluginContext
 import com.aethercore.atak.trustoverlay.atak.PluginSettings
-import com.aethercore.atak.trustoverlay.atak.Subscription
 import com.atakmap.android.maps.MapView
 import gov.tak.api.plugin.ILifecycle
 import gov.tak.api.plugin.IServiceController
@@ -48,7 +46,7 @@ class TrustOverlayLifecycle(
         val context = object : PluginContext {
             override val mapView = AtakMapViewAdapter(mapView, AndroidLogger)
             override val cotBus = atakCotBus
-            override val markerTapBus: MarkerTapBus = UnsupportedMarkerTapBus
+            override val markerTapBus: MarkerTapBus = AtakMarkerTapBus(mapView, AndroidLogger)
             override val widgetHost = AtakWidgetHost(mapView, AndroidLogger)
             override val logger: Logger = AndroidLogger
             override val settings: PluginSettings = DefaultPluginSettings
@@ -84,12 +82,6 @@ class TrustOverlayLifecycle(
         override fun d(message: String) = Log.d(TAG, message)
         override fun w(message: String) = Log.w(TAG, message)
         override fun e(message: String, throwable: Throwable?) = Log.e(TAG, message, throwable)
-    }
-
-    private object UnsupportedMarkerTapBus : MarkerTapBus {
-        override fun subscribe(handler: (MarkerHandle) -> Unit): Subscription = object : Subscription {
-            override fun dispose() = Unit
-        }
     }
 
     private object DefaultPluginSettings : PluginSettings {
