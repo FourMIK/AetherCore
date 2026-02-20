@@ -28,10 +28,13 @@ class AndroidEnrollmentKeyManagerInstrumentedTest {
 
         assertEquals("sb-alias", payload.keyAlias)
         assertEquals(SecurityLevel.STRONGBOX.name, payload.keySecurityLevel)
+        assertEquals(SecurityProvenance.STRONGBOX.name, payload.keySecurityProvenance)
         assertEquals(listOf(true), keyStore.generationRequests)
         assertEquals("sb-alias", store.readAlias())
         assertEquals(SecurityLevel.STRONGBOX, store.readSecurityLevel())
         assertArrayEquals(challenge, keyStore.lastChallenge)
+        assertEquals("c2lnLXNiLWFsaWFz", payload.challengeSignatureB64)
+        assertEquals("cHViLXNiLWFsaWFz", payload.publicKeyDerB64)
     }
 
     @Test
@@ -125,5 +128,13 @@ private class FakeKeyStoreFacade(
         )
         keys[alias] = reference
         return reference
+    }
+
+    override fun signWithPrivateKey(alias: String, challenge: ByteArray): ByteArray {
+        return "sig-$alias".toByteArray()
+    }
+
+    override fun publicKeyDer(alias: String): ByteArray {
+        return "pub-$alias".toByteArray()
     }
 }

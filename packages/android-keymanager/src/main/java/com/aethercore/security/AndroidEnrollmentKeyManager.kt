@@ -56,7 +56,10 @@ class AndroidEnrollmentKeyManager(
         return AttestationArtifact(
             alias = key.alias,
             securityLevel = key.securityLevel,
+            securityProvenance = key.securityLevel.toSecurityProvenance(),
             challenge = challenge,
+            challengeSignatureDer = keyStore.signWithPrivateKey(key.alias, challenge),
+            publicKeyDer = keyStore.publicKeyDer(key.alias),
             certificateChainDer = key.attestationCertificateChainDer
         )
     }
@@ -66,7 +69,10 @@ class AndroidEnrollmentKeyManager(
         return EnrollmentProvePayload(
             keyAlias = artifact.alias,
             keySecurityLevel = artifact.securityLevel.name,
+            keySecurityProvenance = artifact.securityProvenance.name,
             challengeB64 = challenge.toB64(),
+            challengeSignatureB64 = artifact.challengeSignatureDer.toB64(),
+            publicKeyDerB64 = artifact.publicKeyDer.toB64(),
             attestationChainB64 = artifact.certificateChainDer.map { it.toB64() }
         )
     }

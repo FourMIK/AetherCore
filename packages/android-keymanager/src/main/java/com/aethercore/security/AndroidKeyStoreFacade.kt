@@ -7,11 +7,14 @@ import android.security.keystore.KeyProperties
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 
 interface KeyStoreFacade {
     fun loadKeyReference(alias: String): KeyReference?
     fun generateKey(alias: String, useStrongBox: Boolean, challenge: ByteArray): KeyReference
+    fun signWithPrivateKey(alias: String, challenge: ByteArray): ByteArray
+    fun publicKeyDer(alias: String): ByteArray
 }
 
 class AndroidKeyStoreFacade : KeyStoreFacade {
@@ -56,5 +59,23 @@ class AndroidKeyStoreFacade : KeyStoreFacade {
 
         return loadKeyReference(alias)
             ?: throw IllegalStateException("Failed to load generated key reference for alias=$alias")
+    }
+
+    override fun signWithPrivateKey(alias: String, challenge: ByteArray): ByteArray {
+        val keyStore = KeyStore.getInstance(provider).apply { load(null) }
+        val privateKey = keyStore.getKey(alias, null)
+            ?: throw IllegalStateException("Private key not found for alias=$alias")
+
+        val signature = Signature.getInstance("SHA256withECDSA")
+        signature.initSign(privateKey as java.security.PrivateKey)
+        signature.update(challenge)
+        return signature.sign()
+    }
+
+    override fun publicKeyDer(alias: String): ByteArray {
+        val keyStore = KeyStore.getInstance(provider).apply { load(null) }
+        val certificate = keyStore.getCertificate(alias)
+            ?: throw IllegalStateException("Certificate not found for alias=$alias")
+        return certificate.publicKey.encoded
     }
 }
