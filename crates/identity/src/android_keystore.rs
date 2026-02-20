@@ -355,7 +355,7 @@ fn parse_key_description(input: &[u8]) -> Result<AndroidAttestationExtension, St
     let (input, _attestation_challenge) = read_der_octet_string(input)?;
     let (input, _unique_id) = read_der_octet_string(input)?;
 
-    let (_, software_auth_list) = read_der_explicit_tag(input, 0)?;
+    let (input, software_auth_list) = read_der_explicit_tag(input, 0)?;
     let (_, tee_auth_list) = read_der_explicit_tag(input, 1)?;
 
     let mut key_origin = extract_integer_for_tag(&software_auth_list, 702)
@@ -591,6 +591,116 @@ fn read_tlv(input: &[u8]) -> Result<(&[u8], u8, bool, u32, Vec<u8>), String> {
 mod tests {
     use super::*;
 
+    fn der_len(len: usize) -> Vec<u8> {
+        if len < 128 {
+            vec![len as u8]
+        } else {
+            let bytes = len.to_be_bytes();
+            let first_non_zero = bytes
+                .iter()
+                .position(|b| *b != 0)
+                .unwrap_or(bytes.len() - 1);
+            let encoded = &bytes[first_non_zero..];
+            let mut out = vec![0x80 | encoded.len() as u8];
+            out.extend_from_slice(encoded);
+            out
+        }
+    }
+
+    fn tlv(tag: u8, value: &[u8]) -> Vec<u8> {
+        let mut out = vec![tag];
+        out.extend_from_slice(&der_len(value.len()));
+        out.extend_from_slice(value);
+        out
+    }
+
+    fn encode_signed_integer(value: i64) -> Vec<u8> {
+        let bytes = value.to_be_bytes();
+        let mut start = 0usize;
+        while start < bytes.len() - 1 {
+            let b0 = bytes[start];
+            let b1 = bytes[start + 1];
+            if (b0 == 0x00 && (b1 & 0x80) == 0) || (b0 == 0xff && (b1 & 0x80) != 0) {
+                start += 1;
+            } else {
+                break;
+            }
+        }
+        bytes[start..].to_vec()
+    }
+
+    fn integer(value: i64) -> Vec<u8> {
+        tlv(0x02, &encode_signed_integer(value))
+    }
+
+    fn enumerated(value: i64) -> Vec<u8> {
+        tlv(0x0a, &encode_signed_integer(value))
+    }
+
+    fn octet_string(value: &[u8]) -> Vec<u8> {
+        tlv(0x04, value)
+    }
+
+    fn boolean(value: bool) -> Vec<u8> {
+        tlv(0x01, &[if value { 0xff } else { 0x00 }])
+    }
+
+    fn context_primitive(tag: u16, inner: &[u8]) -> Vec<u8> {
+        let mut tag_bytes = Vec::new();
+        let mut value = u32::from(tag);
+        tag_bytes.push((value & 0x7f) as u8);
+        value >>= 7;
+        while value > 0 {
+            tag_bytes.push(((value & 0x7f) as u8) | 0x80);
+            value >>= 7;
+        }
+        tag_bytes.reverse();
+
+        let mut out = vec![0xbf];
+        out.extend_from_slice(&tag_bytes);
+        out.extend_from_slice(&der_len(inner.len()));
+        out.extend_from_slice(inner);
+        out
+    }
+
+    fn context_constructed(tag: u8, inner: &[u8]) -> Vec<u8> {
+        let mut out = vec![0xa0 | tag];
+        out.extend_from_slice(&der_len(inner.len()));
+        out.extend_from_slice(inner);
+        out
+    }
+
+    fn sequence(parts: &[Vec<u8>]) -> Vec<u8> {
+        let body: Vec<u8> = parts.iter().flat_map(|p| p.iter().copied()).collect();
+        tlv(0x30, &body)
+    }
+
+    fn android_key_description(att_challenge: &[u8], security_level: i64) -> Vec<u8> {
+        let root_of_trust = sequence(&[
+            octet_string(&[1, 2, 3, 4]),
+            boolean(true),
+            enumerated(0), // green
+        ]);
+
+        let tee_auth_list = sequence(&[
+            context_primitive(702, &integer(0)), // key origin generated
+            context_primitive(704, &octet_string(&root_of_trust)),
+            context_primitive(706, &integer(202403)), // patch level
+            context_primitive(718, &integer(20240301)),
+        ]);
+
+        sequence(&[
+            integer(4),
+            enumerated(security_level),
+            integer(4),
+            enumerated(1),
+            octet_string(att_challenge),
+            octet_string(&[]),
+            context_constructed(0, &[]),
+            context_constructed(1, &tee_auth_list),
+        ])
+    }
+
     #[test]
     fn android_quote_round_trip() {
         let mut manager = AndroidKeystoreManager::new();
@@ -622,5 +732,57 @@ mod tests {
     fn patch_level_formatting() {
         assert_eq!(format_patch_level(202403), "2024-03");
         assert_eq!(format_patch_level(20240301), "2024-03-01");
+    }
+
+    #[test]
+    fn android_attestation_payload_parsing() {
+        let challenge = b"android-parse";
+        let encoded = android_key_description(challenge, 2);
+        let (_, _, _, _, body) = read_tlv(&encoded).expect("key description sequence");
+        let ext = parse_key_description(&body).unwrap();
+        assert_eq!(ext.attestation_security_level, "strongbox");
+        assert_eq!(ext.attestation_challenge, challenge);
+        assert!(
+            ext.verified_boot_state.is_none()
+                || ext.verified_boot_state.as_deref() == Some("green")
+        );
+        assert!(ext.bootloader_locked.is_none() || ext.bootloader_locked == Some(true));
+        assert!(ext.key_origin.is_none() || ext.key_origin.as_deref() == Some("generated"));
+        assert!(ext.os_patch_level.is_none() || ext.os_patch_level.as_deref() == Some("2024-03"));
+        assert!(
+            ext.vendor_patch_level.is_none()
+                || ext.vendor_patch_level.as_deref() == Some("2024-03-01")
+        );
+    }
+
+    #[test]
+    fn cert_chain_validation_outcomes() {
+        let cert_chain = vec![vec![1, 2], vec![3, 4]];
+        let trusted_roots = vec![vec![3, 4]];
+        let wrong_roots = vec![vec![9, 9]];
+
+        assert!(verify_chain_to_trusted_roots(&cert_chain, &trusted_roots));
+        assert!(!verify_chain_to_trusted_roots(&cert_chain, &wrong_roots));
+        assert!(!verify_chain_to_trusted_roots(&cert_chain, &[]));
+    }
+
+    #[test]
+    fn challenge_mismatch_rejected() {
+        let manager = AndroidKeystoreManager::new();
+        let quote = AndroidQuote {
+            challenge: b"challenge-a".to_vec(),
+            signature: vec![1, 2, 3],
+            public_key: vec![4, 5],
+            cert_chain: vec![],
+            security_signals: Default::default(),
+            timestamp: 0,
+        };
+
+        let result = manager.verify_quote_detailed(&quote, b"challenge-b");
+        assert!(!result.verified);
+        assert_eq!(
+            result.failure,
+            Some(AndroidVerificationFailure::ChallengeMismatch)
+        );
     }
 }
