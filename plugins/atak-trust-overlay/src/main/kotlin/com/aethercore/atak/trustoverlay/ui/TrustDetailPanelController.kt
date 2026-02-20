@@ -57,13 +57,15 @@ class TrustDetailPanelController(
                     logger.d("Refreshed trust detail panel marker=$markerId")
                 } else {
                     existing.dismissAllowingStateLoss()
-                    TrustDetailDialogFragment.newInstance(event.callsign, details)
-                        .show(fragmentManager, PANEL_TAG)
+                    val newFragment = TrustDetailDialogFragment.newInstance(event.callsign, details)
+                    newFragment.onDismissCallback = { handlePanelDismissed() }
+                    newFragment.show(fragmentManager, PANEL_TAG)
                     logger.d("Replaced trust detail panel marker=$markerId")
                 }
             } else {
-                TrustDetailDialogFragment.newInstance(event.callsign, details)
-                    .show(fragmentManager, PANEL_TAG)
+                val newFragment = TrustDetailDialogFragment.newInstance(event.callsign, details)
+                newFragment.onDismissCallback = { handlePanelDismissed() }
+                newFragment.show(fragmentManager, PANEL_TAG)
                 logger.d("Opened trust detail panel marker=$markerId")
             }
             activeMarkerId = markerId
@@ -74,6 +76,11 @@ class TrustDetailPanelController(
         if (BuildConfig.DEBUG) {
             logger.d(debugSummary(state))
         }
+    }
+
+    private fun handlePanelDismissed() {
+        activeMarkerId = null
+        logger.d("Trust detail panel dismissed, cleared active marker")
     }
 
     private fun dismissPanel() {
@@ -176,6 +183,8 @@ class TrustDetailPanelController(
     }
 
     private class TrustDetailDialogFragment : DialogFragment() {
+        var onDismissCallback: (() -> Unit)? = null
+
         override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
             val title = requireArguments().getString(ARG_TITLE).orEmpty()
             val body = requireArguments().getString(ARG_BODY).orEmpty()
@@ -185,6 +194,11 @@ class TrustDetailPanelController(
                 .setMessage(body)
                 .setPositiveButton("Close") { _, _ -> dismissAllowingStateLoss() }
                 .create()
+        }
+
+        override fun onDismiss(dialog: android.content.DialogInterface?) {
+            super.onDismiss(dialog)
+            onDismissCallback?.invoke()
         }
 
         fun updateContent(title: String, body: String) {
