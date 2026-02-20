@@ -14,6 +14,9 @@ data class TrustEvent(
     val lon: Double,
     val level: TrustLevel,
     val score: Int,
+    val trustScore: Double,
     val source: String,
+    val sourceMetadata: Map<String, String>,
+    val metrics: Map<String, Double>,
     val observedAtEpochMs: Long,
 )

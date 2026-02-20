@@ -60,7 +60,10 @@ class TrustStateStoreTest {
         lon = 0.0,
         level = level,
         score = score,
+        trustScore = score / 100.0,
         source = "test",
+        sourceMetadata = emptyMap(),
+        metrics = emptyMap(),
         observedAtEpochMs = 0L,
     )
 }

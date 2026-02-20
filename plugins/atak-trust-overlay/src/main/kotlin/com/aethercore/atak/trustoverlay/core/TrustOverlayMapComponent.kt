@@ -44,27 +44,37 @@ class TrustOverlayMapComponent : AtakMapComponent {
             detailPanel?.onMarkerTapped(markerHandle.id)
         }
 
-        cotSubscriber?.start { trustEvent ->
-            val markerId = "trust:${trustEvent.uid}"
-            val store = stateStore ?: return@start
-            store.record(trustEvent)
-            val resolvedState = store.resolve(trustEvent.uid)
+        cotSubscriber?.start(
+            onTrustEvent = { trustEvent ->
+                val markerId = "trust:${trustEvent.uid}"
+                val store = stateStore ?: return@start
+                store.record(trustEvent)
+                val resolvedState = store.resolve(trustEvent.uid)
 
-            markerRenderer?.render(resolvedState)
-            detailPanel?.onTrustEvent(markerId, trustEvent)
-            widgetController?.onTrustEvent(trustEvent)
+                markerRenderer?.render(resolvedState)
+                detailPanel?.onTrustEvent(markerId, resolvedState)
+                widgetController?.onTrustEvent(trustEvent)
 
-            for (state in store.allResolved()) {
-                if (state.stale) {
-                    markerRenderer?.render(state)
+                for (state in store.allResolved()) {
+                    if (state.stale) {
+                        markerRenderer?.render(state)
+                    }
                 }
-            }
 
-            widgetController?.onFeedStatus(
-                status = store.feedStatus(),
-                ttlSeconds = configuredTtlSeconds,
-            )
-        }
+                widgetController?.onFeedStatus(
+                    status = store.feedStatus(),
+                    ttlSeconds = configuredTtlSeconds,
+                )
+            },
+            onMalformedEvent = { count, reason ->
+                context.logger.w("Trust feed malformed event count=$count reason=${reason ?: "unknown"}")
+                widgetController?.onMalformedEvent(count, reason)
+                widgetController?.onFeedStatus(
+                    status = stateStore?.feedStatus() ?: TrustFeedStatus.DEGRADED,
+                    ttlSeconds = configuredTtlSeconds,
+                )
+            },
+        )
     }
 
     override fun onDestroy() {

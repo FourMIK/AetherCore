@@ -11,6 +11,8 @@ class TrustFeedHealthWidgetController(
 ) {
     private var totalEvents: Long = 0
     private var unhealthyEvents: Long = 0
+    private var malformedEvents: Long = 0
+    private var latestMalformedReason: String? = null
 
     fun start() {
         if (!enabled) {
@@ -38,6 +40,15 @@ class TrustFeedHealthWidgetController(
         }
     }
 
+    fun onMalformedEvent(totalMalformedEvents: Long, reason: String?) {
+        if (!enabled) {
+            return
+        }
+
+        malformedEvents = totalMalformedEvents
+        latestMalformedReason = reason
+    }
+
     fun onFeedStatus(status: TrustFeedStatus, ttlSeconds: Long) {
         if (!enabled) {
             return
@@ -45,7 +56,7 @@ class TrustFeedHealthWidgetController(
 
         val unhealthyRatio = if (totalEvents == 0L) 0.0 else unhealthyEvents.toDouble() / totalEvents.toDouble()
         val statusSeverity = if (status == TrustFeedStatus.DEGRADED) "high" else "low"
-        val severity = if (status == TrustFeedStatus.DEGRADED) {
+        val severity = if (status == TrustFeedStatus.DEGRADED || malformedEvents > 0L) {
             "high"
         } else {
             when {
@@ -55,11 +66,17 @@ class TrustFeedHealthWidgetController(
             }
         }
 
+        val malformedSummary = if (malformedEvents == 0L) {
+            "0"
+        } else {
+            "$malformedEvents(${latestMalformedReason ?: "unknown"})"
+        }
+
         widgetHost.update(
             WidgetModel(
                 id = WIDGET_ID,
                 title = "Trust Feed",
-                value = "status=${status.name.lowercase()}, ttl=${ttlSeconds}s, events=$totalEvents, unhealthy=$unhealthyEvents",
+                value = "status=${status.name.lowercase()}, ttl=${ttlSeconds}s, events=$totalEvents, unhealthy=$unhealthyEvents, malformed=$malformedSummary",
                 severity = if (severity == "low") statusSeverity else severity,
             ),
         )

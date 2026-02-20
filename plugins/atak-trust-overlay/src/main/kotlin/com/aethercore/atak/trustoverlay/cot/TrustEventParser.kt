@@ -12,6 +12,9 @@ class TrustEventParser(
     private val logger: Logger,
     private val allowedSources: Set<String> = DEFAULT_ALLOWED_SOURCES,
 ) {
+    @Volatile
+    private var mostRecentRejectReason: String? = null
+
     fun parse(envelope: CotEventEnvelope): TrustEvent? {
         val uid = envelope.uid.trim()
         if (uid.isEmpty()) {
@@ -70,6 +73,15 @@ class TrustEventParser(
         val scorePercent = (score * 100.0).toInt()
         val lat = envelope.lat ?: extractRequired(envelope, POINT_LAT_KEYS)?.toDoubleOrNull() ?: 0.0
         val lon = envelope.lon ?: extractRequired(envelope, POINT_LON_KEYS)?.toDoubleOrNull() ?: 0.0
+        val metrics = envelope.detail.entries
+            .filter { (key, value) -> key.startsWith(METRIC_PREFIX) && value.toDoubleOrNull() != null }
+            .associate { (key, value) -> key.removePrefix(METRIC_PREFIX) to value.toDouble() }
+        val sourceMetadata = envelope.detail.entries
+            .mapNotNull { (key, value) ->
+                val prefix = SOURCE_METADATA_PREFIXES.firstOrNull { key.startsWith(it) } ?: return@mapNotNull null
+                key.removePrefix(prefix) to value
+            }
+            .toMap()
 
         return TrustEvent(
             uid = uid,
@@ -78,15 +90,21 @@ class TrustEventParser(
             lon = lon,
             level = level,
             score = scorePercent,
+            trustScore = score,
             source = source,
+            sourceMetadata = sourceMetadata,
+            metrics = metrics,
             observedAtEpochMs = observedAtEpochMs,
         )
     }
 
     fun badEventCount(): Long = badEvents.get()
 
+    fun mostRecentBadEventReason(): String? = mostRecentRejectReason
+
     private fun reject(reason: String, envelope: CotEventEnvelope, details: String = ""): TrustEvent? {
         val count = badEvents.incrementAndGet()
+        mostRecentRejectReason = reason
         logger.w(
             "trust_event_rejected reason=$reason uid=${envelope.uid} type=${envelope.type} bad_event_count=$count $details"
                 .trim(),
@@ -124,6 +142,7 @@ class TrustEventParser(
         private val CALLSIGN_KEYS = listOf("callsign", "trust.callsign")
         private val POINT_LAT_KEYS = listOf("point.lat", "lat")
         private val POINT_LON_KEYS = listOf("point.lon", "lon")
+        private val SOURCE_METADATA_PREFIXES = listOf("source_meta.", "source.meta.", "event.source.")
 
         private val DEFAULT_ALLOWED_SOURCES = setOf("aethercore", "trust-mesh", "trusted-gateway", "unknown")
     }
