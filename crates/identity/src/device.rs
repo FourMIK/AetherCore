@@ -527,6 +527,81 @@ mod tests {
     }
 
     #[test]
+    fn test_trust_policy_mapping_outcomes() {
+        let mut strongbox_extra = HashMap::new();
+        strongbox_extra.insert("bootloader_locked".to_string(), "true".to_string());
+
+        let strongbox_identity = PlatformIdentity {
+            id: "android-map-strongbox".to_string(),
+            public_key: vec![1],
+            attestation: Attestation::Android {
+                challenge: vec![1],
+                signature: vec![2],
+                public_key: vec![3],
+                cert_chain: vec![vec![4]],
+                security_signals: AndroidSecuritySignals {
+                    api_level: 34,
+                    verified_boot_state: "green".to_string(),
+                    device_locked: true,
+                    os_patch_level: "2024-04".to_string(),
+                    security_level: "strongbox".to_string(),
+                    extra: strongbox_extra,
+                },
+            },
+            created_at: 0,
+            metadata: HashMap::new(),
+        };
+
+        let tee_identity = PlatformIdentity {
+            id: "android-map-tee".to_string(),
+            public_key: vec![1],
+            attestation: Attestation::Android {
+                challenge: vec![1],
+                signature: vec![2],
+                public_key: vec![3],
+                cert_chain: vec![vec![4]],
+                security_signals: AndroidSecuritySignals {
+                    api_level: 34,
+                    verified_boot_state: "green".to_string(),
+                    device_locked: true,
+                    os_patch_level: "2024-04".to_string(),
+                    security_level: "trusted_environment".to_string(),
+                    extra: HashMap::new(),
+                },
+            },
+            created_at: 0,
+            metadata: HashMap::new(),
+        };
+
+        let software_identity = PlatformIdentity {
+            id: "software-map".to_string(),
+            public_key: vec![1],
+            attestation: Attestation::Software {
+                certificate: vec![5],
+            },
+            created_at: 0,
+            metadata: HashMap::new(),
+        };
+
+        let strongbox_policy = evaluate_trust_policy(&strongbox_identity);
+        let tee_policy = evaluate_trust_policy(&tee_identity);
+        let software_policy = evaluate_trust_policy(&software_identity);
+
+        assert_eq!(strongbox_policy.tier, TrustPolicyTier::Highest);
+        assert_eq!(tee_policy.tier, TrustPolicyTier::MediumHigh);
+        assert_eq!(software_policy.tier, TrustPolicyTier::LowUnverified);
+        assert!(strongbox_policy
+            .reason_codes
+            .contains(&TrustReasonCode::StrongboxVerifiedBootLockedBootloader));
+        assert!(tee_policy
+            .reason_codes
+            .contains(&TrustReasonCode::TeeVerifiedChain));
+        assert!(software_policy
+            .reason_codes
+            .contains(&TrustReasonCode::SoftwareOnlyAttestation));
+    }
+
+    #[test]
     fn test_policy_tier_strongbox_highest() {
         let manager = IdentityManager::new();
         let mut extra = HashMap::new();
