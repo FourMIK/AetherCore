@@ -7,6 +7,27 @@ import com.aethercore.atak.trustoverlay.atak.WidgetHost
 import com.aethercore.atak.trustoverlay.atak.WidgetModel
 import java.lang.reflect.Method
 
+internal data class MarkerIconSpec(
+    val key: String,
+    val drawableName: String,
+) {
+    val resourceUri: String = "android.resource://com.aethercore.atak.trustoverlay/drawable/$drawableName"
+}
+
+internal object MarkerIconCatalog {
+    const val FALLBACK_KEY = "reference_point"
+
+    private val iconsByKey: Map<String, MarkerIconSpec> = mapOf(
+        "trust_marker_green" to MarkerIconSpec("trust_marker_green", "trust_marker_green"),
+        "trust_marker_amber" to MarkerIconSpec("trust_marker_amber", "trust_marker_amber"),
+        "trust_marker_red" to MarkerIconSpec("trust_marker_red", "trust_marker_red"),
+        FALLBACK_KEY to MarkerIconSpec(FALLBACK_KEY, FALLBACK_KEY),
+    )
+
+    fun forKey(iconKey: String): MarkerIconSpec = iconsByKey[iconKey] ?: requireNotNull(iconsByKey[FALLBACK_KEY])
+    fun severityKeys(): List<String> = listOf("trust_marker_green", "trust_marker_amber", "trust_marker_red")
+}
+
 interface UiArtifactCache {
     fun clearAllArtifacts()
 }
@@ -17,6 +38,11 @@ class AtakMapViewAdapter(
 ) : MapView, UiArtifactCache {
     private val markerCache: MutableMap<String, Any> = linkedMapOf()
     private val markerModels: MutableMap<String, MarkerModel> = linkedMapOf()
+    private val iconResolutionLogged: MutableSet<String> = linkedSetOf()
+
+    init {
+        validateIconResolution()
+    }
 
     override fun upsertMarker(marker: MarkerModel) {
         val existing = markerCache[marker.id]
@@ -101,7 +127,8 @@ class AtakMapViewAdapter(
     }
 
     private fun applyIcon(marker: Any, iconKey: String) {
-        val iconUri = iconUriFor(iconKey)
+        val iconSpec = MarkerIconCatalog.forKey(iconKey)
+        val iconUri = iconSpec.resourceUri
         val iconClass = runCatching { Class.forName("com.atakmap.coremap.maps.assets.Icon") }.getOrNull()
         val builderClass = runCatching { Class.forName("com.atakmap.coremap.maps.assets.Icon\$Builder") }.getOrNull()
 
@@ -127,16 +154,60 @@ class AtakMapViewAdapter(
             }
         }
 
-        invokeIfPresent(marker, "setMetaString", "iconUri", iconUri)
-        invokeIfPresent(marker, "setMetaString", "iconsetpath", iconUri)
+        if (isDebugBuild()) {
+            invokeIfPresent(marker, "setMetaString", "iconUri", iconSpec.resourceUri)
+            invokeIfPresent(marker, "setMetaString", "iconsetpath", iconSpec.resourceUri)
+        }
     }
 
-    private fun iconUriFor(iconKey: String): String = when (iconKey) {
-        "trust_marker_green" -> "asset://icons/trust_marker_green.png"
-        "trust_marker_amber" -> "asset://icons/trust_marker_amber.png"
-        "trust_marker_red" -> "asset://icons/trust_marker_red.png"
-        else -> "asset://icons/reference_point.png"
+    internal fun iconUriFor(iconKey: String): String = MarkerIconCatalog.forKey(iconKey).resourceUri
+
+    private fun validateIconResolution() {
+        MarkerIconCatalog.severityKeys().forEach { key ->
+            val iconSpec = MarkerIconCatalog.forKey(key)
+            if (!iconResolutionLogged.add(key)) {
+                return@forEach
+            }
+            if (drawableExists(iconSpec.drawableName)) {
+                logger.d("icon-resolution success key=$key resourceUri=${iconSpec.resourceUri}")
+            } else {
+                logger.w("icon-resolution missing drawable key=$key expectedDrawable=${iconSpec.drawableName} resourceUri=${iconSpec.resourceUri}")
+            }
+        }
     }
+
+    private fun drawableExists(drawableName: String): Boolean {
+        val context = runCatching {
+            delegate.javaClass.methods.firstOrNull { it.name == "getContext" && it.parameterTypes.isEmpty() }
+                ?.invoke(delegate)
+        }.getOrNull() ?: return false
+
+        val resources = runCatching {
+            context.javaClass.methods.firstOrNull { it.name == "getResources" && it.parameterTypes.isEmpty() }
+                ?.invoke(context)
+        }.getOrNull() ?: return false
+
+        val packageName = runCatching {
+            context.javaClass.methods.firstOrNull { it.name == "getPackageName" && it.parameterTypes.isEmpty() }
+                ?.invoke(context) as? String
+        }.getOrNull() ?: return false
+
+        val resourceId = runCatching {
+            resources.javaClass.methods.firstOrNull {
+                it.name == "getIdentifier" && it.parameterTypes.contentEquals(
+                    arrayOf(String::class.java, String::class.java, String::class.java),
+                )
+            }?.invoke(resources, drawableName, "drawable", packageName) as? Int
+        }.getOrNull() ?: 0
+
+        return resourceId != 0
+    }
+
+    private fun isDebugBuild(): Boolean = runCatching {
+        val buildConfigClass = Class.forName("com.aethercore.atak.trustoverlay.BuildConfig")
+        val debugField = buildConfigClass.getDeclaredField("DEBUG")
+        debugField.getBoolean(null)
+    }.getOrDefault(false)
 
     private fun addToRootGroup(item: Any) {
         val rootGroup = runCatching { delegate.javaClass.methods.first { it.name == "getRootGroup" }.invoke(delegate) }
