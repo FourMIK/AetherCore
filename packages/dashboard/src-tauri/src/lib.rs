@@ -105,11 +105,33 @@ enum SentinelBootPolicy {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StartupProbeStatus {
+    pub policy_mode: String,
+    pub selected_backend: String,
+    pub security_level: String,
+    pub status: String,
+    pub failure_reason: Option<String>,
+}
+
+impl Default for StartupProbeStatus {
+    fn default() -> Self {
+        Self {
+            policy_mode: "optional".to_string(),
+            selected_backend: "tpm".to_string(),
+            security_level: "tee".to_string(),
+            status: "healthy".to_string(),
+            failure_reason: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SentinelTrustStatus {
     pub trust_level: String,
     pub reduced_trust: bool,
     pub headline: String,
     pub detail: String,
+    pub startup_probe: StartupProbeStatus,
 }
 
 impl Default for SentinelTrustStatus {
@@ -119,6 +141,7 @@ impl Default for SentinelTrustStatus {
             reduced_trust: false,
             headline: "Hardware trust attested".to_string(),
             detail: "TPM attestation verified at startup.".to_string(),
+            startup_probe: StartupProbeStatus::default(),
         }
     }
 }
@@ -147,12 +170,45 @@ fn evaluate_sentinel_startup(
     policy: SentinelBootPolicy,
     sentinel_result: Result<(), String>,
 ) -> SentinelStartupDecision {
+    fn policy_mode(policy: SentinelBootPolicy) -> &'static str {
+        match policy {
+            SentinelBootPolicy::Required => "required",
+            SentinelBootPolicy::Optional => "optional",
+            SentinelBootPolicy::Disabled => "disabled",
+        }
+    }
+
+    fn classify_failure_reason(error_details: &str) -> &'static str {
+        let normalized = error_details.to_ascii_lowercase();
+        if normalized.contains("bootloader") && normalized.contains("unlock") {
+            "bootloader_unlocked"
+        } else if normalized.contains("chain") && normalized.contains("unverifiable") {
+            "chain_unverifiable"
+        } else if normalized.contains("challenge") && normalized.contains("mismatch") {
+            "challenge_mismatch"
+        } else if normalized.contains("missing")
+            || normalized.contains("not found")
+            || normalized.contains("unavailable")
+            || normalized.contains("inaccessible")
+        {
+            "backend_unavailable"
+        } else {
+            "unknown"
+        }
+    }
+
     match (policy, sentinel_result) {
-        (_, Ok(())) => SentinelStartupDecision::Continue(SentinelTrustStatus::default()),
+        (_, Ok(())) => {
+            let mut status = SentinelTrustStatus::default();
+            status.startup_probe.policy_mode = policy_mode(policy).to_string();
+            status.startup_probe.status = "healthy".to_string();
+            SentinelStartupDecision::Continue(status)
+        }
         (SentinelBootPolicy::Required, Err(error_details)) => {
             SentinelStartupDecision::FailClosed { error_details }
         }
         (SentinelBootPolicy::Optional, Err(error_details)) => {
+            let failure_reason = classify_failure_reason(&error_details).to_string();
             SentinelStartupDecision::Continue(SentinelTrustStatus {
                 trust_level: "reduced".to_string(),
                 reduced_trust: true,
@@ -161,6 +217,13 @@ fn evaluate_sentinel_startup(
                     "Startup continued without TPM attestation. Reduced-trust posture is active. {}",
                     error_details
                 ),
+                startup_probe: StartupProbeStatus {
+                    policy_mode: policy_mode(policy).to_string(),
+                    selected_backend: "android_keystore".to_string(),
+                    security_level: "software".to_string(),
+                    status: "degraded".to_string(),
+                    failure_reason: Some(failure_reason),
+                },
             })
         }
         (SentinelBootPolicy::Disabled, Err(error_details)) => {
@@ -172,6 +235,13 @@ fn evaluate_sentinel_startup(
                     "TPM verification is disabled by policy. Startup bypassed attestation. {}",
                     error_details
                 ),
+                startup_probe: StartupProbeStatus {
+                    policy_mode: policy_mode(policy).to_string(),
+                    selected_backend: "android_keystore".to_string(),
+                    security_level: "software".to_string(),
+                    status: "degraded".to_string(),
+                    failure_reason: Some("policy_disabled".to_string()),
+                },
             })
         }
     }
@@ -217,6 +287,13 @@ pub fn run() {
                     headline: "CI Sentinel Override Active".to_string(),
                     detail: "Sentinel boot attestation skipped for CI bootstrap validation."
                         .to_string(),
+                    startup_probe: StartupProbeStatus {
+                        policy_mode: "optional".to_string(),
+                        selected_backend: "android_keystore".to_string(),
+                        security_level: "software".to_string(),
+                        status: "degraded".to_string(),
+                        failure_reason: Some("ci_override".to_string()),
+                    },
                 })
             } else {
                 evaluate_sentinel_startup(sentinel_policy, sentinel_boot())
@@ -442,6 +519,11 @@ mod tests {
                 assert!(status.reduced_trust);
                 assert_eq!(status.headline, "TPM Optional Mode Active");
                 assert!(status.detail.contains("TPM device unavailable"));
+                assert_eq!(status.startup_probe.policy_mode, "optional");
+                assert_eq!(status.startup_probe.selected_backend, "android_keystore");
+                assert_eq!(status.startup_probe.security_level, "software");
+                assert_eq!(status.startup_probe.status, "degraded");
+                assert_eq!(status.startup_probe.failure_reason.as_deref(), Some("backend_unavailable"));
             }
             SentinelStartupDecision::FailClosed { .. } => {
                 panic!("optional policy should not fail closed")

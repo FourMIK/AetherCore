@@ -3,7 +3,16 @@ import { invoke } from '@tauri-apps/api/core';
 export type UnifiedProfile = 'commander-local' | 'training-testnet' | 'enterprise-remote';
 export type TpmMode = 'required' | 'optional' | 'disabled';
 export type AttestationMode = TpmMode;
-export type AndroidBackendCapability = 'strongbox_available' | 'tee_fallback' | 'unavailable';
+export type AndroidBackendCapability = 'strongbox' | 'tee' | 'software';
+export type AttestationProbeStatus = 'healthy' | 'degraded' | 'error';
+export type AttestationFailureReason =
+  | 'bootloader_unlocked'
+  | 'chain_unverifiable'
+  | 'challenge_mismatch'
+  | 'backend_unavailable'
+  | 'policy_disabled'
+  | 'ci_override'
+  | 'unknown';
 
 export interface UnifiedRuntimeConfig {
   schema_version: number;
@@ -30,8 +39,11 @@ export interface UnifiedRuntimeConfig {
     };
   };
   startup_probe?: {
-    android_backend_available: boolean;
-    android_backend_capability: AndroidBackendCapability;
+    policy_mode: AttestationMode;
+    selected_backend: 'tpm' | 'android_keystore' | 'none' | string;
+    security_level: AndroidBackendCapability;
+    status: AttestationProbeStatus;
+    failure_reason?: AttestationFailureReason | null;
   };
   ports: {
     api: number;

@@ -187,11 +187,23 @@ export const TauriCommands = {
 
 
 export type AttestationMode = 'required' | 'optional' | 'disabled';
-export type AndroidBackendCapability = 'strongbox_available' | 'tee_fallback' | 'unavailable';
+export type AndroidBackendCapability = 'strongbox' | 'tee' | 'software';
+export type AttestationProbeStatus = 'healthy' | 'degraded' | 'error';
+export type AttestationFailureReason =
+  | 'bootloader_unlocked'
+  | 'chain_unverifiable'
+  | 'challenge_mismatch'
+  | 'backend_unavailable'
+  | 'policy_disabled'
+  | 'ci_override'
+  | 'unknown';
 
 export interface StartupProbeStatus {
-  android_backend_available: boolean;
-  android_backend_capability: AndroidBackendCapability;
+  policy_mode: AttestationMode;
+  selected_backend: 'tpm' | 'android_keystore' | 'none' | string;
+  security_level: AndroidBackendCapability;
+  status: AttestationProbeStatus;
+  failure_reason?: AttestationFailureReason | null;
 }
 
 export interface DiagnosticCheck {
