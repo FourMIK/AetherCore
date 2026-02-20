@@ -29,3 +29,35 @@ This scaffold is intentionally API-light and framework-agnostic so you can repla
 ## Integration runtime flow
 
 ATAK loads this plugin through metadata in `AndroidManifest.xml`, then resolves `@xml/trust_overlay_plugin` and `assets/plugin.xml`, both of which point to `TrustOverlayLifecycle` as the single startup authority. `TrustOverlayLifecycle.onCreate` initializes the Ralphie daemon, CoT bus adapters, and `TrustOverlayMapComponent`; ATAK lifecycle callbacks then control teardown via `onDestroy`. No broadcast bootstrap path is used, preventing duplicate startup paths.
+
+## Native JNI build setup (required)
+
+This plugin expects the Rust JNI crate that produces `libaethercore_jni.so` to exist **outside** the ATAK plugin module at:
+
+- `external/aethercore-jni` (relative to the AetherCore repository root)
+
+### 1) Checkout the JNI crate
+
+If the JNI crate is private/external, clone it into the expected directory:
+
+```bash
+git clone <your-jni-repo-url> external/aethercore-jni
+```
+
+Alternatively, keep it elsewhere and set one of:
+
+- CMake override: `-DAETHERCORE_JNI_DIR=/absolute/path/to/aethercore-jni`
+- Gradle local override in `plugins/atak-trust-overlay/local.properties`:
+  - `aethercore.jni.dir=/absolute/path/to/aethercore-jni`
+
+### 2) Install required native toolchain
+
+Required tools for JNI builds:
+
+- Rust + Cargo (`rustup`)
+- `cargo-ndk` (`cargo install cargo-ndk`)
+- Android SDK + NDK (for your Android Gradle Plugin setup)
+
+### 3) Preflight guards
+
+Both CMake and Gradle fail fast with clear errors when the JNI crate path is missing or invalid (`Cargo.toml` not found), so broken local setup is detected before long native builds run.
