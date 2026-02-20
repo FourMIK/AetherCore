@@ -14,9 +14,17 @@ class TrustOverlayMapComponent : AtakMapComponent {
     private var detailPanel: TrustDetailPanelController? = null
     private var widgetController: TrustFeedHealthWidgetController? = null
     private var markerTapSubscription: Subscription? = null
+    private var stateStore: TrustStateStore? = null
+    private var configuredTtlSeconds: Long = TrustStateStore.DEFAULT_TTL_SECONDS
 
     override fun onCreate(context: PluginContext) {
         context.logger.d("TrustOverlayMapComponent.onCreate")
+
+        configuredTtlSeconds = context.settings.getLong(
+            SETTINGS_TTL_SECONDS,
+            TrustStateStore.DEFAULT_TTL_SECONDS,
+        )
+        stateStore = TrustStateStore(ttlSeconds = configuredTtlSeconds)
 
         markerRenderer = TrustMarkerRenderer(context.mapView)
         detailPanel = TrustDetailPanelController(context.logger)
@@ -27,6 +35,10 @@ class TrustOverlayMapComponent : AtakMapComponent {
         )
 
         widgetController?.start()
+        widgetController?.onFeedStatus(
+            status = stateStore?.feedStatus() ?: TrustFeedStatus.DEGRADED,
+            ttlSeconds = configuredTtlSeconds,
+        )
 
         markerTapSubscription = context.markerTapBus.subscribe { markerHandle ->
             detailPanel?.onMarkerTapped(markerHandle.id)
@@ -34,9 +46,24 @@ class TrustOverlayMapComponent : AtakMapComponent {
 
         cotSubscriber?.start { trustEvent ->
             val markerId = "trust:${trustEvent.uid}"
-            markerRenderer?.render(trustEvent)
+            val store = stateStore ?: return@start
+            store.record(trustEvent)
+            val resolvedState = store.resolve(trustEvent.uid)
+
+            markerRenderer?.render(resolvedState)
             detailPanel?.onTrustEvent(markerId, trustEvent)
             widgetController?.onTrustEvent(trustEvent)
+
+            for (state in store.allResolved()) {
+                if (state.stale) {
+                    markerRenderer?.render(state)
+                }
+            }
+
+            widgetController?.onFeedStatus(
+                status = store.feedStatus(),
+                ttlSeconds = configuredTtlSeconds,
+            )
         }
     }
 
@@ -52,5 +79,10 @@ class TrustOverlayMapComponent : AtakMapComponent {
         markerRenderer = null
         detailPanel = null
         widgetController = null
+        stateStore = null
+    }
+
+    companion object {
+        const val SETTINGS_TTL_SECONDS = "trust.state.ttl.seconds"
     }
 }

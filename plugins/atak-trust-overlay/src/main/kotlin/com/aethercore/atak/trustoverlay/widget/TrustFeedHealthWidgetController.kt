@@ -3,6 +3,7 @@ package com.aethercore.atak.trustoverlay.widget
 import com.aethercore.atak.trustoverlay.atak.WidgetHost
 import com.aethercore.atak.trustoverlay.atak.WidgetModel
 import com.aethercore.atak.trustoverlay.core.TrustEvent
+import com.aethercore.atak.trustoverlay.core.TrustFeedStatus
 
 class TrustFeedHealthWidgetController(
     private val widgetHost: WidgetHost,
@@ -35,20 +36,31 @@ class TrustFeedHealthWidgetController(
         if (event.level.name == "LOW" || event.level.name == "UNKNOWN") {
             unhealthyEvents += 1
         }
+    }
+
+    fun onFeedStatus(status: TrustFeedStatus, ttlSeconds: Long) {
+        if (!enabled) {
+            return
+        }
 
         val unhealthyRatio = if (totalEvents == 0L) 0.0 else unhealthyEvents.toDouble() / totalEvents.toDouble()
-        val severity = when {
-            unhealthyRatio > 0.50 -> "high"
-            unhealthyRatio > 0.20 -> "medium"
-            else -> "low"
+        val statusSeverity = if (status == TrustFeedStatus.DEGRADED) "high" else "low"
+        val severity = if (status == TrustFeedStatus.DEGRADED) {
+            "high"
+        } else {
+            when {
+                unhealthyRatio > 0.50 -> "high"
+                unhealthyRatio > 0.20 -> "medium"
+                else -> "low"
+            }
         }
 
         widgetHost.update(
             WidgetModel(
                 id = WIDGET_ID,
                 title = "Trust Feed",
-                value = "events=$totalEvents, unhealthy=$unhealthyEvents",
-                severity = severity,
+                value = "status=${status.name.lowercase()}, ttl=${ttlSeconds}s, events=$totalEvents, unhealthy=$unhealthyEvents",
+                severity = if (severity == "low") statusSeverity else severity,
             ),
         )
     }
