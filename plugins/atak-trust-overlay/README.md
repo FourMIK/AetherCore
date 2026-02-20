@@ -16,6 +16,15 @@ This module scaffolds a standalone Android ATAK plugin at `plugins/atak-trust-ov
 - `TrustDetailPanelController`: shows detail panel when a trust marker is tapped.
 - `TrustFeedHealthWidgetController`: (optional) global widget lifecycle and refresh loop.
 
+
+## ATAK compatibility baseline
+
+Canonical ATAK baseline for this plugin is **4.6.0.5**.
+
+- Gradle default: `atak.compatible.version=4.6.0.5` (override with `-Patak.compatible.version=<version>`).
+- The plugin remains compile-compatible with this baseline because direct ATAK API usage is intentionally minimized to stable types (`gov.tak.api.plugin.ILifecycle`, `gov.tak.api.plugin.IServiceController`, `com.atakmap.android.maps.MapView`) and all volatile map/UI/event hooks are resolved via reflection with method/field fallbacks.
+- Validation outcome for 4.6.0.5 API surface: **no source changes required**; current adapters already gate optional APIs and degrade gracefully when a symbol is unavailable.
+
 ## ATAK registration artifacts
 
 - `src/main/AndroidManifest.xml`: plugin package metadata and ATAK plugin XML registration.

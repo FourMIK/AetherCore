@@ -38,6 +38,9 @@ tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(verifyAethercoreJniCrate)
 }
 
+
+val atakCompatibleVersion = providers.gradleProperty("atak.compatible.version").orElse("4.6.0.5")
+
 android {
     namespace = "com.aethercore.atak.trustoverlay"
     compileSdk = 34
@@ -59,6 +62,8 @@ android {
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
         }
+
+        buildConfigField("String", "ATAK_COMPATIBLE_VERSION", "\"${atakCompatibleVersion.get()}\"")
     }
 
     signingConfigs {
@@ -85,6 +90,10 @@ android {
         cmake {
             path("CMakeLists.txt")
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {
