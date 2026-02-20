@@ -12,6 +12,32 @@ val localProperties = Properties().apply {
     }
 }
 
+
+val defaultAethercoreJniDir = rootProject.file("../../external/aethercore-jni")
+val aethercoreJniDir = localProperties.getProperty("aethercore.jni.dir")?.let(::file) ?: defaultAethercoreJniDir
+
+val verifyAethercoreJniCrate by tasks.registering {
+    doLast {
+        if (!aethercoreJniDir.exists()) {
+            throw GradleException(
+                "AetherCore JNI crate not found at '${aethercoreJniDir.invariantSeparatorsPath}'. " +
+                    "Checkout the JNI crate at external/aethercore-jni or set aethercore.jni.dir in local.properties."
+            )
+        }
+        val cargoToml = aethercoreJniDir.resolve("Cargo.toml")
+        if (!cargoToml.exists()) {
+            throw GradleException(
+                "AetherCore JNI crate is missing Cargo.toml at '${cargoToml.invariantSeparatorsPath}'. " +
+                    "Point aethercore.jni.dir to the JNI crate root."
+            )
+        }
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(verifyAethercoreJniCrate)
+}
+
 android {
     namespace = "com.aethercore.atak.trustoverlay"
     compileSdk = 34
