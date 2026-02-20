@@ -159,6 +159,25 @@ class TrustEventParserTest {
     }
 
     @Test
+    fun `tracks malformed counts and reject reasons per parser instance`() {
+        val firstParser = parser()
+        val secondParser = parser()
+        val malformed = CotFixtureLoader.load("malformed")
+
+        assertNull(firstParser.parse(malformed))
+        assertEquals(1L, firstParser.badEventCount())
+        assertEquals("invalid_time", firstParser.mostRecentBadEventReason())
+
+        assertEquals(0L, secondParser.badEventCount())
+        assertNull(secondParser.mostRecentBadEventReason())
+
+        assertNull(secondParser.parse(malformed))
+        assertEquals(1L, secondParser.badEventCount())
+        assertEquals("invalid_time", secondParser.mostRecentBadEventReason())
+        assertEquals(1L, firstParser.badEventCount())
+    }
+
+    @Test
     fun `extracts metrics and source metadata when present`() {
         val parser = parser()
         val event = parser.parse(CotFixtureLoader.load("healthy"))
