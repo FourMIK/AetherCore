@@ -15,6 +15,11 @@ interface PluginContext {
     val markerTapBus: MarkerTapBus
     val widgetHost: WidgetHost
     val logger: Logger
+    val settings: PluginSettings
+}
+
+interface PluginSettings {
+    fun getLong(key: String, defaultValue: Long): Long
 }
 
 interface Logger {
