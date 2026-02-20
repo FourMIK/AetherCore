@@ -79,6 +79,22 @@ class TrustEventParserTest {
         assertEquals("invalid_last_updated", parser.mostRecentBadEventReason())
     }
 
+
+
+    @Test
+    fun `rejects event when trust fields are missing`() {
+        val parser = parser()
+        val healthyFixture = CotFixtureLoader.load("healthy")
+
+        val missingTrustScore = healthyFixture.copy(detail = healthyFixture.detail - "trust_score")
+        assertNull(parser.parse(missingTrustScore))
+        assertEquals("missing_trust_score", parser.mostRecentBadEventReason())
+
+        val missingStale = healthyFixture.copy(stale = null, detail = healthyFixture.detail - "stale")
+        assertNull(parser.parse(missingStale))
+        assertEquals("missing_stale", parser.mostRecentBadEventReason())
+    }
+
     @Test
     fun `extracts metrics and source metadata when present`() {
         val parser = parser()
