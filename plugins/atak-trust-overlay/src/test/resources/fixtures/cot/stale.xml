@@ -1,7 +1,7 @@
 <event uid="stale-node" type="a-f-AETHERCORE-TRUST" time="2026-01-14T10:00:00Z" stale="2026-01-14T10:05:00Z">
   <point lat="37.0" lon="-120.0" />
   <detail>
-    <trust score="0.92" last_updated="2026-01-14T09:59:00Z" source="aethercore" uid="stale-node" />
+    <trust trust_score="0.92" trust_level="high" last_updated="2026-01-14T09:59:00Z" source="aethercore" uid="stale-node" />
     <contact callsign="STALE-1" />
     <metrics packet_loss="0.01" />
     <sourceMeta gateway="mesh-gw-4" cluster="delta" />

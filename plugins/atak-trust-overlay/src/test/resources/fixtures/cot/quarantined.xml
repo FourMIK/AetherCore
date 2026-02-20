@@ -1,7 +1,7 @@
 <event uid="quarantined-node" type="a-f-AETHERCORE-TRUST" time="2026-01-14T10:15:00Z" stale="2026-01-14T10:20:00Z">
   <point lat="36.0" lon="-119.0" />
   <detail>
-    <trust score="0.59" last_updated="2026-01-14T10:14:20Z" source="aethercore" uid="quarantined-node" />
+    <trust trust_score="0.59" trust_level="quarantined" last_updated="2026-01-14T10:14:20Z" source="aethercore" uid="quarantined-node" />
     <contact callsign="QUAR-1" />
     <metrics packet_loss="0.40" />
     <sourceMeta gateway="mesh-gw-3" cluster="charlie" />

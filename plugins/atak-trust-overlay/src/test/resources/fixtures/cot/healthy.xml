@@ -1,7 +1,7 @@
 <event uid="healthy-node" type="a-f-AETHERCORE-TRUST" time="2026-01-14T10:15:00Z" stale="2026-01-14T10:20:00Z">
   <point lat="34.0" lon="-117.0" />
   <detail>
-    <trust score="0.90" last_updated="2026-01-14T10:14:55Z" source="aethercore" uid="healthy-node" />
+    <trust trust_score="0.90" trust_level="healthy" last_updated="2026-01-14T10:14:55Z" source="aethercore" uid="healthy-node" />
     <contact callsign="HEALTHY-1" />
     <metrics packet_loss="0.02" />
     <sourceMeta gateway="mesh-gw-1" cluster="alpha" />
