@@ -15,6 +15,7 @@ val localProperties = Properties().apply {
 
 val defaultAethercoreJniDir = rootProject.file("../../external/aethercore-jni")
 val aethercoreJniDir = localProperties.getProperty("aethercore.jni.dir")?.let(::file) ?: defaultAethercoreJniDir
+val atakRequiredArtifacts = providers.gradleProperty("atak.required.artifacts").orElse("main.jar")
 
 val verifyAethercoreJniCrate by tasks.registering {
     doLast {
@@ -34,8 +35,32 @@ val verifyAethercoreJniCrate by tasks.registering {
     }
 }
 
+val verifyAtakSdkArtifacts by tasks.registering {
+    doLast {
+        val libsDir = projectDir.resolve("libs")
+        val requiredArtifacts = atakRequiredArtifacts.get()
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        if (requiredArtifacts.isEmpty()) {
+            throw GradleException("atak.required.artifacts must include at least one artifact filename.")
+        }
+
+        val missingArtifacts = requiredArtifacts.filterNot { libsDir.resolve(it).exists() }
+        if (missingArtifacts.isNotEmpty()) {
+            throw GradleException(
+                "Missing ATAK SDK artifacts in '${libsDir.invariantSeparatorsPath}': " +
+                    missingArtifacts.joinToString(", ") +
+                    ". Configure atak.required.artifacts (comma-separated filenames) or place the files in libs/."
+            )
+        }
+    }
+}
+
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(verifyAethercoreJniCrate)
+    dependsOn(verifyAtakSdkArtifacts)
 }
 
 

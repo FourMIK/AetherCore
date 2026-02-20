@@ -39,6 +39,33 @@ This scaffold is intentionally API-light and framework-agnostic so you can repla
 
 ATAK loads this plugin through metadata in `AndroidManifest.xml`, then resolves `@xml/trust_overlay_plugin` and `assets/plugin.xml`, both of which point to `TrustOverlayLifecycle` as the single startup authority. `TrustOverlayLifecycle.onCreate` initializes the Ralphie daemon, CoT bus adapters, and `TrustOverlayMapComponent`; ATAK lifecycle callbacks then control teardown via `onDestroy`. No broadcast bootstrap path is used, preventing duplicate startup paths.
 
+## SDK prerequisites (required)
+
+This plugin compiles against ATAK SDK jar artifacts in `plugins/atak-trust-overlay/libs`.
+
+- Default required set: `main.jar`
+- Gradle property: `atak.required.artifacts` (comma-separated filenames)
+- Default contract: `atak.required.artifacts=main.jar`
+
+### 1) Copy ATAK SDK artifacts into `libs/`
+
+```bash
+mkdir -p plugins/atak-trust-overlay/libs
+cp atak/ATAK/app/build/libs/main.jar plugins/atak-trust-overlay/libs/main.jar
+```
+
+If your environment uses different names, either rename files in `libs/` or override the required set with Gradle:
+
+```bash
+./gradlew -Patak.required.artifacts=main.jar,<additional>.jar :plugins:atak-trust-overlay:preBuild
+```
+
+### 2) Preflight guards
+
+`preBuild` runs `verifyAtakSdkArtifacts` and fails fast when any required SDK filename from `atak.required.artifacts` is missing from `libs/`.
+
+See `plugins/atak-trust-overlay/libs/README.md` for the offline contract and examples.
+
 ## Native JNI build setup (required)
 
 This plugin expects the Rust JNI crate that produces `libaethercore_jni.so` to exist **outside** the ATAK plugin module at:
