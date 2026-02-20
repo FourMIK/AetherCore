@@ -1,0 +1,9 @@
+<event uid="suspect-node" type="a-f-AETHERCORE-TRUST" time="2026-01-14T10:15:00Z" stale="2026-01-14T10:20:00Z">
+  <point lat="35.0" lon="-118.0" />
+  <detail>
+    <trust score="0.60" last_updated="2026-01-14T10:14:40Z" source="aethercore" uid="suspect-node" />
+    <contact callsign="SUSPECT-1" />
+    <metrics packet_loss="0.10" />
+    <sourceMeta gateway="mesh-gw-2" cluster="bravo" />
+  </detail>
+</event>

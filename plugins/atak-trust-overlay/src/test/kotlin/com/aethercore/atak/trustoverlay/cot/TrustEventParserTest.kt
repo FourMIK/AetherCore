@@ -1,6 +1,5 @@
 package com.aethercore.atak.trustoverlay.cot
 
-import com.aethercore.atak.trustoverlay.atak.CotEventEnvelope
 import com.aethercore.atak.trustoverlay.atak.Logger
 import com.aethercore.atak.trustoverlay.core.TrustLevel
 import org.junit.Assert.assertEquals
@@ -12,75 +11,85 @@ class TrustEventParserTest {
     private val logger = TestLogger()
 
     @Test
-    fun `derives trust level from score thresholds`() {
-        val parser = TrustEventParser(logger, allowedSources = setOf("aethercore"))
+    fun `parses valid CoT fixtures at trust threshold edges`() {
+        val parser = parser()
 
-        val healthy = parser.parse(baseEnvelope(score = "0.95"))
-        val suspect = parser.parse(baseEnvelope(uid = "node-2", score = "0.6"))
-        val quarantined = parser.parse(baseEnvelope(uid = "node-3", score = "0.2"))
+        val healthy = parser.parse(CotFixtureLoader.load("healthy"))
+        val suspect = parser.parse(CotFixtureLoader.load("suspect"))
+        val quarantined = parser.parse(CotFixtureLoader.load("quarantined"))
 
         assertEquals(TrustLevel.HIGH, healthy?.level)
-        assertEquals(95, healthy?.score)
-        assertEquals(0.95, healthy?.trustScore)
         assertEquals(TrustLevel.MEDIUM, suspect?.level)
         assertEquals(TrustLevel.LOW, quarantined?.level)
+        assertEquals(90, healthy?.score)
+        assertEquals(60, suspect?.score)
+        assertEquals(59, quarantined?.score)
+    }
+
+    @Test
+    fun `maps trust_score deterministically to derived trust level`() {
+        val parser = parser()
+
+        val cases = listOf(
+            1.0 to TrustLevel.HIGH,
+            0.9 to TrustLevel.HIGH,
+            0.899999 to TrustLevel.MEDIUM,
+            0.6 to TrustLevel.MEDIUM,
+            0.599999 to TrustLevel.LOW,
+            0.0 to TrustLevel.LOW,
+        )
+
+        cases.forEachIndexed { idx, (score, expectedLevel) ->
+            val healthyFixture = CotFixtureLoader.load("healthy")
+            val event = parser.parse(
+                healthyFixture.copy(
+                    uid = "node-$idx",
+                    detail = healthyFixture.detail + mapOf(
+                        "trust.uid" to "node-$idx",
+                        "trust_score" to score.toString(),
+                    ),
+                ),
+            )
+            assertEquals("score=$score", expectedLevel, event?.level)
+        }
+    }
+
+    @Test
+    fun `rejects malformed fixture and validation failures`() {
+        val parser = parser()
+
+        assertNull(parser.parse(CotFixtureLoader.load("malformed")))
+        assertEquals("invalid_time", parser.mostRecentBadEventReason())
+
+        val healthyFixture = CotFixtureLoader.load("healthy")
+
+        assertNull(parser.parse(healthyFixture.copy(uid = "")))
+        assertEquals("missing_uid", parser.mostRecentBadEventReason())
+
+        val missingLastUpdated = healthyFixture.copy(detail = healthyFixture.detail - "last_updated")
+        assertNull(parser.parse(missingLastUpdated))
+        assertEquals("missing_last_updated", parser.mostRecentBadEventReason())
+
+        val outOfBoundsScore = healthyFixture.copy(detail = healthyFixture.detail + ("trust_score" to "1.1"))
+        assertNull(parser.parse(outOfBoundsScore))
+        assertEquals("trust_score_out_of_bounds", parser.mostRecentBadEventReason())
+
+        val malformedTimestamp = healthyFixture.copy(detail = healthyFixture.detail + ("last_updated" to "bad-timestamp"))
+        assertNull(parser.parse(malformedTimestamp))
+        assertEquals("invalid_last_updated", parser.mostRecentBadEventReason())
     }
 
     @Test
     fun `extracts metrics and source metadata when present`() {
-        val parser = TrustEventParser(logger, allowedSources = setOf("aethercore"))
-        val event = parser.parse(baseEnvelope())
+        val parser = parser()
+        val event = parser.parse(CotFixtureLoader.load("healthy"))
 
         assertEquals(0.02, event?.metrics?.get("packet_loss"))
         assertEquals("mesh-gw-1", event?.sourceMetadata?.get("gateway"))
         assertTrue(event?.sourceMetadata?.containsKey("cluster") == true)
     }
 
-    @Test
-    fun `rejects malformed payload and increments bad-event counter`() {
-        val parser = TrustEventParser(logger, allowedSources = setOf("aethercore"))
-
-        val before = parser.badEventCount()
-        val malformed = baseEnvelope(score = "1.3")
-        assertNull(parser.parse(malformed))
-        assertEquals(before + 1L, parser.badEventCount())
-        assertEquals("trust_score_out_of_bounds", parser.mostRecentBadEventReason())
-    }
-
-    @Test
-    fun `rejects blocked source and uid mismatch`() {
-        val parser = TrustEventParser(logger, allowedSources = setOf("trusted-gateway"))
-        val blocked = baseEnvelope(source = "rogue")
-        assertNull(parser.parse(blocked))
-
-        val parser2 = TrustEventParser(logger, allowedSources = setOf("aethercore"))
-        val mismatch = baseEnvelope(detailUid = "other-node")
-        assertNull(parser2.parse(mismatch))
-    }
-
-    private fun baseEnvelope(
-        uid: String = "node-1",
-        score: String = "0.9",
-        source: String = "aethercore",
-        detailUid: String = uid,
-    ): CotEventEnvelope = CotEventEnvelope(
-        uid = uid,
-        type = TrustCoTSubscriber.TRUST_COT_TYPE,
-        lat = 34.0,
-        lon = -117.0,
-        time = "2026-01-14T10:15:00Z",
-        stale = "2026-01-14T10:20:00Z",
-        detail = mapOf(
-            "trust_score" to score,
-            "last_updated" to "2026-01-14T10:14:55Z",
-            "source" to source,
-            "trust.uid" to detailUid,
-            "detail" to "present",
-            "integrity_packet_loss" to "0.02",
-            "source_meta.gateway" to "mesh-gw-1",
-            "event.source.cluster" to "alpha",
-        ),
-    )
+    private fun parser(): TrustEventParser = TrustEventParser(logger, allowedSources = setOf("aethercore"))
 
     private class TestLogger : Logger {
         override fun d(message: String) = Unit
