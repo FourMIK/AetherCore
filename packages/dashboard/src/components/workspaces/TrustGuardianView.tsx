@@ -7,24 +7,67 @@ import React from 'react';
 import { GlassPanel } from '../hud/GlassPanel';
 import { Shield, Lock, AlertTriangle, CheckCircle, Key } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import type { SentinelTrustStatus } from '../../api/tauri-commands';
 
-export const TrustGuardianView: React.FC = () => {
+interface TrustGuardianViewProps {
+  sentinelTrustStatus?: SentinelTrustStatus | null;
+}
+
+const STATUS_CLASS: Record<string, string> = {
+  healthy: 'text-verified-green',
+  degraded: 'text-jamming',
+  error: 'text-red-400',
+};
+
+export const TrustGuardianView: React.FC<TrustGuardianViewProps> = ({ sentinelTrustStatus = null }) => {
   const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const nodeArray = Array.from(nodes.values());
-  
+
   const trustMetrics = {
-    verified: nodeArray.filter(n => n.verified).length,
-    pending: nodeArray.filter(n => !n.verified).length,
-    highTrust: nodeArray.filter(n => n.trustScore >= 90).length,
-    degraded: nodeArray.filter(n => n.trustScore < 70).length,
+    verified: nodeArray.filter((n) => n.verified).length,
+    pending: nodeArray.filter((n) => !n.verified).length,
+    highTrust: nodeArray.filter((n) => n.trustScore >= 90).length,
+    degraded: nodeArray.filter((n) => n.trustScore < 70).length,
   };
+
+  const probe = sentinelTrustStatus?.startup_probe;
+  const probeStatus = probe?.status ?? (sentinelTrustStatus?.reduced_trust ? 'degraded' : 'healthy');
 
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden">
       <div className="max-w-7xl mx-auto p-4 space-y-4 pb-8">
-        <h1 className="font-display text-3xl font-bold text-tungsten mb-2">
-          Trust Guardian
-        </h1>
+        <h1 className="font-display text-3xl font-bold text-tungsten mb-2">Trust Guardian</h1>
+
+        <GlassPanel variant="light" className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm" data-testid="android-attestation-health">
+            <div>
+              <div className="text-tungsten/70">Selected Backend</div>
+              <div className="font-mono text-tungsten">{probe?.selected_backend ?? 'tpm'}</div>
+            </div>
+            <div>
+              <div className="text-tungsten/70">Security Level</div>
+              <div className="font-mono text-tungsten">{probe?.security_level ?? 'tee'}</div>
+            </div>
+            <div>
+              <div className="text-tungsten/70">Failure Reason</div>
+              <div className="font-mono text-tungsten">{probe?.failure_reason ?? 'none'}</div>
+            </div>
+            <div>
+              <div className="text-tungsten/70">Policy Mode</div>
+              <div className="font-mono text-tungsten">{probe?.policy_mode ?? 'optional'}</div>
+            </div>
+            <div>
+              <div className="text-tungsten/70">Attestation Status</div>
+              <div className={`font-mono ${STATUS_CLASS[probeStatus] ?? 'text-jamming'}`}>{probeStatus}</div>
+            </div>
+            <div>
+              <div className="text-tungsten/70">Trust Mode</div>
+              <div className={`font-mono ${sentinelTrustStatus?.reduced_trust ? 'text-jamming' : 'text-verified-green'}`}>
+                {sentinelTrustStatus?.reduced_trust ? 'reduced' : 'full'}
+              </div>
+            </div>
+          </div>
+        </GlassPanel>
 
         {/* Trust Metrics */}
         <div className="grid grid-cols-4 gap-4">
@@ -32,9 +75,7 @@ export const TrustGuardianView: React.FC = () => {
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-tungsten/70 text-sm">Verified Nodes</div>
-                <div className="font-display text-3xl font-bold text-verified-green mt-1">
-                  {trustMetrics.verified}
-                </div>
+                <div className="font-display text-3xl font-bold text-verified-green mt-1">{trustMetrics.verified}</div>
               </div>
               <CheckCircle className="text-verified-green" size={24} />
             </div>
@@ -44,9 +85,7 @@ export const TrustGuardianView: React.FC = () => {
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-tungsten/70 text-sm">Pending</div>
-                <div className="font-display text-3xl font-bold text-ghost mt-1">
-                  {trustMetrics.pending}
-                </div>
+                <div className="font-display text-3xl font-bold text-ghost mt-1">{trustMetrics.pending}</div>
               </div>
               <AlertTriangle className="text-ghost" size={24} />
             </div>
@@ -56,9 +95,7 @@ export const TrustGuardianView: React.FC = () => {
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-tungsten/70 text-sm">High Trust</div>
-                <div className="font-display text-3xl font-bold text-overmatch mt-1">
-                  {trustMetrics.highTrust}
-                </div>
+                <div className="font-display text-3xl font-bold text-overmatch mt-1">{trustMetrics.highTrust}</div>
               </div>
               <Shield className="text-overmatch" size={24} />
             </div>
@@ -68,9 +105,7 @@ export const TrustGuardianView: React.FC = () => {
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-tungsten/70 text-sm">Degraded</div>
-                <div className="font-display text-3xl font-bold text-jamming mt-1">
-                  {trustMetrics.degraded}
-                </div>
+                <div className="font-display text-3xl font-bold text-jamming mt-1">{trustMetrics.degraded}</div>
               </div>
               <AlertTriangle className="text-jamming" size={24} />
             </div>
@@ -81,30 +116,22 @@ export const TrustGuardianView: React.FC = () => {
         <GlassPanel variant="light" className="p-6">
           <div className="flex items-center gap-3 mb-4">
             <Key className="text-overmatch" size={24} />
-            <h2 className="font-display text-xl font-semibold text-tungsten">
-              CodeRalphie Hardware Trust
-            </h2>
+            <h2 className="font-display text-xl font-semibold text-tungsten">CodeRalphie Hardware Trust</h2>
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div className="p-4 bg-carbon/30 border border-tungsten/10 rounded-lg">
               <div className="text-tungsten/70 text-sm mb-2">TPM Attestations</div>
-              <div className="font-display text-2xl font-bold text-tungsten">
-                {trustMetrics.verified}
-              </div>
+              <div className="font-display text-2xl font-bold text-tungsten">{trustMetrics.verified}</div>
               <div className="text-xs text-verified-green mt-1">✓ All Valid</div>
             </div>
             <div className="p-4 bg-carbon/30 border border-tungsten/10 rounded-lg">
               <div className="text-tungsten/70 text-sm mb-2">Ed25519 Keys</div>
-              <div className="font-display text-2xl font-bold text-tungsten">
-                {nodeArray.length}
-              </div>
+              <div className="font-display text-2xl font-bold text-tungsten">{nodeArray.length}</div>
               <div className="text-xs text-verified-green mt-1">✓ Hardware-Backed</div>
             </div>
             <div className="p-4 bg-carbon/30 border border-tungsten/10 rounded-lg">
               <div className="text-tungsten/70 text-sm mb-2">BLAKE3 Hashes</div>
-              <div className="font-display text-2xl font-bold text-tungsten">
-                {nodeArray.length * 2}
-              </div>
+              <div className="font-display text-2xl font-bold text-tungsten">{nodeArray.length * 2}</div>
               <div className="text-xs text-verified-green mt-1">✓ Merkle Verified</div>
             </div>
           </div>
@@ -114,15 +141,11 @@ export const TrustGuardianView: React.FC = () => {
         <GlassPanel variant="light" className="p-6">
           <div className="flex items-center gap-3 mb-4">
             <Lock className="text-overmatch" size={24} />
-            <h2 className="font-display text-xl font-semibold text-tungsten">
-              Recent Trust Events
-            </h2>
+            <h2 className="font-display text-xl font-semibold text-tungsten">Recent Trust Events</h2>
           </div>
           <div className="space-y-2">
             {nodeArray.length === 0 ? (
-              <div className="text-center py-8 text-tungsten/50">
-                No trust events recorded
-              </div>
+              <div className="text-center py-8 text-tungsten/50">No trust events recorded</div>
             ) : (
               nodeArray.slice(0, 5).map((node) => (
                 <div
@@ -136,17 +159,13 @@ export const TrustGuardianView: React.FC = () => {
                       <AlertTriangle className="text-ghost" size={18} />
                     )}
                     <div>
-                      <div className="font-mono text-tungsten text-sm">
-                        {node.id}
-                      </div>
+                      <div className="font-mono text-tungsten text-sm">{node.id}</div>
                       <div className="text-xs text-tungsten/50">
                         {node.verified ? 'Identity verified' : 'Awaiting attestation'}
                       </div>
                     </div>
                   </div>
-                  <div className="text-xs text-tungsten/50 font-mono">
-                    {new Date(node.lastSeen).toLocaleString()}
-                  </div>
+                  <div className="text-xs text-tungsten/50 font-mono">{new Date(node.lastSeen).toLocaleString()}</div>
                 </div>
               ))
             )}
