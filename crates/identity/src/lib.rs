@@ -43,7 +43,8 @@ pub mod tpm;
 pub mod grpc_server;
 
 pub use android_keystore::{
-    AndroidBackendMetadata, AndroidKeystoreManager, AndroidQuote, AndroidSecuritySignals,
+    AndroidAttestationExtension, AndroidBackendMetadata, AndroidKeystoreManager, AndroidQuote,
+    AndroidQuoteVerification, AndroidSecuritySignals, AndroidVerificationFailure,
 };
 pub use attestation::{
     AttestationFinalize, AttestationManager, AttestationRequest, AttestationResponse,
