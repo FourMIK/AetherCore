@@ -12,6 +12,8 @@ class TrustEventParser(
     private val logger: Logger,
     private val allowedSources: Set<String> = DEFAULT_ALLOWED_SOURCES,
 ) {
+    private val badEvents = AtomicLong(0)
+
     @Volatile
     private var mostRecentRejectReason: String? = null
 
@@ -157,7 +159,6 @@ class TrustEventParser(
 
     companion object {
         private const val METRIC_PREFIX = "integrity_"
-        private val badEvents = AtomicLong(0)
 
         private val EVENT_TIME_KEYS = listOf("time", "event.time")
         private val EVENT_STALE_KEYS = listOf("stale", "event.stale")
