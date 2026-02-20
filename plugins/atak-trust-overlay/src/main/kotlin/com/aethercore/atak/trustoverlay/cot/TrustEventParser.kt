@@ -56,6 +56,24 @@ class TrustEventParser(
             return reject("invalid_last_updated", envelope, "last_updated=$lastUpdated")
         }
 
+        val derivedLevel = derivedTrustLevel(score)
+        val providedLevelRaw = extractOptional(envelope, TRUST_LEVEL_KEYS)
+        val level = when {
+            providedLevelRaw == null -> derivedLevel
+            else -> {
+                val normalizedLevel = normalizeTrustLevel(providedLevelRaw)
+                    ?: return reject("invalid_trust_level", envelope, "trust_level=$providedLevelRaw")
+                if (normalizedLevel != derivedLevel) {
+                    return reject(
+                        "trust_level_conflict",
+                        envelope,
+                        "trust_level=$providedLevelRaw derived_level=${derivedLevel.name.lowercase()}",
+                    )
+                }
+                normalizedLevel
+            }
+        }
+
         val invalidMetric = envelope.detail.entries.firstOrNull { (key, value) ->
             key.startsWith(METRIC_PREFIX) && (value.toDoubleOrNull() == null || value.toDouble() < 0.0)
         }
@@ -69,7 +87,6 @@ class TrustEventParser(
 
         val callsign = extractRequired(envelope, CALLSIGN_KEYS)?.trim().orEmpty().ifEmpty { uid }
         val observedAtEpochMs = Instant.parse(lastUpdated).toEpochMilli()
-        val level = derivedTrustLevel(score)
         val scorePercent = (score * 100.0).toInt()
         val lat = envelope.lat ?: extractRequired(envelope, POINT_LAT_KEYS)?.toDoubleOrNull() ?: 0.0
         val lon = envelope.lon ?: extractRequired(envelope, POINT_LON_KEYS)?.toDoubleOrNull() ?: 0.0
@@ -115,10 +132,20 @@ class TrustEventParser(
     private fun extractRequired(envelope: CotEventEnvelope, keys: List<String>): String? =
         keys.firstNotNullOfOrNull { key -> envelope.detail[key] }
 
+    private fun extractOptional(envelope: CotEventEnvelope, keys: List<String>): String? =
+        keys.firstNotNullOfOrNull { key -> envelope.detail[key]?.trim()?.takeIf(String::isNotEmpty) }
+
     private fun derivedTrustLevel(score: Double): TrustLevel = when {
-        score >= 0.9 -> TrustLevel.HIGH
-        score >= 0.6 -> TrustLevel.MEDIUM
+        score >= HIGH_TRUST_THRESHOLD -> TrustLevel.HIGH
+        score >= MEDIUM_TRUST_THRESHOLD -> TrustLevel.MEDIUM
         else -> TrustLevel.LOW
+    }
+
+    private fun normalizeTrustLevel(value: String): TrustLevel? = when (value.trim().lowercase()) {
+        "healthy", "high" -> TrustLevel.HIGH
+        "suspect", "medium" -> TrustLevel.MEDIUM
+        "quarantined", "low" -> TrustLevel.LOW
+        else -> null
     }
 
     private fun isParseableInstant(value: String): Boolean = try {
@@ -137,12 +164,16 @@ class TrustEventParser(
         private val DETAIL_MARKER_KEYS = listOf("detail", "event.detail", "trust.present")
         private val DETAIL_UID_KEYS = listOf("trust.uid", "uid")
         private val SCORE_KEYS = listOf("trust_score", "trust.score")
+        private val TRUST_LEVEL_KEYS = listOf("trust_level", "trust.level")
         private val LAST_UPDATED_KEYS = listOf("last_updated", "trust.last_updated", "trust.observedAt")
         private val SOURCE_KEYS = listOf("source", "trust.source")
         private val CALLSIGN_KEYS = listOf("callsign", "trust.callsign")
         private val POINT_LAT_KEYS = listOf("point.lat", "lat")
         private val POINT_LON_KEYS = listOf("point.lon", "lon")
         private val SOURCE_METADATA_PREFIXES = listOf("source_meta.", "source.meta.", "event.source.")
+
+        private const val HIGH_TRUST_THRESHOLD = 0.9
+        private const val MEDIUM_TRUST_THRESHOLD = 0.6
 
         private val DEFAULT_ALLOWED_SOURCES = setOf("aethercore", "trust-mesh", "trusted-gateway", "unknown")
     }

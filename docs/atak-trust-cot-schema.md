@@ -19,9 +19,9 @@ Inside `<event><detail>...</detail></event>`, include a `<trust>` element contai
 - Trust level handling:
   - Either provide `trust_level` explicitly (`healthy`, `suspect`, `quarantined`), **or**
   - Omit `trust_level` and derive it from `trust_score` using:
-    - `healthy` for `trust_score >= 0.80`
-    - `suspect` for `0.40 <= trust_score < 0.80`
-    - `quarantined` for `trust_score < 0.40`
+    - `healthy` for `trust_score >= 0.90`
+    - `suspect` for `0.60 <= trust_score < 0.90`
+    - `quarantined` for `trust_score < 0.60`
 
 Recommended structure:
 
@@ -33,6 +33,14 @@ Recommended structure:
     trust_level="healthy"/>
 </detail>
 ```
+
+When `trust_level` is present, receivers must validate and normalize it (case-insensitive):
+
+- `healthy` (or `high`)
+- `suspect` (or `medium`)
+- `quarantined` (or `low`)
+
+Conflict rule: if provided `trust_level` does not match the level derived from `trust_score` using the thresholds above, treat the payload as malformed and reject it.
 
 ## 3. Optional integrity metrics
 

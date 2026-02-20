@@ -19,9 +19,12 @@ object CotFixtureLoader {
             val metrics = event.getElementsByTagName("metrics").item(0)
             val sourceMeta = event.getElementsByTagName("sourceMeta").item(0)
 
+            val trustScoreAttr = trust.attributes.getNamedItem("trust_score") ?: trust.attributes.getNamedItem("score")
+            val trustLevelAttr = trust.attributes.getNamedItem("trust_level")
+
             val detailMap = linkedMapOf(
                 "detail" to "present",
-                "trust_score" to trust.attributes.getNamedItem("score").nodeValue,
+                "trust_score" to requireNotNull(trustScoreAttr).nodeValue,
                 "last_updated" to trust.attributes.getNamedItem("last_updated").nodeValue,
                 "source" to trust.attributes.getNamedItem("source").nodeValue,
                 "trust.uid" to trust.attributes.getNamedItem("uid").nodeValue,
@@ -30,6 +33,9 @@ object CotFixtureLoader {
                 "source_meta.gateway" to sourceMeta.attributes.getNamedItem("gateway").nodeValue,
                 "event.source.cluster" to sourceMeta.attributes.getNamedItem("cluster").nodeValue,
             )
+            if (trustLevelAttr != null) {
+                detailMap["trust_level"] = trustLevelAttr.nodeValue
+            }
 
             return CotEventEnvelope(
                 uid = event.attributes.getNamedItem("uid").nodeValue,

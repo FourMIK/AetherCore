@@ -3,6 +3,7 @@ package com.aethercore.atak.trustoverlay.cot
 import com.aethercore.atak.trustoverlay.atak.Logger
 import com.aethercore.atak.trustoverlay.core.TrustLevel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,7 +28,7 @@ class TrustEventParserTest {
     }
 
     @Test
-    fun `maps trust_score deterministically to derived trust level`() {
+    fun `maps trust_score deterministically to derived trust level using canonical thresholds`() {
         val parser = parser()
 
         val cases = listOf(
@@ -55,6 +56,70 @@ class TrustEventParserTest {
     }
 
     @Test
+    fun `honors trust_level when present and normalized`() {
+        val parser = parser()
+        val base = CotFixtureLoader.load("healthy")
+
+        val explicitHealthy = parser.parse(base)
+        assertEquals(TrustLevel.HIGH, explicitHealthy?.level)
+
+        val aliasMedium = parser.parse(
+            base.copy(
+                uid = "medium-alias",
+                detail = base.detail + mapOf(
+                    "trust.uid" to "medium-alias",
+                    "trust_score" to "0.60",
+                    "trust_level" to "MEDIUM",
+                ),
+            ),
+        )
+        assertEquals(TrustLevel.MEDIUM, aliasMedium?.level)
+
+        val aliasLow = parser.parse(
+            base.copy(
+                uid = "low-alias",
+                detail = base.detail + mapOf(
+                    "trust.uid" to "low-alias",
+                    "trust_score" to "0.59",
+                    "trust_level" to " low ",
+                ),
+            ),
+        )
+        assertEquals(TrustLevel.LOW, aliasLow?.level)
+    }
+
+    @Test
+    fun `rejects invalid or conflicting trust_level values`() {
+        val parser = parser()
+        val base = CotFixtureLoader.load("healthy")
+
+        val invalidLevel = parser.parse(
+            base.copy(
+                uid = "invalid-level",
+                detail = base.detail + mapOf(
+                    "trust.uid" to "invalid-level",
+                    "trust_level" to "definitely-fine",
+                ),
+            ),
+        )
+        assertNull(invalidLevel)
+        assertEquals("invalid_trust_level", parser.mostRecentBadEventReason())
+
+        val conflictLevel = parser.parse(
+            base.copy(
+                uid = "conflict-level",
+                detail = base.detail + mapOf(
+                    "trust.uid" to "conflict-level",
+                    "trust_score" to "0.90",
+                    "trust_level" to "suspect",
+                ),
+            ),
+        )
+        assertNull(conflictLevel)
+        assertEquals("trust_level_conflict", parser.mostRecentBadEventReason())
+    }
+
+    @Test
     fun `rejects malformed fixture and validation failures`() {
         val parser = parser()
 
@@ -79,8 +144,6 @@ class TrustEventParserTest {
         assertEquals("invalid_last_updated", parser.mostRecentBadEventReason())
     }
 
-
-
     @Test
     fun `rejects event when trust fields are missing`() {
         val parser = parser()
@@ -103,6 +166,16 @@ class TrustEventParserTest {
         assertEquals(0.02, event?.metrics?.get("packet_loss"))
         assertEquals("mesh-gw-1", event?.sourceMetadata?.get("gateway"))
         assertTrue(event?.sourceMetadata?.containsKey("cluster") == true)
+    }
+
+    @Test
+    fun `fixtures follow cot trust conventions`() {
+        listOf("healthy", "suspect", "quarantined", "stale", "malformed").forEach { fixture ->
+            val envelope = CotFixtureLoader.load(fixture)
+            assertNotNull("$fixture: trust_score", envelope.detail["trust_score"])
+            assertNotNull("$fixture: last_updated", envelope.detail["last_updated"])
+            assertNotNull("$fixture: trust.uid", envelope.detail["trust.uid"])
+        }
     }
 
     private fun parser(): TrustEventParser = TrustEventParser(logger, allowedSources = setOf("aethercore"))

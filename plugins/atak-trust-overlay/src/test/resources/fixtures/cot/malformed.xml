@@ -1,7 +1,7 @@
 <event uid="malformed-node" type="a-f-AETHERCORE-TRUST" time="not-a-timestamp" stale="2026-01-14T10:20:00Z">
   <point lat="38.0" lon="-121.0" />
   <detail>
-    <trust score="1.10" last_updated="bad-last-updated" source="aethercore" uid="malformed-node" />
+    <trust trust_score="1.10" trust_level="bogus" last_updated="bad-last-updated" source="aethercore" uid="malformed-node" />
     <contact callsign="MALFORMED-1" />
     <metrics packet_loss="-1.0" />
     <sourceMeta gateway="mesh-gw-5" cluster="echo" />
