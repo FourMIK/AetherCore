@@ -49,8 +49,10 @@ interface Subscription {
 data class CotEventEnvelope(
     val uid: String,
     val type: String,
-    val lat: Double,
-    val lon: Double,
+    val lat: Double? = null,
+    val lon: Double? = null,
+    val time: String? = null,
+    val stale: String? = null,
     val detail: Map<String, String>,
 )
 
