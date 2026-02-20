@@ -50,7 +50,10 @@ pub use attestation::{
     AttestationFinalize, AttestationManager, AttestationRequest, AttestationResponse,
     AttestationResult, HandshakeState, PROTOCOL_VERSION,
 };
-pub use device::{Attestation, IdentityManager, IdentityVerification, PlatformIdentity};
+pub use device::{
+    evaluate_trust_policy, Attestation, IdentityManager, IdentityVerification, PlatformIdentity,
+    TrustPolicyDecision, TrustPolicyTier, TrustReasonCode,
+};
 pub use enrollment::{
     EnrollmentContext, EnrollmentRequest, PlatformType, CHALLENGE_WINDOW_MS, REQUIRED_PCRS,
 };

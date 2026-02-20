@@ -8,6 +8,8 @@ use tracing::{debug, error, info, warn};
 
 pub use crate::android_keystore::AndroidSecuritySignals;
 
+const MIN_ACCEPTED_PATCH_LEVEL: (u32, u32) = (2024, 1);
+
 /// Unique platform identifier with cryptographic binding.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PlatformIdentity {
@@ -57,6 +59,40 @@ pub enum Attestation {
     None,
 }
 
+/// Deterministic trust tier assigned by policy.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TrustPolicyTier {
+    /// StrongBox + verified boot + locked bootloader.
+    Highest,
+    /// Hardware-backed verified chain (TPM/TEE).
+    MediumHigh,
+    /// Software-only or policy gate failed.
+    LowUnverified,
+}
+
+/// Machine-readable reasons emitted by trust policy evaluation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TrustReasonCode {
+    StrongboxVerifiedBootLockedBootloader,
+    TeeVerifiedChain,
+    TpmVerifiedChain,
+    SoftwareOnlyAttestation,
+    UnverifiableAttestation,
+    BootStateUnverified,
+    BootloaderUnlocked,
+    PatchLevelMissing,
+    PatchLevelTooOld,
+}
+
+/// Structured policy result used across trust evaluators.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrustPolicyDecision {
+    pub verified: bool,
+    pub trust_score: f64,
+    pub tier: TrustPolicyTier,
+    pub reason_codes: Vec<TrustReasonCode>,
+}
+
 /// Identity verification result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentityVerification {
@@ -70,6 +106,10 @@ pub struct IdentityVerification {
     pub verified_at: u64,
     /// Verification details
     pub details: String,
+    /// Deterministic policy tier.
+    pub policy_tier: TrustPolicyTier,
+    /// Machine-readable policy reason codes.
+    pub reason_codes: Vec<TrustReasonCode>,
 }
 
 /// Identity manager for creating and verifying platform identities.
@@ -135,46 +175,30 @@ impl IdentityManager {
                 trust_score: 0.0,
                 verified_at: now,
                 details: "Identity has been revoked".to_string(),
+                policy_tier: TrustPolicyTier::LowUnverified,
+                reason_codes: vec![TrustReasonCode::UnverifiableAttestation],
             };
         }
 
-        // Check attestation type and assign trust score
-        let (verified, trust_score, details) = match &identity.attestation {
-            Attestation::Tpm { .. } => {
-                // In production, verify TPM quote and PCRs
-                debug!("TPM attestation verified");
-                (true, 1.0, "TPM attestation verified".to_string())
-            }
-            Attestation::Software { .. } => {
-                // Software attestation has lower trust
-                debug!("Software attestation verified");
-                (true, 0.7, "Software attestation verified".to_string())
-            }
-            Attestation::Android { .. } => {
-                debug!("Android keystore attestation verified");
-                (
-                    true,
-                    0.9,
-                    "Android keystore attestation verified".to_string(),
-                )
-            }
-            Attestation::None => {
-                warn!("No attestation provided");
-                (false, 0.0, "No attestation provided".to_string())
-            }
-        };
+        let policy = evaluate_trust_policy(identity);
+        let details = format!(
+            "tier={:?}; reasons={:?}",
+            policy.tier, policy.reason_codes
+        );
 
         info!(
-            verified = verified,
-            trust_score = trust_score,
+            verified = policy.verified,
+            trust_score = policy.trust_score,
             "Identity verification complete"
         );
         IdentityVerification {
-            verified,
+            verified: policy.verified,
             identity: identity.clone(),
-            trust_score,
+            trust_score: policy.trust_score,
             verified_at: now,
             details,
+            policy_tier: policy.tier,
+            reason_codes: policy.reason_codes,
         }
     }
 
@@ -217,6 +241,162 @@ fn current_timestamp() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis() as u64
+}
+
+fn parse_patch_level(patch: &str) -> Option<(u32, u32)> {
+    let mut parts = patch.split('-');
+    let year = parts.next()?.parse::<u32>().ok()?;
+    let month = parts.next()?.parse::<u32>().ok()?;
+    if (1..=12).contains(&month) {
+        Some((year, month))
+    } else {
+        None
+    }
+}
+
+fn patch_level_meets_minimum(patch: Option<&str>) -> Result<bool, TrustReasonCode> {
+    let Some(patch) = patch else {
+        return Err(TrustReasonCode::PatchLevelMissing);
+    };
+    let Some(parsed) = parse_patch_level(patch) else {
+        return Err(TrustReasonCode::PatchLevelMissing);
+    };
+
+    Ok(parsed >= MIN_ACCEPTED_PATCH_LEVEL)
+}
+
+fn is_verified_boot_state(state: Option<&str>) -> bool {
+    matches!(
+        state.map(|s| s.to_ascii_lowercase()),
+        Some(ref s) if s == "green" || s == "verified"
+    )
+}
+
+/// Evaluate deterministic trust policy tiers and constraints.
+pub fn evaluate_trust_policy(identity: &PlatformIdentity) -> TrustPolicyDecision {
+    match &identity.attestation {
+        Attestation::Android {
+            security_signals, ..
+        } => {
+            let mut reasons = Vec::new();
+            let verified_boot = is_verified_boot_state(Some(&security_signals.verified_boot_state));
+            if !verified_boot {
+                reasons.push(TrustReasonCode::BootStateUnverified);
+            }
+
+            let bootloader_locked = security_signals
+                .extra
+                .get("bootloader_locked")
+                .map(|v| v == "true")
+                .unwrap_or(security_signals.device_locked);
+            if !bootloader_locked {
+                reasons.push(TrustReasonCode::BootloaderUnlocked);
+            }
+
+            let patch_ok = match patch_level_meets_minimum(Some(&security_signals.os_patch_level)) {
+                Ok(ok) => ok,
+                Err(code) => {
+                    reasons.push(code);
+                    false
+                }
+            };
+            if !patch_ok && !reasons.contains(&TrustReasonCode::PatchLevelMissing) {
+                reasons.push(TrustReasonCode::PatchLevelTooOld);
+            }
+
+            if !verified_boot || !bootloader_locked || !patch_ok {
+                return TrustPolicyDecision {
+                    verified: false,
+                    trust_score: 0.2,
+                    tier: TrustPolicyTier::LowUnverified,
+                    reason_codes: reasons,
+                };
+            }
+
+            let level = security_signals.security_level.to_ascii_lowercase();
+            if level.contains("strongbox") {
+                reasons.push(TrustReasonCode::StrongboxVerifiedBootLockedBootloader);
+                TrustPolicyDecision {
+                    verified: true,
+                    trust_score: 1.0,
+                    tier: TrustPolicyTier::Highest,
+                    reason_codes: reasons,
+                }
+            } else if level.contains("trusted_environment") || level.contains("tee") {
+                reasons.push(TrustReasonCode::TeeVerifiedChain);
+                TrustPolicyDecision {
+                    verified: true,
+                    trust_score: 0.85,
+                    tier: TrustPolicyTier::MediumHigh,
+                    reason_codes: reasons,
+                }
+            } else {
+                reasons.push(TrustReasonCode::UnverifiableAttestation);
+                TrustPolicyDecision {
+                    verified: false,
+                    trust_score: 0.2,
+                    tier: TrustPolicyTier::LowUnverified,
+                    reason_codes: reasons,
+                }
+            }
+        }
+        Attestation::Tpm { .. } => {
+            let mut reasons = Vec::new();
+            let verified_boot = is_verified_boot_state(identity.metadata.get("boot_state").map(String::as_str));
+            if !verified_boot {
+                reasons.push(TrustReasonCode::BootStateUnverified);
+            }
+
+            let bootloader_locked = identity
+                .metadata
+                .get("bootloader_locked")
+                .map(|v| v == "true")
+                .unwrap_or(true);
+            if !bootloader_locked {
+                reasons.push(TrustReasonCode::BootloaderUnlocked);
+            }
+
+            let patch_ok = match patch_level_meets_minimum(identity.metadata.get("patch_level").map(String::as_str)) {
+                Ok(ok) => ok,
+                Err(code) => {
+                    reasons.push(code);
+                    false
+                }
+            };
+            if !patch_ok && !reasons.contains(&TrustReasonCode::PatchLevelMissing) {
+                reasons.push(TrustReasonCode::PatchLevelTooOld);
+            }
+
+            if verified_boot && bootloader_locked && patch_ok {
+                reasons.push(TrustReasonCode::TpmVerifiedChain);
+                TrustPolicyDecision {
+                    verified: true,
+                    trust_score: 0.9,
+                    tier: TrustPolicyTier::MediumHigh,
+                    reason_codes: reasons,
+                }
+            } else {
+                TrustPolicyDecision {
+                    verified: false,
+                    trust_score: 0.2,
+                    tier: TrustPolicyTier::LowUnverified,
+                    reason_codes: reasons,
+                }
+            }
+        }
+        Attestation::Software { .. } => TrustPolicyDecision {
+            verified: false,
+            trust_score: 0.2,
+            tier: TrustPolicyTier::LowUnverified,
+            reason_codes: vec![TrustReasonCode::SoftwareOnlyAttestation],
+        },
+        Attestation::None => TrustPolicyDecision {
+            verified: false,
+            trust_score: 0.0,
+            tier: TrustPolicyTier::LowUnverified,
+            reason_codes: vec![TrustReasonCode::UnverifiableAttestation],
+        },
+    }
 }
 
 #[cfg(test)]
@@ -264,8 +444,13 @@ mod tests {
 
         let verification = manager.verify(&identity);
 
-        assert!(verification.verified);
-        assert_eq!(verification.trust_score, 0.7); // Software attestation
+        assert!(!verification.verified);
+        assert_eq!(verification.trust_score, 0.2);
+        assert_eq!(verification.policy_tier, TrustPolicyTier::LowUnverified);
+        assert_eq!(
+            verification.reason_codes,
+            vec![TrustReasonCode::SoftwareOnlyAttestation]
+        );
     }
 
     #[test]
@@ -286,6 +471,10 @@ mod tests {
     #[test]
     fn test_tpm_attestation_trust() {
         let manager = IdentityManager::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("boot_state".to_string(), "green".to_string());
+        metadata.insert("bootloader_locked".to_string(), "true".to_string());
+        metadata.insert("patch_level".to_string(), "2024-02".to_string());
         let identity = PlatformIdentity {
             id: "test-1".to_string(),
             public_key: vec![1, 2, 3, 4],
@@ -295,13 +484,18 @@ mod tests {
                 ak_cert: vec![7, 8, 9],
             },
             created_at: 1000,
-            metadata: HashMap::new(),
+            metadata,
         };
 
         let verification = manager.verify(&identity);
 
         assert!(verification.verified);
-        assert_eq!(verification.trust_score, 1.0); // TPM has highest trust
+        assert_eq!(verification.trust_score, 0.9);
+        assert_eq!(verification.policy_tier, TrustPolicyTier::MediumHigh);
+        assert_eq!(
+            verification.reason_codes,
+            vec![TrustReasonCode::TpmVerifiedChain]
+        );
     }
 
     #[test]
@@ -330,5 +524,109 @@ mod tests {
 
         let list = manager.list();
         assert_eq!(list.len(), 2);
+    }
+
+    #[test]
+    fn test_policy_tier_strongbox_highest() {
+        let manager = IdentityManager::new();
+        let mut extra = HashMap::new();
+        extra.insert("bootloader_locked".to_string(), "true".to_string());
+        let identity = PlatformIdentity {
+            id: "android-1".to_string(),
+            public_key: vec![1, 2, 3, 4],
+            attestation: Attestation::Android {
+                challenge: vec![1],
+                signature: vec![2],
+                public_key: vec![3],
+                cert_chain: vec![vec![4]],
+                security_signals: AndroidSecuritySignals {
+                    api_level: 34,
+                    verified_boot_state: "green".to_string(),
+                    device_locked: true,
+                    os_patch_level: "2024-03".to_string(),
+                    security_level: "strongbox".to_string(),
+                    extra,
+                },
+            },
+            created_at: 1000,
+            metadata: HashMap::new(),
+        };
+
+        let verification = manager.verify(&identity);
+        assert!(verification.verified);
+        assert_eq!(verification.policy_tier, TrustPolicyTier::Highest);
+        assert!(verification
+            .reason_codes
+            .contains(&TrustReasonCode::StrongboxVerifiedBootLockedBootloader));
+    }
+
+    #[test]
+    fn test_policy_tier_tee_medium_high() {
+        let manager = IdentityManager::new();
+        let identity = PlatformIdentity {
+            id: "android-tee".to_string(),
+            public_key: vec![1, 2, 3, 4],
+            attestation: Attestation::Android {
+                challenge: vec![1],
+                signature: vec![2],
+                public_key: vec![3],
+                cert_chain: vec![vec![4]],
+                security_signals: AndroidSecuritySignals {
+                    api_level: 34,
+                    verified_boot_state: "verified".to_string(),
+                    device_locked: true,
+                    os_patch_level: "2024-03".to_string(),
+                    security_level: "trusted_environment".to_string(),
+                    extra: HashMap::new(),
+                },
+            },
+            created_at: 1000,
+            metadata: HashMap::new(),
+        };
+
+        let verification = manager.verify(&identity);
+        assert!(verification.verified);
+        assert_eq!(verification.policy_tier, TrustPolicyTier::MediumHigh);
+        assert!(verification
+            .reason_codes
+            .contains(&TrustReasonCode::TeeVerifiedChain));
+    }
+
+    #[test]
+    fn test_policy_gates_boot_and_patch() {
+        let manager = IdentityManager::new();
+        let identity = PlatformIdentity {
+            id: "android-fail".to_string(),
+            public_key: vec![1, 2, 3, 4],
+            attestation: Attestation::Android {
+                challenge: vec![1],
+                signature: vec![2],
+                public_key: vec![3],
+                cert_chain: vec![vec![4]],
+                security_signals: AndroidSecuritySignals {
+                    api_level: 34,
+                    verified_boot_state: "orange".to_string(),
+                    device_locked: false,
+                    os_patch_level: "2023-12".to_string(),
+                    security_level: "strongbox".to_string(),
+                    extra: HashMap::new(),
+                },
+            },
+            created_at: 1000,
+            metadata: HashMap::new(),
+        };
+
+        let verification = manager.verify(&identity);
+        assert!(!verification.verified);
+        assert_eq!(verification.policy_tier, TrustPolicyTier::LowUnverified);
+        assert!(verification
+            .reason_codes
+            .contains(&TrustReasonCode::BootStateUnverified));
+        assert!(verification
+            .reason_codes
+            .contains(&TrustReasonCode::BootloaderUnlocked));
+        assert!(verification
+            .reason_codes
+            .contains(&TrustReasonCode::PatchLevelTooOld));
     }
 }
