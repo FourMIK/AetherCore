@@ -38,6 +38,8 @@ describe('runtime TPM fallback behavior', () => {
 
     expect(config.tpm_policy.enforce_hardware).toBe(false);
     expect(config.tpm_policy.mode).toBe('optional');
+    expect(config.attestation_policy.backends.tpm.mode).toBe('optional');
+    expect(config.attestation_policy.backends.android_keystore.mode).toBe('optional');
   });
 
   it('buildEnvFallbackConfig enables required TPM policy when explicitly enabled', async () => {
@@ -48,6 +50,21 @@ describe('runtime TPM fallback behavior', () => {
 
     expect(config.tpm_policy.enforce_hardware).toBe(true);
     expect(config.tpm_policy.mode).toBe('required');
+    expect(config.attestation_policy.mode).toBe('required');
+    expect(config.attestation_policy.backends.tpm.mode).toBe('required');
+  });
+
+
+  it('validateUnifiedRuntimeConfig rejects contradictory backend requirements', async () => {
+    const { buildEnvFallbackConfig, validateUnifiedRuntimeConfig } = await import('./runtime');
+
+    const config = buildEnvFallbackConfig();
+    config.attestation_policy.mode = 'disabled';
+    config.attestation_policy.backends.tpm.mode = 'required';
+
+    expect(() => validateUnifiedRuntimeConfig(config)).toThrow(
+      'attestation_policy.backends.<backend>.mode cannot be required when attestation_policy.mode is disabled'
+    );
   });
 
   it('getRuntimeConfig.tpmEnabled stays consistent with fallback TPM policy', async () => {
