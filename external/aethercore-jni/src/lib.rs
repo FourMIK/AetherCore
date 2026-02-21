@@ -16,6 +16,7 @@ struct DaemonState {
     storage_path: Option<String>,
     hardware_id: Option<String>,
     identity_manager: Option<Arc<Mutex<IdentityManager>>>,
+    #[allow(dead_code)]
     grpc_endpoint: String,
 }
 
