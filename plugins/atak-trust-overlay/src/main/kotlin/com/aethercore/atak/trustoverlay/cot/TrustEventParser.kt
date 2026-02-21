@@ -106,12 +106,7 @@ class TrustEventParser(
         val signerNodeId = extractOptional(envelope, SIGNER_NODE_ID_KEYS)
         val payloadHash = extractOptional(envelope, PAYLOAD_HASH_KEYS)
 
-        val signatureVerified = if (signatureHex != null && signerNodeId != null) {
-            logger.d("Signature verification not yet implemented - accepting event without verification")
-            false
-        } else {
-            false
-        }
+        val signatureVerified = false
 
         return TrustEvent(
             uid = uid,

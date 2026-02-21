@@ -20,6 +20,8 @@ ed25519-dalek = "2.1"
 hex = "0.4"
 
 # AetherCore crates
+# Note: grpc-server feature is required to access proto definitions in aethercore-identity,
+# even though this is a client. The proto types are needed for gRPC client implementation.
 aethercore-identity = { path = "../../crates/identity", features = ["grpc-server"] }
 aethercore-crypto = { path = "../../crates/crypto" }
 
