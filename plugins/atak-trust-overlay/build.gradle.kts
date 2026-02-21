@@ -12,7 +12,7 @@ val localProperties = Properties().apply {
     }
 }
 
-val atakApiMinVersion = "4.6.0.5"
+val atakApiMinVersion = "5.2"
 val atakApiTargetVersion = "5.2"
 val atakCompatibleVersion = providers.gradleProperty("atak.compatible.version").orElse(atakApiMinVersion)
 
@@ -98,6 +98,22 @@ val verifyAtakCompatibilityContract by tasks.registering {
     }
 }
 
+val verifyAtakDescriptorMatchesCompatibleVersion by tasks.registering {
+    doLast {
+        val pluginXml = project.layout.projectDirectory.file("src/main/assets/plugin.xml").asFile
+        val (descriptorMin, descriptorTarget) = extractAtakApiContract(pluginXml.readText())
+        val configuredVersion = atakCompatibleVersion.get()
+
+        if (descriptorMin != configuredVersion || descriptorTarget != configuredVersion) {
+            throw GradleException(
+                "ATAK descriptor/Gradle compatibility mismatch: " +
+                    "plugin.xml has min=$descriptorMin target=$descriptorTarget, " +
+                    "but atak.compatible.version=$configuredVersion."
+            )
+        }
+    }
+}
+
 val verifyAtakSdkPrerequisites by tasks.registering {
     dependsOn(verifyAtakCompatibilityContract)
 
@@ -125,6 +141,7 @@ val verifyAtakSdkPrerequisites by tasks.registering {
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(verifyAethercoreJniCrate)
     dependsOn(verifyAtakCompatibilityContract)
+    dependsOn(verifyAtakDescriptorMatchesCompatibleVersion)
     dependsOn(verifyAtakSdkPrerequisites)
 }
 
