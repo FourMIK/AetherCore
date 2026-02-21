@@ -33,7 +33,7 @@ Canonical ATAK baseline for this plugin is **4.6.0.5**.
 
 ## SDK prerequisites
 
-Compatible ATAK baseline for this module: **ATAK-CIV 5.2.x** (or an org-equivalent TAK distribution with matching plugin APIs).
+Supported ATAK contract for this module: **minimum 4.6.0.5**, **target 5.2.x** (or an org-equivalent TAK distribution with matching plugin APIs).
 
 Provide ATAK SDK dependencies using **one** of the following approaches:
 
@@ -48,7 +48,7 @@ You can override local artifact names (comma-separated) with:
 
 - `atak.required.artifacts=atak-sdk.jar,atak-plugin-sdk.aar`
 
-Gradle preflight now fails early when required ATAK artifacts are not available from either `libs/` or the configured private Maven repo.
+Gradle preflight now fails early when required ATAK artifacts are not available and when compatibility values drift between `build.gradle.kts` defaults and `src/main/assets/plugin.xml`.
 
 ## Notes
 

@@ -40,6 +40,15 @@ class TrustOverlayLifecycle(
             return
         }
 
+        val runtimeVersion = AtakCompatibilityContract.validateRuntimeOrNull(resolvedContext)
+        if (runtimeVersion == null) {
+            Log.e(
+                TAG,
+                "Aborting trust overlay initialization: ATAK runtime does not satisfy minimum ${AtakCompatibilityContract.minimumSupportedVersion()}",
+            )
+            return
+        }
+
         pluginContext = resolvedContext
         mapView = resolvedMapView
 
