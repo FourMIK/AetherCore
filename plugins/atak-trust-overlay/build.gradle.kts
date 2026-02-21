@@ -12,12 +12,13 @@ val localProperties = Properties().apply {
     }
 }
 
+val atakApiMinVersion = "4.6.0.5"
+val atakApiTargetVersion = "5.2"
+val atakCompatibleVersion = providers.gradleProperty("atak.compatible.version").orElse(atakApiMinVersion)
 
 val defaultAethercoreJniDir = rootProject.file("../../external/aethercore-jni")
 val aethercoreJniDir = localProperties.getProperty("aethercore.jni.dir")?.let(::file) ?: defaultAethercoreJniDir
-val atakRequiredArtifacts = providers.gradleProperty("atak.required.artifacts").orElse("main.jar")
 
-val atakCompatibleVersion = localProperties.getProperty("atak.compatible.version") ?: "ATAK-CIV 5.2.x"
 val requiredAtakArtifacts =
     (localProperties.getProperty("atak.required.artifacts") ?: "atak-sdk.jar,atak-plugin-sdk.aar")
         .split(',')
@@ -30,6 +31,32 @@ val atakPrivateMavenArtifacts =
         .split(',')
         .map { it.trim() }
         .filter { it.isNotEmpty() }
+
+fun parseVersion(version: String): List<Int> =
+    version.split('.').map { token ->
+        token.toIntOrNull() ?: throw GradleException("Invalid ATAK version token '$token' in '$version'")
+    }
+
+fun compareVersions(left: String, right: String): Int {
+    val leftParts = parseVersion(left)
+    val rightParts = parseVersion(right)
+    val maxSize = maxOf(leftParts.size, rightParts.size)
+    for (index in 0 until maxSize) {
+        val leftToken = leftParts.getOrElse(index) { 0 }
+        val rightToken = rightParts.getOrElse(index) { 0 }
+        if (leftToken != rightToken) {
+            return leftToken.compareTo(rightToken)
+        }
+    }
+    return 0
+}
+
+fun extractAtakApiContract(pluginXmlContents: String): Pair<String, String> {
+    val match = Regex("""<atak-api\s+min=\"([^\"]+)\"\s+target=\"([^\"]+)\"\s*/?>""")
+        .find(pluginXmlContents)
+        ?: throw GradleException("Missing <atak-api min=... target=...> in src/main/assets/plugin.xml")
+    return match.groupValues[1] to match.groupValues[2]
+}
 
 val verifyAethercoreJniCrate by tasks.registering {
     doLast {
@@ -49,7 +76,31 @@ val verifyAethercoreJniCrate by tasks.registering {
     }
 }
 
+val verifyAtakCompatibilityContract by tasks.registering {
+    doLast {
+        val pluginXml = project.layout.projectDirectory.file("src/main/assets/plugin.xml").asFile
+        val (descriptorMin, descriptorTarget) = extractAtakApiContract(pluginXml.readText())
+
+        if (descriptorMin != atakApiMinVersion || descriptorTarget != atakApiTargetVersion) {
+            throw GradleException(
+                "ATAK compatibility contract drift detected. " +
+                    "plugin.xml has min=$descriptorMin target=$descriptorTarget, " +
+                    "but Gradle expects min=$atakApiMinVersion target=$atakApiTargetVersion."
+            )
+        }
+
+        val configuredVersion = atakCompatibleVersion.get()
+        if (compareVersions(configuredVersion, atakApiMinVersion) < 0) {
+            throw GradleException(
+                "atak.compatible.version=$configuredVersion is below supported minimum $atakApiMinVersion"
+            )
+        }
+    }
+}
+
 val verifyAtakSdkPrerequisites by tasks.registering {
+    dependsOn(verifyAtakCompatibilityContract)
+
     doLast {
         val libsDir = project.layout.projectDirectory.dir("libs").asFile
         val missingArtifacts = requiredAtakArtifacts.filterNot { artifactName ->
@@ -61,7 +112,7 @@ val verifyAtakSdkPrerequisites by tasks.registering {
 
         if (!hasLocalArtifacts && !hasPrivateMavenConfig) {
             throw GradleException(
-                "ATAK SDK prerequisites are missing. Compatible target: $atakCompatibleVersion. " +
+                "ATAK SDK prerequisites are missing. Compatible target: ${atakCompatibleVersion.get()}. " +
                     "Expected artifacts in ${libsDir.invariantSeparatorsPath}: ${requiredAtakArtifacts.joinToString()}. " +
                     "Missing: ${missingArtifacts.joinToString()}. " +
                     "Either copy the required ATAK SDK .jar/.aar files into libs/ " +
@@ -73,6 +124,7 @@ val verifyAtakSdkPrerequisites by tasks.registering {
 
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(verifyAethercoreJniCrate)
+    dependsOn(verifyAtakCompatibilityContract)
     dependsOn(verifyAtakSdkPrerequisites)
 }
 
@@ -83,9 +135,6 @@ repositories {
         }
     }
 }
-
-
-val atakCompatibleVersion = providers.gradleProperty("atak.compatible.version").orElse("4.6.0.5")
 
 android {
     namespace = "com.aethercore.atak.trustoverlay"

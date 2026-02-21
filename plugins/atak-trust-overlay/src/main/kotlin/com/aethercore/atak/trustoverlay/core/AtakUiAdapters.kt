@@ -317,7 +317,12 @@ class AtakWidgetHost(
     }
 
     private fun resolveRootLayoutWidget(): Any? {
-        val candidates = listOf("getRootLayoutWidget", "getComponentRootLayoutWidget")
+        val candidates = buildList {
+            add("getRootLayoutWidget")
+            if (AtakCompatibilityContract.supportsComponentRootLayoutApi()) {
+                add("getComponentRootLayoutWidget")
+            }
+        }
         for (methodName in candidates) {
             val method = mapView.javaClass.methods.firstOrNull {
                 it.name == methodName && it.parameterTypes.isEmpty()
