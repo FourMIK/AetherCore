@@ -66,6 +66,46 @@ If your environment uses different names, either rename files in `libs/` or over
 
 See `plugins/atak-trust-overlay/libs/README.md` for the offline contract and examples.
 
+## Open in Android Studio
+
+Import path:
+
+- Open **`plugins/atak-trust-overlay`** as the project root in Android Studio.
+
+Toolchain requirements (pin these in your host project if not already pinned):
+
+- **JDK:** 17 (required by `sourceCompatibility/targetCompatibility` and Kotlin `jvmTarget=17`).
+- **AGP:** 8.2.x (recommended baseline for `compileSdk 34` + Java 17 module setup).
+- **Kotlin Gradle plugin:** 1.9.22 (or compatible 1.9.x line).
+- **Gradle:** 8.2.x (if you add a wrapper externally, align it with AGP 8.2.x).
+
+Required local files/properties before sync/build:
+
+- `local.properties` at project root with standard Android SDK path:
+  - `sdk.dir=/absolute/path/to/Android/Sdk`
+- JNI override (if JNI crate is not at `../../external/aethercore-jni` relative to this module root):
+  - `aethercore.jni.dir=/absolute/path/to/aethercore-jni`
+- Release signing (only needed for `release` builds/signing):
+  - `keystore.path=/absolute/path/to/keystore.jks`
+  - `keystore.password=...`
+  - `key.alias=...`
+  - `key.password=...`
+
+Expected successful outcomes:
+
+- Gradle Sync completes without `verifyAethercoreJniCrate`/`verifyAtakSdkArtifacts` task errors.
+- `:preBuild` passes after SDK jars exist under `plugins/atak-trust-overlay/libs` (default requires `main.jar`).
+- `:assembleDebug` produces a debug APK with JNI targets for `armeabi-v7a` and `arm64-v8a`.
+
+Common failure signatures:
+
+- `AetherCore JNI crate not found at '...'` → set `aethercore.jni.dir` or checkout `external/aethercore-jni`.
+- `AetherCore JNI crate is missing Cargo.toml at '...'` → point `aethercore.jni.dir` at the crate root.
+- `Missing ATAK SDK artifacts in '.../libs': ...` → copy `main.jar` (and any configured `atak.required.artifacts`) into `libs/`.
+- Java/Kotlin compatibility errors during sync/compile (class file target mismatch) → confirm Android Studio/Gradle is running on JDK 17.
+
+> Note: this module currently does **not** ship a committed Gradle wrapper. To reduce environment drift, use the AGP/Kotlin/Gradle versions above when importing into an existing Android workspace.
+
 ## Native JNI build setup (required)
 
 This plugin expects the Rust JNI crate that produces `libaethercore_jni.so` to exist **outside** the ATAK plugin module at:
