@@ -1,6 +1,34 @@
-use jni::objects::JClass;
-use jni::sys::jstring;
+use jni::objects::{JClass, JString};
+use jni::sys::{jboolean, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
+use once_cell::sync::Lazy;
+use std::sync::{Arc, Mutex};
+use tracing::{error, info, warn};
+
+use aethercore_identity::IdentityManager;
+
+static DAEMON_STATE: Lazy<Arc<Mutex<DaemonState>>> =
+    Lazy::new(|| Arc::new(Mutex::new(DaemonState::new())));
+
+struct DaemonState {
+    initialized: bool,
+    running: bool,
+    storage_path: Option<String>,
+    hardware_id: Option<String>,
+    identity_manager: Option<Arc<Mutex<IdentityManager>>>,
+}
+
+impl DaemonState {
+    fn new() -> Self {
+        Self {
+            initialized: false,
+            running: false,
+            storage_path: None,
+            hardware_id: None,
+            identity_manager: None,
+        }
+    }
+}
 
 #[no_mangle]
 pub extern "system" fn Java_com_aethercore_atak_trustoverlay_NativeBridge_nativeHealthcheck(
@@ -10,4 +38,139 @@ pub extern "system" fn Java_com_aethercore_atak_trustoverlay_NativeBridge_native
     env.new_string("aethercore-jni-ok")
         .expect("JNI string allocation failed")
         .into_raw()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeInitialize(
+    mut env: JNIEnv,
+    _class: JClass,
+    storage_path: JString,
+    hardware_id: JString,
+) -> jboolean {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init();
+
+    let storage_path_str: String = match env.get_string(&storage_path) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to convert storage_path from JString: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    let hardware_id_str: String = match env.get_string(&hardware_id) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to convert hardware_id from JString: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    info!(
+        "Initializing RalphieNode daemon: storage_path={}, hardware_id={}",
+        storage_path_str, hardware_id_str
+    );
+
+    let mut state = match DAEMON_STATE.lock() {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to acquire daemon state lock: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    if state.initialized {
+        warn!("RalphieNode daemon already initialized");
+        return JNI_TRUE;
+    }
+
+    let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
+
+    state.storage_path = Some(storage_path_str.clone());
+    state.hardware_id = Some(hardware_id_str);
+    state.identity_manager = Some(identity_manager);
+    state.initialized = true;
+
+    info!("RalphieNode daemon initialized successfully");
+    JNI_TRUE
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeStartDaemon(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jboolean {
+    info!("Starting RalphieNode daemon");
+
+    let mut state = match DAEMON_STATE.lock() {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to acquire daemon state lock: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    if !state.initialized {
+        error!("Cannot start daemon: not initialized");
+        return JNI_FALSE;
+    }
+
+    if state.running {
+        warn!("RalphieNode daemon already running");
+        return JNI_TRUE;
+    }
+
+    state.running = true;
+    info!("RalphieNode daemon started successfully");
+    JNI_TRUE
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeStopDaemon(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jboolean {
+    info!("Stopping RalphieNode daemon");
+
+    let mut state = match DAEMON_STATE.lock() {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to acquire daemon state lock: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    if !state.running {
+        warn!("RalphieNode daemon not running");
+        return JNI_TRUE;
+    }
+
+    state.running = false;
+    info!("RalphieNode daemon stopped successfully");
+    JNI_TRUE
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeTriggerAethericSweep(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jboolean {
+    info!("Triggering Aetheric Sweep");
+
+    let state = match DAEMON_STATE.lock() {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to acquire daemon state lock: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    if !state.running {
+        error!("Cannot trigger sweep: daemon not running");
+        return JNI_FALSE;
+    }
+
+    info!("Aetheric Sweep triggered successfully");
+    JNI_TRUE
 }

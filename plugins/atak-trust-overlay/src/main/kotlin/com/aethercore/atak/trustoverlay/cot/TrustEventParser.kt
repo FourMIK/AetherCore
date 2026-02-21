@@ -102,6 +102,17 @@ class TrustEventParser(
             }
             .toMap()
 
+        val signatureHex = extractOptional(envelope, SIGNATURE_KEYS)
+        val signerNodeId = extractOptional(envelope, SIGNER_NODE_ID_KEYS)
+        val payloadHash = extractOptional(envelope, PAYLOAD_HASH_KEYS)
+
+        val signatureVerified = if (signatureHex != null && signerNodeId != null) {
+            logger.d("Signature verification not yet implemented - accepting event without verification")
+            false
+        } else {
+            false
+        }
+
         return TrustEvent(
             uid = uid,
             callsign = callsign,
@@ -114,6 +125,10 @@ class TrustEventParser(
             sourceMetadata = sourceMetadata,
             metrics = metrics,
             observedAtEpochMs = observedAtEpochMs,
+            signatureHex = signatureHex,
+            signerNodeId = signerNodeId,
+            payloadHash = payloadHash,
+            signatureVerified = signatureVerified,
         )
     }
 
@@ -172,6 +187,9 @@ class TrustEventParser(
         private val POINT_LAT_KEYS = listOf("point.lat", "lat")
         private val POINT_LON_KEYS = listOf("point.lon", "lon")
         private val SOURCE_METADATA_PREFIXES = listOf("source_meta.", "source.meta.", "event.source.")
+        private val SIGNATURE_KEYS = listOf("trust.signature_hex", "signature_hex", "sig")
+        private val SIGNER_NODE_ID_KEYS = listOf("trust.signer_node_id", "signer_node_id", "signer")
+        private val PAYLOAD_HASH_KEYS = listOf("trust.payload_hash", "payload_hash")
 
         private const val HIGH_TRUST_THRESHOLD = 0.9
         private const val MEDIUM_TRUST_THRESHOLD = 0.6
