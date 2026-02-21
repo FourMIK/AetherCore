@@ -13,13 +13,18 @@ class RalphieNodeDaemon(private val context: Context) {
     }
 
     private var cachedHardwareFingerprint: String? = null
+    private val jniLoaded: Boolean
+    private var startupIssue: RalphieDaemonStartupIssue? = null
 
     init {
-        try {
+        jniLoaded = try {
             System.loadLibrary("aethercore_jni")
             Log.i(TAG, "AetherCore JNI loaded successfully.")
+            true
         } catch (e: UnsatisfiedLinkError) {
             Log.e(TAG, "Failed to load AetherCore JNI library.", e)
+            startupIssue = RalphieDaemonStartupIssue.JniUnavailable(e)
+            false
         }
     }
 
@@ -28,7 +33,17 @@ class RalphieNodeDaemon(private val context: Context) {
     private external fun nativeStopDaemon(): Boolean
     private external fun nativeTriggerAethericSweep(): Boolean
 
+    fun startupStatus(): RalphieDaemonStartupStatus {
+        return startupIssue?.let { RalphieDaemonStartupStatus.Unavailable(it) }
+            ?: RalphieDaemonStartupStatus.Ready
+    }
+
     fun start(): Boolean {
+        if (!jniLoaded) {
+            Log.e(TAG, "RalphieNode daemon start aborted: JNI library is unavailable.")
+            return false
+        }
+
         val storagePath = context.filesDir.absolutePath
         val hardwareId = getHardwareIdBinding(context)
 
@@ -40,10 +55,20 @@ class RalphieNodeDaemon(private val context: Context) {
     }
 
     fun stop() {
+        if (!jniLoaded) {
+            Log.w(TAG, "RalphieNode daemon stop skipped: JNI library is unavailable.")
+            return
+        }
+
         nativeStopDaemon()
     }
 
     fun forceSweep() {
+        if (!jniLoaded) {
+            Log.w(TAG, "RalphieNode daemon sweep skipped: JNI library is unavailable.")
+            return
+        }
+
         nativeTriggerAethericSweep()
     }
 
@@ -66,3 +91,12 @@ class RalphieNodeDaemon(private val context: Context) {
 }
 
 class HardwareBindingException(message: String, cause: Throwable? = null) : IllegalStateException(message, cause)
+
+sealed interface RalphieDaemonStartupStatus {
+    data object Ready : RalphieDaemonStartupStatus
+    data class Unavailable(val issue: RalphieDaemonStartupIssue) : RalphieDaemonStartupStatus
+}
+
+sealed interface RalphieDaemonStartupIssue {
+    data class JniUnavailable(val cause: UnsatisfiedLinkError) : RalphieDaemonStartupIssue
+}

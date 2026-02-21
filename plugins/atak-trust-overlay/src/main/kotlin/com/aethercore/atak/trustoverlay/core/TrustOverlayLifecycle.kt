@@ -27,6 +27,23 @@ class TrustOverlayLifecycle(
         Log.i(TAG, "Bootstrapping AetherCore trust overlay")
 
         ralphieDaemon = RalphieNodeDaemon(pluginContext).apply {
+            when (val status = startupStatus()) {
+                is RalphieDaemonStartupStatus.Unavailable -> {
+                    when (val issue = status.issue) {
+                        is RalphieDaemonStartupIssue.JniUnavailable -> {
+                            Log.w(
+                                TAG,
+                                "RalphieNode daemon disabled: JNI library missing.",
+                                issue.cause,
+                            )
+                            return
+                        }
+                    }
+                }
+
+                RalphieDaemonStartupStatus.Ready -> Unit
+            }
+
             val success = runCatching { start() }
                 .onFailure { Log.e(TAG, "RalphieNode daemon startup failed", it) }
                 .getOrDefault(false)
