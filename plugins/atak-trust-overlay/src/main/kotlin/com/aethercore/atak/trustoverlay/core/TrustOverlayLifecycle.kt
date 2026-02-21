@@ -33,7 +33,7 @@ class TrustOverlayLifecycle(
                         is RalphieDaemonStartupIssue.JniUnavailable -> {
                             Log.w(
                                 TAG,
-                                "RalphieNode daemon disabled: JNI library missing.",
+                                "RalphieNode daemon disabled: ${issue.reason}.",
                                 issue.cause,
                             )
                             return

@@ -7,7 +7,11 @@ import com.aethercore.security.AndroidEnrollmentKeyManager
 /**
  * JNI boundary for the AetherCore Rust implementation.
  */
-class RalphieNodeDaemon(private val context: Context) {
+class RalphieNodeDaemon internal constructor(
+    private val context: Context,
+    private val libraryLoader: (String) -> Unit = { libraryName -> System.loadLibrary(libraryName) },
+    private val nativeBindings: NativeBindings = NativeBindings(),
+) {
     companion object {
         private const val TAG = "RalphieNodeDaemon"
     }
@@ -18,7 +22,7 @@ class RalphieNodeDaemon(private val context: Context) {
 
     init {
         jniLoaded = try {
-            System.loadLibrary("aethercore_jni")
+            libraryLoader("aethercore_jni")
             Log.i(TAG, "AetherCore JNI loaded successfully.")
             true
         } catch (e: UnsatisfiedLinkError) {
@@ -32,6 +36,17 @@ class RalphieNodeDaemon(private val context: Context) {
     private external fun nativeStartDaemon(): Boolean
     private external fun nativeStopDaemon(): Boolean
     private external fun nativeTriggerAethericSweep(): Boolean
+
+    private val nativeBridge = object : NativeBridge {
+        override fun initialize(storagePath: String, hardwareId: String): Boolean =
+            nativeInitialize(storagePath, hardwareId)
+
+        override fun startDaemon(): Boolean = nativeStartDaemon()
+
+        override fun stopDaemon(): Boolean = nativeStopDaemon()
+
+        override fun triggerSweep(): Boolean = nativeTriggerAethericSweep()
+    }
 
     fun startupStatus(): RalphieDaemonStartupStatus {
         return startupIssue?.let { RalphieDaemonStartupStatus.Unavailable(it) }
@@ -47,29 +62,29 @@ class RalphieNodeDaemon(private val context: Context) {
         val storagePath = context.filesDir.absolutePath
         val hardwareId = getHardwareIdBinding(context)
 
-        return if (nativeInitialize(storagePath, hardwareId)) {
-            nativeStartDaemon()
+        return if (nativeBindings.initialize(nativeBridge, storagePath, hardwareId)) {
+            nativeBindings.start(nativeBridge)
         } else {
             false
         }
     }
 
-    fun stop() {
+    fun stop(): Boolean {
         if (!jniLoaded) {
             Log.w(TAG, "RalphieNode daemon stop skipped: JNI library is unavailable.")
-            return
+            return false
         }
 
-        nativeStopDaemon()
+        return nativeBindings.stop(nativeBridge)
     }
 
-    fun forceSweep() {
+    fun forceSweep(): Boolean {
         if (!jniLoaded) {
             Log.w(TAG, "RalphieNode daemon sweep skipped: JNI library is unavailable.")
-            return
+            return false
         }
 
-        nativeTriggerAethericSweep()
+        return nativeBindings.forceSweep(nativeBridge)
     }
 
     private fun getHardwareIdBinding(context: Context): String {
@@ -90,6 +105,24 @@ class RalphieNodeDaemon(private val context: Context) {
     }
 }
 
+internal interface NativeBridge {
+    fun initialize(storagePath: String, hardwareId: String): Boolean
+    fun startDaemon(): Boolean
+    fun stopDaemon(): Boolean
+    fun triggerSweep(): Boolean
+}
+
+internal open class NativeBindings {
+    open fun initialize(nativeBridge: NativeBridge, storagePath: String, hardwareId: String): Boolean =
+        nativeBridge.initialize(storagePath, hardwareId)
+
+    open fun start(nativeBridge: NativeBridge): Boolean = nativeBridge.startDaemon()
+
+    open fun stop(nativeBridge: NativeBridge): Boolean = nativeBridge.stopDaemon()
+
+    open fun forceSweep(nativeBridge: NativeBridge): Boolean = nativeBridge.triggerSweep()
+}
+
 class HardwareBindingException(message: String, cause: Throwable? = null) : IllegalStateException(message, cause)
 
 sealed interface RalphieDaemonStartupStatus {
@@ -98,5 +131,9 @@ sealed interface RalphieDaemonStartupStatus {
 }
 
 sealed interface RalphieDaemonStartupIssue {
-    data class JniUnavailable(val cause: UnsatisfiedLinkError) : RalphieDaemonStartupIssue
+    val reason: String
+
+    data class JniUnavailable(val cause: UnsatisfiedLinkError) : RalphieDaemonStartupIssue {
+        override val reason: String = "JNI library unavailable"
+    }
 }
