@@ -12,18 +12,21 @@ class TrustMarkerRenderer(
 ) {
     fun render(state: ResolvedTrustState) {
         val event = state.event ?: return
+        
+        val subtitle = when {
+            state.stale -> "Trust ${formatTrustScore(event.trustScore)} (Stale)"
+            event.signatureHex != null && !event.signatureVerified -> "Trust ${formatTrustScore(event.trustScore)} (UNVERIFIED)"
+            else -> "Trust ${formatTrustScore(event.trustScore)} (${labelFor(state.displayLevel)})"
+        }
+        
         mapView.upsertMarker(
             MarkerModel(
                 id = markerId(state.uid),
                 lat = event.lat,
                 lon = event.lon,
                 title = event.callsign,
-                subtitle = if (state.stale) {
-                    "Trust ${formatTrustScore(event.trustScore)} (Stale)"
-                } else {
-                    "Trust ${formatTrustScore(event.trustScore)} (${labelFor(state.displayLevel)})"
-                },
-                iconKey = iconFor(state.displayLevel, state.stale),
+                subtitle = subtitle,
+                iconKey = iconFor(state.displayLevel, state.stale, event.signatureVerified),
             ),
         )
     }
@@ -46,8 +49,8 @@ class TrustMarkerRenderer(
         mapView.removeMarker(markerId(uid))
     }
 
-    private fun iconFor(level: TrustLevel, stale: Boolean): String {
-        if (stale || level == TrustLevel.LOW || level == TrustLevel.UNKNOWN) {
+    private fun iconFor(level: TrustLevel, stale: Boolean, signatureVerified: Boolean): String {
+        if (stale || level == TrustLevel.LOW || level == TrustLevel.UNKNOWN || !signatureVerified) {
             return "trust_marker_red"
         }
 

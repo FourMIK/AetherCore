@@ -91,7 +91,7 @@ class RalphieNodeDaemon internal constructor(
         cachedHardwareFingerprint?.let { return it }
 
         val fingerprint = runCatching {
-            AndroidEnrollmentKeyManager(context).getHardwareFingerprint().trim()
+            AndroidEnrollmentKeyManager.create(context).getHardwareFingerprint().trim()
         }.getOrElse { throwable ->
             throw HardwareBindingException("Hardware fingerprint acquisition failed", throwable)
         }

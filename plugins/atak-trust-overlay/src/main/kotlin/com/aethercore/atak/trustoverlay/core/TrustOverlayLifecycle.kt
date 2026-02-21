@@ -92,7 +92,7 @@ class TrustOverlayLifecycle(
             override val markerTapBus: MarkerTapBus = AtakMarkerTapBus(resolvedMapView, AndroidLogger)
             override val widgetHost = AtakWidgetHost(resolvedMapView, AndroidLogger)
             override val logger: Logger = AndroidLogger
-            override val settings: PluginSettings = DefaultPluginSettings
+            override val settings: PluginSettings = SharedPreferencesPluginSettings(resolvedContext)
         }
 
         mapComponent = TrustOverlayMapComponent().apply {
@@ -127,8 +127,14 @@ class TrustOverlayLifecycle(
         override fun e(message: String, throwable: Throwable?) = Log.e(TAG, message, throwable)
     }
 
-    private object DefaultPluginSettings : PluginSettings {
-        override fun getLong(key: String, defaultValue: Long): Long = defaultValue
+    private class SharedPreferencesPluginSettings(
+        private val context: Context
+    ) : PluginSettings {
+        private val prefs = context.getSharedPreferences("atak_trust_overlay", Context.MODE_PRIVATE)
+        
+        override fun getLong(key: String, defaultValue: Long): Long {
+            return prefs.getLong(key, defaultValue)
+        }
     }
 
     companion object {

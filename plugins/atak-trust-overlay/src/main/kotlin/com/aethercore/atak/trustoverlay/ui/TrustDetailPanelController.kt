@@ -125,12 +125,19 @@ class TrustDetailPanelController(
 
         val timestamp = Instant.ofEpochMilli(event.observedAtEpochMs)
         val freshness = if (state.stale) "STALE" else "FRESH"
+        
+        val signatureStatus = when {
+            event.signatureHex == null -> "Not Signed"
+            event.signatureVerified -> "VERIFIED"
+            else -> "UNVERIFIED (Security Alert)"
+        }
 
         return """
             Callsign: ${event.callsign}
             Trust Score: ${String.format(Locale.US, "%.2f", event.trustScore)}
             Trust Level: ${derivedLevelLabel(state.displayLevel, state.stale)}
             Freshness: $freshness
+            Signature Status: $signatureStatus
             Last Updated: ${DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(timestamp.atOffset(ZoneOffset.UTC))}
 
             Source: ${event.source}

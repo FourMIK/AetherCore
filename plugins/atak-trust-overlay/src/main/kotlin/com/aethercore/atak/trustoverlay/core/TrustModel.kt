@@ -19,4 +19,8 @@ data class TrustEvent(
     val sourceMetadata: Map<String, String>,
     val metrics: Map<String, Double>,
     val observedAtEpochMs: Long,
+    val signatureHex: String? = null,
+    val signerNodeId: String? = null,
+    val payloadHash: String? = null,
+    val signatureVerified: Boolean = false,
 )
