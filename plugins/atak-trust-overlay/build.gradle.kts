@@ -15,6 +15,7 @@ val localProperties = Properties().apply {
 
 val defaultAethercoreJniDir = rootProject.file("../../external/aethercore-jni")
 val aethercoreJniDir = localProperties.getProperty("aethercore.jni.dir")?.let(::file) ?: defaultAethercoreJniDir
+val atakRequiredArtifacts = providers.gradleProperty("atak.required.artifacts").orElse("main.jar")
 
 val atakCompatibleVersion = localProperties.getProperty("atak.compatible.version") ?: "ATAK-CIV 5.2.x"
 val requiredAtakArtifacts =
@@ -83,6 +84,9 @@ repositories {
     }
 }
 
+
+val atakCompatibleVersion = providers.gradleProperty("atak.compatible.version").orElse("4.6.0.5")
+
 android {
     namespace = "com.aethercore.atak.trustoverlay"
     compileSdk = 34
@@ -104,6 +108,8 @@ android {
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a"))
         }
+
+        buildConfigField("String", "ATAK_COMPATIBLE_VERSION", "\"${atakCompatibleVersion.get()}\"")
     }
 
     signingConfigs {
@@ -132,6 +138,10 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -143,8 +153,6 @@ android {
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlin:kotlin-stdlib")
-
     compileOnly(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
     atakPrivateMavenArtifacts.forEach { coordinate ->
         compileOnly(coordinate)

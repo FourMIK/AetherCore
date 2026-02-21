@@ -1,10 +1,27 @@
-# ATAK SDK artifacts
+# ATAK SDK artifacts for `atak-trust-overlay`
 
-Drop the ATAK SDK binaries for your target ATAK build into this directory.
+`plugins/atak-trust-overlay/build.gradle.kts` validates ATAK SDK jars before Android compilation.
 
-Default artifact names expected by the Gradle preflight check:
+## Required filenames
 
-- `atak-sdk.jar`
-- `atak-plugin-sdk.aar`
+Default offline contract:
 
-If your organization uses different names, set `atak.required.artifacts` in `local.properties` (comma-separated).
+- `main.jar`
+
+This is controlled by Gradle property `atak.required.artifacts` (comma-separated filenames), which defaults to:
+
+```properties
+atak.required.artifacts=main.jar
+```
+
+## Placement
+
+Place required files directly in this folder:
+
+```bash
+cp atak/ATAK/app/build/libs/main.jar plugins/atak-trust-overlay/libs/main.jar
+```
+
+## Preflight behavior
+
+`preBuild` runs `verifyAtakSdkArtifacts` and fails if any filename in `atak.required.artifacts` is missing from this directory.
