@@ -52,30 +52,30 @@ class TrustOverlayLifecycle(
         pluginContext = resolvedContext
         mapView = resolvedMapView
 
-        ralphieDaemon = RalphieNodeDaemon(resolvedContext).apply {
-            when (val status = startupStatus()) {
-                is RalphieDaemonStartupStatus.Unavailable -> {
-                    when (val issue = status.issue) {
-                        is RalphieDaemonStartupIssue.JniUnavailable -> {
-                            Log.w(
-                                TAG,
-                                "RalphieNode daemon disabled: ${issue.reason}.",
-                                issue.cause,
-                            )
-                            return
-                        }
+        val daemon = RalphieNodeDaemon(resolvedContext)
+        val daemonStarted = when (val status = daemon.startupStatus()) {
+            is RalphieDaemonStartupStatus.Unavailable -> {
+                when (val issue = status.issue) {
+                    is RalphieDaemonStartupIssue.JniUnavailable -> {
+                        Log.w(
+                            TAG,
+                            "RalphieNode daemon disabled: ${issue.reason}.",
+                            issue.cause,
+                        )
                     }
                 }
-
-                RalphieDaemonStartupStatus.Ready -> Unit
+                false
             }
 
-            val success = runCatching { start() }
-                .onFailure { Log.e(TAG, "RalphieNode daemon startup failed", it) }
-                .getOrDefault(false)
-            if (!success) {
-                return
+            RalphieDaemonStartupStatus.Ready -> {
+                runCatching { daemon.start() }
+                    .onFailure { Log.e(TAG, "RalphieNode daemon startup failed", it) }
+                    .getOrDefault(false)
             }
+        }
+        ralphieDaemon = daemon.takeIf { daemonStarted }
+        if (!daemonStarted) {
+            return
         }
 
         val atakCotBus = AtakCotBus(
