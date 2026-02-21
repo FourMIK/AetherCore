@@ -31,6 +31,25 @@ Canonical ATAK baseline for this plugin is **4.6.0.5**.
 - `src/main/res/xml/trust_overlay_plugin.xml`: ATAK plugin metadata pointing to the lifecycle component.
 - `src/main/assets/plugin.xml`: ATAK plugin descriptor with lifecycle entry-point binding.
 
+## SDK prerequisites
+
+Compatible ATAK baseline for this module: **ATAK-CIV 5.2.x** (or an org-equivalent TAK distribution with matching plugin APIs).
+
+Provide ATAK SDK dependencies using **one** of the following approaches:
+
+1. Local binaries in `libs/` (default path):
+   - `plugins/atak-trust-overlay/libs/atak-sdk.jar`
+   - `plugins/atak-trust-overlay/libs/atak-plugin-sdk.aar`
+2. Private Maven repo (optional): define the following in `local.properties`:
+   - `atak.maven.url=https://<your-private-repo>`
+   - `atak.maven.artifacts=group:artifact:version,group:artifact:version`
+
+You can override local artifact names (comma-separated) with:
+
+- `atak.required.artifacts=atak-sdk.jar,atak-plugin-sdk.aar`
+
+Gradle preflight now fails early when required ATAK artifacts are not available from either `libs/` or the configured private Maven repo.
+
 ## Notes
 
 This scaffold is intentionally API-light and framework-agnostic so you can replace adapter interfaces in `atak/AtakContracts.kt` with your concrete ATAK SDK classes (`MapView`, `MapComponent`, CoT dispatch interfaces, widget APIs) used by your environment.

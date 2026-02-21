@@ -17,6 +17,20 @@ val defaultAethercoreJniDir = rootProject.file("../../external/aethercore-jni")
 val aethercoreJniDir = localProperties.getProperty("aethercore.jni.dir")?.let(::file) ?: defaultAethercoreJniDir
 val atakRequiredArtifacts = providers.gradleProperty("atak.required.artifacts").orElse("main.jar")
 
+val atakCompatibleVersion = localProperties.getProperty("atak.compatible.version") ?: "ATAK-CIV 5.2.x"
+val requiredAtakArtifacts =
+    (localProperties.getProperty("atak.required.artifacts") ?: "atak-sdk.jar,atak-plugin-sdk.aar")
+        .split(',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+
+val atakPrivateMavenUrl = localProperties.getProperty("atak.maven.url")
+val atakPrivateMavenArtifacts =
+    (localProperties.getProperty("atak.maven.artifacts") ?: "")
+        .split(',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+
 val verifyAethercoreJniCrate by tasks.registering {
     doLast {
         if (!aethercoreJniDir.exists()) {
@@ -35,24 +49,23 @@ val verifyAethercoreJniCrate by tasks.registering {
     }
 }
 
-val verifyAtakSdkArtifacts by tasks.registering {
+val verifyAtakSdkPrerequisites by tasks.registering {
     doLast {
-        val libsDir = projectDir.resolve("libs")
-        val requiredArtifacts = atakRequiredArtifacts.get()
-            .split(',')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-
-        if (requiredArtifacts.isEmpty()) {
-            throw GradleException("atak.required.artifacts must include at least one artifact filename.")
+        val libsDir = project.layout.projectDirectory.dir("libs").asFile
+        val missingArtifacts = requiredAtakArtifacts.filterNot { artifactName ->
+            libsDir.resolve(artifactName).exists()
         }
 
-        val missingArtifacts = requiredArtifacts.filterNot { libsDir.resolve(it).exists() }
-        if (missingArtifacts.isNotEmpty()) {
+        val hasLocalArtifacts = missingArtifacts.isEmpty()
+        val hasPrivateMavenConfig = !atakPrivateMavenUrl.isNullOrBlank() && atakPrivateMavenArtifacts.isNotEmpty()
+
+        if (!hasLocalArtifacts && !hasPrivateMavenConfig) {
             throw GradleException(
-                "Missing ATAK SDK artifacts in '${libsDir.invariantSeparatorsPath}': " +
-                    missingArtifacts.joinToString(", ") +
-                    ". Configure atak.required.artifacts (comma-separated filenames) or place the files in libs/."
+                "ATAK SDK prerequisites are missing. Compatible target: $atakCompatibleVersion. " +
+                    "Expected artifacts in ${libsDir.invariantSeparatorsPath}: ${requiredAtakArtifacts.joinToString()}. " +
+                    "Missing: ${missingArtifacts.joinToString()}. " +
+                    "Either copy the required ATAK SDK .jar/.aar files into libs/ " +
+                    "or configure atak.maven.url and atak.maven.artifacts in local.properties."
             )
         }
     }
@@ -60,7 +73,15 @@ val verifyAtakSdkArtifacts by tasks.registering {
 
 tasks.matching { it.name == "preBuild" }.configureEach {
     dependsOn(verifyAethercoreJniCrate)
-    dependsOn(verifyAtakSdkArtifacts)
+    dependsOn(verifyAtakSdkPrerequisites)
+}
+
+repositories {
+    if (!atakPrivateMavenUrl.isNullOrBlank()) {
+        maven {
+            url = uri(atakPrivateMavenUrl)
+        }
+    }
 }
 
 
@@ -133,6 +154,9 @@ android {
 
 dependencies {
     compileOnly(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
+    atakPrivateMavenArtifacts.forEach { coordinate ->
+        compileOnly(coordinate)
+    }
 
     testImplementation("junit:junit:4.13.2")
 }
