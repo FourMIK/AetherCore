@@ -1,4 +1,4 @@
-use jni::objects::{JClass, JString};
+use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jboolean, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
 use once_cell::sync::Lazy;
@@ -16,16 +16,21 @@ struct DaemonState {
     storage_path: Option<String>,
     hardware_id: Option<String>,
     identity_manager: Option<Arc<Mutex<IdentityManager>>>,
+    grpc_endpoint: String,
 }
 
 impl DaemonState {
     fn new() -> Self {
+        let default_endpoint = std::env::var("IDENTITY_REGISTRY_ENDPOINT")
+            .unwrap_or_else(|_| "http://localhost:50051".to_string());
+        
         Self {
             initialized: false,
             running: false,
             storage_path: None,
             hardware_id: None,
             identity_manager: None,
+            grpc_endpoint: default_endpoint,
         }
     }
 }
@@ -173,4 +178,74 @@ pub extern "system" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDae
 
     info!("Aetheric Sweep triggered successfully");
     JNI_TRUE
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aethercore_atak_trustoverlay_cot_TrustEventParser_nativeVerifySignature(
+    mut env: JNIEnv,
+    _class: JClass,
+    node_id: JString,
+    payload: JByteArray,
+    signature_hex: JString,
+) -> jboolean {
+    let node_id_str: String = match env.get_string(&node_id) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to convert node_id from JString: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    let payload_bytes = match env.convert_byte_array(&payload) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            error!("Failed to convert payload from JByteArray: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    let signature_hex_str: String = match env.get_string(&signature_hex) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to convert signature_hex from JString: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    let state = match DAEMON_STATE.lock() {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to acquire daemon state lock: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    if !state.running {
+        warn!("Signature verification attempted but daemon not running");
+        return JNI_FALSE;
+    }
+
+    info!(
+        "Signature verification requested: node_id={}, payload_len={}, signature_len={}",
+        node_id_str,
+        payload_bytes.len(),
+        signature_hex_str.len()
+    );
+
+    // TODO: Implement signature verification via one of these approaches:
+    //
+    // Option 1: Local verification with cached public keys
+    // 1. Lookup public key for node_id from identity_manager
+    // 2. Decode signature_hex to bytes
+    // 3. Verify signature using ed25519-dalek
+    //
+    // Option 2: Remote verification via gRPC (recommended for consistency)
+    // 1. Create gRPC client to Identity Registry service
+    // 2. Call VerifySignature RPC with node_id, payload, signature_hex
+    // 3. Return verification result
+    //
+    // For now, returning false until verification is implemented.
+    // This ensures fail-visible behavior per agent instructions.
+
+    JNI_FALSE
 }
