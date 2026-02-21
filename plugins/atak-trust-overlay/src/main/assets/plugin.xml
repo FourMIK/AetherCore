@@ -3,6 +3,6 @@
     <name>AetherCore Trust Overlay</name>
     <provider>AetherCore</provider>
     <description>Displays trust CoT overlays, detail panels, and trust feed health in ATAK.</description>
-    <atak-api min="4.6.0.5" target="5.2" />
+    <atak-api min="5.2" target="5.2" />
     <entry-point>com.aethercore.atak.trustoverlay.core.TrustOverlayLifecycle</entry-point>
 </plugin>
