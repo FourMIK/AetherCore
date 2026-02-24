@@ -1,0 +1,1 @@
+# Intentionally minimal. All variables declared in main.tf for this simple module.

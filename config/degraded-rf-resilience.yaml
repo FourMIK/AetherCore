@@ -1,0 +1,343 @@
+# AetherCore Degraded RF Resilience Configuration
+# Optimized for contested/congested network conditions
+#
+# Philosophy: "Fail-Visible Coordination Under Denial"
+#
+# Applies to all CodeRalphie nodes and C2 services in field test mode.
+# Addresses:
+# - Packet loss (10-30% typical field)
+# - GNSS denial (20-40% availability)
+# - Latency variance (50-500ms in contested conditions)
+# - Intermittent connectivity and link flapping
+
+# =============================================================================
+# C2 CONNECTION RESILIENCE
+# =============================================================================
+c2_connection:
+  # Connection timeout - allow extra time for RF delays
+  connection_timeout_seconds: 30
+
+  # Heartbeat configuration (keep-alive)
+  # Shorter interval for faster dead-link detection
+  heartbeat:
+    interval_seconds: 15
+    timeout_seconds: 5
+    max_missed_heartbeats: 2 # Disconnect after 30s of no heartbeat
+
+  # Reconnection strategy
+  reconnection:
+    enabled: true
+    max_attempts: 20 # Attempt for 5+ minutes with exponential backoff
+    initial_backoff_seconds: 0.5
+    max_backoff_seconds: 30
+    backoff_multiplier: 1.5
+    backoff_jitter_percent: 20 # Avoid thundering herd
+
+  # Connection state machine
+  state_machine:
+    # If unable to reach C2 for 60 seconds, enter degraded RF mode
+    degraded_mode_threshold_seconds: 60
+    # After 5 minutes offline, enter autonomous mode
+    autonomous_mode_threshold_seconds: 300
+
+  # TLS/WSS configuration
+  tls:
+    min_version: 'TLSv1.3'
+    verify_certificate: true
+    # Accept certificates signed by field CA (in addition to production)
+    additional_trusted_cas:
+      - '/etc/coderalphie/field-ca-bundle.pem'
+
+# =============================================================================
+# NETWORK QUALITY MONITORING
+# =============================================================================
+network_health:
+  # Monitor network conditions continuously
+  monitoring:
+    enabled: true
+    check_interval_seconds: 5
+    metrics_to_track:
+      - packet_loss_percent
+      - latency_ms
+      - jitter_ms
+      - link_stability_percent
+
+  # Network health grades
+  health_grades:
+    # Excellent (normal operating conditions)
+    excellent:
+      packet_loss_max_percent: 2
+      latency_max_ms: 50
+      uptime_min_percent: 99
+
+    # Good (minor degradation)
+    good:
+      packet_loss_max_percent: 5
+      latency_max_ms: 100
+      uptime_min_percent: 95
+
+    # Degraded (contested RF)
+    degraded:
+      packet_loss_max_percent: 15
+      latency_max_ms: 250
+      uptime_min_percent: 80
+
+    # Contested (severe conditions)
+    contested:
+      packet_loss_max_percent: 30
+      latency_max_ms: 500
+      uptime_min_percent: 50
+
+  # When network health drops below good, enable contested mode
+  contested_mode_threshold: 'degraded'
+
+  # Logging
+  log_health_reports: true
+  log_interval_seconds: 30
+
+# =============================================================================
+# TRANSMISSION OPTIMIZATION
+# =============================================================================
+transmission:
+  # Reduce message size to improve link reliability
+  compression:
+    enabled: true
+    algorithm: 'zstd' # Fast, good ratio
+    min_message_size_bytes: 256 # Only compress larger messages
+
+  # Batch multiple small messages into single packet
+  batching:
+    enabled: true
+    max_batch_size_bytes: 1024
+    max_batch_wait_ms: 100
+
+  # Retransmission strategy
+  retransmission:
+    enabled: true
+    # For critical messages (intent, targeting, coordination)
+    critical_message_retries: 3
+    critical_retry_backoff_ms: [100, 500, 2000]
+
+    # For telemetry (position updates)
+    telemetry_retries: 1
+
+    # For synchronization (track updates)
+    sync_retries: 2
+    sync_retry_backoff_ms: [200, 1000]
+
+  # Message priority queuing
+  priority_queue:
+    enabled: true
+    # High priority: intent, targeting, coordination decisions
+    high_priority_buffer_messages: 50
+    # Medium priority: position updates, status
+    medium_priority_buffer_messages: 100
+    # Low priority: diagnostics, logging
+    low_priority_buffer_messages: 50
+
+    # Drop low priority if queue backs up
+    drop_policy: 'drop_low_priority_oldest_first'
+
+# =============================================================================
+# OFFLINE MESH OPERATION
+# =============================================================================
+offline_mesh:
+  # Enable operation without C2 connection
+  enabled: true
+
+  # Local mesh gossip protocol
+  gossip:
+    enabled: true
+    interval_seconds: 5
+    # When offline, use gossip to keep track data in sync
+    fanout: 3 # Each node sends to 3 neighbors
+
+    # Conflict resolution: keep most recent + most trusted state
+    conflict_resolution: 'highest_trust_score_wins'
+
+  # Quorum consensus for decentralized decisions
+  quorum:
+    enabled: true
+    # Need N-1 quorum for autonomous actions
+    consensus_threshold: 0.75
+
+    # Timeout for quorum decisions (RF can cause delays)
+    decision_timeout_seconds: 30
+
+  # Local authority delegation
+  # Units can make decisions up to trusted delegation limits
+  authority_delegation:
+    enabled: true
+    # Squad leader can authorize moves up to X meters
+    movement_authorization_radius_meters: 500
+    # Squad leader can authorize fire support within squad area
+    fire_support_max_range_km: 10
+
+  # Track state management offline
+  tracks:
+    # Keep tracks in local cache for offline operation
+    cache_enabled: true
+    max_cached_tracks: 100
+
+    # Dead reckoning: extrapolate position if no update received
+    dead_reckoning_enabled: true
+    dead_reckoning_max_age_seconds: 60
+
+    # Trust decay: reduce trust score if no recent verification
+    trust_decay_enabled: true
+    trust_decay_rate_percent_per_minute: 5
+
+# =============================================================================
+# DATA INTEGRITY UNDER CONTESTED CONDITIONS
+# =============================================================================
+integrity:
+  # Track Merkle Vine chain verification
+  merkle_vine:
+    enabled: true
+    # Hash algorithm (BLAKE3 is fast and secure)
+    algorithm: 'BLAKE3'
+    # Verify every event chains to prior event
+    verify_ancestor_hash: true
+    # Cache ancestor hashes for offline verification
+    cache_enabled: true
+    max_cache_entries: 1000
+
+  # Spoof detection - check for impossible kinematics
+  kinematic_validation:
+    enabled: true
+    # Max speed thresholds (m/s) - assume ground units
+    max_ground_unit_speed_mps: 25 # ~90 km/h
+    max_air_unit_speed_mps: 100 # ~360 km/h
+
+    # Acceleration limits
+    max_acceleration_mps2: 5
+
+    # If position update violates physics, flag as SPOOFED
+    action_on_violation: 'SPOOF_DETECTION_EVENT'
+
+  # Attestation freshness
+  attestation:
+    enabled: true
+    # Max age of attestation before re-verification required
+    max_freshness_seconds: 1800 # 30 minutes in field
+    # Check freshness every N position updates
+    check_interval_updates: 10
+
+# =============================================================================
+# REPLAY PROTECTION
+# =============================================================================
+replay_protection:
+  # Sequence number tracking
+  sequence_numbers:
+    enabled: true
+    # Allow reordering (RF can cause out-of-order delivery)
+    accept_out_of_order: true
+    reorder_window_messages: 20
+
+    # Detect gaps (missing messages)
+    gap_detection_enabled: true
+    gap_request_strategy: 'request_from_most_trusted_peer'
+
+  # Nonce validation
+  nonces:
+    enabled: true
+    # Track recently seen nonces to detect replays
+    cache_size: 1000
+    cache_ttl_seconds: 300
+
+  # Timestamp freshness
+  timestamps:
+    enabled: true
+    # Accept events this old (field networks have clock skew)
+    max_age_seconds: 120
+    # Allow clock skew between units
+    max_clock_skew_seconds: 30
+
+# =============================================================================
+# UNIT TRUST & REVOCATION
+# =============================================================================
+trust_management:
+  # The Great Gospel - sovereign revocation ledger
+  revocation:
+    enabled: true
+
+    # Check revocation status
+    revocation_checks:
+      frequency_minutes: 5 # Check often for compromised units
+      cache_enabled: true
+      cache_ttl_seconds: 300
+
+    # If unit becomes revoked, action to take
+    revocation_actions:
+      - 'cease_communication'
+      - 'emit_security_event'
+      - 'add_to_aetheric_sweep_targets'
+
+  # Byzantine fault detection
+  byzantine_detection:
+    enabled: true
+
+    # Nodes that frequently fail verification are Byzantine
+    failure_threshold_percent: 30 # 3 failures in 10 attempts
+    failure_check_window_messages: 10
+
+    # If Byzantine detected, trigger Aetheric Sweep
+    action_on_detection: 'initiate_aetheric_sweep'
+
+    # Aetheric Sweep parameters
+    aetheric_sweep:
+      enabled: true
+      # Isolate suspected Byzantine nodes
+      isolation_strategy: 'gradual_exclusion'
+      # Start excluding after 5 detections
+      exclusion_threshold: 5
+
+# =============================================================================
+# LOGGING & DIAGNOSTICS
+# =============================================================================
+logging:
+  level: 'INFO'
+
+  # Field test specific logging
+  field_metrics:
+    enabled: true
+    log_spoof_detections: true
+    log_verification_events: true
+    log_coordination_decisions: true
+    log_network_health_changes: true
+    log_offline_transitions: true
+
+  # Store logs locally for post-test analysis
+  local_storage:
+    enabled: true
+    path: '/var/log/coderalphie/field-test'
+    rotation: 'daily'
+    retention_days: 30
+
+  # Audit log (immutable record of security events)
+  audit_log:
+    enabled: true
+    path: '/var/log/coderalphie/audit'
+    rotation: 'daily'
+    retention_days: 90
+
+# =============================================================================
+# PERFORMANCE TUNING
+# =============================================================================
+performance:
+  # Thread pool sizing
+  threads:
+    networking: 4
+    crypto_verification: 4
+    gossip_protocol: 2
+
+  # Buffer sizing (adjust for available RAM)
+  buffers:
+    inbound_queue_capacity: 1000
+    outbound_queue_capacity: 1000
+    cache_max_size_mb: 100
+
+  # CPU/Memory limits (important for field devices)
+  resource_limits:
+    max_cpu_percent: 80 # Don't saturate CPU
+    max_memory_mb: 512 # Protect field device memory

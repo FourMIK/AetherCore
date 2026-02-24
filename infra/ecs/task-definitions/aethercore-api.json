@@ -1,0 +1,51 @@
+{
+  "family": "aethercore-api",
+  "taskRoleArn": "arn:aws:iam::565919382365:role/aether-prod-c2-task-role",
+  "executionRoleArn": "arn:aws:iam::565919382365:role/ecsTaskExecutionRole",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "3072",
+  "containerDefinitions": [
+    {
+      "name": "aethercore-api",
+      "image": "565919382365.dkr.ecr.us-east-1.amazonaws.com/aethercore:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "TPM_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "RUST_LOG",
+          "value": "info"
+        },
+        {
+          "name": "PORT",
+          "value": "8080"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/aws/ecs/aethercore-api",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

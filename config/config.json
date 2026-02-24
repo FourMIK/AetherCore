@@ -1,0 +1,27 @@
+{
+  "network": {
+    "node_id": "node-001",
+    "mesh_id": "mesh-001",
+    "max_hops": 10
+  },
+  "radio": {
+    "frequency": 915.0,
+    "power": 20,
+    "bandwidth": 125000
+  },
+  "edge": {
+    "enabled": true,
+    "processing_threads": 4
+  },
+  "backend": {
+    "endpoint": "localhost:50051"
+  },
+  "logging": {
+    "level": "info",
+    "json_output": false
+  },
+  "storage": {
+    "ledger_path": "data/ledger.db",
+    "trust_mesh_path": "data/trust_mesh.db"
+  }
+}

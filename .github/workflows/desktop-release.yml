@@ -1,0 +1,856 @@
+name: "Operation Ironclad: Desktop Release"
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build Desktop App (${{ matrix.platform }})
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            os: macos-latest
+            artifact_glob: "packages/dashboard/src-tauri/target/release/bundle/**/*.dmg"
+            tauri_args: "--target universal-apple-darwin"
+          - platform: windows
+            os: windows-latest
+            artifact_glob: "packages/dashboard/src-tauri/target/release/bundle/**/*.msi"
+            tauri_args: ""
+
+    runs-on: ${{ matrix.os }}
+
+    env:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      WINDOWS_SIGNING_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGNING_TIMESTAMP_URL }}
+      CHECKSUM_SIGNING_PRIVATE_KEY: ${{ secrets.CHECKSUM_SIGNING_PRIVATE_KEY }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check required network endpoints
+        run: ./scripts/check-network-prereqs.sh
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Rust Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          targets: ${{ matrix.platform == 'windows' && 'x86_64-pc-windows-msvc' || '' }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Cache Rust Dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-desktop-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-desktop-
+            ${{ runner.os }}-cargo-
+
+      - name: Cache Node Modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            node_modules
+            */*/node_modules
+            packages/*/node_modules
+            services/*/node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install Dependencies (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install pnpm Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate pnpm-only policy
+        run: ./scripts/enforce-pnpm-policy.sh
+
+      - name: Gate: release-tag branding metadata must be production
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          set -euo pipefail
+          if rg -n "Dev Mode|tactical-glass-dev" packages/dashboard/src-tauri/tauri.conf.json; then
+            echo "❌ Release metadata contains Dev Mode branding"
+            exit 1
+          fi
+          echo "✅ Release metadata branding is production-safe"
+
+      - name: Run environment checks
+        run: pnpm doctor
+
+      - name: "🛡️ Operation Ironclad: Comprehensive Release Checklist"
+        run: |
+          chmod +x ./scripts/release-checklist.sh
+          ./scripts/release-checklist.sh
+
+      - name: Enforce signing and notarization secrets (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          required=(APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID CHECKSUM_SIGNING_PRIVATE_KEY)
+          for key in "${required[@]}"; do
+            if [ -z "${!key}" ]; then
+              echo "❌ Missing required secret: $key"
+              exit 1
+            fi
+          done
+
+      - name: Configure macOS signing keychain + identity
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/apple-signing.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/aethercore-signing.keychain-db"
+
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+
+          KEYCHAIN_PASSWORD="${APPLE_KEYCHAIN_PASSWORD:-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-aethercore}"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -F "$APPLE_SIGNING_IDENTITY"
+
+      - name: Enforce signing secrets (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $required = @('WINDOWS_CERTIFICATE', 'WINDOWS_CERTIFICATE_PASSWORD', 'CHECKSUM_SIGNING_PRIVATE_KEY', 'WINDOWS_SIGNING_TIMESTAMP_URL')
+          foreach ($key in $required) {
+            $value = (Get-Item -Path "Env:$key" -ErrorAction SilentlyContinue).Value
+            if ([string]::IsNullOrWhiteSpace($value)) {
+              throw "Missing required secret: $key"
+            }
+          }
+
+      - name: Configure Windows Authenticode certificate store
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP 'aethercore-signing.pfx'
+          [System.IO.File]::WriteAllBytes($certPath, [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+
+          $securePassword = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $imported = Import-PfxCertificate -FilePath $certPath -Password $securePassword -CertStoreLocation Cert:\CurrentUser\My -Exportable
+          if (-not $imported) { throw 'Failed to import Windows signing certificate into CurrentUser\My' }
+
+          $thumbprint = $imported.Thumbprint
+          if ([string]::IsNullOrWhiteSpace($thumbprint)) { throw 'Unable to resolve imported certificate thumbprint' }
+
+          Add-Content -Path $env:GITHUB_ENV -Value "WINDOWS_CERTIFICATE_THUMBPRINT=$thumbprint"
+          Write-Host "Configured Authenticode signing certificate thumbprint: $thumbprint"
+
+      - name: Build Frontend (TypeScript)
+        run: |
+          cd packages/dashboard
+          pnpm run build
+
+      - name: Build & Package Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: "./packages/dashboard"
+          tagName: ${{ github.ref_name }}
+          releaseName: "AetherCore Tactical Glass ${{ github.ref_name }}"
+          releaseBody: |
+            ## AetherCore Tactical Glass Release ${{ github.ref_name }}
+
+            ### Desktop Applications
+            - **Windows**: Authenticode signed installer + trusted RFC3161 timestamp
+            - **macOS**: Developer ID signed, notarized, and stapled universal DMG
+
+            ### Security Notes
+            - Release checksums are cryptographically signed
+            - SBOM and provenance attestations are attached to every release
+
+            ### Installation
+            See [INSTALLATION.md](https://github.com/FourMIK/AetherCore/blob/main/INSTALLATION.md).
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.tauri_args }}
+
+      - name: Upload installer bundle for clean-runner certification
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-installer-${{ matrix.platform }}
+          path: |
+            packages/dashboard/src-tauri/target/release/bundle/**/*.dmg
+            packages/dashboard/src-tauri/target/release/bundle/**/*.msi
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: "Gate: verify macOS code signing + notarization + stapling"
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="$(find packages/dashboard/src-tauri/target/release/bundle -name '*.dmg' | head -n 1)"
+          app="$(find packages/dashboard/src-tauri/target/release/bundle -name '*.app' | head -n 1)"
+
+          test -n "$dmg" && test -n "$app"
+
+          codesign --verify --deep --strict --verbose=4 "$app"
+          spctl --assess --type execute --verbose=4 "$app"
+          xcrun stapler validate "$dmg"
+
+      - name: "Gate: verify Windows Authenticode + trusted timestamp"
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem -Path "packages/dashboard/src-tauri/target/release/bundle" -Recurse -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { throw "No MSI artifact found" }
+
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $signtool) { throw "signtool.exe not found" }
+
+          & $signtool.FullName verify /pa /tw /v $msi.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Authenticode or timestamp verification failed" }
+
+      - name: "Validation Gate: install + launch + bootstrap ready (macOS)"
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="$(find packages/dashboard/src-tauri/target/release/bundle -name '*.dmg' | head -n 1)"
+          mount_dir="$(mktemp -d)"
+          hdiutil attach "$dmg" -mountpoint "$mount_dir"
+          app_path="$(find "$mount_dir" -maxdepth 1 -name '*.app' | head -n 1)"
+          cp -R "$app_path" /Applications/
+          hdiutil detach "$mount_dir"
+
+          APP_BIN="/Applications/$(basename "$app_path")/Contents/MacOS/$(basename "$app_path" .app)"
+          AETHERCORE_SKIP_SENTINEL_FOR_CI=1 CI=1 "$APP_BIN" --bootstrap > /tmp/aethercore-macos-launch.log 2>&1 &
+          APP_PID=$!
+          sleep 25
+          kill "$APP_PID" || true
+
+          CONFIG_FILE="$HOME/Library/Application Support/com.aethercore.commander/runtime-config.json"
+          test -f "$CONFIG_FILE"
+
+      - name: "Validation Gate: install + launch + bootstrap ready (Windows)"
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem -Path "packages/dashboard/src-tauri/target/release/bundle" -Recurse -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { throw "No MSI artifact found" }
+
+          Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart" -Wait -NoNewWindow
+
+          $exe = Get-ChildItem -Path "$env:LOCALAPPDATA\Programs" -Recurse -Filter "*.exe" |
+            Where-Object { $_.Name -like "*Tactical*" -or $_.Name -like "*aethercore*" } |
+            Select-Object -First 1
+          if (-not $exe) { throw "Installed executable not found" }
+
+          $launch = Start-Process -FilePath $exe.FullName -ArgumentList "--bootstrap" -PassThru -Environment @{
+            CI = '1'
+            AETHERCORE_SKIP_SENTINEL_FOR_CI = '1'
+          }
+          Start-Sleep -Seconds 25
+          if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
+
+          $configPath = Join-Path $env:APPDATA "com.aethercore.commander\runtime-config.json"
+          if (-not (Test-Path $configPath)) {
+            throw "Bootstrap ready-state config not found at $configPath"
+          }
+
+      - name: Build checksum + signature + provenance bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts
+
+          checksum_file="release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt"
+          signature_file="${checksum_file}.sig"
+
+          while IFS= read -r -d '' file; do
+            shasum -a 256 "$file" >> "$checksum_file"
+          done < <(find packages/dashboard/src-tauri/target/release/bundle -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.app' -o -name '*.exe' \) -print0)
+
+          printf '%s' "$CHECKSUM_SIGNING_PRIVATE_KEY" > release-artifacts/checksum-signing.pem
+          openssl dgst -sha256 -sign release-artifacts/checksum-signing.pem -out "$signature_file" "$checksum_file"
+
+          cat > "release-artifacts/provenance-${{ matrix.platform }}.json" <<EOF
+          {
+            "tag": "${{ github.ref_name }}",
+            "platform": "${{ matrix.platform }}",
+            "commit": "${{ github.sha }}",
+            "workflow": "${{ github.workflow }}",
+            "run_id": "${{ github.run_id }}",
+            "signed_checksums": "$(basename "$signature_file")"
+          }
+          EOF
+
+      - name: Build release manifest from CI artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tauri_version="$(awk -F'"' '/^tauri = /{print $2; exit}' packages/dashboard/src-tauri/Cargo.toml)"
+          rust_version="$(rustc --version | awk '{print $2}')"
+          node_version="$(node --version | sed 's/^v//')"
+
+          python3 ./scripts/build-release-manifest.py \
+            --bundle-dir packages/dashboard/src-tauri/target/release/bundle \
+            --output-dir release-artifacts \
+            --tag "${{ github.ref_name }}" \
+            --commit "${{ github.sha }}" \
+            --tauri-version "${tauri_version:-2.x}" \
+            --rust-version "$rust_version" \
+            --node-version "$node_version" \
+            --private-key-path release-artifacts/checksum-signing.pem \
+            --bundle-identifier com.aethercore.commander
+
+      - name: Gate: installer artifact names must align with production Commander naming
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find packages/dashboard/src-tauri/target/release/bundle -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.AppImage' -o -name '*.appimage' \) | grep -E 'Dev|dev|tactical-glass'; then
+            echo "❌ Installer artifact names contain non-production branding"
+            exit 1
+          fi
+          echo "✅ Installer artifact names align with Commander branding"
+
+      - name: Upload signed checksum + provenance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-integrity-${{ matrix.platform }}
+          path: |
+            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt
+            release-artifacts/SHA256SUMS-${{ matrix.platform }}.txt.sig
+            release-artifacts/provenance-${{ matrix.platform }}.json
+            release-artifacts/release-manifest.json
+            release-artifacts/release-manifest.json.sig
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Generate build provenance attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: ${{ matrix.artifact_glob }}
+
+
+      - name: Cleanup release signing key material
+        if: always()
+        shell: bash
+        run: rm -f release-artifacts/checksum-signing.pem
+
+
+
+  finalize-release:
+    name: Finalize Desktop Release (hard gate)
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [release, certification-suite]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download integrity artifacts from matrix builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-integrity-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Attach integrity + provenance assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ github.ref_name }}" \
+            release-assets/SHA256SUMS-macos.txt \
+            release-assets/SHA256SUMS-macos.txt.sig \
+            release-assets/SHA256SUMS-windows.txt \
+            release-assets/SHA256SUMS-windows.txt.sig \
+            release-assets/provenance-macos.json \
+            release-assets/provenance-windows.json \
+            release-assets/release-manifest.json \
+            release-assets/release-manifest.json.sig \
+            --clobber
+
+      - name: Publish draft release only after all signing/notarization gates pass
+        if: ${{ needs.certification-suite.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ github.ref_name }}" --draft=false
+
+      - name: Confirm published integrity assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name' | \
+            grep -E 'SHA256SUMS-(macos|windows)\.txt(\.sig)?|provenance-(macos|windows)\.json|release-manifest\.json(\.sig)?'
+
+  certification-suite:
+    name: Installer Certification (${{ matrix.platform }})
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            os: macos-latest
+          - platform: windows
+            os: windows-latest
+    steps:
+      - name: Download installer from release build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-installer-${{ matrix.platform }}
+          path: certification-input
+
+      - name: Run post-install smoke certification (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p certification-artifacts
+
+          cert_json="certification-artifacts/certification-result.json"
+          steps_file="certification-artifacts/step-outcomes.ndjson"
+          metrics_file="certification-artifacts/slo-metrics.json"
+          log_file="certification-artifacts/app-launch.log"
+          command_log="certification-artifacts/post-install-commands.log"
+          summary_md="certification-artifacts/certification-summary.md"
+          screenshot="certification-artifacts/failure-screenshot.png"
+          : > "$steps_file"
+          : > "$command_log"
+
+          final_status="passed"
+          mandatory_failure=0
+          first_deploy_latency_ms="null"
+          launch_start_ms=$(python3 - <<'PY'
+          import time
+          print(int(time.time() * 1000))
+          PY
+          )
+
+          record_step() {
+            local name="$1"
+            local mandatory="$2"
+            local status="$3"
+            local detail="$4"
+            local duration_ms="$5"
+            printf '{"name":"%s","mandatory":%s,"status":"%s","detail":%s,"duration_ms":%s}\n' \
+              "$name" "$mandatory" "$status" "$(python3 - <<'PY' "$detail"
+              import json,sys
+              print(json.dumps(sys.argv[1]))
+              PY
+              )" "$duration_ms" >> "$steps_file"
+            if [ "$status" != "passed" ]; then
+              final_status="failed"
+              if [ "$mandatory" = "true" ]; then mandatory_failure=1; fi
+            fi
+          }
+
+          dmg="$(find certification-input -name '*.dmg' | head -n 1)"
+          if [[ -z "$dmg" ]]; then
+            record_step "artifact" true failed "No DMG found in certification input" 0
+          else
+            record_step "artifact" true passed "Resolved installer artifact: $dmg" 0
+          fi
+
+          mount_dir="$(mktemp -d)"
+          app_pid=""
+          if [[ -n "$dmg" ]]; then
+            if hdiutil attach "$dmg" -mountpoint "$mount_dir" >> "$command_log" 2>&1; then
+              app_path="$(find "$mount_dir" -maxdepth 1 -name '*.app' | head -n 1)"
+              if [[ -n "$app_path" ]] && cp -R "$app_path" /Applications/ >> "$command_log" 2>&1; then
+                app_name="$(basename "$app_path")"
+                app_bin="/Applications/${app_name}/Contents/MacOS/$(basename "$app_path" .app)"
+                smoke_workdir="$RUNNER_TEMP/aethercore-smoke"
+                mkdir -p "$smoke_workdir"
+                cd "$smoke_workdir"
+                CI=1 AETHERCORE_SKIP_SENTINEL_FOR_CI=1 "$app_bin" --bootstrap > "$GITHUB_WORKSPACE/$log_file" 2>&1 &
+                app_pid=$!
+                record_step "launch_bootstrap" true passed "Launched desktop app in bootstrap mode" 0
+              else
+                record_step "launch_bootstrap" true failed "No .app found in DMG or copy to /Applications failed" 0
+              fi
+              hdiutil detach "$mount_dir" >> "$command_log" 2>&1 || true
+            else
+              record_step "launch_bootstrap" true failed "Failed to mount DMG for installation" 0
+            fi
+          fi
+
+          bootstrap_state="$HOME/Library/Application Support/com.aethercore.commander/bootstrap-state.json"
+          runtime_config="$HOME/Library/Application Support/com.aethercore.commander/runtime-config.json"
+          stack_state="$HOME/Library/Application Support/com.aethercore.commander/stack-state.json"
+          sample_node_config="$RUNNER_TEMP/aethercore-smoke/data/first-node/first-node_config.json"
+
+          wait_start=$(python3 - <<'PY'
+          import time
+          print(int(time.time() * 1000))
+          PY
+          )
+          deadline=$((SECONDS + 180))
+          while [ $SECONDS -lt $deadline ]; do
+            [ -f "$bootstrap_state" ] && [ -f "$runtime_config" ] && [ -f "$stack_state" ] && break
+            sleep 3
+          done
+          wait_end=$(python3 - <<'PY'
+          import time
+          print(int(time.time() * 1000))
+          PY
+          )
+
+          if [ -f "$stack_state" ]; then
+            stack_ok=$(python3 - <<'PY' "$stack_state"
+            import json,sys
+            data=json.load(open(sys.argv[1]))
+            print("1" if data.get("last_ready") and data.get("desired_running") else "0")
+            PY
+            )
+            if [ "$stack_ok" = "1" ]; then
+              record_step "stack_startup" true passed "stack-state.json indicates stack ready" "$((wait_end-wait_start))"
+            else
+              record_step "stack_startup" true failed "stack-state.json indicates stack not ready" "$((wait_end-wait_start))"
+            fi
+          else
+            record_step "stack_startup" true failed "stack-state.json missing after bootstrap window" "$((wait_end-wait_start))"
+          fi
+
+          svc_start=$(python3 - <<'PY'
+          import time
+          print(int(time.time() * 1000))
+          PY
+          )
+          api_ok=0
+          ws_ok=0
+          curl -fsS http://127.0.0.1:3000/health >> "$command_log" 2>&1 && api_ok=1
+          curl -fsS http://127.0.0.1:8080/healthz >> "$command_log" 2>&1 && ws_ok=1
+          python3 - <<'PY' >> "$command_log" 2>&1 && ws_ok=1 || true
+          import socket
+          s = socket.create_connection(("127.0.0.1", 8080), timeout=5)
+          s.close()
+          print("tcp-connect-8080-ok")
+          PY
+          svc_end=$(python3 - <<'PY'
+          import time
+          print(int(time.time() * 1000))
+          PY
+          )
+
+          if [ "$api_ok" = "1" ] && [ "$ws_ok" = "1" ]; then
+            record_step "required_services_healthy" true passed "HTTP health probes reachable for required services" "$((svc_end-svc_start))"
+            record_step "dashboard_connectivity" true passed "API /health and mesh endpoint connectivity checks passed" "$((svc_end-svc_start))"
+          else
+            record_step "required_services_healthy" true failed "One or more required service health probes failed" "$((svc_end-svc_start))"
+            record_step "dashboard_connectivity" true failed "Dashboard connectivity checks failed (api_ok=${api_ok}, ws_ok=${ws_ok})" "$((svc_end-svc_start))"
+          fi
+
+          deploy_deadline=$((SECONDS + 120))
+          while [ $SECONDS -lt $deploy_deadline ]; do
+            if [ -f "$sample_node_config" ]; then
+              now_ms=$(python3 - <<'PY'
+              import time
+              print(int(time.time() * 1000))
+              PY
+              )
+              first_deploy_latency_ms=$((now_ms-launch_start_ms))
+              break
+            fi
+            sleep 2
+          done
+
+          if [ -f "$sample_node_config" ]; then
+            record_step "first_node_deploy" true passed "first-node configuration created at $sample_node_config" "$first_deploy_latency_ms"
+          else
+            record_step "first_node_deploy" true failed "first-node configuration was not created" 0
+          fi
+
+          if [ -n "${app_pid:-}" ]; then
+            kill "$app_pid" >> "$command_log" 2>&1 || true
+            wait "$app_pid" >> "$command_log" 2>&1 || true
+          fi
+
+          python3 - <<'PY' "$steps_file" "$metrics_file" "$cert_json" "$summary_md" "$final_status" "$mandatory_failure" "$first_deploy_latency_ms"
+          import json,sys
+          from pathlib import Path
+
+          steps=[json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines() if line.strip()]
+          bootstrap_success = any(step["name"]=="stack_startup" and step["status"]=="passed" for step in steps)
+          metrics = {
+            "bootstrap_success": bootstrap_success,
+            "first_deploy_latency_ms": None if sys.argv[7] == "null" else int(sys.argv[7]),
+            "slo_targets": {
+              "bootstrap_success": ">=95%",
+              "first_deploy_latency_ms": "<=120000"
+            }
+          }
+          Path(sys.argv[2]).write_text(json.dumps(metrics, indent=2))
+          result = {
+            "platform":"macos",
+            "status":sys.argv[5],
+            "mandatory_failure": sys.argv[6] == "1",
+            "checks": steps,
+            "slo_metrics": metrics
+          }
+          Path(sys.argv[3]).write_text(json.dumps(result, indent=2))
+          Path(sys.argv[4]).write_text("# Certification Summary\n\n" + "\n".join([f"- {s['name']}: {s['status']} ({s['detail']})" for s in steps]))
+          PY
+
+          if [ "$final_status" != "passed" ]; then
+            screencapture -x "$screenshot" || true
+          fi
+          if [ "$mandatory_failure" -eq 1 ]; then
+            echo "Mandatory certification step failed on macOS"
+            exit 1
+          fi
+
+      - name: Run post-install smoke certification (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path certification-artifacts | Out-Null
+
+          $certJson = "certification-artifacts/certification-result.json"
+          $metricsJson = "certification-artifacts/slo-metrics.json"
+          $stepJson = "certification-artifacts/step-outcomes.json"
+          $logFile = "certification-artifacts/app-launch.log"
+          $commandLog = "certification-artifacts/post-install-commands.log"
+          $screenshot = "certification-artifacts/failure-screenshot.png"
+          $summaryMd = "certification-artifacts/certification-summary.md"
+          $steps = @()
+          $status = 'passed'
+          $mandatoryFailure = $false
+          $firstDeployLatencyMs = $null
+
+          function Add-Step {
+            param(
+              [string]$Name,
+              [bool]$Mandatory,
+              [string]$StepStatus,
+              [string]$Detail,
+              [int64]$DurationMs
+            )
+            $steps += @{
+              name = $Name
+              mandatory = $Mandatory
+              status = $StepStatus
+              detail = $Detail
+              duration_ms = $DurationMs
+            }
+            if ($StepStatus -ne 'passed') {
+              $script:status = 'failed'
+              if ($Mandatory) { $script:mandatoryFailure = $true }
+            }
+          }
+
+          function Save-Failure {
+            param(
+              [string]$Check,
+              [string]$Message
+            )
+
+            try {
+              Add-Type -AssemblyName System.Windows.Forms
+              Add-Type -AssemblyName System.Drawing
+              $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+              $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+              $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+              $bitmap.Save((Join-Path $PWD $screenshot), [System.Drawing.Imaging.ImageFormat]::Png)
+              $graphics.Dispose()
+              $bitmap.Dispose()
+            } catch {
+              Write-Host "Screenshot capture unavailable: $($_.Exception.Message)"
+            }
+
+            Add-Step -Name $Check -Mandatory $true -StepStatus 'failed' -Detail $Message -DurationMs 0
+          }
+
+          $msi = Get-ChildItem -Path certification-input -Recurse -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { Save-Failure -Check 'artifact' -Message 'No MSI found in certification input' }
+          if ($msi) { Add-Step -Name 'artifact' -Mandatory $true -StepStatus 'passed' -Detail "Resolved installer artifact: $($msi.FullName)" -DurationMs 0 }
+
+          $launchStart = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          if ($msi) {
+            try {
+              Start-Process msiexec.exe -ArgumentList "/i `"$($msi.FullName)`" /qn /norestart" -Wait -NoNewWindow
+            } catch {
+              Save-Failure -Check 'launch_bootstrap' -Message "MSI install failed: $($_.Exception.Message)"
+            }
+          }
+
+          $exe = Get-ChildItem -Path "$env:LOCALAPPDATA\Programs" -Recurse -Filter '*.exe' |
+            Where-Object { $_.Name -like '*Tactical*' -or $_.Name -like '*aethercore*' } |
+            Select-Object -First 1
+          if (-not $exe) {
+            Save-Failure -Check 'launch_bootstrap' -Message 'Installed executable not found'
+          } else {
+            Add-Step -Name 'launch_bootstrap' -Mandatory $true -StepStatus 'passed' -Detail 'Installed executable discovered and ready for bootstrap launch' -DurationMs 0
+          }
+
+          $smokeDir = Join-Path $env:RUNNER_TEMP 'aethercore-smoke'
+          New-Item -ItemType Directory -Force -Path $smokeDir | Out-Null
+
+          if ($exe) {
+            Push-Location $smokeDir
+            try {
+              $launch = Start-Process -FilePath $exe.FullName -ArgumentList '--bootstrap' -RedirectStandardOutput (Join-Path $env:GITHUB_WORKSPACE $logFile) -RedirectStandardError (Join-Path $env:GITHUB_WORKSPACE $logFile) -PassThru -Environment @{
+                CI = '1'
+                AETHERCORE_SKIP_SENTINEL_FOR_CI = '1'
+              }
+
+            $bootstrapState = Join-Path $env:APPDATA 'com.aethercore.commander\bootstrap-state.json'
+            $runtimeConfig = Join-Path $env:APPDATA 'com.aethercore.commander\runtime-config.json'
+            $stackState = Join-Path $env:APPDATA 'com.aethercore.commander\stack-state.json'
+            $sampleNodeConfig = Join-Path $smokeDir 'data\first-node\first-node_config.json'
+
+            $deadline = (Get-Date).AddSeconds(180)
+            while ((Get-Date) -lt $deadline) {
+              if ((Test-Path $bootstrapState) -and (Test-Path $runtimeConfig) -and (Test-Path $stackState)) {
+                break
+              }
+              Start-Sleep -Seconds 3
+            }
+
+            if (-not (Test-Path $stackState)) {
+              Save-Failure -Check 'stack_startup' -Message 'Missing stack-state.json after bootstrap launch'
+            } else {
+              $stack = Get-Content -Raw -Path $stackState | ConvertFrom-Json
+              if ($stack.last_ready -and $stack.desired_running) {
+                Add-Step -Name 'stack_startup' -Mandatory $true -StepStatus 'passed' -Detail 'stack-state.json confirms stack ready' -DurationMs 0
+              } else {
+                Save-Failure -Check 'stack_startup' -Message 'stack-state.json indicates stack is not ready'
+              }
+            }
+
+            $apiOk = $false
+            $meshOk = $false
+            try {
+              Invoke-WebRequest -Uri 'http://127.0.0.1:3000/health' -UseBasicParsing -TimeoutSec 8 | Out-Null
+              Invoke-WebRequest -Uri 'http://127.0.0.1:8080/healthz' -UseBasicParsing -TimeoutSec 8 | Out-Null
+              $apiOk = $true
+            } catch {
+              Add-Content -Path $commandLog -Value "health checks failed: $($_.Exception.Message)"
+            }
+            try {
+              $client = New-Object System.Net.Sockets.TcpClient
+              $client.Connect('127.0.0.1', 8080)
+              $client.Close()
+              $meshOk = $true
+            } catch {
+              Add-Content -Path $commandLog -Value "mesh connectivity failed: $($_.Exception.Message)"
+            }
+
+            if ($apiOk -and $meshOk) {
+              Add-Step -Name 'required_services_healthy' -Mandatory $true -StepStatus 'passed' -Detail 'HTTP health and mesh port probes succeeded' -DurationMs 0
+              Add-Step -Name 'dashboard_connectivity' -Mandatory $true -StepStatus 'passed' -Detail 'Dashboard connectivity checks passed' -DurationMs 0
+            } else {
+              Save-Failure -Check 'required_services_healthy' -Message "Service health checks failed (api_ok=$apiOk mesh_ok=$meshOk)"
+              Save-Failure -Check 'dashboard_connectivity' -Message "Dashboard connectivity checks failed (api_ok=$apiOk mesh_ok=$meshOk)"
+            }
+
+            $deployDeadline = (Get-Date).AddSeconds(120)
+            while ((Get-Date) -lt $deployDeadline) {
+              if (Test-Path $sampleNodeConfig) {
+                $firstDeployLatencyMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - $launchStart
+                break
+              }
+              Start-Sleep -Seconds 2
+            }
+
+            if (Test-Path $sampleNodeConfig) {
+              Add-Step -Name 'first_node_deploy' -Mandatory $true -StepStatus 'passed' -Detail "first-node deployment config detected: $sampleNodeConfig" -DurationMs $firstDeployLatencyMs
+            } else {
+              Save-Failure -Check 'first_node_deploy' -Message 'first-node deployment config was not created'
+            }
+
+            $bootstrap = Get-Content -Raw -Path $bootstrapState | ConvertFrom-Json
+            if (-not $bootstrap.completed) {
+              Save-Failure -Check 'bootstrap_state' -Message 'bootstrap-state.json completed != true'
+            }
+
+              if (-not $launch.HasExited) { Stop-Process -Id $launch.Id -Force }
+            }
+            finally {
+              Pop-Location
+            }
+          }
+
+          $bootstrapSuccess = ($steps | Where-Object { $_.name -eq 'stack_startup' -and $_.status -eq 'passed' }).Count -gt 0
+          $metrics = @{
+            bootstrap_success = $bootstrapSuccess
+            first_deploy_latency_ms = $firstDeployLatencyMs
+            slo_targets = @{
+              bootstrap_success = '>=95%'
+              first_deploy_latency_ms = '<=120000'
+            }
+          }
+          $metrics | ConvertTo-Json -Depth 8 | Set-Content -Path $metricsJson -Encoding UTF8
+
+          $steps | ConvertTo-Json -Depth 8 | Set-Content -Path $stepJson -Encoding UTF8
+          @{
+            platform = 'windows'
+            status = $status
+            mandatory_failure = $mandatoryFailure
+            checks = $steps
+            slo_metrics = $metrics
+          } | ConvertTo-Json -Depth 10 | Set-Content -Path $certJson -Encoding UTF8
+
+          ($steps | ForEach-Object { "- $($_.name): $($_.status) ($($_.detail))" }) -join "`n" | Set-Content -Path $summaryMd -Encoding UTF8
+          if ($mandatoryFailure) {
+            throw 'Mandatory certification step failed on Windows'
+          }
+
+      - name: Upload certification diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-certification-${{ matrix.platform }}
+          path: certification-artifacts
+          if-no-files-found: warn
+          retention-days: 90

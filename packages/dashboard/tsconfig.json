@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "allowSyntheticDefaultImports": true,
+    "types": [
+      "vite/client"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@aethercore/shared": [
+        "../shared/src/index.ts"
+      ],
+      "@aethercore/shared/*": [
+        "../shared/src/*"
+      ]
+    }
+  },
+  "include": [
+    "../shared/src/**/*",
+    "src/**/*"
+  ],
+  "exclude": [
+    "../shared/src/**/__tests__/*",
+    "dist",
+    "node_modules",
+    "src-tauri"
+  ]
+}

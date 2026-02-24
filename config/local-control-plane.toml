@@ -1,0 +1,40 @@
+# Canonical desktop startup manifest for Tactical Glass local dependencies.
+# This is the single source of truth used by docs and the dashboard startup orchestrator.
+
+mode = "desktop-local-control-plane"
+version = 2
+
+[startup]
+health_poll_interval_ms = 1000
+service_start_grace_period_ms = 1500
+service_health_timeout_secs = 45
+health_check_retries = 2
+retry_backoff_ms = 1250
+
+[[services]]
+name = "gateway"
+startup_order = 10
+required = true
+port = 3000
+health_endpoint = "http://127.0.0.1:3000/health"
+remediation_hint = "Ensure port 3000 is free, then run `${AETHERCORE_RUNTIME_ROOT}/local-control-plane/launchers/gateway-launcher` manually to inspect startup logs."
+depends_on = []
+health_check_timeout_secs = 45
+health_check_retries = 2
+working_dir = "."
+start_executable = "${AETHERCORE_RUNTIME_ROOT}/local-control-plane/launchers/gateway-launcher"
+start_args = []
+
+[[services]]
+name = "collaboration"
+startup_order = 20
+required = true
+port = 8080
+health_endpoint = "http://127.0.0.1:8080/health"
+remediation_hint = "Ensure port 8080 is free and gateway is healthy, then run `${AETHERCORE_RUNTIME_ROOT}/local-control-plane/launchers/collaboration-launcher` to inspect startup logs."
+depends_on = ["gateway"]
+health_check_timeout_secs = 60
+health_check_retries = 3
+working_dir = "."
+start_executable = "${AETHERCORE_RUNTIME_ROOT}/local-control-plane/launchers/collaboration-launcher"
+start_args = []

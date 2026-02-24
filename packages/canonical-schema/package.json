@@ -1,0 +1,21 @@
+{
+  "name": "@aethercore/canonical-schema",
+  "version": "0.1.0",
+  "description": "AetherCore Canonical Schema",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "echo \"No tests yet\"",
+    "lint": "echo \"No linting configured yet\""
+  },
+  "keywords": ["aethercore", "schema"],
+  "author": "AetherCore Team",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6"
+  }
+}

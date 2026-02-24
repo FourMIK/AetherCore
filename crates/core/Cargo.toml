@@ -1,0 +1,34 @@
+[package]
+name = "aethercore-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["full"]
+full = ["sqlite", "merkle", "ledger"]
+minimal = []
+sqlite = ["rusqlite"]
+merkle = []
+ledger = ["sqlite", "merkle"]
+field = ["minimal", "merkle"]
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+blake3 = { workspace = true }
+hex = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+ed25519-dalek = { workspace = true }
+rusqlite = { workspace = true, optional = true }
+toml = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+uuid = { version = "1.6", features = ["v4"] }
+rand = { workspace = true }

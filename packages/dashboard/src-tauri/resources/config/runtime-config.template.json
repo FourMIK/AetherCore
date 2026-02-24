@@ -1,0 +1,26 @@
+{
+  "schema_version": 3,
+  "product_profile": "commander_edition",
+  "profile": "commander-local",
+  "connection": {
+    "api_endpoint": "http://127.0.0.1:3000",
+    "mesh_endpoint": "ws://127.0.0.1:3000"
+  },
+  "tpm_policy": {
+    "mode": "optional",
+    "enforce_hardware": false
+  },
+  "ports": {
+    "api": 3000,
+    "mesh": 3000
+  },
+  "features": {
+    "allow_insecure_localhost": true,
+    "bootstrap_on_startup": true
+  },
+  "connection_retry": {
+    "max_retries": 10,
+    "initial_delay_ms": 1000,
+    "max_delay_ms": 30000
+  }
+}

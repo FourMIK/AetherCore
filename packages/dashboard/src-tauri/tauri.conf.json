@@ -1,0 +1,82 @@
+{
+  "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "AetherCore Commander",
+  "version": "0.2.0",
+  "identifier": "com.aethercore.commander",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeDevCommand": "pnpm run dev",
+    "beforeBuildCommand": "pnpm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "AetherCore Commander",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:* wss://testnet.aethercore.local:* wss://*.aethercore.local:*; font-src 'self'; worker-src 'self' blob:; frame-src 'none'; object-src 'none';"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "shortDescription": "AetherCore Commander Desktop Application",
+    "longDescription": "AetherCore Commander is the production desktop command application for secure fleet operations with TPM-backed security, hardware-rooted identity, and remote attestation.",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      },
+      "wix": {
+        "language": "en-US"
+      },
+      "nsis": null,
+      "certificateThumbprint": "$WINDOWS_CERTIFICATE_THUMBPRINT",
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "$WINDOWS_SIGNING_TIMESTAMP_URL"
+    },
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "11.0",
+      "exceptionDomain": "",
+      "providerShortName": "$APPLE_TEAM_ID",
+      "entitlements": "entitlements.plist",
+      "dmg": {
+        "background": null,
+        "windowSize": {
+          "width": 540,
+          "height": 380
+        },
+        "appPosition": {
+          "x": 140,
+          "y": 120
+        },
+        "applicationFolderPosition": {
+          "x": 400,
+          "y": 120
+        }
+      },
+      "hardenedRuntime": true
+    },
+    "resources": [
+      "resources/runtime-components.manifest.json",
+      "resources/config",
+      "resources/payloads",
+      "resources/macos"
+    ]
+  }
+}

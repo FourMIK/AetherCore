@@ -1,0 +1,53 @@
+# Multi-stage build for AetherCore Collaboration Service (Mission Guardian)
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files and toolchain scripts required by preinstall
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY scripts ./scripts
+COPY services/collaboration/package.json ./services/collaboration/
+COPY packages/shared/package.json ./packages/shared/
+
+# Install dependencies
+RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --filter @aethercore/collaboration --filter @aethercore/shared
+
+# Copy source code
+COPY services/collaboration ./services/collaboration
+COPY packages/shared ./packages/shared
+
+# Build the service
+RUN pnpm --filter @aethercore/collaboration run build
+
+# Production stage
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy built artifacts and dependencies
+COPY --from=builder /app/services/collaboration/dist ./dist
+COPY --from=builder /app/services/collaboration/package.json ./
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copy proto files to expected runtime location
+COPY --from=builder /app/services/collaboration/proto ./proto
+
+# Environment variables
+ENV NODE_ENV=production
+ENV PORT=8080
+
+# Create non-root user
+RUN addgroup -g 1000 nonroot && adduser -D -u 1000 -G nonroot nonroot
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8080/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
+
+# Expose port
+EXPOSE 8080
+
+# Switch to non-root user
+USER nonroot:nonroot
+
+# Run the service
+CMD ["node", "dist/index.js"]

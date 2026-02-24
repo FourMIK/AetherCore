@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aethercore
+  labels:
+    name: aethercore
+    project: AetherCore
+    environment: tactical
+    deployment: bunker
+    security.istio.io/tlsMode: STRICT
+  annotations:
+    description: "AetherCore Bunker Mode - Air-Gapped Deployment"

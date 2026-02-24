@@ -1,0 +1,364 @@
+//! Trust Scoring Module
+//!
+//! Computes and tracks trust scores based on cryptographic evidence and node health metrics.
+
+use crate::node_health::{NodeHealth, NodeHealthStatus};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+
+/// Trust computation constants for health-based scoring
+#[derive(Debug, Clone)]
+pub struct TrustComputationConfig {
+    /// Base score for HEALTHY nodes (before agreement bonus)
+    pub healthy_base_score: f64,
+    /// Multiplier for agreement bonus on healthy nodes
+    pub healthy_agreement_bonus_multiplier: f64,
+    /// Agreement threshold where bonus starts (95%)
+    pub healthy_agreement_threshold: f64,
+
+    /// Base score for DEGRADED nodes
+    pub degraded_base_score: f64,
+    /// Score range for degraded nodes (added to base based on agreement)
+    pub degraded_score_range: f64,
+    /// Agreement threshold where degraded range starts (80%)
+    pub degraded_agreement_threshold: f64,
+    /// Agreement range for degraded computation (95% - 80% = 15%)
+    pub degraded_agreement_range: f64,
+    /// Minimum score for degraded nodes
+    pub degraded_min_score: f64,
+    /// Maximum score for degraded nodes
+    pub degraded_max_score: f64,
+
+    /// Base score for COMPROMISED nodes
+    pub compromised_base_score: f64,
+    /// Score range for compromised nodes
+    pub compromised_score_range: f64,
+    /// Agreement threshold for compromised computation (80%)
+    pub compromised_agreement_threshold: f64,
+    /// Minimum score for compromised nodes
+    pub compromised_min_score: f64,
+    /// Maximum score for compromised nodes
+    pub compromised_max_score: f64,
+}
+
+impl Default for TrustComputationConfig {
+    fn default() -> Self {
+        Self {
+            healthy_base_score: 0.9,
+            healthy_agreement_bonus_multiplier: 0.2,
+            healthy_agreement_threshold: 0.95,
+
+            degraded_base_score: 0.6, // Adjusted for new 0.6 quarantine threshold
+            degraded_score_range: 0.3,
+            degraded_agreement_threshold: 0.80,
+            degraded_agreement_range: 0.15,
+            degraded_min_score: 0.6, // Degraded nodes must stay above quarantine threshold
+            degraded_max_score: 0.8,
+
+            compromised_base_score: 0.1,
+            compromised_score_range: 0.3,
+            compromised_agreement_threshold: 0.80,
+            compromised_min_score: 0.0,
+            compromised_max_score: 0.4,
+        }
+    }
+}
+
+/// Trust level thresholds
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrustLevel {
+    Healthy,     // Trust score >= 0.9
+    Suspect,     // Trust score >= 0.6
+    Quarantined, // Trust score < 0.6
+}
+
+/// Threshold for healthy trust level
+pub const HEALTHY_THRESHOLD: f64 = 0.9;
+
+/// Threshold for suspect trust level (below this is quarantined)
+/// Hardened for desktop grid deployment: stricter Byzantine detection
+pub const QUARANTINE_THRESHOLD: f64 = 0.6;
+
+/// Trust score for a node
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrustScore {
+    pub node_id: String,
+    pub score: f64, // 0.0 to 1.0
+    pub level: TrustLevel,
+    pub last_updated: u64,
+}
+
+impl TrustScore {
+    /// Generate a human-readable rejection summary for quarantined or suspect nodes
+    pub fn rejection_summary(&self) -> String {
+        match self.level {
+            TrustLevel::Quarantined => {
+                format!(
+                    "Trust score {} is below quarantine threshold ({}). Node exhibits Byzantine behavior or integrity violations.",
+                    self.score, QUARANTINE_THRESHOLD
+                )
+            }
+            TrustLevel::Suspect => {
+                format!(
+                    "Trust score {} is below operational threshold ({}). Node trust degraded due to anomalous behavior.",
+                    self.score, HEALTHY_THRESHOLD
+                )
+            }
+            TrustLevel::Healthy => {
+                format!("Trust score {} meets operational threshold", self.score)
+            }
+        }
+    }
+}
+
+/// Trust scorer with optimized concurrent access for high-velocity telemetry processing
+pub struct TrustScorer {
+    scores: Arc<RwLock<HashMap<String, TrustScore>>>,
+    computation_config: TrustComputationConfig,
+}
+
+impl TrustScorer {
+    pub fn new() -> Self {
+        Self {
+            scores: Arc::new(RwLock::new(HashMap::new())),
+            computation_config: TrustComputationConfig::default(),
+        }
+    }
+
+    pub fn with_config(computation_config: TrustComputationConfig) -> Self {
+        Self {
+            scores: Arc::new(RwLock::new(HashMap::new())),
+            computation_config,
+        }
+    }
+
+    pub fn get_score(&self, node_id: &str) -> Option<TrustScore> {
+        self.scores
+            .read()
+            .ok()
+            .and_then(|scores| scores.get(node_id).cloned())
+    }
+
+    /// Update trust score based on event
+    pub fn update_score(&self, node_id: &str, delta: f64) {
+        let mut scores = match self.scores.write() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!(
+                    node_id = %node_id,
+                    error = %e,
+                    "Trust scorer lock poisoned - skipping score update"
+                );
+                return;
+            }
+        };
+
+        let mut score = scores.get(node_id).map(|s| s.score).unwrap_or(1.0);
+
+        score = (score + delta).clamp(0.0, 1.0);
+
+        let level = if score >= HEALTHY_THRESHOLD {
+            TrustLevel::Healthy
+        } else if score >= QUARANTINE_THRESHOLD {
+            TrustLevel::Suspect
+        } else {
+            TrustLevel::Quarantined
+        };
+
+        let trust_score = TrustScore {
+            node_id: node_id.to_string(),
+            score,
+            level,
+            last_updated: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64,
+        };
+
+        scores.insert(node_id.to_string(), trust_score);
+    }
+
+    /// Compute trust score from node health metrics
+    ///
+    /// This is the primary interface for integrating integrity metrics
+    /// into trust scoring. It converts NodeHealth into a TrustScore.
+    ///
+    /// Zero trust default: UNKNOWN status yields 0.0 trust score.
+    pub fn compute_from_health(&self, health: &NodeHealth) {
+        let _span = tracing::debug_span!(
+            "mesh_trust_recalculation",
+            node_id = %health.node_id,
+            status = ?health.status
+        )
+        .entered();
+
+        let cfg = &self.computation_config;
+
+        let score = match health.status {
+            NodeHealthStatus::HEALTHY => {
+                // Start with base score, adjust for perfect metrics
+                let agreement_bonus = (health.metrics.root_agreement_ratio
+                    - cfg.healthy_agreement_threshold)
+                    * cfg.healthy_agreement_bonus_multiplier;
+                (cfg.healthy_base_score + agreement_bonus).clamp(0.0, 1.0)
+            }
+            NodeHealthStatus::DEGRADED => {
+                // Degraded nodes get moderate trust
+                let agreement_factor = (health.metrics.root_agreement_ratio
+                    - cfg.degraded_agreement_threshold)
+                    / cfg.degraded_agreement_range;
+                (cfg.degraded_base_score + agreement_factor * cfg.degraded_score_range)
+                    .clamp(cfg.degraded_min_score, cfg.degraded_max_score)
+            }
+            NodeHealthStatus::COMPROMISED => {
+                // Compromised nodes get low trust
+                let agreement_factor =
+                    health.metrics.root_agreement_ratio / cfg.compromised_agreement_threshold;
+                (cfg.compromised_base_score + agreement_factor * cfg.compromised_score_range)
+                    .clamp(cfg.compromised_min_score, cfg.compromised_max_score)
+            }
+            NodeHealthStatus::UNKNOWN => {
+                // Zero trust default - no metrics means no trust
+                0.0
+            }
+        };
+
+        let level = if score >= HEALTHY_THRESHOLD {
+            TrustLevel::Healthy
+        } else if score >= QUARANTINE_THRESHOLD {
+            TrustLevel::Suspect
+        } else {
+            TrustLevel::Quarantined
+        };
+
+        // Record quarantine events
+        if level == TrustLevel::Quarantined {
+            tracing::warn!(
+                node_id = %health.node_id,
+                score = %score,
+                "mesh_quarantine_event: Node quarantined due to low trust score"
+            );
+        }
+
+        let trust_score = TrustScore {
+            node_id: health.node_id.clone(),
+            score,
+            level,
+            last_updated: health.timestamp,
+        };
+
+        match self.scores.write() {
+            Ok(mut scores) => {
+                scores.insert(health.node_id.clone(), trust_score);
+            }
+            Err(e) => {
+                tracing::error!(
+                    node_id = %health.node_id,
+                    error = %e,
+                    "Trust scorer lock poisoned - skipping health score update"
+                );
+            }
+        }
+    }
+}
+
+impl Default for TrustScorer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::node_health::{IntegrityMetrics, NodeHealth, NodeHealthStatus};
+
+    fn create_test_health(
+        node_id: &str,
+        status: NodeHealthStatus,
+        root_agreement_ratio: f64,
+    ) -> NodeHealth {
+        NodeHealth {
+            node_id: node_id.to_string(),
+            timestamp: 1000,
+            status,
+            metrics: IntegrityMetrics {
+                root_agreement_ratio,
+                root_drift_count: 0,
+                chain_break_count: 0,
+                signature_failure_count: 0,
+                missing_window_count: 0,
+                last_updated: 1000,
+            },
+        }
+    }
+
+    #[test]
+    fn test_compute_from_healthy_node() {
+        let scorer = TrustScorer::new();
+        let health = create_test_health("node-1", NodeHealthStatus::HEALTHY, 0.98);
+
+        scorer.compute_from_health(&health);
+
+        let score = scorer.get_score("node-1").unwrap();
+        assert_eq!(score.level, TrustLevel::Healthy);
+        assert!(score.score >= 0.9);
+    }
+
+    #[test]
+    fn test_compute_from_degraded_node() {
+        let scorer = TrustScorer::new();
+        let health = create_test_health("node-1", NodeHealthStatus::DEGRADED, 0.85);
+
+        scorer.compute_from_health(&health);
+
+        let score = scorer.get_score("node-1").unwrap();
+        assert_eq!(score.level, TrustLevel::Suspect);
+        assert!(score.score >= 0.6 && score.score < 0.9);
+    }
+
+    #[test]
+    fn test_compute_from_compromised_node() {
+        let scorer = TrustScorer::new();
+        let health = create_test_health("node-1", NodeHealthStatus::COMPROMISED, 0.60);
+
+        scorer.compute_from_health(&health);
+
+        let score = scorer.get_score("node-1").unwrap();
+        assert_eq!(score.level, TrustLevel::Quarantined);
+        assert!(score.score < 0.6);
+    }
+
+    #[test]
+    fn test_compute_from_unknown_node_zero_trust() {
+        let scorer = TrustScorer::new();
+        let health = create_test_health("node-1", NodeHealthStatus::UNKNOWN, 0.0);
+
+        scorer.compute_from_health(&health);
+
+        let score = scorer.get_score("node-1").unwrap();
+        assert_eq!(score.level, TrustLevel::Quarantined);
+        assert_eq!(score.score, 0.0); // Zero trust default
+    }
+
+    #[test]
+    fn test_compute_updates_existing_score() {
+        let scorer = TrustScorer::new();
+
+        // First compute from healthy status
+        let health1 = create_test_health("node-1", NodeHealthStatus::HEALTHY, 0.98);
+        scorer.compute_from_health(&health1);
+
+        let score1 = scorer.get_score("node-1").unwrap().score;
+        assert!(score1 >= 0.9);
+
+        // Then compute from degraded status
+        let health2 = create_test_health("node-1", NodeHealthStatus::DEGRADED, 0.85);
+        scorer.compute_from_health(&health2);
+
+        let score2 = scorer.get_score("node-1").unwrap().score;
+        assert!(score2 < 0.9);
+        assert!(score2 >= 0.6);
+    }
+}

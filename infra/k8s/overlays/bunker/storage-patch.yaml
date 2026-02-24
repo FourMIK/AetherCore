@@ -1,0 +1,7 @@
+# Storage patch to use local-path instead of EBS
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: placeholder
+spec:
+  storageClassName: local-path

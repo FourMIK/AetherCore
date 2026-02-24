@@ -1,0 +1,345 @@
+# AetherCore MDCA Field Test Configuration
+# Multi-Domain Collaborative Autonomy - Hardware-Rooted Trust Under Contested RF
+#
+# Classification: OPERATIONAL
+# Doctrine: "Fail-Visible Trust at the Tactical Edge"
+# Optimization: Spoof/replay rejection, track origin validation, degraded RF resilience
+#
+# Date: 2026-02-13
+# Test Objective: Validate 4MIK as foundational trust layer for MDCA autonomous systems
+
+# =============================================================================
+# FIELD TEST MODE - RF-DEGRADED RESILIENCE
+# =============================================================================
+field_test:
+  # Enable field test mode - optimizes for contested/congested RF conditions
+  enabled: true
+
+  # Test mode identifier (correlates telemetry artifacts)
+  test_identifier: 'SOVEREIGN-GENESIS-FT-2026Q1'
+
+  # RF Environment Expectations
+  rf_environment:
+    # contested_mode: Assume RF is adversarial (jamming, spoofing, replay)
+    contested_mode: true
+
+    # expected_packet_loss_percent: Conservative estimate (10-30% typical field)
+    expected_packet_loss_percent: 25
+
+    # gnss_availability_percent: GNSS degradation (20-40% typical contested)
+    gnss_availability_percent: 30
+
+    # latency_variance_ms: Expect high jitter (50-500ms in degraded conditions)
+    latency_variance_ms: 200
+
+# =============================================================================
+# CODERALPHIE EDGE NODE - FIELD DEPLOYMENT
+# =============================================================================
+coderalphie:
+  # Bootstrap Configuration (Field Optimized)
+  bootstrap:
+    tpm:
+      # mode: "hardware" enforced (panic if TPM unavailable)
+      mode: 'hardware'
+      device: '/dev/tpm0'
+      # Increase timeout for contested RF conditions
+      timeout_ms: 15000
+      # PCRs: Include boot chain integrity
+      pcr_selection: [0, 1, 2, 3, 4, 7, 8, 14]
+
+    secureBoot:
+      strictMode: true
+      verifyKernelSignature: true
+      allowDebugKeys: false
+
+  # Security Configuration (Spoof/Replay Protection)
+  security:
+    fail_visible_mode: true
+    reject_unverified: true
+
+    # Byzantine Sweep - Aetheric Sweep Protocol
+    # Continuous passive monitoring for compromised nodes
+    byzantine_sweep_enabled: true
+    byzantine_check_interval_ms: 10000
+
+    # Attestation Configuration
+    attestation_required: true
+    # Increase freshness requirement for field conditions
+    max_attestation_age_seconds: 1800 # 30 min
+
+    # Replay Detection
+    replay_protection:
+      enabled: true
+      # Sequence number tracking for commands
+      sequence_number_validation: true
+      # Nonce validation for freshness
+      nonce_validation: true
+      # Timestamp freshness (accept events within 60 seconds)
+      timestamp_freshness_tolerance_seconds: 60
+      # Window size for duplicate detection
+      seen_nonce_window_size: 1000
+
+  # Cryptographic Configuration
+  crypto:
+    hash_algorithm: 'BLAKE3'
+    signature_algorithm: 'Ed25519'
+    signature_backend: 'TPM'
+    key_storage: 'TPM_SEALED'
+
+# =============================================================================
+# AETHERCORE C2 ROUTER - COMMANDING UNDER CONTESTED CONDITIONS
+# =============================================================================
+aethercore:
+  # Identity Service Configuration
+  identity:
+    # Every node must have valid GPT (Goal, Position, Targeting) data source path
+    attestation_gate_enabled: true
+
+    # Track Origin Verification - Root of Trust for position/intent/targeting
+    track_origin_verification:
+      enabled: true
+      # Require CRL checks for all nodes in mesh
+      require_crl_check: true
+      # Revocation checking mode: local_cache | network | both
+      revocation_mode: 'both'
+      # The Great Gospel - sovereign revocation ledger
+      revocation_ledger: 'shared-postgres'
+
+  # Stream Processing - Merkle Vine Integrity
+  stream:
+    integrity_tracking:
+      enabled: true
+      hash_algorithm: 'BLAKE3'
+      require_ancestor_hash: true
+      # MDCA Specific: Every telemetry event chains to prior event
+      # Enables proof-of-lineage for position/targeting chains
+
+    # Verification - Strict enforcement for field conditions
+    verification:
+      # mode: "strict" = reject unsigned, "audit_only" = log and pass
+      mode: 'strict'
+      log_violations: true
+      emit_security_events: true
+      # Field Test Specific: Emit metrics for spoof/replay detection rates
+      emit_field_metrics: true
+
+  # C2 Router Configuration - Command Authorization
+  c2_router:
+    # Command verification authority
+    authority_verification: true
+
+    # MDCA Intent Verification - Operator intent must be cryptographically signed
+    intent_verification:
+      enabled: true
+      require_operator_signature: true
+      require_unit_acceptance: true
+
+    # Quorum Gating - Multiple units must coordinate intent
+    quorum_gating:
+      enabled: true
+      # Minimum consensus for collaborative commands (N-1 quorum)
+      consensus_threshold: 0.75
+
+    # Command Dispatcher Configuration
+    command_dispatch:
+      # Latency measurement (critical for decision cycle assessment)
+      measure_latency: true
+      # Store telemetry for post-test analysis
+      telemetry_enabled: true
+
+# =============================================================================
+# DASHBOARD - TACTICAL GLASS (MDCA OPERATOR INTERFACE)
+# =============================================================================
+dashboard:
+  connection_mode: 'production'
+  c2_router_endpoint: 'wss://c2.aethercore.local:8443'
+  grpc_endpoint: 'https://gateway.aethercore.local:3000'
+
+  # Field Test Specific UI
+  fail_visible_ui:
+    enabled: true
+    # Prominently display verification status
+    show_unverified_overlay: true
+    fracture_compromised_feeds: true
+    link_compromised_banner: true
+
+    # MDCA Specific: Track origin provenance display
+    show_track_origin: true
+    show_intent_chain: true
+    show_targeting_verification: true
+    # Show spoofed/unverified node warnings
+    show_spoofed_warnings: true
+
+# =============================================================================
+# MESH NETWORK CONFIGURATION - OFFLINE-CAPABLE COORDINATION
+# =============================================================================
+mesh:
+  # Topology: Fully decentralized mesh (no central backhaul required)
+  topology: 'decentralized'
+
+  # Offline Operation - Enable autonomous coordination without C2
+  offline_capable:
+    enabled: true
+    # Local trust fabric operates independent of C2 connection
+    local_trust_fabric: true
+    # Nodes sync Merkle Vine chains peer-to-peer
+    peer_sync_enabled: true
+    # Quorum coordination without central authority
+    autonomous_quorum: true
+
+  # Network Health Monitoring (Contested Mode)
+  network_health:
+    # Monitor link quality continuously
+    health_check_interval_ms: 5000
+    # Contested threshold: (40% = node considers network compromised)
+    contested_threshold_percent: 40
+    # Auto-disable broadcast when contested
+    broadcast_disable_contested: true
+
+  # Gossip Protocol Configuration
+  gossip:
+    # Enable for distributed state sync (position, intent, targeting)
+    enabled: true
+    # Interval for gossip messages (higher interval = fewer broadcasts)
+    gossip_interval_ms: 5000
+    # Max fanout (reduce for RF-constrained)
+    max_fanout: 3
+    # Lazy vs eager push/pull balance
+    push_pull_ratio: 0.6 # 60% push, 40% pull (conservative for contested)
+
+# =============================================================================
+# TELEMETRY & OBSERVABILITY - FIELD TEST METRICS
+# =============================================================================
+observability:
+  # Enable comprehensive telemetry for post-test analysis
+  enabled: true
+
+  # Field Test Metrics Collection
+  field_metrics:
+    # Spoof/Replay Detection Rates
+    spoof_rejection_events: true
+    replay_detection_events: true
+    bogus_signature_rejections: true
+
+    # Track Origins (Position, Intent, Targeting)
+    track_origin_validation: true
+    track_provenance_chains: true
+
+    # Coordination Continuity (with/without persistent broadcast)
+    coordination_decisions: true
+    broadcast_reduction_percent: true
+
+    # Latency Impact on Decision Timelines
+    command_latency_percentiles: [p50, p90, p99]
+    decision_cycle_latency: true
+
+    # Verification Under Degraded RF
+    verification_latency_degraded_rf: true
+    verification_success_rate: true
+
+  # Prometheus metrics
+  metrics:
+    enabled: true
+    prometheus_port: 9090
+
+    # Custom field test metrics
+    custom_metrics:
+      - 'aethercore_spoof_rejections_total'
+      - 'aethercore_replay_detections_total'
+      - 'aethercore_track_origin_verifications_total'
+      - 'aethercore_intent_acceptances_total'
+      - 'aethercore_command_latency_ms'
+      - 'aethercore_mesh_nodes_connected'
+      - 'aethercore_offline_operations_seconds'
+      - 'aethercore_broadcast_messages_reduced_percent'
+
+# =============================================================================
+# NETWORK CONFIGURATION - CONTESTED RF OPTIMIZATIONS
+# =============================================================================
+network:
+  tls_min_version: '1.3'
+
+  websocket:
+    # WSS required for authenticated paths
+    use_wss: true
+
+    # Contested RF: Increase keepalive aggressiveness
+    ping_interval_ms: 15000 # 15s (from default 30s)
+    ping_timeout_ms: 5000 # 5s (detect dead links faster)
+
+    # Auto-recovery for intermittent connectivity
+    auto_reconnect: true
+    max_reconnect_attempts: 15 # Increase attempts for field conditions
+    reconnect_backoff_ms: 500 # Conservative initial backoff
+    max_backoff_ms: 30000
+
+    # Connection timeout (contested networks = higher latency)
+    connection_timeout_ms: 30000
+
+  # gRPC Configuration (for Identity/Crypto services)
+  grpc:
+    # Timeouts account for contested network delays
+    request_timeout_ms: 20000
+    # Connection pooling for resilience
+    connection_pooling: true
+    max_connections: 10
+
+# =============================================================================
+# DEPLOYMENT CONFIGURATION - FIELD ROLLOUT
+# =============================================================================
+deployment:
+  environment: 'production'
+
+  # Zero-Touch Onboarding for rapid field provisioning
+  zero_touch_onboarding:
+    enabled: true
+    require_attestation_before_data: true
+
+    # Batch provisioning for swarm deployments
+    batch_provisioning:
+      enabled: true
+      max_parallel_enrollments: 5
+      enrollment_timeout_seconds: 120
+
+  # Logging for field diagnostics
+  logging:
+    level: 'info'
+    audit_log:
+      enabled: true
+      path: '/var/log/aethercore/audit.log'
+      rotation: 'daily'
+      retention_days: 30 # Clean up after test window
+
+# =============================================================================
+# FIELD TEST VALIDATION SCENARIOS
+# =============================================================================
+validation:
+  # Scenario 1: Spoof/Replay Rejection Under RF Degradation
+  spoof_replay_rejection:
+    enabled: true
+    expected_rejection_rate_percent: 99.5
+    test_duration_minutes: 15
+
+  # Scenario 2: Track Origin Validation (GPS-Denied)
+  track_origin_validation:
+    enabled: true
+    gnss_denial_simulation: true
+    expected_verification_rate_percent: 95
+
+  # Scenario 3: Verified Intent Acceptance (Without Broadcast)
+  verified_intent_coordination:
+    enabled: true
+    broadcast_disabled: true
+    expected_coordination_success_percent: 90
+
+  # Scenario 4: Latency Impact Assessment
+  latency_assessment:
+    enabled: true
+    measure_command_cycles: true
+    measure_decision_delays: true
+
+  # Scenario 5: Offline Mesh Operation
+  offline_operation:
+    enabled: true
+    c2_disconnection_duration_minutes: 30
+    expected_offline_success_percent: 85

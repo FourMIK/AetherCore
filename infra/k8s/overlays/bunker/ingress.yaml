@@ -1,0 +1,100 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tactical-glass
+  annotations:
+    kubernetes.io/ingress.class: "traefik"
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    cert-manager.io/cluster-issuer: "self-signed"
+  labels:
+    app: tactical-glass
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - tactical-glass.local
+    secretName: tactical-glass-tls
+  rules:
+  - host: tactical-glass.local
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: gateway
+            port:
+              number: 3000
+      - path: /auth
+        pathType: Prefix
+        backend:
+          service:
+            name: auth
+            port:
+              number: 3001
+      - path: /ws
+        pathType: Prefix
+        backend:
+          service:
+            name: collaboration
+            port:
+              number: 8080
+      - path: /fleet
+        pathType: Prefix
+        backend:
+          service:
+            name: fleet
+            port:
+              number: 3002
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx
+            port:
+              number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  annotations:
+    kubernetes.io/ingress.class: "traefik"
+  labels:
+    app: grafana
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: grafana.tactical-glass.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-console
+  annotations:
+    kubernetes.io/ingress.class: "traefik"
+  labels:
+    app: minio
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: minio.tactical-glass.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: minio
+            port:
+              number: 9001

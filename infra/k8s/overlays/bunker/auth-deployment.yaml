@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+  labels:
+    app: auth
+    layer: engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auth
+  template:
+    metadata:
+      labels:
+        app: auth
+        layer: engine
+    spec:
+      containers:
+      - name: auth
+        image: aethercore/auth:latest
+        ports:
+        - containerPort: 3001
+          name: http
+        env:
+        - name: PORT
+          value: "3001"
+        - name: NODE_ENV
+          value: production
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: bunker-secrets
+              key: DATABASE_URL
+        - name: REDIS_URL
+          value: redis://redis:6379
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: bunker-secrets
+              key: JWT_SECRET
+        - name: TPM_DEVICE
+          value: /dev/tpm0
+        - name: SIGNING_BACKEND
+          value: TPM
+        envFrom:
+        - configMapRef:
+            name: bunker-config
+        resources:
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+        volumeMounts:
+        - name: tpm
+          mountPath: /dev/tpm0
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+      volumes:
+      - name: tpm
+        hostPath:
+          path: /dev/tpm0
+          type: CharDevice

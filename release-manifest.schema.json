@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/FourMIK/AetherCore/schemas/release-manifest.schema.json",
+  "title": "AetherCore Desktop Release Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "release",
+    "bundled_runtime_versions",
+    "health_contract",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "release": {
+      "type": "object",
+      "required": ["tag", "commit"],
+      "properties": {
+        "tag": { "type": "string" },
+        "commit": { "type": "string" }
+      }
+    },
+    "bundled_runtime_versions": {
+      "type": "object",
+      "required": ["tauri", "rust", "node"],
+      "properties": {
+        "tauri": { "type": "string" },
+        "rust": { "type": "string" },
+        "node": { "type": "string" }
+      }
+    },
+    "health_contract": {
+      "type": "object",
+      "required": ["bootstrap_argument", "ready_state_files", "health_endpoint", "startup_timeout_seconds"],
+      "properties": {
+        "bootstrap_argument": { "type": "string" },
+        "ready_state_files": { "type": "object" },
+        "health_endpoint": { "type": "string" },
+        "startup_timeout_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "properties": {
+        "algorithm": { "type": "string" },
+        "signature_file": { "type": "string" }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "path", "platform", "type", "sha256", "size_bytes", "minimum_os_version"],
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string" },
+          "platform": { "type": "string", "enum": ["windows", "macos", "linux"] },
+          "type": { "type": "string" },
+          "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+          "size_bytes": { "type": "integer", "minimum": 1 },
+          "minimum_os_version": { "type": "string" }
+        }
+      }
+    }
+  }
+}

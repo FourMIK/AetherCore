@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "AetherCore Commander (Dev Mode)",
+  "identifier": "com.aethercore.commander.dev",
+  "app": {
+    "windows": [
+      {
+        "title": "AetherCore Commander - Dev Mode"
+      }
+    ]
+  },
+  "bundle": {
+    "shortDescription": "AetherCore Commander - Development Mode Desktop Application",
+    "longDescription": "AetherCore Commander Dev Mode is a desktop application for development, testing, and controlled demonstrations with simulated trust roots.",
+    "createUpdaterArtifacts": false
+  }
+}

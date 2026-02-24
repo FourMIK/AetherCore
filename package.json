@@ -1,0 +1,37 @@
+{
+  "name": "aethercore-monorepo",
+  "version": "0.2.0",
+  "private": true,
+  "description": "AetherCore monorepo integrating H2OS/4MIK",
+  "packageManager": "pnpm@9.15.0",
+  "workspaces": [
+    "agent/linux",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "preinstall": "node -e \"if(process.env.SKIP_TOOLCHAIN_CHECK==='1'){console.log('ℹ Skipping toolchain verification (SKIP_TOOLCHAIN_CHECK=1)');process.exit(0)}const fs=require('fs');const cp=require('child_process');const p='scripts/verify-toolchain.js';try{fs.accessSync(p);cp.execSync('node '+p,{stdio:'inherit'})}catch(e){if(e.code==='ENOENT'){console.log('ℹ Skipping toolchain verification (scripts/ not available yet)');process.exit(0)}throw e}\"",
+    "setup": "pnpm install --frozen-lockfile && node scripts/doctor.js",
+    "doctor": "node scripts/doctor.js",
+    "build": "pnpm run build --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
+    "test": "pnpm run test --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
+    "lint": "pnpm run lint --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
+    "lint:check": "eslint . --ext .ts,.tsx",
+    "clean": "pnpm run clean --recursive --filter=\"./packages/*\" --filter=\"./services/*\""
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.1",
+    "prettier": "^3.8.1",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": "20.x",
+    "pnpm": "9.15.0"
+  },
+  "dependencies": {
+    "cargo": "^0.8.0"
+  }
+}

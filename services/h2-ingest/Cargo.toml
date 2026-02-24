@@ -1,0 +1,29 @@
+[package]
+name = "h2-ingest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+axum = "0.7"
+tower = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+redis = { version = "0.24", features = ["tokio-comp"] }
+aws-sdk-s3 = "1.0"
+aws-sdk-kms = "1.0"
+aws-config = "1.0"
+bytes = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[dependencies.aethercore-core]
+path = "../../crates/core"
+
+[dependencies.aethercore-stream]
+path = "../../crates/stream"
+
+[dependencies.aethercore-crypto]
+path = "../../crates/crypto"

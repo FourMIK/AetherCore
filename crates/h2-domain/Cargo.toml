@@ -1,0 +1,23 @@
+[package]
+name = "aethercore-h2-domain"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "H2OS domain integration - may reference legacy"
+
+[dependencies]
+aethercore-core = { path = "../core" }
+aethercore-crypto = { path = "../crypto" }
+aethercore-identity = { path = "../identity" }
+aethercore-domain = { path = "../domain" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+blake3 = { workspace = true }
+ed25519-dalek = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

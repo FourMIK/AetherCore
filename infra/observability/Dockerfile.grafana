@@ -1,0 +1,17 @@
+# Multi-stage Grafana build
+FROM grafana/grafana:10.2.0
+
+# Copy dashboard provisioning
+COPY tactical-glass-dashboard.json /etc/grafana/provisioning/dashboards/
+COPY datasources.yml /etc/grafana/provisioning/datasources/
+COPY dashboards.yml /etc/grafana/provisioning/dashboards/
+
+# Set environment for sub-path serving
+ENV GF_SERVER_ROOT_URL=https://alb-domain/grafana/
+ENV GF_SERVER_SERVE_FROM_SUB_PATH=true
+ENV GF_SECURITY_ADMIN_PASSWORD=admin
+ENV GF_INSTALL_PLUGINS=redis-datasource
+
+EXPOSE 3000
+
+USER grafana

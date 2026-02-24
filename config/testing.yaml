@@ -1,0 +1,319 @@
+# AetherCore Testing Configuration
+# Classification: TEST & EVALUATION
+# Purpose: Testing and evaluation deployment
+#
+# This configuration is designed for TESTING ONLY with dev mode enabled.
+# TPM validation is disabled for compatibility across different test environments.
+#
+# ⚠️ WARNING: Do NOT use this configuration in production!
+
+# =============================================================================
+# TESTING ENVIRONMENT SETTINGS
+# =============================================================================
+testing:
+  # Enable dev mode (simulated TPM, test keys)
+  dev_mode: true
+  
+  # Test environment identifier
+  environment: "testing"
+  
+  # Log level for debugging
+  log_level: "debug"
+
+# =============================================================================
+# CODERALPHIE EDGE NODE CONFIGURATION (Testing Mode)
+# =============================================================================
+ralphie:
+  # Bootstrap Configuration (Dev Mode)
+  bootstrap:
+    # TPM (Trusted Platform Module) Configuration - DEV MODE
+    tpm:
+      # mode: "simulated" for testing (no hardware TPM required)
+      mode: "simulated"
+      
+      # device: Not used in simulated mode
+      device: "/dev/tpm0"
+      
+      # timeout_ms: Shorter timeout for testing
+      timeout_ms: 5000
+      
+      # pcr_selection: Simulated PCR values
+      pcr_selection: [0, 1, 2, 3]
+    
+    # Secure Boot Configuration (Relaxed for Testing)
+    secureBoot:
+      # strictMode: false for testing compatibility
+      strictMode: false
+      
+      # verifyKernelSignature: Skip for testing
+      verifyKernelSignature: false
+      
+      # allowDebugKeys: true for testing
+      allowDebugKeys: true
+
+  # Security Configuration (Testing Mode)
+  security:
+    # fail_visible_mode: Still enabled to test the feature
+    fail_visible_mode: true
+    
+    # reject_unverified: false in testing (allow unverified for debugging)
+    reject_unverified: false
+    
+    # byzantine_sweep_enabled: Enabled to test the feature
+    byzantine_sweep_enabled: true
+    
+    # attestation_required: false for testing without TPM
+    attestation_required: false
+    
+    # max_attestation_age_seconds: Longer for testing
+    max_attestation_age_seconds: 7200
+
+  # Cryptographic Configuration (Testing Mode)
+  crypto:
+    # hash_algorithm: BLAKE3 (same as production)
+    hash_algorithm: "BLAKE3"
+    
+    # signature_algorithm: Ed25519 (same as production)
+    signature_algorithm: "Ed25519"
+    
+    # signature_backend: MEMORY for testing (not TPM)
+    signature_backend: "MEMORY"
+    
+    # key_storage: In-memory keys for testing
+    key_storage: "MEMORY"
+
+# =============================================================================
+# AETHERCORE COMMAND & CONTROL CONFIGURATION (Testing)
+# =============================================================================
+aethercore:
+  # Identity Service Configuration (Testing)
+  identity:
+    # attestation_gate: Disabled for testing
+    attestation_gate_enabled: false
+    
+    # ek_cert_validation: Disabled for testing
+    ek_cert_validation:
+      enabled: false
+      trusted_manufacturers: []
+      check_revocation: false
+    
+    # revocation_ledger: Simplified for testing
+    revocation_ledger:
+      enabled: false
+      persistence: "memory"
+
+  # Stream Processing Configuration (Testing)
+  stream:
+    # integrity_tracking: Enabled to test Merkle Vine
+    integrity_tracking:
+      enabled: true
+      hash_algorithm: "BLAKE3"
+      require_ancestor_hash: true
+    
+    # verification_enforcement (Lenient for Testing)
+    verification:
+      # mode: lenient for testing (log violations but don't reject)
+      mode: "lenient"
+      log_violations: true
+      emit_security_events: true
+
+  # Dashboard (Tactical Glass) Configuration (Testing)
+  dashboard:
+    # connection_mode: Testing mode with local endpoints
+    connection_mode: "testing"
+    
+    # c2_router_endpoint: Local WebSocket (not WSS)
+    c2_router_endpoint: "ws://localhost:8080/ws"
+    
+    # grpc_endpoint: Local gRPC (not HTTPS)
+    grpc_endpoint: "http://localhost:3000"
+    
+    # fail_visible_ui: Enabled to test the feature
+    fail_visible_ui:
+      enabled: true
+      show_unverified_overlay: true
+      fracture_compromised_feeds: true
+      link_compromised_banner: true
+
+# =============================================================================
+# DEPLOYMENT CONFIGURATION (Testing)
+# =============================================================================
+deployment:
+  # environment: testing
+  environment: "testing"
+  
+  # zero_touch_onboarding: Simplified for testing
+  zero_touch_onboarding:
+    enabled: false
+    require_attestation_before_data: false
+  
+  # logging (Verbose for Testing)
+  logging:
+    level: "debug"
+    audit_log:
+      enabled: true
+      path: "./logs/audit.log"
+      rotation: "daily"
+      retention_days: 7
+
+# =============================================================================
+# OBSERVABILITY CONFIGURATION (Testing)
+# =============================================================================
+observability:
+  # metrics (Enabled for testing)
+  metrics:
+    enabled: true
+    prometheus_port: 9090
+    
+  # tracing (Enabled for testing)
+  tracing:
+    enabled: true
+    otlp_endpoint: "http://localhost:4317"
+
+# =============================================================================
+# NETWORK CONFIGURATION (Testing)
+# =============================================================================
+network:
+  # Bind address for testing
+  bind_address: "0.0.0.0"
+  
+  # Port configuration
+  port: 8080
+  
+  # Mesh P2P ports
+  mesh_ports: [7000, 7001, 7002]
+  
+  # tls_version: TLS 1.2 acceptable for testing
+  tls_min_version: "1.2"
+  
+  # websocket_config (Non-secure for testing)
+  websocket:
+    # use_wss: false for testing (plain WebSocket)
+    use_wss: false
+    
+    # ping_interval_ms: Faster for testing
+    ping_interval_ms: 10000
+    
+    # ping_timeout_ms: Shorter timeout for testing
+    ping_timeout_ms: 5000
+    
+    # auto_reconnect: Enabled
+    auto_reconnect: true
+    
+    # max_reconnect_attempts: Fewer for testing
+    max_reconnect_attempts: 5
+    
+    # reconnect_backoff_ms: Shorter backoff for testing
+    reconnect_backoff_ms: 500
+
+# =============================================================================
+# DATABASE CONFIGURATION (Testing)
+# =============================================================================
+database:
+  # type: SQLite for testing (simpler than PostgreSQL)
+  type: "sqlite"
+  
+  # path: Local database file
+  path: "./data/testing.db"
+  
+  # pool_size: Smaller pool for testing
+  pool_size: 5
+  
+  # timeout_seconds: Shorter timeout for testing
+  timeout_seconds: 10
+
+# =============================================================================
+# TEST IDENTITY CONFIGURATION
+# =============================================================================
+test_identity:
+  # Default test operator
+  operator_id: "test-operator-001"
+  
+  # Default test squad
+  squad_id: "test-squad-alpha"
+  
+  # Auto-generate identity if not provided
+  auto_generate: true
+  
+  # Identity storage path
+  identity_path: "./deployments/testing/identities"
+
+# =============================================================================
+# PERFORMANCE CONFIGURATION (Testing)
+# =============================================================================
+performance:
+  # mesh_update_interval: How often to update mesh state (seconds)
+  mesh_update_interval: 60
+  
+  # max_connections: Maximum simultaneous connections
+  max_connections: 100
+  
+  # connection_timeout: Connection timeout (seconds)
+  connection_timeout: 30
+  
+  # buffer_size: Buffer size for streams (KB)
+  buffer_size: 64
+  
+  # thread_pool_size: Worker thread pool size
+  thread_pool_size: 4
+
+# =============================================================================
+# TESTING-SPECIFIC FEATURES
+# =============================================================================
+testing_features:
+  # Enable verbose logging for all operations
+  verbose_logging: true
+  
+  # Allow mock data providers
+  allow_mocks: true
+  
+  # Enable test endpoints (e.g., /api/test/*)
+  enable_test_endpoints: true
+  
+  # Disable rate limiting for testing
+  disable_rate_limiting: true
+  
+  # Allow CORS from any origin for testing
+  cors_allow_all: true
+  
+  # Enable detailed error messages
+  detailed_errors: true
+  
+  # Skip signature verification on specific endpoints (for debugging)
+  skip_signature_verification: false
+
+# =============================================================================
+# VALIDATION SETTINGS
+# =============================================================================
+validation:
+  # Validate configuration on startup
+  validate_on_startup: true
+  
+  # Fail on invalid configuration
+  fail_on_invalid: false
+  
+  # Warn about testing configuration in logs
+  warn_testing_mode: true
+
+# =============================================================================
+# NOTES
+# =============================================================================
+# This configuration is optimized for testing and evaluation:
+# 
+# Key Differences from Production:
+# - TPM validation disabled (simulated mode)
+# - HTTP/WS instead of HTTPS/WSS
+# - In-memory keys (not TPM-sealed)
+# - Lenient verification mode
+# - SQLite instead of PostgreSQL
+# - Verbose logging enabled
+# - Test endpoints enabled
+# - CORS unrestricted
+#
+# Security Implications:
+# ⚠️ This configuration should NEVER be used in production environments!
+# ⚠️ Test identities use plaintext keys stored on disk
+# ⚠️ Network traffic is unencrypted
+# ⚠️ No hardware-rooted trust
+#
+# For production deployment, use config/production.yaml

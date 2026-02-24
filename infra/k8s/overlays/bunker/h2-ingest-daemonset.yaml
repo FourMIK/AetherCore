@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: h2-ingest
+  labels:
+    app: h2-ingest
+    layer: engine
+spec:
+  selector:
+    matchLabels:
+      app: h2-ingest
+  template:
+    metadata:
+      labels:
+        app: h2-ingest
+        layer: engine
+    spec:
+      hostNetwork: true
+      hostPID: false
+      containers:
+      - name: h2-ingest
+        image: aethercore/h2-ingest:latest
+        securityContext:
+          capabilities:
+            add:
+            - NET_ADMIN
+            - NET_RAW
+            - SYS_PTRACE
+        ports:
+        - containerPort: 8090
+          protocol: UDP
+          name: udp-ingest
+        env:
+        - name: RUST_LOG
+          value: info
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: bunker-secrets
+              key: DATABASE_URL
+        - name: REDIS_URL
+          value: redis://redis.aethercore.svc.cluster.local:6379
+        - name: INGEST_UDP_PORT
+          value: "8090"
+        - name: INGEST_UDP_BUFFER_SIZE
+          value: "65536"
+        - name: S3_ENDPOINT
+          value: http://minio.aethercore.svc.cluster.local:9000
+        - name: S3_BUCKET
+          value: aethercore-proofs
+        envFrom:
+        - configMapRef:
+            name: bunker-config
+        resources:
+          limits:
+            cpu: "4000m"
+            memory: "4Gi"
+          requests:
+            cpu: "2000m"
+            memory: "2Gi"
+        volumeMounts:
+        - name: tpm
+          mountPath: /dev/tpm0
+        - name: dev
+          mountPath: /dev
+          readOnly: false
+      volumes:
+      - name: tpm
+        hostPath:
+          path: /dev/tpm0
+          type: CharDevice
+      - name: dev
+        hostPath:
+          path: /dev
+          type: Directory
+      nodeSelector:
+        aethercore.io/telemetry: "true"
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
