@@ -24,9 +24,17 @@ export type MessageType = z.infer<typeof MessageTypeSchema>;
 
 // Chat message payload
 export const ChatPayloadSchema = z.object({
-  content: z.string(),
+  content: z.string().optional(),
   recipientId: z.string(),
   encrypted: z.boolean().optional().default(false),
+  ciphertext: z.string().optional(),
+  nonce: z.string().optional(),
+  authTag: z.string().optional(),
+  senderEphemeralPublicKey: z.string().optional(),
+  senderChatPublicKey: z.string().optional(),
+  keyAgreement: z.string().optional(),
+  cipher: z.string().optional(),
+  keyEpoch: z.number().int().positive().optional(),
 });
 
 // Call invitation payload
@@ -73,6 +81,15 @@ export const MessageEnvelopeSchema = z.object({
   
   // Message payload (type-specific)
   payload: z.unknown(),
+
+  // Replay defense nonce (hex-encoded random bytes)
+  nonce: z.string().min(16).optional(),
+
+  // Monotonic sequence number for sender-local ordering
+  sequence: z.number().int().positive().optional(),
+
+  // Previous message_id emitted by this sender (if available)
+  previous_message_id: z.string().uuid().optional(),
   
   // Ed25519 signature (hex-encoded)
   // Signature covers: schema_version + message_id + timestamp + type + from + payload
@@ -83,6 +100,64 @@ export const MessageEnvelopeSchema = z.object({
 });
 
 export type MessageEnvelope = z.infer<typeof MessageEnvelopeSchema>;
+
+const senderSequenceTracker = new Map<string, number>();
+const senderLastMessageTracker = new Map<string, string>();
+
+function generateMessageId(): string {
+  const cryptoObj = (globalThis as {
+    crypto?: {
+      randomUUID?: () => string;
+      getRandomValues?: (arr: Uint8Array) => Uint8Array;
+    };
+  }).crypto;
+
+  if (cryptoObj?.randomUUID) {
+    return cryptoObj.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  if (cryptoObj?.getRandomValues) {
+    cryptoObj.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  // RFC 4122 version 4 UUID bits.
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function nextSequenceForSender(senderId: string): number {
+  const current = senderSequenceTracker.get(senderId) ?? 0;
+  const next = current + 1;
+  senderSequenceTracker.set(senderId, next);
+  return next;
+}
+
+function generateNonceHex(): string {
+  const bytes = new Uint8Array(16);
+  const cryptoObj = (globalThis as {
+    crypto?: {
+      getRandomValues?: (arr: Uint8Array) => Uint8Array;
+    };
+  }).crypto;
+
+  if (cryptoObj?.getRandomValues) {
+    cryptoObj.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
 
 // Typed message envelopes for specific message types
 export interface ChatMessage extends MessageEnvelope {
@@ -126,13 +201,21 @@ export function createMessageEnvelope(
   payload: unknown,
   signature?: string
 ): MessageEnvelope {
+  const previousMessageId = senderLastMessageTracker.get(from);
+  const messageId = generateMessageId();
+  const sequence = nextSequenceForSender(from);
+  senderLastMessageTracker.set(from, messageId);
+
   return {
     schema_version: '1.0',
-    message_id: crypto.randomUUID(),
+    message_id: messageId,
     timestamp: Date.now(),
     type,
     from,
     payload,
+    nonce: generateNonceHex(),
+    sequence,
+    previous_message_id: previousMessageId,
     signature,
   };
 }
@@ -149,5 +232,8 @@ export function serializeForSigning(envelope: Omit<MessageEnvelope, 'signature' 
     type: envelope.type,
     from: envelope.from,
     payload: envelope.payload,
+    nonce: envelope.nonce,
+    sequence: envelope.sequence,
+    previous_message_id: envelope.previous_message_id,
   });
 }
