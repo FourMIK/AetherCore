@@ -1,0 +1,1 @@
+designated => identifier "com.aethercore.commander" and anchor apple generic and certificate leaf[subject.CN] = "Apple Development: johnmotlow@gmail.com (Y38BFCGGHL)" and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */

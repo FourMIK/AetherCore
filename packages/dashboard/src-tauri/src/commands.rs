@@ -3,7 +3,7 @@ use crate::error::{validation, AppError, Result};
 use crate::local_control_plane;
 use crate::process_manager::{NodeProcessInfo, NodeProcessManager, ProcessStatus};
 use crate::SentinelTrustStatus;
-use aethercore_identity::IdentityManager;
+use aethercore_identity::{IdentityManager, SecureEnclaveAttestor};
 use aethercore_stream::StreamIntegrityTracker;
 use aethercore_trust_mesh::ComplianceProof;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -13,15 +13,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{path::BaseDirectory, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tokio::sync::Mutex;
 
 const DASHBOARD_NODE_PROTOCOL_VERSION: u32 = 1;
 const DASHBOARD_NODE_RUNTIME_VERSION: u32 = 1;
+const COMPONENT_CHECK_TIMEOUT_SECS: u64 = 3;
 
 const DIAGNOSTIC_SCHEMA_VERSION: u32 = 1;
 const SUPPORT_BUNDLE_SCHEMA_VERSION: u32 = 1;
@@ -94,13 +95,24 @@ pub struct GenesisBundle {
 }
 
 /// Application state for managing connections
-#[derive(Default)]
 pub struct AppState {
     pub mesh_endpoint: Arc<Mutex<Option<String>>>,
     pub stream_tracker: Arc<Mutex<StreamIntegrityTracker>>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub process_manager: Arc<Mutex<NodeProcessManager>>,
     pub tpm_manager: Arc<Mutex<aethercore_identity::TpmManager>>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            mesh_endpoint: Arc::new(Mutex::new(None)),
+            stream_tracker: Arc::new(Mutex::new(StreamIntegrityTracker::new())),
+            identity_manager: Arc::new(Mutex::new(IdentityManager::default())),
+            process_manager: Arc::new(Mutex::new(NodeProcessManager::default())),
+            tpm_manager: Arc::new(Mutex::new(aethercore_identity::TpmManager::new(false))),
+        }
+    }
 }
 
 /// Connect to Production C2 Mesh
@@ -843,6 +855,30 @@ struct RuntimeComponentValidationIssue {
     details: String,
 }
 
+fn resolve_node_data_dir(raw: &str, app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let requested = PathBuf::from(raw);
+    if requested.as_os_str().is_empty() {
+        return Err("Invalid data_dir: cannot be empty".to_string());
+    }
+
+    if requested
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err("Invalid data_dir: path traversal not allowed".to_string());
+    }
+
+    if requested.is_absolute() {
+        return Ok(requested);
+    }
+
+    let app_data_dir = app_handle
+        .path()
+        .resolve(".", BaseDirectory::AppData)
+        .map_err(|e| format!("Failed to resolve app data directory: {}", e))?;
+    Ok(app_data_dir.join("nodes").join(requested))
+}
+
 /// Deploy a node process locally
 ///
 /// This command spawns a node binary as a child process with the provided configuration.
@@ -894,8 +930,8 @@ pub async fn deploy_node(
         ));
     }
 
-    // Sanitize and validate data_dir path
-    let data_dir = PathBuf::from(&config.data_dir);
+    // Resolve data_dir to a writable location for packaged desktop builds.
+    let data_dir = resolve_node_data_dir(&config.data_dir, &app_handle)?;
 
     // Canonicalize the path to resolve any .. or symlinks
     // First create the directory if it doesn't exist
@@ -922,14 +958,24 @@ pub async fn deploy_node(
         format!("Failed to locate node binary: {}", e)
     })?;
 
-    let _ = verify_node_binary_compatibility(&binary_path).map_err(|e| {
-        show_node_binary_remediation_dialog(
-            &app_handle,
-            "AetherCore Node Version Mismatch",
-            &e.to_string(),
-        );
-        format!("Node compatibility check failed: {}", e)
-    })?;
+    match verify_node_binary_compatibility(&binary_path) {
+        Ok(_) => {}
+        Err(error) if !strict_runtime_asset_checks() => {
+            log::warn!(
+                "Non-blocking deploy check: node compatibility warning for '{}': {}",
+                binary_path,
+                error
+            );
+        }
+        Err(error) => {
+            show_node_binary_remediation_dialog(
+                &app_handle,
+                "AetherCore Node Version Mismatch",
+                &error.to_string(),
+            );
+            return Err(format!("Node compatibility check failed: {}", error));
+        }
+    }
 
     log::info!("Using node binary: {}", binary_path);
 
@@ -1078,11 +1124,29 @@ fn current_platform_key() -> &'static str {
     }
 }
 
-fn load_runtime_manifest(app_handle: &tauri::AppHandle) -> Result<RuntimeComponentManifest> {
-    let manifest_path = app_handle
+fn strict_runtime_asset_checks() -> bool {
+    if let Ok(value) = std::env::var("AETHERCORE_STRICT_RUNTIME_ASSETS") {
+        let normalized = value.trim().to_ascii_lowercase();
+        return normalized == "1" || normalized == "true" || normalized == "yes";
+    }
+    !cfg!(target_os = "macos")
+}
+
+fn load_runtime_manifest(
+    app_handle: &tauri::AppHandle,
+) -> anyhow::Result<RuntimeComponentManifest> {
+    let bundled_manifest_path = app_handle
         .path()
         .resolve("runtime-components.manifest.json", BaseDirectory::Resource)
         .map_err(|e| anyhow::anyhow!("Failed to resolve runtime manifest: {e}"))?;
+    let dev_manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("runtime-components.manifest.json");
+    let manifest_path = if bundled_manifest_path.exists() {
+        bundled_manifest_path
+    } else {
+        dev_manifest_path
+    };
 
     let manifest_raw = std::fs::read_to_string(&manifest_path).map_err(|e| {
         anyhow::anyhow!(
@@ -1103,10 +1167,43 @@ fn load_runtime_manifest(app_handle: &tauri::AppHandle) -> Result<RuntimeCompone
     Ok(manifest)
 }
 
+fn resolve_component_path_with_dev_fallback(
+    app_handle: &tauri::AppHandle,
+    component_id: &str,
+    relative_path: &str,
+) -> anyhow::Result<PathBuf> {
+    if cfg!(debug_assertions) && component_id == "aethercore-node" {
+        let local_debug_binary =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../target/debug/aethercore-node");
+        if local_debug_binary.exists() {
+            return Ok(local_debug_binary);
+        }
+    }
+
+    let bundled_resolved = app_handle
+        .path()
+        .resolve(relative_path, BaseDirectory::Resource)
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to resolve bundled resource '{}': {e}",
+                relative_path
+            )
+        })?;
+    let dev_resolved = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join(relative_path);
+
+    Ok(if bundled_resolved.exists() {
+        bundled_resolved
+    } else {
+        dev_resolved
+    })
+}
+
 pub(crate) fn resolve_required_component_path(
     app_handle: &tauri::AppHandle,
     component_id: &str,
-) -> Result<PathBuf> {
+) -> anyhow::Result<PathBuf> {
     let manifest = load_runtime_manifest(app_handle)?;
     let component = manifest
         .components
@@ -1130,10 +1227,9 @@ pub(crate) fn resolve_required_component_path(
             )
         })?;
 
-    let resolved = app_handle
-        .path()
-        .resolve(relative_path, BaseDirectory::Resource)
-        .map_err(|e| anyhow::anyhow!("Failed to resolve component '{}': {e}", component_id))?;
+    let resolved =
+        resolve_component_path_with_dev_fallback(app_handle, component_id, relative_path)
+            .map_err(|e| anyhow::anyhow!("Failed to resolve component '{}': {e}", component_id))?;
 
     if !resolved.exists() {
         return Err(anyhow::anyhow!(
@@ -1146,7 +1242,7 @@ pub(crate) fn resolve_required_component_path(
     Ok(resolved)
 }
 
-fn ensure_binary_executable(path: &Path) -> Result<()> {
+fn ensure_binary_executable(path: &Path) -> anyhow::Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -1169,15 +1265,16 @@ fn ensure_binary_executable(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn locate_node_binary(app_handle: &tauri::AppHandle) -> Result<String> {
+fn locate_node_binary(app_handle: &tauri::AppHandle) -> anyhow::Result<String> {
     let path = resolve_required_component_path(app_handle, "aethercore-node")?;
     ensure_binary_executable(&path)?;
     log::info!("Resolved bundled node binary: {}", path.display());
     Ok(path.to_string_lossy().to_string())
 }
 
-pub fn verify_runtime_components_post_install(app_handle: &tauri::AppHandle) -> Result<()> {
+pub fn verify_runtime_components_post_install(app_handle: &tauri::AppHandle) -> anyhow::Result<()> {
     let manifest = load_runtime_manifest(app_handle)?;
+    let strict_checks = strict_runtime_asset_checks();
     let mut issues: Vec<RuntimeComponentValidationIssue> = Vec::new();
 
     for component in &manifest.components {
@@ -1196,10 +1293,11 @@ pub fn verify_runtime_components_post_install(app_handle: &tauri::AppHandle) -> 
             }
         };
 
-        let resolved = match app_handle
-            .path()
-            .resolve(relative_path, BaseDirectory::Resource)
-        {
+        let resolved = match resolve_component_path_with_dev_fallback(
+            app_handle,
+            &component.id,
+            relative_path,
+        ) {
             Ok(path) => path,
             Err(error) => {
                 issues.push(RuntimeComponentValidationIssue {
@@ -1229,10 +1327,18 @@ pub fn verify_runtime_components_post_install(app_handle: &tauri::AppHandle) -> 
 
             if component.id == "aethercore-node" {
                 if let Err(error) = verify_node_binary_compatibility(path_to_str(&resolved)?) {
-                    issues.push(RuntimeComponentValidationIssue {
-                        component_id: component.id.clone(),
-                        details: format!("Version compatibility failed: {error}"),
-                    });
+                    if strict_checks {
+                        issues.push(RuntimeComponentValidationIssue {
+                            component_id: component.id.clone(),
+                            details: format!("Version compatibility failed: {error}"),
+                        });
+                    } else {
+                        log::warn!(
+                            "Non-blocking runtime check: '{}' compatibility warning: {}",
+                            component.id,
+                            error
+                        );
+                    }
                 }
             } else if component.version_check_args.is_some() {
                 let mut command = Command::new(&resolved);
@@ -1240,7 +1346,11 @@ pub fn verify_runtime_components_post_install(app_handle: &tauri::AppHandle) -> 
                     command.arg(arg);
                 }
 
-                match command.output() {
+                match command_output_with_timeout(
+                    command,
+                    Duration::from_secs(COMPONENT_CHECK_TIMEOUT_SECS),
+                    &format!("Runtime component '{}' version check", component.id),
+                ) {
                     Ok(output) if output.status.success() => {
                         if component.version_compatibility.as_deref() == Some("invocation_success")
                         {
@@ -1289,11 +1399,14 @@ pub fn verify_runtime_components_post_install(app_handle: &tauri::AppHandle) -> 
     Ok(())
 }
 
-fn read_node_handshake(binary_path: &str) -> Result<NodeVersionHandshake> {
-    let output = Command::new(binary_path)
-        .arg("--version-json")
-        .output()
-        .map_err(|e| anyhow::anyhow!("Failed to execute node version handshake: {e}"))?;
+fn read_node_handshake(binary_path: &str) -> anyhow::Result<NodeVersionHandshake> {
+    let mut command = Command::new(binary_path);
+    command.arg("--version-json");
+    let output = command_output_with_timeout(
+        command,
+        Duration::from_secs(COMPONENT_CHECK_TIMEOUT_SECS),
+        "node version handshake",
+    )?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1308,7 +1421,40 @@ fn read_node_handshake(binary_path: &str) -> Result<NodeVersionHandshake> {
         .map_err(|e| anyhow::anyhow!("Invalid node handshake output: {e}"))
 }
 
-fn verify_node_binary_compatibility(binary_path: &str) -> Result<NodeVersionHandshake> {
+fn command_output_with_timeout(
+    mut command: Command,
+    timeout: Duration,
+    context: &str,
+) -> anyhow::Result<std::process::Output> {
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+
+    let mut child = command
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("Failed to spawn {context}: {e}"))?;
+    let start = Instant::now();
+
+    loop {
+        if child.try_wait()?.is_some() {
+            return child
+                .wait_with_output()
+                .map_err(|e| anyhow::anyhow!("Failed to collect {context} output: {e}"));
+        }
+
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(anyhow::anyhow!(
+                "{context} timed out after {}s",
+                timeout.as_secs()
+            ));
+        }
+
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn verify_node_binary_compatibility(binary_path: &str) -> anyhow::Result<NodeVersionHandshake> {
     let handshake = read_node_handshake(binary_path)?;
 
     let dashboard_version = Version::parse(env!("CARGO_PKG_VERSION"))
@@ -1356,9 +1502,21 @@ Upgrade and reinstall the desktop package with a newer bundled runtime.",
     Ok(handshake)
 }
 
-pub fn verify_node_runtime_startup(app_handle: &tauri::AppHandle) -> Result<()> {
+pub fn verify_node_runtime_startup(app_handle: &tauri::AppHandle) -> anyhow::Result<()> {
+    let strict_checks = strict_runtime_asset_checks();
     let binary_path = locate_node_binary(app_handle)?;
-    let handshake = verify_node_binary_compatibility(&binary_path)?;
+    let handshake = match verify_node_binary_compatibility(&binary_path) {
+        Ok(handshake) => handshake,
+        Err(error) if !strict_checks => {
+            log::warn!(
+                "Non-blocking runtime startup check: node compatibility warning for '{}': {}",
+                binary_path,
+                error
+            );
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
     log::info!(
         "Startup compatibility check passed: binary={} runtime=v{} protocol=v{} node_version={}",
         binary_path,
@@ -1369,7 +1527,8 @@ pub fn verify_node_runtime_startup(app_handle: &tauri::AppHandle) -> Result<()> 
     Ok(())
 }
 
-pub fn attempt_node_binary_repair(app_handle: &tauri::AppHandle) -> Result<String> {
+pub fn attempt_node_binary_repair(app_handle: &tauri::AppHandle) -> anyhow::Result<String> {
+    let strict_checks = strict_runtime_asset_checks();
     let bundled_path = resolve_required_component_path(app_handle, "aethercore-node")?;
 
     if !bundled_path.exists() {
@@ -1381,17 +1540,31 @@ pub fn attempt_node_binary_repair(app_handle: &tauri::AppHandle) -> Result<Strin
 
     ensure_binary_executable(&bundled_path)?;
 
-    let handshake = verify_node_binary_compatibility(path_to_str(&bundled_path)?)?;
-    Ok(format!(
-        "Repaired bundled node binary at {} (runtime v{}, protocol v{}, node version {})",
-        bundled_path.display(),
-        handshake.runtime_version,
-        handshake.protocol_version,
-        handshake.version
-    ))
+    match verify_node_binary_compatibility(path_to_str(&bundled_path)?) {
+        Ok(handshake) => Ok(format!(
+            "Repaired bundled node binary at {} (runtime v{}, protocol v{}, node version {})",
+            bundled_path.display(),
+            handshake.runtime_version,
+            handshake.protocol_version,
+            handshake.version
+        )),
+        Err(error) if !strict_checks => {
+            log::warn!(
+                "Non-blocking repair check: node compatibility warning for '{}': {}",
+                bundled_path.display(),
+                error
+            );
+            Ok(format!(
+                "Re-validated bundled node binary at {} (compatibility warning tolerated in macOS reduced-trust mode: {})",
+                bundled_path.display(),
+                error
+            ))
+        }
+        Err(error) => Err(error),
+    }
 }
 
-fn path_to_str(path: &Path) -> Result<&str> {
+fn path_to_str(path: &Path) -> anyhow::Result<&str> {
     path.to_str()
         .ok_or_else(|| anyhow::anyhow!("Path contains invalid UTF-8: {}", path.display()))
 }
@@ -1444,17 +1617,17 @@ pub fn show_node_binary_remediation_dialog(
 ///
 /// This command implements cryptographic authentication for the C2 heartbeat
 /// protocol. Every 5 seconds, the client must prove its identity by signing
-/// a nonce (timestamp + random UUID) using TPM-backed Ed25519.
+/// a nonce (timestamp + random UUID) using hardware-backed keys.
 ///
 /// # Fail-Visible Doctrine
 ///
-/// If the TPM fails to sign (hardware error, tampered device), this command
-/// MUST return an error. The frontend will interpret TPM signing failure as
+/// If the hardware attestor fails to sign (hardware error, tampered device), this command
+/// MUST return an error. The frontend will interpret signing failure as
 /// a "Broken Link" and immediately sever the connection.
 ///
 /// # Security Model
 ///
-/// - Private keys NEVER enter system memory (TPM hardware enforcement)
+/// - Private keys NEVER enter system memory (TPM / Secure Enclave enforcement)
 /// - Each signature is unique (nonce includes timestamp + UUID)
 /// - Backend verifies freshness (reject payloads > 3s old)
 /// - Missing 2 heartbeats (10s) triggers Dead Man's Switch
@@ -1473,17 +1646,49 @@ pub async fn sign_heartbeat_payload(
 ) -> Result<String, String> {
     log::debug!("[AETHERIC LINK] Signing heartbeat payload");
 
-    // Access TPM Manager from app state
-    let app_state = state.lock().await;
-    let mut tpm = app_state.tpm_manager.lock().await;
+    let signature = if cfg!(target_os = "macos") {
+        let attestor = SecureEnclaveAttestor::new("com.4mik.aethercore.heartbeat");
+        let quote = attestor.sign_nonce(nonce.as_bytes()).map_err(|e| {
+            log::error!("[CRITICAL] Secure Enclave signing failed: {}", e);
+            format!("Secure Enclave signing failed: {}", e)
+        })?;
 
-    // Sign the nonce using TPM
-    // In production with hardware-tpm feature, this uses real TPM
-    // In development/testing, uses stub BLAKE3 signing
-    let signature = tpm.sign(nonce.as_bytes()).map_err(|e| {
-        log::error!("[CRITICAL] TPM signing failed: {}", e);
-        format!("TPM Link not initialized: {}", e)
-    })?;
+        let verified = SecureEnclaveAttestor::verify_quote(&quote).map_err(|e| {
+            log::error!(
+                "[CRITICAL] Secure Enclave signature verification error: {}",
+                e
+            );
+            format!("Secure Enclave signature verification error: {}", e)
+        })?;
+        if !verified {
+            log::error!("[CRITICAL] Secure Enclave signature verification failed");
+            return Err("Secure Enclave signature verification failed".to_string());
+        }
+
+        quote.signature_der
+    } else {
+        // Access TPM Manager from app state
+        let app_state = state.lock().await;
+        let mut tpm = app_state.tpm_manager.lock().await;
+
+        // Sign via TPM-backed attestation key. Initialize key lazily if needed.
+        let heartbeat_key_id = "dashboard-heartbeat";
+        match tpm.sign_with_attestation_key(heartbeat_key_id, nonce.as_bytes()) {
+            Ok(sig) => sig,
+            Err(_) => {
+                tpm.generate_attestation_key(heartbeat_key_id.to_string())
+                    .map_err(|e| {
+                        log::error!("[CRITICAL] TPM key initialization failed: {}", e);
+                        format!("TPM Link not initialized: {}", e)
+                    })?;
+                tpm.sign_with_attestation_key(heartbeat_key_id, nonce.as_bytes())
+                    .map_err(|e| {
+                        log::error!("[CRITICAL] TPM signing failed: {}", e);
+                        format!("TPM signing failed: {}", e)
+                    })?
+            }
+        }
+    };
 
     // Encode signature as base64 for transmission
     let signature_b64 = BASE64.encode(&signature);

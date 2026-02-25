@@ -10,6 +10,8 @@
  * - All other insecure connections are rejected with actionable errors
  */
 
+import { getRuntimeConfig } from '../config/runtime';
+
 export interface EndpointValidationResult {
   valid: boolean;
   error?: string;
@@ -40,6 +42,17 @@ function isInsecureLocalhostAllowed(): boolean {
   return normalized === 'true' || normalized === '1' || normalized === 'yes';
 }
 
+function isInsecureLocalhostAllowedAtRuntime(): boolean {
+  if (isInsecureLocalhostAllowed()) {
+    return true;
+  }
+  try {
+    return Boolean(getRuntimeConfig().devAllowInsecureLocalhost);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Validate WebSocket endpoint URL
  */
@@ -67,7 +80,7 @@ export function validateWebSocketEndpoint(url: string): EndpointValidationResult
 
     // Localhost with ws requires DEV_ALLOW_INSECURE_LOCALHOST
     if (isLocalhost && protocol === 'ws') {
-      const devAllowed = isInsecureLocalhostAllowed();
+      const devAllowed = isInsecureLocalhostAllowedAtRuntime();
       if (!devAllowed) {
         return {
           valid: false,
@@ -116,7 +129,7 @@ export function validateHttpEndpoint(url: string): EndpointValidationResult {
 
     // Localhost with http requires DEV_ALLOW_INSECURE_LOCALHOST
     if (isLocalhost && protocol === 'http') {
-      const devAllowed = isInsecureLocalhostAllowed();
+      const devAllowed = isInsecureLocalhostAllowedAtRuntime();
       if (!devAllowed) {
         return {
           valid: false,
@@ -177,7 +190,7 @@ export function validateGrpcEndpoint(endpoint: string): EndpointValidationResult
     }
 
     // Localhost gRPC
-    const devAllowed = isInsecureLocalhostAllowed();
+    const devAllowed = isInsecureLocalhostAllowedAtRuntime();
     if (!devAllowed) {
       return {
         valid: false,

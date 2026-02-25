@@ -28,6 +28,8 @@ describe('C2 Message Envelope Schema', () => {
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
       );
       expect(envelope.timestamp).toBeGreaterThan(0);
+      expect(envelope.nonce).toMatch(/^[0-9a-f]{32}$/);
+      expect(envelope.sequence).toBeGreaterThan(0);
       expect(envelope.payload).toEqual({
         content: 'Test message',
         recipientId: 'recipient-001',
@@ -57,6 +59,21 @@ describe('C2 Message Envelope Schema', () => {
       );
 
       expect(envelope.signature).toBe('test-signature');
+    });
+
+    it('should include sender-local replay chain metadata', () => {
+      const first = createMessageEnvelope('chat', 'sender-chain-001', {
+        content: 'one',
+        recipientId: 'recipient-001',
+      });
+      const second = createMessageEnvelope('chat', 'sender-chain-001', {
+        content: 'two',
+        recipientId: 'recipient-001',
+      });
+
+      expect(first.sequence).toBe(1);
+      expect(second.sequence).toBe(2);
+      expect(second.previous_message_id).toBe(first.message_id);
     });
   });
 
@@ -126,6 +143,9 @@ describe('C2 Message Envelope Schema', () => {
         type: 'chat',
         from: 'sender-001',
         payload: { content: 'Test' },
+        nonce: '00112233445566778899aabbccddeeff',
+        sequence: 42,
+        previous_message_id: '550e8400-e29b-41d4-a716-446655440111',
       };
 
       const serialized1 = serializeForSigning(envelope);
@@ -142,6 +162,9 @@ describe('C2 Message Envelope Schema', () => {
         type: 'chat',
         from: 'sender-001',
         payload: { content: 'Test' },
+        nonce: '00112233445566778899aabbccddeeff',
+        sequence: 42,
+        previous_message_id: '550e8400-e29b-41d4-a716-446655440111',
       };
 
       const serialized = serializeForSigning(envelope);
