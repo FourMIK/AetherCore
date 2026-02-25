@@ -729,11 +729,40 @@ export class C2Client {
     const generated = (await subtle.generateKey(
       { name: 'ECDH', namedCurve: 'P-256' },
       true,
-      ['deriveKey'],
+      ['deriveBits'],
     )) as CryptoKeyPair;
     this.chatKeyPair = generated;
     this.chatPublicKeyPem = await this.exportPublicKeyToPem(generated.publicKey);
     this.senderChatEncryptionKeys.set(this.config.clientId, generated.publicKey);
+  }
+
+  private async deriveChatAesKey(
+    privateKey: CryptoKey,
+    peerPublicKey: CryptoKey,
+    usage: 'encrypt' | 'decrypt',
+  ): Promise<CryptoKey> {
+    const subtle = globalThis.crypto?.subtle;
+    if (!subtle) {
+      throw new Error('WebCrypto subtle API is unavailable; cannot derive chat key');
+    }
+
+    // Keep KDF behavior aligned with mesh-client.ts: AES key = SHA-256(ECDH shared secret).
+    const sharedSecret = await subtle.deriveBits(
+      {
+        name: 'ECDH',
+        public: peerPublicKey,
+      },
+      privateKey,
+      256,
+    );
+    const hashedSecret = await subtle.digest('SHA-256', sharedSecret);
+    return subtle.importKey(
+      'raw',
+      hashedSecret,
+      { name: 'AES-GCM' },
+      false,
+      [usage],
+    );
   }
 
   private normalizePublicKeyPem(value: unknown): string | null {
@@ -900,21 +929,13 @@ export class C2Client {
     const senderEphemeralKeyPair = (await subtle.generateKey(
       { name: 'ECDH', namedCurve: 'P-256' },
       true,
-      ['deriveKey'],
+      ['deriveBits'],
     )) as CryptoKeyPair;
 
-    const aesKey = await subtle.deriveKey(
-      {
-        name: 'ECDH',
-        public: recipientKey,
-      },
+    const aesKey = await this.deriveChatAesKey(
       senderEphemeralKeyPair.privateKey,
-      {
-        name: 'AES-GCM',
-        length: 256,
-      },
-      false,
-      ['encrypt'],
+      recipientKey,
+      'encrypt',
     );
 
     const keyEpoch = this.chatEpochCounter + 1;
@@ -988,18 +1009,10 @@ export class C2Client {
     }
 
     const peerEphemeralPublicKey = await this.importChatPublicKeyFromPem(senderEphemeralPublicKey);
-    const aesKey = await subtle.deriveKey(
-      {
-        name: 'ECDH',
-        public: peerEphemeralPublicKey,
-      },
+    const aesKey = await this.deriveChatAesKey(
       this.chatKeyPair.privateKey,
-      {
-        name: 'AES-GCM',
-        length: 256,
-      },
-      false,
-      ['decrypt'],
+      peerEphemeralPublicKey,
+      'decrypt',
     );
 
     const ciphertext = this.base64ToBytes(ciphertextB64);
