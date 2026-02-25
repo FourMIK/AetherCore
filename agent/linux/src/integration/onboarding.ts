@@ -44,14 +44,14 @@ const ENROLLMENT_CA_CERT_PATH = process.env.ENROLLMENT_CA_CERT_PATH?.trim() || '
 const ENROLLMENT_CA_CERT_PEM = process.env.ENROLLMENT_CA_CERT_PEM?.trim() || '';
 const ENROLLMENT_REVOCATION_URL = process.env.ENROLLMENT_REVOCATION_URL?.trim() || '';
 
-type EnrollmentRequestContext = {
+export type EnrollmentRequestContext = {
   deviceId: string;
   hardwareSerial: string;
   publicKey: string;
   csr: string;
 };
 
-type EnrollmentCertificate = {
+export type EnrollmentCertificate = {
   certificate: string;
   certificateSerial: string;
   trustScore: number;
@@ -893,3 +893,12 @@ export function revokeIdentity(reason: string): void {
     process.exit(1);
   }
 }
+
+// Test-only hooks for service integration coverage.
+export const __onboardingTestHooks = {
+  createCSR,
+  requestCertificate,
+  validateCertificate,
+  checkRevocationStatus,
+  parseEnrollmentResponse,
+};

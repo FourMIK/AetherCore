@@ -18,7 +18,7 @@
     "build:full": "pnpm run build:warhead && pnpm run build:chat && pnpm run build:chat:gui && pnpm run package:payloads",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
-    "test": "echo \"No tests yet\"",
+    "test": "pnpm run build && node --test dist/__tests__/onboarding.integration.test.js",
     "clean": "rm -rf dist"
   },
   "keywords": ["aethercore", "identity", "linux", "pi", "coderalphie", "warhead"],
