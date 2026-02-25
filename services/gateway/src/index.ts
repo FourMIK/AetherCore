@@ -542,6 +542,7 @@ function bindOperatorSession(ws: WebSocket, operatorId: string): void {
       previousSockets.delete(ws);
       if (previousSockets.size === 0) {
         socketsByOperatorId.delete(session.clientId);
+        replayStateBySenderId.delete(session.clientId);
       }
     }
   }
@@ -817,6 +818,7 @@ wss.on('connection', (ws: WebSocket) => {
         operatorSockets.delete(ws);
         if (operatorSockets.size === 0) {
           socketsByOperatorId.delete(session.clientId);
+          replayStateBySenderId.delete(session.clientId);
           const previousPresence = operatorPresenceById.get(session.clientId);
           const payload =
             previousPresence && typeof previousPresence.payload === 'object' && previousPresence.payload !== null
