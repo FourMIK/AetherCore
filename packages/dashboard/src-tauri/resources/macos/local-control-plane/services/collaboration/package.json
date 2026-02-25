@@ -1,0 +1,31 @@
+{
+  "name": "@aethercore/collaboration",
+  "version": "0.1.0",
+  "description": "AetherCore Mission Guardian Collaboration Service - Secure Console-to-Console Video/Voice/Chat",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "start": "node dist/index.js",
+    "dev": "pnpm run build && pnpm start",
+    "test": "echo \"No tests yet\"",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": ["aethercore", "collaboration", "guardian", "webrtc", "signaling"],
+  "author": "AetherCore Team",
+  "license": "MIT",
+  "dependencies": {
+    "@aethercore/shared": "workspace:*",
+    "ws": "^8.16.0",
+    "nats": "^2.19.0",
+    "zod": "^3.22.4",
+    "@grpc/grpc-js": "^1.9.0",
+    "@grpc/proto-loader": "^0.7.10"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6",
+    "@types/ws": "^8.5.10"
+  }
+}

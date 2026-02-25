@@ -2,6 +2,10 @@
 
 #[cfg(feature = "grpc-server")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Use vendored protoc so grpc feature builds in constrained CI/dev environments.
+    let protoc = protoc_bin_vendored::protoc_bin_path()?;
+    std::env::set_var("PROTOC", protoc);
+
     tonic_build::compile_protos("proto/identity_registry.proto")?;
     Ok(())
 }
