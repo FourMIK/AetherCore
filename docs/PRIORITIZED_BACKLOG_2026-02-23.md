@@ -42,7 +42,7 @@ Priority definitions:
 | AC-P0-06 | P0 | Production profile fail-closed by default | Remove optional bypass as default operational posture | S | none | Completed |
 | AC-P1-01 | P1 | Presence attestation + server-derived trust | Stop client self-asserted trust values | M | AC-P0-01 | Completed |
 | AC-P1-02 | P1 | Replace simulated onboarding cert flow | Move from mock cert trust to real enrollment trust | L | AC-P0-02 | In Progress |
-| AC-P1-03 | P1 | Integrate revocation with sovereign/quorum model | Replace local-file revoke semantics with network trust revocation | L | AC-P1-02 | Open |
+| AC-P1-03 | P1 | Integrate revocation with sovereign/quorum model | Replace local-file revoke semantics with network trust revocation | L | AC-P1-02 | In Progress |
 | AC-P1-04 | P1 | Unify chat envelope with Guardian signed envelope model | Eliminate split trust semantics across subsystems | M | AC-P0-02, AC-P0-03 | Open |
 | AC-P1-05 | P1 | CI security regression gates | Prevent backsliding on signature/replay/encryption requirements | M | AC-P0-01..AC-P0-06 | Open |
 | AC-P2-01 | P2 | Activate mesh semantics in active path (gossip/quorum/DDIL behavior) | Align runtime behavior with architecture claims | XL | AC-P1-04 | Open |
@@ -200,7 +200,7 @@ Implementation notes:
 
 ### AC-P1-03: Revocation via Sovereign/Quorum Trust Model
 
-Status: Open.
+Status: In Progress.
 
 Scope:
 - Replace local file deletion revocation semantics with distributed revocation source.
@@ -209,6 +209,12 @@ Scope:
 Acceptance criteria:
 - Revoked identity is rejected across reconnects and restarts.
 - Revocation propagation behavior is tested and observable.
+
+Implementation notes:
+- Gateway now supports a distributed revocation source (`AETHERCORE_REVOCATION_SOURCE_URL`) with periodic synchronization and optional fail-closed enforcement when sync state is unavailable.
+- Active verification paths now gate operator presence/chat/call envelopes and Ralphie presence ingestion against sovereign revocation data.
+- Revocation sync emits structured logs and broadcasts `REVOCATION_EVENT` notifications when active node presence is evicted.
+- Added integration tests covering revocation source parsing, propagation refresh behavior, restart rejection semantics, and fail-closed policy handling.
 
 ### AC-P1-04: Unify Chat Envelope with Guardian Signed Envelope Model
 

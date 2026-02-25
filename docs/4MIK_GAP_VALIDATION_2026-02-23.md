@@ -33,14 +33,14 @@ Wave 1 trust-path hardening is now implemented on the active desktop gateway + P
 | Payload confidentiality for chat content | CLOSED | `agent/linux/src/c2/mesh-client.ts`, `packages/dashboard/src/services/c2/C2Client.ts`, `packages/shared/src/c2-message-schema.ts` | Chat payload now uses authenticated encryption (ECDH P-256 key agreement + AES-256-GCM ciphertext/auth tag fields) on active dashboard/Pi chat path. |
 | Presence trust must be server-derived (not client self-asserted) | CLOSED | `services/gateway/src/index.ts:238`, `services/gateway/src/index.ts:621`, `services/gateway/src/index.ts:902` | Trust score is now derived by gateway verification outcomes and client-supplied trust values are overridden. |
 | Real certificate enrollment/validation | PARTIAL | `agent/linux/src/integration/onboarding.ts:499`, `agent/linux/src/integration/onboarding.ts:561`, `agent/linux/src/integration/onboarding.ts:648` | Simulated cert issuance removed from active onboarding path; enrollment now requires server response with X.509 validation + revocation checks, but full CA-service integration test coverage is still pending. |
-| Sovereign/quorum revocation behavior | OPEN | `agent/linux/src/integration/onboarding.ts:877`, `agent/linux/src/integration/onboarding.ts:887` | Revocation execution still uses local-file backup/delete semantics rather than distributed trust governance. |
+| Sovereign/quorum revocation behavior | PARTIAL | `services/gateway/src/revocation.ts`, `services/gateway/src/index.ts:553`, `agent/linux/src/integration/onboarding.ts:916` | Active gateway verification path now enforces distributed revocation source checks and onboarding revocation publishes intent to network source before local quarantine; remaining gap is strict signature/quorum validation of remote revocation certificates end-to-end. |
 | Decentralized trust mesh semantics in active chat/gateway path | OPEN | `config/local-control-plane.toml:15`, `packages/dashboard/src-tauri/resources/macos/local-control-plane/launchers/gateway-launcher:5` | Active path remains centralized service orchestration. |
 
 ## What Changed Since Initial Gap Pass
 
 - Closed: ingress cryptographic verification, replay metadata/enforcement, active TS Ed25519 signing, C2 transport TLS/mTLS gating, macOS optional-skip default, signed HTTP presence ingestion, and server-derived presence trust.
 - Partial progress: onboarding certificate flow now uses real enrollment requests with X.509 validity/key/issuer checks plus revocation queries.
-- Still open: enrollment/revocation maturity (remaining lifecycle and distributed-governance semantics) and full decentralized runtime semantics.
+- Still open: full sovereign/quorum signature validation for revocation certificates and full decentralized runtime semantics.
 
 ## Bottom Line
 

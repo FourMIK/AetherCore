@@ -43,6 +43,8 @@ const TRUST_THRESHOLD = parseUnitIntervalEnv('AETHERCORE_TRUST_THRESHOLD', 0.7);
 const ENROLLMENT_CA_CERT_PATH = process.env.ENROLLMENT_CA_CERT_PATH?.trim() || '';
 const ENROLLMENT_CA_CERT_PEM = process.env.ENROLLMENT_CA_CERT_PEM?.trim() || '';
 const ENROLLMENT_REVOCATION_URL = process.env.ENROLLMENT_REVOCATION_URL?.trim() || '';
+const REVOCATION_SUBMIT_URL = process.env.AETHERCORE_REVOCATION_SUBMIT_URL?.trim() || '';
+const REVOCATION_SUBMIT_TIMEOUT_MS = parsePositiveIntEnv('AETHERCORE_REVOCATION_SUBMIT_TIMEOUT_MS', 10000);
 
 export type EnrollmentRequestContext = {
   deviceId: string;
@@ -317,6 +319,54 @@ async function checkRevocationStatus(certificate: EnrollmentCertificate): Promis
       status: 'unknown',
       detail: error instanceof Error ? error.message : String(error),
     };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function submitRevocationIntent(
+  identity: Partial<DeviceIdentity> | null,
+  reason: string,
+): Promise<void> {
+  if (!REVOCATION_SUBMIT_URL) {
+    const message =
+      'AETHERCORE_REVOCATION_SUBMIT_URL is not configured; cannot publish revocation to sovereign trust source';
+    if (isProductionMode()) {
+      throw new Error(message);
+    }
+    console.warn(`[Onboarding] ${message}`);
+    return;
+  }
+
+  const nodeId =
+    typeof identity?.device_id === 'string' && identity.device_id.length > 0
+      ? identity.device_id
+      : 'unknown-node';
+  const certificateSerial =
+    typeof identity?.certificate_serial === 'string' ? identity.certificate_serial : null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REVOCATION_SUBMIT_TIMEOUT_MS);
+  try {
+    const response = await fetch(REVOCATION_SUBMIT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        node_id: nodeId,
+        certificate_serial: certificateSerial,
+        revocation_reason: reason,
+        issuer_id: process.env.AETHERCORE_REVOCATION_ISSUER_ID || 'coderalphie-agent',
+        timestamp_ns: Date.now() * 1_000_000,
+      }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`HTTP ${response.status}: ${detail.slice(0, 240)}`);
+    }
+
+    console.log('[Onboarding] Revocation intent published to sovereign trust source');
   } finally {
     clearTimeout(timeout);
   }
@@ -873,20 +923,40 @@ export function getDeviceIdentity(): DeviceIdentity | null {
 
 /**
  * Revoke device identity (Great Gospel execution)
+ *
+ * Local identity material is quarantined only after we attempt to publish
+ * revocation intent to distributed trust infrastructure.
  */
-export function revokeIdentity(reason: string): void {
+export async function revokeIdentity(reason: string): Promise<void> {
   console.log('[Onboarding] GREAT GOSPEL EXECUTED');
   console.log('[Onboarding] Reason:', reason);
-  
+
+  let identityRecord: Partial<DeviceIdentity> | null = null;
   if (fs.existsSync(IDENTITY_PATH)) {
-    // Backup before deletion
+    try {
+      identityRecord = JSON.parse(fs.readFileSync(IDENTITY_PATH, 'utf-8')) as Partial<DeviceIdentity>;
+    } catch (error) {
+      console.warn('[Onboarding] Failed to parse identity before revocation publish:', error);
+    }
+  }
+
+  try {
+    await submitRevocationIntent(identityRecord, reason);
+  } catch (error) {
+    console.error('[Onboarding] Failed to publish revocation intent:', error);
+    if (isProductionMode()) {
+      throw error;
+    }
+  }
+
+  if (fs.existsSync(IDENTITY_PATH)) {
     const backupPath = `${IDENTITY_PATH}.revoked.${Date.now()}`;
     fs.copyFileSync(IDENTITY_PATH, backupPath);
     fs.unlinkSync(IDENTITY_PATH);
-    
-    console.log('[Onboarding] Identity revoked and backed up to:', backupPath);
+
+    console.log('[Onboarding] Local identity quarantined and backed up to:', backupPath);
   }
-  
+
   // In production, signal LED Red and exit
   if (process.env.AETHERCORE_PRODUCTION === '1' || process.env.AETHERCORE_PRODUCTION === 'true') {
     console.error('[Onboarding] Device has been revoked. Exiting.');
