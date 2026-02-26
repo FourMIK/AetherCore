@@ -6,6 +6,7 @@ APP_PATH="${APP_PATH:-$ROOT_DIR/target/release/bundle/macos/AetherCore Commander
 BIN_PATH="${BIN_PATH:-$APP_PATH/Contents/MacOS/tactical-glass-desktop}"
 LOG_PATH="${LOG_PATH:-/tmp/aethercore-launch.log}"
 C2_MOCK_DIR="${C2_MOCK_DIR:-$ROOT_DIR/infra/docker/c2-router-mock}"
+C2_MOCK_ENTRY="${C2_MOCK_ENTRY:-$C2_MOCK_DIR/server.js}"
 C2_MOCK_LOG="${C2_MOCK_LOG:-/tmp/aethercore-c2-router-mock.log}"
 C2_MOCK_PORT="${C2_MOCK_PORT:-50051}"
 AUTO_START_C2_MOCK="${AUTO_START_C2_MOCK:-1}"
@@ -14,10 +15,31 @@ LAUNCH_SEP_ALLOW_EPHEMERAL="${AETHERCORE_LAUNCH_SEP_ALLOW_EPHEMERAL:-1}"
 LAUNCH_MODE="${AETHERCORE_LAUNCH_MODE:-auto}" # auto|binary|open
 STACK_WAIT_SECS="${AETHERCORE_STACK_WAIT_SECS:-12}"
 FORCE_OPTIONAL_TRUST_POLICY="${AETHERCORE_FORCE_OPTIONAL_TRUST_POLICY:-1}"
+ALLOW_DEV_STACK_FALLBACK="${AETHERCORE_ALLOW_DEV_STACK_FALLBACK:-1}"
+SKIP_APP_RESTART=0
 
 if [[ ! -x "$BIN_PATH" ]]; then
-  echo "ERROR: app binary not found or not executable: $BIN_PATH" >&2
-  exit 1
+  if [[ "$ALLOW_DEV_STACK_FALLBACK" != "1" ]]; then
+    echo "ERROR: app binary not found or not executable: $BIN_PATH" >&2
+    exit 1
+  fi
+
+  if lsof -nP -iTCP:3000 -sTCP:LISTEN >/dev/null 2>&1; then
+    SKIP_APP_RESTART=1
+    echo "WARN: app binary missing at $BIN_PATH"
+    if lsof -nP -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1; then
+      echo "      Reusing existing local stack listeners on :3000 and :8080 (dev mode fallback)."
+    else
+      echo "      Reusing existing gateway listener on :3000 (dev mode fallback)."
+      echo "      Collaboration listener :8080 is not active yet."
+    fi
+  else
+    echo "ERROR: app binary not found or not executable: $BIN_PATH" >&2
+    echo "       No active gateway listener detected on :3000 for dev fallback." >&2
+    echo "       Start dev app in another terminal with:" >&2
+    echo "       ./scripts/ops/run-dashboard-dev.sh" >&2
+    exit 1
+  fi
 fi
 
 start_mock_c2_backend() {
@@ -36,6 +58,12 @@ start_mock_c2_backend() {
     return 0
   fi
 
+  if [[ ! -f "$C2_MOCK_ENTRY" ]]; then
+    echo "WARN: mock C2 backend entrypoint missing: $C2_MOCK_ENTRY"
+    echo "      Skipping mock C2 startup."
+    return 0
+  fi
+
   echo "Ensuring mock C2 backend dependencies are installed..."
   (
     cd "$C2_MOCK_DIR"
@@ -45,8 +73,8 @@ start_mock_c2_backend() {
   echo "Starting mock C2 backend on :$C2_MOCK_PORT ..."
   (
     cd "$C2_MOCK_DIR"
-    pkill -f "c2-router-mock/server.js" || true
-    nohup node server.js >"$C2_MOCK_LOG" 2>&1 &
+    pkill -f "$C2_MOCK_ENTRY" || true
+    nohup node "$C2_MOCK_ENTRY" >"$C2_MOCK_LOG" 2>&1 &
   )
 
   sleep 1
@@ -102,17 +130,20 @@ PY
   done
 }
 
-echo "Stopping stale app processes..."
-pkill -9 -f "tactical-glass-desktop" || true
+if [[ "$SKIP_APP_RESTART" -eq 0 ]]; then
+  echo "Stopping stale app processes..."
+  pkill -9 -f "tactical-glass-desktop" || true
 
-echo "Stopping stale local control-plane node services..."
-pkill -9 -f "local-control-plane/.*/services/gateway/dist/index.js" || true
-pkill -9 -f "local-control-plane/.*/services/collaboration/dist/index.js" || true
+  echo "Stopping stale local control-plane node services..."
+  pkill -9 -f "local-control-plane/.*/services/gateway/dist/index.js" || true
+  pkill -9 -f "local-control-plane/.*/services/collaboration/dist/index.js" || true
+else
+  echo "Skipping app restart; preserving currently running local stack."
+fi
 
 start_mock_c2_backend
 normalize_runtime_policy
 
-echo "Launching with sentinel flags: skip=$LAUNCH_SENTINEL_SKIP, allow_ephemeral=$LAUNCH_SEP_ALLOW_EPHEMERAL"
 launch_via_binary() {
   : >"$LOG_PATH"
   AETHERCORE_MACOS_OPTIONAL_SENTINEL_SKIP="$LAUNCH_SENTINEL_SKIP" \
@@ -165,34 +196,38 @@ verify_or_recover_stack() {
   fi
 }
 
-case "$LAUNCH_MODE" in
-  binary)
-    echo "Launching app binary..."
-    launch_via_binary
-    ;;
-  open)
-    echo "Launching app via LaunchServices (open)..."
-    launch_via_open
-    ;;
-  auto)
-    echo "Launching app binary..."
-    launch_via_binary
-    sleep 2
-    if ! is_app_running; then
-      echo "WARN: binary launch did not stay up; retrying via LaunchServices (open)..."
-      launch_via_open
-    fi
-    ;;
-  *)
-    echo "ERROR: invalid AETHERCORE_LAUNCH_MODE='$LAUNCH_MODE' (expected auto|binary|open)" >&2
-    exit 2
-    ;;
-esac
+if [[ "$SKIP_APP_RESTART" -eq 0 ]]; then
+  echo "Launching with sentinel flags: skip=$LAUNCH_SENTINEL_SKIP, allow_ephemeral=$LAUNCH_SEP_ALLOW_EPHEMERAL"
 
-sleep 1
-echo "Active process:"
-pgrep -fl tactical-glass-desktop || true
-echo "Launch log: $LOG_PATH"
-echo "Tip: tail -n 120 $LOG_PATH"
+  case "$LAUNCH_MODE" in
+    binary)
+      echo "Launching app binary..."
+      launch_via_binary
+      ;;
+    open)
+      echo "Launching app via LaunchServices (open)..."
+      launch_via_open
+      ;;
+    auto)
+      echo "Launching app binary..."
+      launch_via_binary
+      sleep 2
+      if ! is_app_running; then
+        echo "WARN: binary launch did not stay up; retrying via LaunchServices (open)..."
+        launch_via_open
+      fi
+      ;;
+    *)
+      echo "ERROR: invalid AETHERCORE_LAUNCH_MODE='$LAUNCH_MODE' (expected auto|binary|open)" >&2
+      exit 2
+      ;;
+  esac
+
+  sleep 1
+  echo "Active process:"
+  pgrep -fl tactical-glass-desktop || true
+  echo "Launch log: $LOG_PATH"
+  echo "Tip: tail -n 120 $LOG_PATH"
+fi
 
 verify_or_recover_stack
