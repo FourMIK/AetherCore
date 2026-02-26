@@ -13,6 +13,8 @@ Implemented on active path:
 - AC-P0-05 (gateway->C2 transport TLS/mTLS production gating)
 - AC-P0-06 (macOS optional sentinel skip explicit opt-in)
 - AC-P1-01 (presence auth + server-derived trust semantics)
+- AC-P1-04 (chat envelope trust semantics unified with Guardian verification status model)
+- AC-P1-05 (CI security regression gates for spoof/replay/tamper and transport/encryption invariants)
 
 In progress on active path:
 - AC-P1-02 (onboarding now requests real enrollment certificates and performs X.509 validation + revocation checks; full service-integration test coverage pending)
@@ -43,8 +45,8 @@ Priority definitions:
 | AC-P1-01 | P1 | Presence attestation + server-derived trust | Stop client self-asserted trust values | M | AC-P0-01 | Completed |
 | AC-P1-02 | P1 | Replace simulated onboarding cert flow | Move from mock cert trust to real enrollment trust | L | AC-P0-02 | In Progress |
 | AC-P1-03 | P1 | Integrate revocation with sovereign/quorum model | Replace local-file revoke semantics with network trust revocation | L | AC-P1-02 | In Progress |
-| AC-P1-04 | P1 | Unify chat envelope with Guardian signed envelope model | Eliminate split trust semantics across subsystems | M | AC-P0-02, AC-P0-03 | Open |
-| AC-P1-05 | P1 | CI security regression gates | Prevent backsliding on signature/replay/encryption requirements | M | AC-P0-01..AC-P0-06 | Open |
+| AC-P1-04 | P1 | Unify chat envelope with Guardian signed envelope model | Eliminate split trust semantics across subsystems | M | AC-P0-02, AC-P0-03 | Completed |
+| AC-P1-05 | P1 | CI security regression gates | Prevent backsliding on signature/replay/encryption requirements | M | AC-P0-01..AC-P0-06 | Completed |
 | AC-P2-01 | P2 | Activate mesh semantics in active path (gossip/quorum/DDIL behavior) | Align runtime behavior with architecture claims | XL | AC-P1-04 | Open |
 | AC-P2-02 | P2 | Security telemetry and SLOs | Faster detection and measurable security posture | M | AC-P1-05 | Open |
 | AC-P2-03 | P2 | Doc/runbook parity and release gates | Keep docs truth-aligned with implementation | S | AC-P1-05 | In Progress |
@@ -218,7 +220,7 @@ Implementation notes:
 
 ### AC-P1-04: Unify Chat Envelope with Guardian Signed Envelope Model
 
-Status: Open.
+Status: Completed.
 
 Scope:
 - Migrate chat signaling envelope to shared signed-envelope standard, or provide strict adapter with equivalent guarantees.
@@ -231,9 +233,13 @@ Acceptance criteria:
 - Single trust semantics across collaboration/chat verification paths.
 - Nonce/timestamp/signature invariants enforced consistently.
 
+Implementation notes:
+- Shared C2 schema now normalizes `trust_status` with Guardian-style `verification_status` and enforces consistency invariants.
+- Gateway, dashboard C2 client, and Pi chat consumers now use shared verification mapping helpers for a single trust interpretation path.
+
 ### AC-P1-05: CI Security Regression Gates
 
-Status: Open.
+Status: Completed.
 
 Scope:
 - Add CI checks that fail on reintroduction of placeholder signing, insecure transport, missing replay checks, or plaintext payload mode in production profile.
@@ -241,6 +247,11 @@ Scope:
 Acceptance criteria:
 - CI pipeline blocks merges on failed security invariants.
 - Negative tests include spoof, replay, and tamper cases.
+
+Implementation notes:
+- Added `services/gateway/src/__tests__/security-regression.integration.test.ts` covering spoof/replay/tamper negative cases and active-path static invariant checks.
+- Gateway test scripts now include the new security regression suite as part of integration runs.
+- CI (`.github/workflows/ci.yml`) includes an explicit security regression gate step.
 
 ### AC-P2-01: Activate Mesh Semantics in Active Path
 
