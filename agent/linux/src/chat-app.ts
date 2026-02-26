@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import * as readline from 'node:readline';
-import type { MessageEnvelope } from '@aethercore/shared';
+import { isEnvelopeVerified, type MessageEnvelope } from '@aethercore/shared';
 import { MeshClient, type MeshAckMessage, type MeshChatMessage, type MeshNodePresence } from './c2/mesh-client';
 import { getConfigManager } from './device-management/configManager';
 import { getDeviceIdentity } from './integration/onboarding';
@@ -131,7 +131,7 @@ async function main(): Promise<void> {
         id: envelope.from,
         status: parseStatus(payload.status),
         trustScore: clampTrust(payload.trustScore, 0.5),
-        verified: envelope.trust_status === 'verified',
+        verified: isEnvelopeVerified(envelope),
         endpoint: typeof payload.endpoint === 'string' ? payload.endpoint : '',
         tpmBacked: null,
         lastSeen: envelope.timestamp,

@@ -16,6 +16,7 @@ import {
   createMessageEnvelope,
   parseMessageEnvelope,
   serializeForSigning,
+  setEnvelopeVerificationStatus,
 } from '@aethercore/shared';
 
 // C2 Client States
@@ -427,12 +428,12 @@ export class C2Client {
 
       this.lastMessageReceived = new Date();
 
-      // Verify signature if present
+      // Normalize verification semantics for legacy and guardian status fields.
       if (envelope.signature && this.config.signingEnabled) {
         const verified = await this.verifyMessage(envelope);
-        envelope.trust_status = verified ? 'verified' : 'invalid';
-      } else {
-        envelope.trust_status = 'unverified';
+        setEnvelopeVerificationStatus(envelope, verified ? 'VERIFIED' : 'SPOOFED');
+      } else if (!envelope.signature) {
+        setEnvelopeVerificationStatus(envelope, 'STATUS_UNVERIFIED');
       }
       const payloadChatPublicKey = this.extractChatPublicKeyFromPayload(envelope.payload);
       if (payloadChatPublicKey) {
@@ -1041,7 +1042,9 @@ export class C2Client {
     };
   }
 
-  private async signMessage(envelope: Omit<MessageEnvelope, 'signature' | 'trust_status'>): Promise<string> {
+  private async signMessage(
+    envelope: Omit<MessageEnvelope, 'signature' | 'trust_status' | 'verification_status'>,
+  ): Promise<string> {
     await this.signingReady;
     if (!this.signingKeyPair?.privateKey) {
       throw new Error('No signing key available');

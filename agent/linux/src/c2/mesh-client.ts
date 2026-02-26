@@ -5,6 +5,7 @@ import * as https from 'node:https';
 import WebSocket, { type RawData } from 'ws';
 import {
   createMessageEnvelope,
+  isEnvelopeVerified,
   parseMessageEnvelope,
   serializeForSigning,
   type MessageEnvelope,
@@ -365,7 +366,7 @@ export class MeshClient {
             to: recipientId,
             content,
             timestamp: new Date(envelope.timestamp),
-            verified: envelope.trust_status === 'verified',
+            verified: isEnvelopeVerified(envelope),
           };
           console.log(
             `[Mesh] Chat RX from=${chatMessage.from} verified=${chatMessage.verified} msg="${chatMessage.content}"`,
@@ -594,7 +595,7 @@ export class MeshClient {
     }
   }
 
-  private signEnvelope(envelope: Omit<MessageEnvelope, 'trust_status'>): string {
+  private signEnvelope(envelope: Omit<MessageEnvelope, 'trust_status' | 'verification_status'>): string {
     const serialized = serializeForSigning(envelope);
     const signature = crypto.sign(null, Buffer.from(serialized, 'utf-8'), this.signingPrivateKey);
     return signature.toString('hex');

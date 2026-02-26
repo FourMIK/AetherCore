@@ -13,7 +13,7 @@ import {
   type RalphiePresenceFrame,
   type SystemStatusFrame,
 } from '../services/c2/C2Client';
-import type { MessageEnvelope } from '@aethercore/shared';
+import { isEnvelopeVerified, type MessageEnvelope } from '@aethercore/shared';
 import { useTacticalStore } from './useTacticalStore';
 
 export type OperatorRole = 'operator' | 'commander' | 'admin';
@@ -483,6 +483,7 @@ export const useCommStore = create<CommState>((set, get) => ({
         // Handle different message types
         if (envelope.type === 'chat' && typeof envelope.payload === 'object' && envelope.payload !== null) {
           const payload = envelope.payload as { content?: string; encrypted?: boolean };
+          const envelopeVerified = isEnvelopeVerified(envelope);
           const existing = get().operators.get(envelope.from);
           if (!existing) {
             get().upsertOperator({
@@ -490,8 +491,8 @@ export const useCommStore = create<CommState>((set, get) => ({
               name: formatOperatorName(envelope.from),
               role: 'operator',
               status: 'online',
-              verified: envelope.trust_status === 'verified',
-              trustScore: envelope.trust_status === 'verified' ? 90 : 50,
+              verified: envelopeVerified,
+              trustScore: envelopeVerified ? 90 : 50,
               lastSeen: new Date(),
             });
           }
@@ -503,7 +504,7 @@ export const useCommStore = create<CommState>((set, get) => ({
             content: payload.content || '',
             timestamp: new Date(envelope.timestamp),
             signature: envelope.signature,
-            verified: envelope.trust_status === 'verified',
+            verified: envelopeVerified,
             encrypted: payload.encrypted || false,
           };
           get().receiveMessage(message);
@@ -513,11 +514,12 @@ export const useCommStore = create<CommState>((set, get) => ({
           envelope.payload !== null
         ) {
           const payload = envelope.payload as Record<string, unknown>;
+          const envelopeVerified = isEnvelopeVerified(envelope);
           const existing = get().operators.get(envelope.from);
           const status = normalizeOperatorStatus(payload.status);
           const trustScore = clampTrustScorePercent(
             typeof payload.trustScore === 'number' ? payload.trustScore : undefined,
-            existing?.trustScore ?? (envelope.trust_status === 'verified' ? 90 : 50),
+            existing?.trustScore ?? (envelopeVerified ? 90 : 50),
           );
           const roleValue = payload.role;
           const role =
@@ -540,7 +542,7 @@ export const useCommStore = create<CommState>((set, get) => ({
             callsign,
             status,
             verified:
-              envelope.trust_status === 'verified' ||
+              envelopeVerified ||
               (typeof payload.verified === 'boolean' ? payload.verified : false),
             trustScore,
             lastSeen: new Date(envelope.timestamp),

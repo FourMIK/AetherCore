@@ -20,6 +20,7 @@ import {
   createMessageEnvelope,
   parseMessageEnvelope,
   serializeForSigning,
+  setEnvelopeVerificationStatus,
   type MessageEnvelope,
 } from '@aethercore/shared';
 
@@ -737,8 +738,7 @@ function buildAckEnvelope(
     delivered,
     reason,
   });
-  ack.trust_status = 'verified';
-  return ack;
+  return setEnvelopeVerificationStatus(ack, 'STATUS_UNVERIFIED');
 }
 
 function handleOperatorPresenceEnvelope(ws: WebSocket, envelope: MessageEnvelope): void {
@@ -807,7 +807,7 @@ function handleOperatorPresenceEnvelope(ws: WebSocket, envelope: MessageEnvelope
   session.verified = true;
   session.lastSeen = trustProvenance.evaluated_at;
 
-  const outboundPresence: MessageEnvelope = {
+  const outboundPresence = {
     ...envelope,
     payload: {
       ...payload,
@@ -817,8 +817,8 @@ function handleOperatorPresenceEnvelope(ws: WebSocket, envelope: MessageEnvelope
       trust_source: 'server_derived',
       verification: trustProvenance,
     },
-    trust_status: session.verified ? 'verified' : 'unverified',
   };
+  setEnvelopeVerificationStatus(outboundPresence, session.verified ? 'VERIFIED' : 'STATUS_UNVERIFIED');
 
   operatorPresenceById.set(envelope.from, outboundPresence);
   broadcast(outboundPresence);
@@ -860,10 +860,8 @@ function routeEnvelopeByRecipient(ws: WebSocket, envelope: MessageEnvelope): voi
     return;
   }
 
-  const routedEnvelope: MessageEnvelope = {
-    ...envelope,
-    trust_status: 'verified',
-  };
+  const routedEnvelope: MessageEnvelope = { ...envelope };
+  setEnvelopeVerificationStatus(routedEnvelope, 'VERIFIED');
 
   const recipientSockets = socketsByOperatorId.get(recipientId);
   let delivered = false;
@@ -899,7 +897,7 @@ function handleC2Envelope(ws: WebSocket, envelope: MessageEnvelope): void {
       const heartbeat = createMessageEnvelope('heartbeat', 'gateway', {
         timestamp: Date.now(),
       });
-      heartbeat.trust_status = 'verified';
+      setEnvelopeVerificationStatus(heartbeat, 'STATUS_UNVERIFIED');
       sendWsJson(ws, heartbeat);
       break;
     }
@@ -1007,7 +1005,7 @@ wss.on('connection', (ws: WebSocket) => {
             trustScore: session.trustScore,
             verified: session.verified,
           });
-          offlinePresence.trust_status = session.verified ? 'verified' : 'unverified';
+          setEnvelopeVerificationStatus(offlinePresence, 'STATUS_UNVERIFIED');
           operatorPresenceById.set(session.clientId, offlinePresence);
           broadcast(offlinePresence);
         }
