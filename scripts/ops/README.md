@@ -13,6 +13,11 @@ Normalizes local runtime config files to Commander-local defaults:
 ### `scripts/ops/configure-pi-c2.sh`
 Configures CodeRalphie systemd override on Pi:
 - `C2_WS_URL=ws://<MAC_IP>:3000`
+- `AETHERCORE_PRODUCTION=<0|1>` (default `0` for local/home flow)
+- optional production enrollment wiring:
+  - `ENROLLMENT_URL=<https://.../api/enrollment>`
+  - `ENROLLMENT_CA_CERT_PATH=<pi path>` (default `/etc/coderalphie/ca/enrollment-ca.pem`)
+  - set `PI_ENROLLMENT_CA_CERT_LOCAL_PATH=<local pem path>` to copy CA cert to Pi
 - reloads and restarts `coderalphie`
 
 ### `scripts/ops/check-mac-mesh.sh`
@@ -160,6 +165,12 @@ One-command runner:
 ./scripts/ops/sync-endpoints.sh
 
 # 2) Ensure Pi targets your Mac gateway
+./scripts/ops/configure-pi-c2.sh duskone@192.168.1.125 192.168.1.51
+
+# 2b) Production-mode enrollment wiring (example)
+PI_AETHERCORE_PRODUCTION=1 \
+PI_ENROLLMENT_URL="https://c2.aethercore.local:3000/api/enrollment" \
+PI_ENROLLMENT_CA_CERT_LOCAL_PATH="$HOME/certs/enrollment-ca.pem" \
 ./scripts/ops/configure-pi-c2.sh duskone@192.168.1.125 192.168.1.51
 
 # 3) Validate both ends
