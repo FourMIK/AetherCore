@@ -2,11 +2,38 @@
 
 **Date**: 2026-02-11
 **Branch**: copilot/refactor-docker-build-chains
-**Status**: Completed
+**Status**: Completed (path-scoped hardening)
+
+> **Validation note (2026-02-23):** This document records hardening work that was implemented and validated in specific components/test paths. It is not a blanket statement that every active runtime path (notably desktop gateway + Pi chat ingress) has equivalent enforcement.  
+> See `docs/4MIK_GAP_VALIDATION_2026-02-23.md` for current end-to-end gap status.
 
 ## Overview
 
-This document summarizes the security hardening improvements implemented across the AetherCore platform in accordance with the Fail-Visible doctrine and hardware-rooted trust principles.
+This document summarizes security hardening improvements implemented in selected AetherCore components in accordance with the Fail-Visible doctrine and hardware-rooted trust principles.
+
+## 2026-02-23 Wave 1 Extension (Active Gateway + Pi Chat Path)
+
+Additional hardening implemented after the original 2026-02-11 scope:
+
+- Gateway ingress now performs cryptographic Ed25519 verification before assigning `trust_status='verified'`.
+  - `services/gateway/src/index.ts`
+- Replay defense is enforced at gateway ingress using `nonce`, `sequence`, and `previous_message_id`.
+  - `services/gateway/src/index.ts`
+  - `packages/shared/src/c2-message-schema.ts`
+- Active Pi chat and dashboard C2 clients now use Ed25519 signing/verification (placeholder chat signatures removed).
+  - `agent/linux/src/c2/mesh-client.ts`
+  - `packages/dashboard/src/services/c2/C2Client.ts`
+- HTTP presence ingestion (`/ralphie/presence`) now requires and verifies Ed25519 signatures.
+  - `agent/linux/src/c2/mesh-client.ts`
+  - `services/gateway/src/index.ts`
+- Gateway->C2 gRPC transport now enforces TLS/mTLS policy in production mode.
+  - `services/gateway/src/c2-client.ts`
+- macOS optional sentinel skip is explicit opt-in (fail-closed default for optional mode).
+  - `packages/dashboard/src-tauri/src/lib.rs`
+
+Residual open areas after Wave 1:
+- Server-derived trust scoring semantics for presence.
+- Production-grade enrollment and revocation lifecycle.
 
 ## Vector 1: Infrastructure Hardening (The Iron Shell)
 
@@ -131,8 +158,8 @@ Added 6 new tests to `integrity.rs`:
 **Result**: All 12 integrity tests pass ✅
 
 ### Security Impact
-✅ **Replay Prevention**: Sequence validation prevents packet replays
-✅ **Signature Enforcement**: Only TPM-signed packets accepted
+✅ **Replay Prevention**: Sequence validation prevents packet replays in hardened stream/integration paths
+✅ **Signature Enforcement**: Hardened verification paths reject unauthorized signatures
 ✅ **Attack Detection**: Large gaps and replays logged for analysis
 ✅ **Test Coverage**: Red team tests validate attack resistance
 
@@ -177,7 +204,7 @@ test result: ok. 12 passed; 0 failed; 0 ignored
 | Container Breakout | Non-root + distroless | ✅ Implemented |
 | Supply Chain Attack | Pinned versions | ✅ Implemented |
 | Replay Attack | Sequence ID tracking | ✅ Implemented |
-| Signature Spoofing | TPM-backed Ed25519 | ✅ Verified |
+| Signature Spoofing | Ed25519 verification in hardened c2-router/integration paths | ✅ Verified (path-scoped) |
 | Stale Data Trust | Visual degradation | ✅ Implemented |
 | Unsigned Streams | Signature verification | ✅ Implemented |
 
@@ -238,13 +265,15 @@ test result: ok. 12 passed; 0 failed; 0 ignored
 
 ## Conclusion
 
-All three security hardening vectors have been successfully implemented:
+All three security hardening vectors were successfully implemented for the targeted components:
 
 1. ✅ **Vector 1**: Infrastructure hardened with distroless images and non-root execution
 2. ✅ **Vector 2**: Fail-visible UI prevents trust in compromised data
 3. ✅ **Vector 3**: Replay attacks prevented via sequence validation
 
-The AetherCore platform now adheres to the Fail-Visible doctrine: **security failures are immediately visible, never hidden**.
+Hardened subsystems now adhere to the Fail-Visible doctrine: **security failures are immediately visible, never hidden**.
+
+For current end-to-end parity gaps against the 4MIK trust model, use `docs/4MIK_GAP_VALIDATION_2026-02-23.md` as the source of truth.
 
 ---
 
