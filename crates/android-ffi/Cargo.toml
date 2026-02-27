@@ -1,0 +1,42 @@
+[package]
+name = "aethercore-android-ffi"
+version = "0.2.0"
+edition = "2021"
+authors = ["AetherCore Team"]
+
+[lib]
+name = "aethercore_jni"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Workspace dependencies
+aethercore-core = { path = "../core" }
+aethercore-crypto = { path = "../crypto" }
+aethercore-identity = { path = "../identity" }
+aethercore-stream = { path = "../stream" }
+aethercore-trust-mesh = { path = "../trust_mesh" }
+
+# JNI bridge
+jni = "0.21"
+
+# Async runtime (for daemon)
+tokio = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+
