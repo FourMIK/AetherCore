@@ -1,0 +1,20 @@
+9aa4f33 Merge pull request #257 from FourMIK/copilot/analyze-atak-plugin-status
+f3db845 Add comprehensive documentation index
+6585189 Final documentation and code review fixes
+93a6578 Add comprehensive task documentation and fix JNI warnings
+63eaa2c Add JNI signature verification stub and configuration docs
+f3a2c33 Implement critical ATAK Plugin integration fixes
+49a89c6 Initial plan
+d056f9d Merge pull request #256 from FourMIK/update-gradle-settings-and-dependencies
+6b22bb5 Drop checked-in Gradle wrapper binary
+19f2a8d Merge pull request #255 from FourMIK/set-atak-version-policy-and-validate
+9a3054e Align ATAK compatibility policy to 5.2
+de9b28d Merge pull request #254 from FourMIK/add-jniloaded-flag-and-lifecycle-checks
+521cdff Guard daemon lifecycle assignment on successful startup
+152d716 Merge pull request #253 from FourMIK/implement-standalone-gradle-determinism-for-atak-trust-overl
+7e4ec33 Remove wrapper jar binary from atak-trust-overlay
+2b1a311 Merge pull request #252 from FourMIK/reconcile-atak-version-across-module
+bb2df06 Align ATAK compatibility contract and enforce drift checks
+ae916bc Merge pull request #251 from FourMIK/update-trustoverlaylifecycle-for-reflective-instantiation
+e96cd74 Make TrustOverlayLifecycle reflective-bootstrap friendly
+6e5eca3 Merge pull request #250 from FourMIK/add-jni-loading-checks-and-tests

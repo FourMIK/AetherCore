@@ -1,0 +1,43 @@
+John checklist mapping (DEV=origin/dev, JM=origin/JM-Dev-Branch)
+
+1) configure-pi-c2.sh enrollment wiring
+- Present in JM: yes (907dd54)
+- Present in DEV before sync: no
+- Files: scripts/ops/configure-pi-c2.sh, scripts/ops/check-pi-mesh.sh, scripts/ops/force-pi-presence.sh, scripts/ops/README.md
+- Integrated on sync branch via cherry-pick: 7a38677 (source 907dd54)
+
+2) systemd units (UnsetEnvironment)
+- Present in JM: no explicit delta detected in *.service/systemd paths
+- Present in DEV before sync: no explicit delta detected
+- Files/commits: none detected by focused diff (22_diff_systemd_units.txt empty)
+
+3) presence/heartbeat publisher (RALPHIE_PRESENCE)
+- Present in JM: yes (907dd54 includes force-pi-presence/check-pi-mesh updates)
+- Present in DEV before sync: no
+- Files: scripts/ops/force-pi-presence.sh, scripts/ops/check-pi-mesh.sh, scripts/ops/configure-pi-c2.sh
+- Integrated on sync branch via cherry-pick: 7a38677 (source 907dd54)
+
+4) chat key derivation alignment (dashboard + linux mesh client)
+- Present in JM: yes (a770e92)
+- Present in DEV before sync: no
+- Files: packages/dashboard/src/services/c2/C2Client.ts
+- Integrated on sync branch via cherry-pick: 4e41355 (source a770e92)
+- Note: linux mesh client side remains in JM-only trust commit a47203f and was not cherry-picked in this minimal set.
+
+5) replay-state reset on gateway disconnect/session churn
+- Present in JM: yes (bcfec9f)
+- Present in DEV before sync: no
+- Files: services/gateway/src/index.ts
+- Integrated on sync branch via cherry-pick: f7c1bbe (source bcfec9f)
+
+6) security regression gates (spoof/replay/tamper invariants)
+- Present in JM: yes (376ac94)
+- Present in DEV before sync: no
+- Files: .github/workflows/ci.yml, services/gateway/src/__tests__/security-regression.integration.test.ts, services/gateway/package.json
+- Integrated on sync branch via cherry-pick: 1143f3f (source 376ac94)
+
+7) bringup/ops robustness (SSH ControlMaster fallback, dev-stack fallback, pi/heltec checks)
+- Present in JM: yes (907dd54, 89244e3)
+- Present in DEV before sync: no
+- Files: scripts/ops/configure-pi-c2.sh, scripts/ops/check-pi-mesh.sh, scripts/ops/force-pi-presence.sh, scripts/ops/clean-restart-app.sh
+- Integrated on sync branch via cherry-pick: 7a38677 (source 907dd54), d1f96af (source 89244e3)

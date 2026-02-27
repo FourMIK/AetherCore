@@ -1,0 +1,11 @@
+907dd54 feat(ops): add production enrollment wiring and harden Pi mesh bringup
+89244e3 fix(ops): support dev-stack fallback in clean-restart-app
+376ac94 test(security): add CI regression gates for spoof/replay/tamper invariants
+a47203f feat(trust): unify C2 envelope verification semantics across shared/gateway/dashboard/agent
+b75de49 feat(trust): enforce distributed revocation in gateway and onboarding flow
+415a783 test(agent/linux): add onboarding enrollment service integration coverage
+d43b27b Merge pull request #259 from FourMIK/integrate/field-test-clean
+bcfec9f Reset sender replay state when final operator socket disconnects
+a770e92 Align dashboard chat ECDH key derivation with mesh client SHA-256 KDF
+3950b47 Remove accidental artifacts and restore mock C2 server entrypoint
+1fb32a1 Integrate field-test snapshot onto JM-Dev-Branch baseline

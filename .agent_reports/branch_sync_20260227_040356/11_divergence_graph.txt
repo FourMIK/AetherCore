@@ -1,0 +1,274 @@
+> 907dd54 (origin/JM-Dev-Branch) feat(ops): add production enrollment wiring and harden Pi mesh bringup
+> 89244e3 fix(ops): support dev-stack fallback in clean-restart-app
+> 376ac94 test(security): add CI regression gates for spoof/replay/tamper invariants
+> a47203f feat(trust): unify C2 envelope verification semantics across shared/gateway/dashboard/agent
+> b75de49 feat(trust): enforce distributed revocation in gateway and onboarding flow
+> 415a783 test(agent/linux): add onboarding enrollment service integration coverage
+> d43b27b Merge pull request #259 from FourMIK/integrate/field-test-clean
+> bcfec9f Reset sender replay state when final operator socket disconnects
+> a770e92 Align dashboard chat ECDH key derivation with mesh client SHA-256 KDF
+> 3950b47 Remove accidental artifacts and restore mock C2 server entrypoint
+> 1fb32a1 Integrate field-test snapshot onto JM-Dev-Branch baseline
+<   9aa4f33 (HEAD -> work, origin/dev) Merge pull request #257 from FourMIK/copilot/analyze-atak-plugin-status
+|\  
+| < f3db845 Add comprehensive documentation index
+| < 6585189 Final documentation and code review fixes
+| < 93a6578 Add comprehensive task documentation and fix JNI warnings
+| < 63eaa2c Add JNI signature verification stub and configuration docs
+| < f3a2c33 Implement critical ATAK Plugin integration fixes
+| < 49a89c6 Initial plan
+|/  
+<   d056f9d Merge pull request #256 from FourMIK/update-gradle-settings-and-dependencies
+|\  
+| < 6b22bb5 Drop checked-in Gradle wrapper binary
+|/  
+<   19f2a8d Merge pull request #255 from FourMIK/set-atak-version-policy-and-validate
+|\  
+| < 9a3054e Align ATAK compatibility policy to 5.2
+|/  
+<   de9b28d Merge pull request #254 from FourMIK/add-jniloaded-flag-and-lifecycle-checks
+|\  
+| < 521cdff Guard daemon lifecycle assignment on successful startup
+|/  
+<   152d716 Merge pull request #253 from FourMIK/implement-standalone-gradle-determinism-for-atak-trust-overl
+|\  
+| < 7e4ec33 Remove wrapper jar binary from atak-trust-overlay
+|/  
+<   2b1a311 Merge pull request #252 from FourMIK/reconcile-atak-version-across-module
+|\  
+| < bb2df06 Align ATAK compatibility contract and enforce drift checks
+|/  
+<   ae916bc Merge pull request #251 from FourMIK/update-trustoverlaylifecycle-for-reflective-instantiation
+|\  
+| < e96cd74 Make TrustOverlayLifecycle reflective-bootstrap friendly
+|/  
+<   6e5eca3 Merge pull request #250 from FourMIK/add-jni-loading-checks-and-tests
+|\  
+| < 5be7993 Handle missing JNI library in Ralphie daemon gracefully
+|/  
+<   67503e2 Merge pull request #249 from FourMIK/modify-ralphienodedaemon-for-jni-loading-safety
+|\  
+| < a5512af Guard Ralphie daemon when JNI library is unavailable
+< |   6c46ad0 Merge pull request #240 from FourMIK/add-atak-sdk-dependencies-in-atak-trust-overlay
+|\ \  
+| |/  
+|/|   
+| <   eadba2c Merge branch 'dev' into add-atak-sdk-dependencies-in-atak-trust-overlay
+| |\  
+| |/  
+|/|   
+< |   ba234f1 Merge pull request #248 from FourMIK/update-settings.gradle.kts-for-plugins-management
+|\ \  
+| < | 7039e2c Configure standalone Gradle plugin/dependency management for ATAK overlay
+|/ /  
+< |   4328dfa Merge pull request #247 from FourMIK/remove-unversioned-stdlib-dependency
+|\ \  
+| < | 318727d Remove explicit Kotlin stdlib dependency in ATAK plugin
+|/ /  
+< |   136bfd5 Merge pull request #246 from FourMIK/add-android-studio-setup-documentation
+|\ \  
+| < | 6463aa1 docs(atak-trust-overlay): add Android Studio import/sync guide
+|/ /  
+< |   389fcc0 Merge pull request #245 from FourMIK/update-legal-status-and-documentation
+|\ \  
+| < | 4f4ae6d Clarify SDK offline manifest legal approval requirements
+|/ /  
+< |   fdab9f2 Merge pull request #244 from FourMIK/update-atak.required.artifacts-configuration
+|\ \  
+| < | 2a832b7 Align ATAK SDK artifact contract with main.jar
+|/ /  
+< |   5744a6d Merge pull request #243 from FourMIK/align-atak-baseline-across-files
+|\ \  
+| < | 567202a Align ATAK baseline metadata to 4.6.0.5
+|/ /  
+< |   4d741ce Merge pull request #242 from FourMIK/build-main.jar-and-update-checksum-artifacts
+|\ \  
+| < | 2ed73e6 Add SDK offline manifest artifacts and enforce checksum verification
+|/ /  
+< |   f5fc4af Merge pull request #241 from FourMIK/add-jni-dependency-setup-instructions
+|\ \  
+| < | 8ce5197 Add local aethercore JNI crate scaffold and troubleshooting
+|/ /  
+| < badb597 Add ATAK SDK preflight and prerequisites docs
+|/  
+<   e83eaf3 Merge pull request #239 from FourMIK/create-validation-and-operations-coverage
+|\  
+| < 5f78cc7 Add Android SE validation coverage, readiness probe, and rollout docs
+< |   fb06685 Merge pull request #238 from FourMIK/create-validation-and-operations-coverage
+|\ \  
+| |/  
+|/|   
+| < 3966cda Add Android SE validation coverage, readiness probe, and rollout docs
+|/  
+<   5219186 Merge pull request #237 from FourMIK/update-dashboard-for-android-attestation-health
+|\  
+| < 7f9135f Add Android attestation health plumbing and dashboard status UI
+|/  
+<   b51cb5e Merge pull request #236 from FourMIK/update-config-and-runtime-contracts
+|\  
+| < e71b008 Add backend-aware attestation policy and Android probe contracts
+|/  
+<   a1a6c51 Merge pull request #235 from FourMIK/implement-policy-decisions-in-trust-scoring
+|\  
+| < 7412bb3 Add deterministic identity trust policy tiers and reason codes
+|/  
+<   bdd972e Merge pull request #234 from FourMIK/add-android-attestation-verification
+|\  
+| < 5a4b381 Add Android attestation verification pipeline
+|/  
+<   909adc7 Merge pull request #233 from FourMIK/enhance-keymanager-with-new-features
+|\  
+| < 84dff2d Add challenge signing and key provenance to Android enrollment evidence
+|/  
+<   8afb1e0 Merge pull request #232 from FourMIK/implement-android-keystore-module
+|\  
+| < c2e8db7 Add Android keystore attestation backend and variant support
+|/  
+<   e36f502 Merge pull request #231 from FourMIK/tighten-marker-event-routing-logic
+|\  
+| < 0efc560 Tighten trust marker tap filtering
+|/  
+<   336de2a Merge pull request #230 from FourMIK/align-icon-rendering-for-determinism
+|\  
+| < 8d3c2e5 Replace binary trust icons with text drawable resources
+|/  
+<   202d3cd Merge pull request #229 from FourMIK/update-cmakelists.txt-and-plugin-docs
+|\  
+| < 61570a3 Harden ATAK JNI crate path and preflight checks
+|/  
+<   9d1e945 Merge pull request #228 from FourMIK/audit-and-standardize-startup-mechanisms
+|\  
+| < a69e1dc standardize ATAK trust overlay startup on lifecycle entry
+|/  
+<   fa9c5bb Merge pull request #227 from FourMIK/refactor-atakcotbus-for-async-handling
+|\  
+| < 4548355 Refactor CoT bind retries to async scheduling
+|/  
+<   43f0777 Merge pull request #226 from FourMIK/refactor-trusteventparser-to-avoid-global-state
+|\  
+| < e7be0a0 Refactor TrustEventParser state to be instance-scoped
+|/  
+<   2bc7495 Merge pull request #225 from FourMIK/reconcile-documentation-and-parser-implementation
+|\  
+| < 0cc88e9 Align trust CoT schema and parser thresholds and trust_level rules
+|/  
+<   2bea853 Merge pull request #223 from FourMIK/update-trustdetailpanelcontroller-functionality
+|\  
+| <   77c3898 Merge pull request #224 from FourMIK/copilot/sub-pr-223
+| |\  
+| | < 83afb4f Add dismiss callback to clear activeMarkerId when panel is closed
+| | < 70fd40b Initial plan
+| |/  
+| < a8c209d Add trust detail panel fragment presentation and refresh logic
+|/  
+<   101c6c9 Merge pull request #222 from FourMIK/replace-unsupportedmarkertapbus-with-atak-implementation
+|\  
+| < 87c9205 Add ATAK-backed marker tap bus adapter
+|/  
+<   1cc368f Merge pull request #221 from FourMIK/implement-atak-bindings-in-atakuiadapters
+|\  
+| < f8ced49 Implement ATAK marker/widget adapters with artifact cache
+|/  
+<   66c2a55 Merge pull request #220 from FourMIK/fix-task-1.2-plugin-lifecycle-binding
+|\  
+| < f2364dd Wire trust overlay lifecycle to ATAK runtime primitives
+|/  
+<   23f9e83 Merge pull request #219 from FourMIK/implement-atak-trust-overlay-for-field-testing
+|\  
+| < 8260c45 atak trust overlay: wire apk build, cmake rust bridge, and lifecycle daemon
+|/  
+<   d08e4fb Merge pull request #218 from FourMIK/add-test-suites-for-atak-plugin-module
+|\  
+| < 1e00dc3 Add ATAK trust plugin parser/store fixture-backed tests
+|/  
+<   ee12a02 Merge pull request #217 from FourMIK/build-ui-components-for-atak-plugin
+|\  
+| < 2e66ecf Enhance ATAK trust overlay rendering and event health visibility
+|/  
+<   90bcfd3 Merge pull request #216 from FourMIK/implement-truststatestore-in-atak-plugin
+|\  
+| < a0f0970 Implement TrustStateStore TTL and stale/feed health handling
+|/  
+<   e4cc5f2 Merge pull request #215 from FourMIK/implement-trusteventparser-with-validation
+|\  
+| < 3ba6df3 Implement deterministic TrustEventParser with validation gates
+|/  
+<   c62a3e7 Merge pull request #214 from FourMIK/add-schema-document-for-trust-events
+|\  
+| < 2fbfbfd Add ATAK trust CoT schema doc and XML fixtures
+|/  
+<   b1cd950 Merge pull request #213 from FourMIK/create-new-android-atak-plugin-module
+|\  
+| < 4d8b023 Add ATAK trust overlay plugin module scaffold
+|/  
+< b98009f Merge pull request #212 from FourMIK/John-Dev
+<   5edae70 Merge pull request #211 from FourMIK/update-signingdigestssha256-for-api-compatibility
+|\  
+| < 25e9ac5 Handle pre-API33 signing digest lookup safely
+|/  
+<   f09ba76 Merge pull request #210 from FourMIK/add-integration-layer-for-signedtakpayload
+|\  
+| < 38a6d87 Add deterministic TAK external transport contract and consumer example
+|/  
+< 950aaca Add files via upload
+< 096cc9e Add files via upload
+< 3344510 Add files via upload
+< 48b5226 Add files via upload
+< 0849719 Add files via upload
+< 1aaa738 Add files via upload
+< a407de8 Add files via upload
+< b9dc84b Add files via upload
+< 33f39f1 Add files via upload
+< f4ab9d3 field test
+< 81fea1f Add files via upload
+< 183e07c Field 0.2 Feedback
+<   03814a7 Merge pull request #209 from FourMIK/add-plugin-ui-elements-and-tests
+|\  
+| <   35a8382 Merge branch 'dev' into add-plugin-ui-elements-and-tests
+| |\  
+| |/  
+|/|   
+< |   dfea032 Merge pull request #208 from FourMIK/add-plugin-ui-elements-and-tests
+|\ \  
+| < | 20f1389 Add trust/integrity overlays and state snapshots for AethericSweep
+|/ /  
+| < 47221ee Minimize AethericSweep default UI and gate deep integrity details
+|/  
+<   effe012 Merge pull request #207 from FourMIK/implement-aidl-for-snapshot-stream-events
+|\  
+| < 94e8903 Add secure Binder IPC contract for snapshot stream and status events
+|/  
+<   6723cdb Merge pull request #205 from FourMIK/implement-android-enrollment-client-sequence
+|\  
+| < c7999cc Add Android hello/prove enrollment client and startup gating
+< |   1ba88d4 Merge pull request #206 from FourMIK/define-failure-classes-and-implement-red-mode
+|\ \  
+| |/  
+|/|   
+| < c9ae079 Add fail-visible red mode to enrollment state machine
+|/  
+<   35dca29 Merge pull request #204 from FourMIK/add-android-key-management-module-and-tests
+|\  
+| < 01502c8 Add Android enrollment key manager with StrongBox fallback
+|/  
+<   9c59568 Merge pull request #203 from FourMIK/add-signing-abstraction-to-tak-bridge
+|\  
+| < 05ec17e tak-bridge: harden canonical signing input determinism
+|/  
+<   7ed447f Merge pull request #202 from FourMIK/define-shared-schema-for-mesh-health
+|\  
+| < 51496ab Add shared mesh event schema for TAK bridge and websocket
+|/  
+<   79de5ba Merge pull request #201 from FourMIK/map-nodehealthstatus-to-mesh_integrity
+|\  
+| < 26a7b7a tak-bridge: enforce stale health as unknown mesh integrity
+|/  
+<   b5a4f8a Merge pull request #200 from FourMIK/update-trust-score-handling-in-tak-export
+|\  
+| < b00dd32 Separate TAK mesh trust from telemetry trust metadata
+|/  
+<   36bae5f Merge pull request #199 from FourMIK/add-taknodesnapshot-struct-and-related-features
+|\  
+| < 836e1f9 Add tak-bridge snapshot model and mapping helper
+|/  
+< 1c131b4 aws fixes
