@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.aethercore.security"
-    compileSdk = 34
+    compileSdk = 33
 
     defaultConfig {
         minSdk = 28
@@ -19,6 +19,11 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    buildFeatures {
+        // Temporarily disabled due to jlink issue with JDK 21
+        aidl = false
     }
 
     testOptions {

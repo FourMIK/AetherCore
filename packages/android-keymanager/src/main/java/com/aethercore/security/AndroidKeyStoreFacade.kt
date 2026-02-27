@@ -29,13 +29,23 @@ class AndroidKeyStoreFacade : KeyStoreFacade {
         val keyInfo = KeyFactory.getInstance(privateKey.algorithm, provider)
             .getKeySpec(privateKey, KeyInfo::class.java)
 
-        val level = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && keyInfo.isStrongBoxBacked) {
+        @Suppress("NewApi")  // minSdk is 28, this is safe
+        val level = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && isStrongBoxBacked(keyInfo)) {
             SecurityLevel.STRONGBOX
         } else {
             SecurityLevel.TRUSTED_ENVIRONMENT
         }
 
         return KeyReference(alias = alias, securityLevel = level, attestationCertificateChainDer = certs)
+    }
+
+    private fun isStrongBoxBacked(keyInfo: KeyInfo): Boolean {
+        return try {
+            val method = keyInfo.javaClass.getMethod("isStrongBoxBacked")
+            method.invoke(keyInfo) as? Boolean ?: false
+        } catch (e: Exception) {
+            false
+        }
     }
 
     override fun generateKey(alias: String, useStrongBox: Boolean, challenge: ByteArray): KeyReference {

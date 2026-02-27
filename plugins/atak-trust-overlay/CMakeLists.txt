@@ -36,13 +36,10 @@ if(NOT CARGO_NDK_RESULT EQUAL 0)
     )
 endif()
 
+# Build the Rust library using cargo-ndk
 add_custom_target(cargo_build_aethercore ALL
     COMMAND ${CARGO_BIN} ndk -t ${ANDROID_ABI} -o ${CMAKE_CURRENT_SOURCE_DIR}/src/main/jniLibs build --release
     WORKING_DIRECTORY ${RUST_DIR}
+    COMMENT "Building Rust JNI library with cargo-ndk for ${ANDROID_ABI}"
 )
 
-add_library(aethercore_jni SHARED IMPORTED GLOBAL)
-set_target_properties(aethercore_jni PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/src/main/jniLibs/${ANDROID_ABI}/libaethercore_jni.so
-)
-add_dependencies(aethercore_jni cargo_build_aethercore)

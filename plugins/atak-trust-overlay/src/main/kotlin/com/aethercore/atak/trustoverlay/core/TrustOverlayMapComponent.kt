@@ -1,5 +1,7 @@
 package com.aethercore.atak.trustoverlay.core
 
+import android.content.Context
+import android.content.Intent
 import com.aethercore.atak.trustoverlay.atak.AtakMapComponent
 import com.aethercore.atak.trustoverlay.atak.PluginContext
 import com.aethercore.atak.trustoverlay.atak.Subscription
@@ -7,6 +9,7 @@ import com.aethercore.atak.trustoverlay.cot.TrustCoTSubscriber
 import com.aethercore.atak.trustoverlay.map.TrustMarkerRenderer
 import com.aethercore.atak.trustoverlay.ui.TrustDetailPanelController
 import com.aethercore.atak.trustoverlay.widget.TrustFeedHealthWidgetController
+import com.atakmap.android.maps.MapView
 
 class TrustOverlayMapComponent : AtakMapComponent {
     private var cotSubscriber: TrustCoTSubscriber? = null
