@@ -14,7 +14,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 /// Genesis message from newly flashed device
 #[derive(Debug, Clone, Serialize, Deserialize)]

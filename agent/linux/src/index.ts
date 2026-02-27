@@ -11,34 +11,11 @@ import { LinuxIdentityAgent } from './identity';
 import { startEnrollment, getDeviceIdentity } from './integration/onboarding';
 import { getStatusIndicator } from './ui/status-indicator';
 import { getConfigManager } from './device-management/configManager';
-import type { RalphieConfig } from './bootstrap/configValidator';
-import { MeshClient } from './c2/mesh-client';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as readline from 'node:readline';
 
 const KEYS_DIR = '/etc/coderalphie/keys';
 const IDENTITY_FILE = path.join(KEYS_DIR, 'identity.json');
-
-function buildMeshEndpoint(config: Readonly<RalphieConfig>): string {
-  const explicitEndpoint = process.env.C2_WS_URL?.trim();
-  if (explicitEndpoint) {
-    return explicitEndpoint;
-  }
-
-  const server = config.c2.server.trim().replace(/\/+$/, '');
-
-  if (server.startsWith('ws://') || server.startsWith('wss://')) {
-    const normalized = new URL(server);
-    if (!normalized.port) {
-      normalized.port = String(config.c2.port);
-    }
-    return normalized.toString();
-  }
-
-  const scheme = config.c2.use_wss ? 'wss' : 'ws';
-  return `${scheme}://${server}:${config.c2.port}`;
-}
 
 /**
  * Genesis mode - Generate keys and output IdentityBlock JSON
@@ -147,168 +124,39 @@ async function main() {
       console.log(`[Bootstrap]   Trust Score: ${identity.trust_score}`);
     }
     
-    const meshEndpoint = buildMeshEndpoint(config);
-    const autoReplyEnabled = process.env.CODERALPHIE_AUTO_REPLY === '1';
-    const interactiveInputEnabled =
-      process.stdin.isTTY && process.env.CODERALPHIE_CHAT_STDIN !== '0';
-    let lastChatOperator: string | null = null;
-    let chatConsole: readline.Interface | null = null;
-
-    const meshClient = new MeshClient({
-      endpoint: meshEndpoint,
-      identity: {
-        device_id: identity.device_id,
-        public_key: identity.public_key,
-        hardware_serial: identity.hardware_serial,
-        certificate_serial: identity.certificate_serial,
-        trust_score: identity.trust_score,
-        enrolled_at: identity.enrolled_at,
-        tpm_backed: identity.tpm_backed,
-      },
-      reconnectIntervalMs: config.c2.reconnect_interval_ms,
-      maxReconnectIntervalMs: Math.max(config.c2.reconnect_interval_ms * 12, 30000),
-      heartbeatIntervalMs: 30000,
-      connectTimeoutMs: 10000,
-      onConnected: async () => {
-        await statusIndicator.setSolidGreen();
-      },
-      onDisconnected: async (reason) => {
-        console.warn(`[Bootstrap] Mesh link down: ${reason}`);
-        await statusIndicator.setSlowBlinkingRed();
-      },
-      onChatMessage: async (message) => {
-        lastChatOperator = message.from;
-        const trustLabel = message.verified ? 'verified' : 'unverified';
-        const ts = message.timestamp.toISOString();
-        console.log(`[Comms] [${ts}] ${message.from} -> ${identity.device_id} (${trustLabel})`);
-        console.log(`[Comms] ${message.content}`);
-
-        if (autoReplyEnabled) {
-          const reply = `ACK ${message.id}: message received by ${identity.device_id}`;
-          await meshClient.sendChatMessage(message.from, reply);
-          console.log(`[Comms] Auto-reply sent to ${message.from}`);
-        }
-      },
-    });
-
     console.log('');
     console.log('[Bootstrap] ✓ Device is operational');
-    console.log(`[Bootstrap] Connecting to C2 mesh at ${meshEndpoint} ...`);
-    meshClient.start();
-
+    console.log('[Bootstrap] Connecting to C2 mesh...');
+    
+    // TODO: Connect to C2 mesh (integrate with existing mesh code)
+    // This would call the connect_to_mesh functionality
+    
     console.log('[Bootstrap] ✓ Bootstrap complete');
     console.log('');
     console.log('='.repeat(64));
     console.log('CodeRalphie is now operational and ready to receive commands.');
     console.log('='.repeat(64));
-
-    if (autoReplyEnabled) {
-      console.log('[Comms] Auto-reply mode enabled (CODERALPHIE_AUTO_REPLY=1)');
-    }
-
-    if (interactiveInputEnabled) {
-      chatConsole = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-        terminal: true,
-      });
-
-      console.log('[Comms] Interactive chat enabled.');
-      console.log('[Comms] Commands:');
-      console.log('  /to <operator-id> <message>');
-      console.log('  /reply <message>');
-      console.log('  /last');
-      console.log('  /help');
-      console.log('');
-
-      chatConsole.on('line', (line) => {
-        void (async () => {
-          const trimmed = line.trim();
-          if (!trimmed) {
-            return;
-          }
-
-          if (trimmed === '/help') {
-            console.log('[Comms] /to <operator-id> <message> | /reply <message> | /last | /help');
-            return;
-          }
-
-          if (trimmed === '/last') {
-            console.log(`[Comms] last_operator=${lastChatOperator || 'none'}`);
-            return;
-          }
-
-          if (trimmed.startsWith('/to ')) {
-            const parts = trimmed.split(/\s+/, 3);
-            if (parts.length < 3) {
-              console.log('[Comms] Usage: /to <operator-id> <message>');
-              return;
-            }
-            const recipientId = parts[1];
-            const content = trimmed.slice(5 + recipientId.length).trim();
-            if (!content) {
-              console.log('[Comms] Message cannot be empty');
-              return;
-            }
-            await meshClient.sendChatMessage(recipientId, content);
-            console.log(`[Comms] Sent -> ${recipientId}`);
-            return;
-          }
-
-          if (trimmed.startsWith('/reply ')) {
-            if (!lastChatOperator) {
-              console.log('[Comms] No previous operator to reply to');
-              return;
-            }
-            const content = trimmed.slice('/reply '.length).trim();
-            if (!content) {
-              console.log('[Comms] Message cannot be empty');
-              return;
-            }
-            await meshClient.sendChatMessage(lastChatOperator, content);
-            console.log(`[Comms] Reply sent -> ${lastChatOperator}`);
-            return;
-          }
-
-          if (!lastChatOperator) {
-            console.log('[Comms] No active operator. Use /to <operator-id> <message>');
-            return;
-          }
-          await meshClient.sendChatMessage(lastChatOperator, trimmed);
-          console.log(`[Comms] Sent -> ${lastChatOperator}`);
-        })().catch((error) => {
-          console.error('[Comms] Failed to send message:', error);
-        });
-      });
-    } else {
-      console.log('[Comms] Interactive chat disabled (no TTY or CODERALPHIE_CHAT_STDIN=0)');
-    }
     
     // Keep process alive
     process.on('SIGINT', () => {
       console.log('\n[Bootstrap] Shutting down gracefully...');
-      meshClient.stop();
-      if (chatConsole) {
-        chatConsole.close();
-      }
       statusIndicator.cleanup();
       process.exit(0);
     });
     
     process.on('SIGTERM', () => {
       console.log('\n[Bootstrap] Terminating...');
-      meshClient.stop();
-      if (chatConsole) {
-        chatConsole.close();
-      }
       statusIndicator.cleanup();
       process.exit(0);
     });
     
-    // Enter main event loop while mesh client manages transport lifecycle.
+    // Enter main event loop (in production, this would be the mesh client)
     console.log('[Bootstrap] Entering main event loop...');
-
-    // Process stays alive via mesh transport timers and socket callbacks.
+    
+    // Simulate operation (in production, this would be the actual mesh logic)
+    setInterval(() => {
+      // Heartbeat or health check
+    }, 60000);
     
   } catch (error) {
     console.error('[Bootstrap] FATAL ERROR:', error);

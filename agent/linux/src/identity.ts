@@ -38,35 +38,18 @@ export class LinuxIdentityAgent {
    */
   async getHardwareId(): Promise<string> {
     try {
-      // Prefer the default-route interface, then fall back to the first
-      // non-loopback interface.
-      let preferredIface = '';
-      try {
-        const { stdout } = await execAsync("ip route show default | awk '{print $5; exit}'");
-        preferredIface = stdout.trim();
-      } catch {
-        preferredIface = '';
+      // Get MAC address of primary interface (eth0, wlan0, or first available)
+      const { stdout } = await execAsync(
+        "ip link show | grep -E 'eth0|wlan0' | head -1 | awk '/link\\/ether/ {print $2}' || " +
+        "cat /sys/class/net/$(ls /sys/class/net | grep -v lo | head -1)/address"
+      );
+      const mac = stdout.trim().toUpperCase();
+      
+      if (!mac || mac.length === 0) {
+        throw new Error('Failed to retrieve MAC address');
       }
-
-      const ifaceCandidates = preferredIface
-        ? [preferredIface]
-        : ((await fs.readdir('/sys/class/net')).filter((name) => name !== 'lo'));
-
-      for (const iface of ifaceCandidates) {
-        if (!iface) continue;
-        const addrPath = `/sys/class/net/${iface}/address`;
-        try {
-          const raw = await fs.readFile(addrPath, 'utf-8');
-          const mac = raw.trim().toUpperCase();
-          if (mac && mac !== '00:00:00:00:00:00') {
-            return mac;
-          }
-        } catch {
-          // Try next candidate interface.
-        }
-      }
-
-      throw new Error('Failed to retrieve MAC address from /sys/class/net');
+      
+      return mac;
     } catch (error) {
       throw new Error(`Failed to get hardware ID: ${error}`);
     }

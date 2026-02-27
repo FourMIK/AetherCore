@@ -5,16 +5,8 @@
  */
 
 import { create } from 'zustand';
-import {
-  C2Client,
-  C2State,
-  type C2ClientConfig,
-  type C2ClientStatus,
-  type RalphiePresenceFrame,
-  type SystemStatusFrame,
-} from '../services/c2/C2Client';
-import { isEnvelopeVerified, type MessageEnvelope } from '@aethercore/shared';
-import { useTacticalStore } from './useTacticalStore';
+import { C2Client, C2State, type C2ClientConfig, type C2ClientStatus } from '../services/c2/C2Client';
+import type { MessageEnvelope } from '@aethercore/shared';
 
 export type OperatorRole = 'operator' | 'commander' | 'admin';
 export type ConnectionStatus =
@@ -24,7 +16,6 @@ export type ConnectionStatus =
   | 'unverified'
   | 'severed';
 export type ConnectionState = 'connected' | 'intermittent' | 'disconnected';
-export type BackendCoreStatus = 'connected' | 'unreachable' | 'unknown';
 
 export interface Operator {
   id: string;
@@ -57,134 +48,6 @@ export interface VideoCall {
   endTime?: Date;
 }
 
-function clampTrustScorePercent(score: number | undefined, fallback = 50): number {
-  if (typeof score !== 'number' || !Number.isFinite(score)) {
-    return fallback;
-  }
-
-  if (score <= 1) {
-    return Math.max(0, Math.min(100, Math.round(score * 100)));
-  }
-
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
-
-function normalizeOperatorStatus(status: unknown): Operator['status'] {
-  if (status === 'online' || status === 'offline' || status === 'busy' || status === 'away') {
-    return status;
-  }
-  return 'online';
-}
-
-function formatOperatorName(operatorId: string): string {
-  const compact = operatorId.replace(/^operator-/, '');
-  return compact.length > 20 ? `${compact.slice(0, 18)}...` : compact;
-}
-
-function deriveNodePosition(nodeId: string) {
-  let hash = 0;
-  for (let i = 0; i < nodeId.length; i += 1) {
-    hash = (hash * 31 + nodeId.charCodeAt(i)) >>> 0;
-  }
-
-  const latOffset = ((hash % 2000) - 1000) / 10000; // +/- 0.1
-  const lonOffset = (((hash >> 11) % 2000) - 1000) / 10000; // +/- 0.1
-  return {
-    latitude: 37.7749 + latOffset,
-    longitude: -122.4194 + lonOffset,
-    altitude: 0,
-  };
-}
-
-function toFiniteNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function deriveTelemetryPosition(frame: RalphiePresenceFrame) {
-  const gps = frame.telemetry?.gps;
-  if (!gps) {
-    return null;
-  }
-
-  const latitude = toFiniteNumber(gps.lat) ?? toFiniteNumber(gps.latitude);
-  const longitude = toFiniteNumber(gps.lon) ?? toFiniteNumber(gps.longitude);
-  if (latitude === undefined || longitude === undefined) {
-    return null;
-  }
-  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-    return null;
-  }
-
-  return {
-    latitude,
-    longitude,
-    altitude: toFiniteNumber(gps.alt_m) ?? toFiniteNumber(gps.altitude_m) ?? 0,
-  };
-}
-
-function deriveNodeStatus(frame: RalphiePresenceFrame): 'online' | 'offline' | 'degraded' {
-  const disconnectReason = (frame.last_disconnect_reason || '').toLowerCase();
-  if (
-    disconnectReason.includes('unreachable') ||
-    disconnectReason.includes('refused') ||
-    disconnectReason.includes('timeout')
-  ) {
-    return 'degraded';
-  }
-
-  const batteryPct = frame.telemetry?.power?.battery_pct;
-  if (typeof batteryPct === 'number' && batteryPct <= 10) {
-    return 'degraded';
-  }
-
-  const snrCandidates = [frame.telemetry?.radio?.snr_db, frame.telemetry?.radio?.lora_snr_db]
-    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-  if (snrCandidates.length > 0 && Math.max(...snrCandidates) < -18) {
-    return 'degraded';
-  }
-
-  return 'online';
-}
-
-function upsertRalphieNode(frame: RalphiePresenceFrame): void {
-  const tacticalStore = useTacticalStore.getState();
-  const nodeId = frame.identity.device_id;
-  const trustScore = Math.max(0, Math.min(100, Math.round(frame.identity.trust_score * 100)));
-  const lastSeen = new Date(frame.received_at ?? frame.timestamp ?? Date.now());
-  const telemetryPosition = deriveTelemetryPosition(frame);
-  const status = deriveNodeStatus(frame);
-  const domain = (() => {
-    try {
-      return new URL(frame.endpoint).hostname;
-    } catch {
-      return 'ralphie-edge';
-    }
-  })();
-
-  const existing = tacticalStore.nodes.get(nodeId);
-  if (existing) {
-    tacticalStore.updateNode(nodeId, {
-      domain,
-      trustScore,
-      verified: frame.identity.tpm_backed,
-      status,
-      lastSeen,
-      position: telemetryPosition ?? existing.position,
-    });
-    return;
-  }
-
-  tacticalStore.addNode({
-    id: nodeId,
-    domain,
-    position: telemetryPosition ?? deriveNodePosition(nodeId),
-    trustScore,
-    verified: frame.identity.tpm_backed,
-    lastSeen,
-    status,
-  });
-}
-
 interface CommState {
   currentOperator: Operator | null;
   operators: Map<string, Operator>;
@@ -194,13 +57,11 @@ interface CommState {
   connectionStatus: ConnectionStatus;
   connectionState: ConnectionState; // For UI degradation (Heartbeat Sentinel)
   c2State: C2State; // C2 client state
-  backendCoreStatus: BackendCoreStatus; // Gateway -> core backend health
   c2Client: C2Client | null; // C2 client instance
 
   // Actions
   setCurrentOperator: (operator: Operator) => void;
   addOperator: (operator: Operator) => void;
-  upsertOperator: (operator: Operator) => void;
   updateOperatorStatus: (operatorId: string, status: Operator['status']) => void;
   sendMessage: (to: string, content: string) => Promise<void>;
   receiveMessage: (message: Message) => void;
@@ -227,7 +88,6 @@ export const useCommStore = create<CommState>((set, get) => ({
   connectionStatus: 'disconnected',
   connectionState: 'disconnected',
   c2State: 'IDLE',
-  backendCoreStatus: 'unknown',
   c2Client: null,
 
   setCurrentOperator: (operator) => set({ currentOperator: operator }),
@@ -236,14 +96,6 @@ export const useCommStore = create<CommState>((set, get) => ({
     set((state) => {
       const operators = new Map(state.operators);
       operators.set(operator.id, operator);
-      return { operators };
-    }),
-
-  upsertOperator: (operator) =>
-    set((state) => {
-      const operators = new Map(state.operators);
-      const existing = operators.get(operator.id);
-      operators.set(operator.id, existing ? { ...existing, ...operator } : operator);
       return { operators };
     }),
 
@@ -301,7 +153,7 @@ export const useCommStore = create<CommState>((set, get) => ({
         timestamp: new Date(),
         verified: false,
         encrypted: false,
-        signature: undefined,
+        signature: 'placeholder:local-only',
       };
 
       set((state) => {
@@ -364,7 +216,6 @@ export const useCommStore = create<CommState>((set, get) => ({
       if (state.c2Client && state.c2State === 'CONNECTED') {
         state.c2Client.sendMessage('call_accept', {
           callId,
-          recipientId: state.activeCall?.initiator ?? state.incomingCall.initiator,
         }).catch((error) => {
           console.error('[COMM] Failed to send call acceptance:', error);
         });
@@ -380,7 +231,6 @@ export const useCommStore = create<CommState>((set, get) => ({
     if (state.c2Client && state.c2State === 'CONNECTED') {
       state.c2Client.sendMessage('call_reject', {
         callId,
-        recipientId: state.incomingCall?.initiator,
       }).catch((error) => {
         console.error('[COMM] Failed to send call rejection:', error);
       });
@@ -398,12 +248,8 @@ export const useCommStore = create<CommState>((set, get) => ({
 
       // Send end via C2
       if (state.c2Client && state.c2State === 'CONNECTED') {
-        const recipientId = state.activeCall.participants.find(
-          (participantId) => participantId !== state.currentOperator?.id,
-        );
         state.c2Client.sendMessage('call_end', {
           callId,
-          recipientId,
         }).catch((error) => {
           console.error('[COMM] Failed to send call end:', error);
         });
@@ -425,22 +271,12 @@ export const useCommStore = create<CommState>((set, get) => ({
 
   // C2 Client Management
   initC2Client: (endpoint, clientId) => {
-    const isLocalEndpoint = (() => {
-      try {
-        const url = new URL(endpoint);
-        return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname.toLowerCase());
-      } catch {
-        return false;
-      }
-    })();
-
     const config: C2ClientConfig = {
       endpoint,
       clientId,
-      signingEnabled: true,
-      // Local gateway protocol does not emit heartbeat acks; rely on socket open/close instead.
-      heartbeatIntervalMs: isLocalEndpoint ? 0 : 30000,
-      heartbeatTimeoutMs: isLocalEndpoint ? 0 : 10000,
+      signingEnabled: false, // Disabled for Sprint 1
+      heartbeatIntervalMs: 30000, // 30 seconds
+      heartbeatTimeoutMs: 10000, // 10 seconds
       maxReconnectAttempts: 10,
       initialBackoffMs: 1000,
       maxBackoffMs: 30000,
@@ -451,31 +287,13 @@ export const useCommStore = create<CommState>((set, get) => ({
         // Map C2 states to connection status
         if (state === 'CONNECTED') {
           set({ connectionStatus: 'connected' });
-          const local = get().currentOperator;
-          if (local) {
-            get().upsertOperator({
-              ...local,
-              status: 'online',
-              lastSeen: new Date(),
-            });
-          }
         } else if (state === 'CONNECTING' || state === 'BACKOFF') {
           set({ connectionStatus: 'connecting' });
         } else if (state === 'DEGRADED') {
           set({ connectionStatus: 'unverified' });
         } else {
-          set({ connectionStatus: 'disconnected', backendCoreStatus: 'unknown' });
+          set({ connectionStatus: 'disconnected' });
         }
-      },
-      onSystemStatus: (status: SystemStatusFrame) => {
-        const backendValue = String(status.backend || '').toUpperCase();
-        const backendCoreStatus: BackendCoreStatus =
-          backendValue === 'CONNECTED'
-            ? 'connected'
-            : backendValue === 'UNREACHABLE'
-            ? 'unreachable'
-            : 'unknown';
-        set({ backendCoreStatus });
       },
       onMessage: (envelope: MessageEnvelope) => {
         console.log('[C2] Received message:', envelope);
@@ -483,20 +301,6 @@ export const useCommStore = create<CommState>((set, get) => ({
         // Handle different message types
         if (envelope.type === 'chat' && typeof envelope.payload === 'object' && envelope.payload !== null) {
           const payload = envelope.payload as { content?: string; encrypted?: boolean };
-          const envelopeVerified = isEnvelopeVerified(envelope);
-          const existing = get().operators.get(envelope.from);
-          if (!existing) {
-            get().upsertOperator({
-              id: envelope.from,
-              name: formatOperatorName(envelope.from),
-              role: 'operator',
-              status: 'online',
-              verified: envelopeVerified,
-              trustScore: envelopeVerified ? 90 : 50,
-              lastSeen: new Date(),
-            });
-          }
-
           const message: Message = {
             id: envelope.message_id,
             from: envelope.from,
@@ -504,49 +308,10 @@ export const useCommStore = create<CommState>((set, get) => ({
             content: payload.content || '',
             timestamp: new Date(envelope.timestamp),
             signature: envelope.signature,
-            verified: envelopeVerified,
+            verified: envelope.trust_status === 'verified',
             encrypted: payload.encrypted || false,
           };
           get().receiveMessage(message);
-        } else if (
-          envelope.type === 'presence' &&
-          typeof envelope.payload === 'object' &&
-          envelope.payload !== null
-        ) {
-          const payload = envelope.payload as Record<string, unknown>;
-          const envelopeVerified = isEnvelopeVerified(envelope);
-          const existing = get().operators.get(envelope.from);
-          const status = normalizeOperatorStatus(payload.status);
-          const trustScore = clampTrustScorePercent(
-            typeof payload.trustScore === 'number' ? payload.trustScore : undefined,
-            existing?.trustScore ?? (envelopeVerified ? 90 : 50),
-          );
-          const roleValue = payload.role;
-          const role =
-            roleValue === 'admin' || roleValue === 'commander' || roleValue === 'operator'
-              ? roleValue
-              : existing?.role ?? 'operator';
-          const callsign =
-            typeof payload.callsign === 'string' && payload.callsign.length > 0
-              ? payload.callsign
-              : existing?.callsign;
-          const name =
-            typeof payload.name === 'string' && payload.name.length > 0
-              ? payload.name
-              : existing?.name ?? formatOperatorName(envelope.from);
-
-          get().upsertOperator({
-            id: envelope.from,
-            name,
-            role,
-            callsign,
-            status,
-            verified:
-              envelopeVerified ||
-              (typeof payload.verified === 'boolean' ? payload.verified : false),
-            trustScore,
-            lastSeen: new Date(envelope.timestamp),
-          });
         } else if (envelope.type === 'call_invite' && typeof envelope.payload === 'object' && envelope.payload !== null) {
           const payload = envelope.payload as { callId?: string; recipientId?: string };
           const call: VideoCall = {
@@ -557,39 +322,6 @@ export const useCommStore = create<CommState>((set, get) => ({
           };
           set({ incomingCall: call });
         }
-      },
-      onRalphiePresence: (frame) => {
-        console.log('[C2] Ralphie presence:', frame.identity.device_id, frame.reason);
-        upsertRalphieNode(frame);
-        const existing = get().operators.get(frame.identity.device_id);
-        const fallbackName = frame.identity.device_id.replace(/^ralphie-/, 'Ralphie ');
-        get().upsertOperator({
-          id: frame.identity.device_id,
-          name: existing?.name ?? fallbackName,
-          role: 'operator',
-          callsign: existing?.callsign ?? frame.identity.device_id.slice(0, 12).toUpperCase(),
-          status: 'online',
-          verified: frame.identity.tpm_backed,
-          trustScore: clampTrustScorePercent(frame.identity.trust_score, existing?.trustScore ?? 60),
-          lastSeen: new Date(frame.received_at ?? frame.timestamp ?? Date.now()),
-        });
-      },
-      onRalphiePresenceSnapshot: (nodes) => {
-        nodes.forEach((frame) => {
-          upsertRalphieNode(frame);
-          const existing = get().operators.get(frame.identity.device_id);
-          const fallbackName = frame.identity.device_id.replace(/^ralphie-/, 'Ralphie ');
-          get().upsertOperator({
-            id: frame.identity.device_id,
-            name: existing?.name ?? fallbackName,
-            role: 'operator',
-            callsign: existing?.callsign ?? frame.identity.device_id.slice(0, 12).toUpperCase(),
-            status: 'online',
-            verified: frame.identity.tpm_backed,
-            trustScore: clampTrustScorePercent(frame.identity.trust_score, existing?.trustScore ?? 60),
-            lastSeen: new Date(frame.received_at ?? frame.timestamp ?? Date.now()),
-          });
-        });
       },
       onError: (error) => {
         console.error('[C2] Error:', error);
@@ -606,19 +338,6 @@ export const useCommStore = create<CommState>((set, get) => ({
       throw new Error('C2 client not initialized. Call initC2Client first.');
     }
     await state.c2Client.connect();
-
-    const current = get().currentOperator;
-    if (current) {
-      get().upsertOperator({ ...current, status: 'online', lastSeen: new Date() });
-      await state.c2Client.sendMessage('presence', {
-        status: 'online',
-        trustScore: 1,
-        name: current.name,
-        callsign: current.callsign,
-        role: current.role,
-        verified: current.verified,
-      });
-    }
   },
 
   disconnectC2: () => {

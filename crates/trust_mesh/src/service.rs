@@ -8,7 +8,7 @@ use crate::{
     merkle::MerkleAggregator,
     node_health::{NodeHealth, NodeHealthComputer},
     signing::{EventSigner, KeyManager},
-    trust::{TrustScore, TrustScorer},
+    trust::TrustScorer,
 };
 use aethercore_domain::CanonicalEvent;
 use serde::{Deserialize, Serialize};
@@ -90,10 +90,7 @@ impl<K: KeyManager> TrustMeshService<K> {
 
     /// Get trust score for a node
     pub fn get_trust_score(&self, node_id: &str) -> Option<crate::trust::TrustScore> {
-        // Lazily compute trust from health if this node has not been scored yet.
-        self.trust_scorer
-            .get_score(node_id)
-            .or_else(|| self.recompute_trust_from_health(node_id))
+        self.trust_scorer.get_score(node_id)
     }
 
     /// Get node health with integrity metrics
@@ -109,82 +106,5 @@ impl<K: KeyManager> TrustMeshService<K> {
     /// Get the health computer for direct metrics recording
     pub fn health_computer(&self) -> &NodeHealthComputer {
         &self.health_computer
-    }
-
-    /// Recompute trust score for a node from the current health snapshot.
-    ///
-    /// This method is the bridge from integrity metrics (`NodeHealthComputer`)
-    /// into operational trust gating (`TrustScorer`).
-    pub fn recompute_trust_from_health(&self, node_id: &str) -> Option<TrustScore> {
-        let health = self.health_computer.get_node_health(node_id);
-        self.trust_scorer.compute_from_health(&health);
-        self.trust_scorer.get_score(node_id)
-    }
-
-    /// Record a root comparison outcome and immediately refresh trust score.
-    pub fn record_root_comparison(
-        &self,
-        node_id: &str,
-        matches_majority: bool,
-    ) -> Option<TrustScore> {
-        self.health_computer
-            .record_root_comparison(node_id, matches_majority);
-        self.recompute_trust_from_health(node_id)
-    }
-
-    /// Record a chain break and immediately refresh trust score.
-    pub fn record_chain_break(&self, node_id: &str) -> Option<TrustScore> {
-        self.health_computer.record_chain_break(node_id);
-        self.recompute_trust_from_health(node_id)
-    }
-
-    /// Record a signature verification failure and immediately refresh trust score.
-    pub fn record_signature_failure(&self, node_id: &str) -> Option<TrustScore> {
-        self.health_computer.record_signature_failure(node_id);
-        self.recompute_trust_from_health(node_id)
-    }
-
-    /// Record a missing/failed Merkle window and immediately refresh trust score.
-    pub fn record_missing_window(&self, node_id: &str) -> Option<TrustScore> {
-        self.health_computer.record_missing_window(node_id);
-        self.recompute_trust_from_health(node_id)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::signing::InMemoryKeyManager;
-    use crate::trust::TrustLevel;
-
-    fn service_with_key(node_id: &str) -> TrustMeshService<InMemoryKeyManager> {
-        let mut key_manager = InMemoryKeyManager::new();
-        key_manager.generate_key(node_id).unwrap();
-        TrustMeshService::new(
-            TrustMeshConfig::desktop_grid(node_id.to_string()),
-            key_manager,
-        )
-    }
-
-    #[test]
-    fn get_trust_score_lazily_computes_unknown_nodes() {
-        let service = service_with_key("local-node");
-        let score = service.get_trust_score("peer-1").unwrap();
-
-        assert_eq!(score.level, TrustLevel::Quarantined);
-        assert_eq!(score.score, 0.0);
-    }
-
-    #[test]
-    fn record_root_comparison_promotes_trust_to_healthy() {
-        let service = service_with_key("local-node");
-
-        for _ in 0..20 {
-            service.record_root_comparison("peer-1", true);
-        }
-
-        let score = service.get_trust_score("peer-1").unwrap();
-        assert_eq!(score.level, TrustLevel::Healthy);
-        assert!(score.score >= 0.9);
     }
 }

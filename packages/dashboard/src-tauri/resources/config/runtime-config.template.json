@@ -4,7 +4,7 @@
   "profile": "commander-local",
   "connection": {
     "api_endpoint": "http://127.0.0.1:3000",
-    "mesh_endpoint": "ws://127.0.0.1:3000"
+    "mesh_endpoint": "ws://127.0.0.1:8080"
   },
   "tpm_policy": {
     "mode": "optional",
@@ -12,7 +12,7 @@
   },
   "ports": {
     "api": 3000,
-    "mesh": 3000
+    "mesh": 8080
   },
   "features": {
     "allow_insecure_localhost": true,

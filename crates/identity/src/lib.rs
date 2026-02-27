@@ -36,7 +36,6 @@ pub mod federation;
 pub mod genesis_bundle;
 pub mod materia_slot;
 pub mod pki;
-pub mod secure_enclave;
 pub mod tpm;
 
 #[cfg(feature = "grpc-server")]
@@ -61,7 +60,6 @@ pub use genesis_bundle::{
 };
 pub use materia_slot::{FederatedMateriaSlot, Materia, MateriaSlot};
 pub use pki::{Certificate, CertificateAuthority, CertificateRequest, TrustChainValidator};
-pub use secure_enclave::{SecureEnclaveAttestor, SecureEnclaveQuote};
 pub use tpm::{AttestationKey, PcrValue, TpmManager, TpmQuote};
 
 #[cfg(feature = "grpc-server")]

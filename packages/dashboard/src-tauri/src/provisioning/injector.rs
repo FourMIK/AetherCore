@@ -11,7 +11,7 @@ use crate::commands::resolve_required_component_path;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use ssh2::Session;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::net::TcpStream;
 use std::path::Path;
 use tauri::Manager;

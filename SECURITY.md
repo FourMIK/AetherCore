@@ -2,26 +2,23 @@
 
 **Classification:** CRITICAL  
 **Mission:** Comprehensive Security Procedures and Best Practices  
-**Last Updated:** 2026-02-23
+**Last Updated:** 2025-01-23
 
 ---
 
 ## ⚠️ Dev Mode Security Scope
 
-**This document describes production security architecture.** Current desktop development profiles run in **Dev Mode**, which implements only a subset of these security features.
+**This document describes production security architecture.** The current Windows desktop application runs in **Dev Mode**, which implements only a subset of these security features.
 
 **For Dev Mode security boundaries and limitations, see:**
 - **[DEV_MODE.md](DEV_MODE.md)** - Dev Mode capabilities and limitations
 - **[SECURITY_SCOPE.md](SECURITY_SCOPE.md)** - Detailed security boundaries and threat model
-- **[docs/4MIK_GAP_VALIDATION_2026-02-23.md](docs/4MIK_GAP_VALIDATION_2026-02-23.md)** - Current code-validated implementation gaps
 
 **Key Dev Mode Limitations:**
-- ❌ No enforced TPM/Secure Enclave-backed identity in default local profile
-- ❌ Hardware-backed identity is not required end-to-end on all active runtime paths
-- ❌ No production-grade remote attestation enforcement on desktop local-control-plane path
-- ⚠️ Chat payload confidentiality is enforced on the active dashboard <-> Pi chat path, but not yet unified across all collaboration/runtime paths
-- ⚠️ Onboarding now uses real enrollment certificate requests with X.509 validation and revocation checks, but distributed revocation governance and full CA-service integration coverage are still in progress
-- ✅ Presence trust score semantics are server-derived at gateway ingress (client self-asserted trust values are not authoritative)
+- ❌ No TPM/Secure Enclave integration
+- ❌ No hardware-backed identity
+- ❌ No remote attestation
+- ❌ Software-only cryptography
 
 **Do NOT deploy Dev Mode builds to production environments.**
 
@@ -29,8 +26,7 @@
 
 ## Overview
 
-This document outlines security architecture, best practices, and operational procedures for AetherCore production deployments.  
-It is normative for production design and operations, not an assertion that current Dev Mode paths already satisfy every requirement.
+This document outlines security architecture, best practices, and operational procedures for AetherCore production deployments. All personnel must adhere to these guidelines for production use.
 
 ## Table of Contents
 
@@ -665,27 +661,24 @@ pub async fn sweep_for_byzantine_nodes(mesh: &TrustMesh) -> Vec<NodeId> {
 - Incident response drill
 - Disaster recovery testing
 
-### Compliance Alignment Targets (Production Program)
-
-These frameworks are production alignment targets and program objectives.  
-They should not be interpreted as current Dev Mode certification or complete control attestation.
+### Compliance Requirements
 
 **NIST SP 800-218 (Secure Software Development Framework):**
-- Target alignment: Prepare the Organization (PO)
-- Target alignment: Protect the Software (PS)
-- Target alignment: Produce Well-Secured Software (PW)
-- Target alignment: Respond to Vulnerabilities (RV)
+- ✅ Prepare the Organization (PO)
+- ✅ Protect the Software (PS)
+- ✅ Produce Well-Secured Software (PW)
+- ✅ Respond to Vulnerabilities (RV)
 
 **EO 14028 (Cybersecurity Supply Chain Security):**
-- Target alignment: SBOM generation and distribution
-- Target alignment: Vulnerability disclosure process
-- Target alignment: Secure development practices
+- ✅ SBOM generation and distribution
+- ✅ Vulnerability disclosure process
+- ✅ Secure development practices
 
 **CIS Controls:**
-- Target alignment: Inventory and control of software assets
-- Target alignment: Secure configuration
-- Target alignment: Continuous vulnerability management
-- Target alignment: Audit log management
+- ✅ Inventory and control of software assets
+- ✅ Secure configuration
+- ✅ Continuous vulnerability management
+- ✅ Audit log management
 
 ### Security Metrics
 
@@ -748,7 +741,7 @@ We follow responsible disclosure practices:
 
 ---
 
-**Status:** PRODUCTION SECURITY GUIDELINES (DEV MODE PARITY NOT IMPLIED) ⚠️  
+**Status:** SECURITY GUIDELINES OPERATIONAL ✅  
 **Classification:** CRITICAL  
 **Maintainer:** AetherCore Security Team  
 **Next Review:** Quarterly or upon critical vulnerability disclosure

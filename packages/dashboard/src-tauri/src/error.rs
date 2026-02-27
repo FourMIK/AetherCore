@@ -61,9 +61,8 @@ pub enum AppError {
     Generic(String),
 }
 
-/// Result type alias for application operations.
-/// Defaults to AppError but allows explicit override for command-facing String errors.
-pub type Result<T, E = AppError> = std::result::Result<T, E>;
+/// Result type alias for application operations
+pub type Result<T> = std::result::Result<T, AppError>;
 
 /// Convert AppError to String for Tauri command responses
 ///

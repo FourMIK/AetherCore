@@ -20,7 +20,8 @@ pub mod signing;
 pub mod trust;
 
 pub use audit::{
-    AuditConfig, ProofVerificationResult, StreamAuditResult, StreamAuditor, TRUST_DELTA_SUCCESS,
+    AuditConfig, ProofVerificationResult, StreamAuditResult, StreamAuditor, QUARANTINE_THRESHOLD,
+    TRUST_DELTA_SUCCESS,
 };
 pub use chain::{ChainError, ChainManager};
 pub use gossip::{GossipMessage, GossipProtocol, PeerState};

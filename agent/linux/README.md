@@ -64,17 +64,12 @@ pnpm run build:full
 This will:
 1. Install dependencies
 2. Build TypeScript to `dist/`
-3. Package with `pkg` to create:
-   - `dist/coderalphie-linux-arm64`
-   - `dist/coderalphie-chat-linux-arm64`
-   - `dist/coderalphie-chat-gui-linux-arm64`
-4. Copy binaries and `install.sh` to `packages/dashboard/src-tauri/resources/payloads/`
+3. Package with `pkg` to create `dist/coderalphie-linux-arm64`
+4. Copy binary and `install.sh` to `packages/dashboard/src-tauri/resources/payloads/`
 
 ### Output Artifacts
 
 - **Binary**: `dist/coderalphie-linux-arm64` - Self-contained ARM64 executable
-- **Chat App**: `dist/coderalphie-chat-linux-arm64` - Pi-side interactive chat client
-- **Chat GUI App**: `dist/coderalphie-chat-gui-linux-arm64` - Pi-side graphical chat client
 - **Installer**: `install.sh` - Bash script for system installation
 - **Dashboard Payloads**: Copied to `packages/dashboard/src-tauri/resources/payloads/` for SSH injection
 
@@ -136,86 +131,8 @@ This will:
 1. Load configuration from `/etc/coderalphie/config.json`
 2. Check for existing identity
 3. If no identity, initiate enrollment
-4. Maintain a live C2 WebSocket session
-5. Publish identity-backed presence heartbeats
-6. Receive authenticated chat messages from Commander
-7. Enter operational event loop
-
-### Operator Messaging
-
-CodeRalphie now supports bidirectional operator messaging over the C2 WebSocket.
-
-- Incoming authenticated chat frames are logged to stdout/journal.
-- Outbound chat is available in interactive mode via stdin commands:
-  - `/to <operator-id> <message>`
-  - `/reply <message>`
-  - `/last`
-  - `/help`
-
-Interactive mode is automatically enabled when the process has a TTY.
-For systemd services (no TTY), incoming chat still works and can optionally auto-reply.
-
-### Pi Chat App
-
-CodeRalphie includes a dedicated Pi-side messaging app binary:
-
-```bash
-# Preferred from repo root (inherits live coderalphie C2 endpoint):
-./scripts/ops/run-pi-chat.sh duskone@192.168.1.125
-
-# Direct launch (must pass C2_WS_URL explicitly if config defaults are stale):
-sudo -u ralphie env C2_WS_URL=ws://<mac-ip>:3000 /usr/local/bin/coderalphie-chat
-```
-
-Supported commands:
-
-- `/help`
-- `/whoami`
-- `/peers`
-- `/use <peer-id>`
-- `/to <peer-id> <message>`
-- `/reply <message>`
-- `/history [peer-id]`
-- `/exit`
-
-This app:
-
-- uses the enrolled node identity from `/etc/coderalphie/keys/identity.json`
-- reads and writes authenticated mesh chat envelopes
-- displays verified/unverified trust state on inbound chat
-- persists local history at `/opt/coderalphie/chat/history.json`
-
-### Pi Chat GUI App
-
-CodeRalphie also ships a browser-based GUI packaged as a Pi ARM64 binary:
-
-```bash
-# Build GUI binary:
-pnpm --dir agent/linux build:chat:gui
-
-# Deploy over SSH from repo root:
-./scripts/ops/deploy-pi-chat-gui.sh duskone@192.168.1.125
-
-# Optional remote diagnostic launch (SSH-safe, no auto-open):
-./scripts/ops/run-pi-chat-gui.sh duskone@192.168.1.125
-```
-
-Local Pi launch (when using monitor + mouse + keyboard):
-
-```bash
-# If deployed with scripts/ops/deploy-pi-chat-gui.sh:
-/usr/local/bin/coderalphie-chat-gui-launch
-
-# Manual fallback (explicit endpoint):
-sudo -u ralphie env C2_WS_URL=ws://<mac-ip>:3000 /usr/local/bin/coderalphie-chat-gui
-```
-
-Features:
-
-- live peer list with trust and verification status
-- live conversation history and message delivery ACKs
-- responsive layout for desktop and touch displays
-- same identity and mesh transport path as CLI chat
+4. Connect to C2 mesh
+5. Enter operational event loop
 
 ### Service Management
 
@@ -247,11 +164,7 @@ Default configuration paths:
 - `AETHERCORE_SALT`: Salt for genesis hash generation
 - `ENROLLMENT_URL`: Override enrollment server URL
 - `C2_SERVER`: Override C2 server address
-- `C2_WS_URL`: Override full C2 WebSocket endpoint (for example `wss://c2.example.com:8443`)
-- `C2_TLS_INSECURE=1`: Allow insecure TLS certs for C2 probe (development only)
 - `TPM_ENABLED`: Enable/disable TPM integration
-- `CODERALPHIE_CHAT_STDIN=0`: Disable interactive chat commands even if TTY exists
-- `CODERALPHIE_AUTO_REPLY=1`: Automatically send ACK responses to incoming chat messages
 
 ## Production vs Development Mode
 

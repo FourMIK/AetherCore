@@ -1,6 +1,6 @@
 # AetherCore Security Scope
 
-**Last Updated:** 2026-02-23  
+**Last Updated:** 2025-01-23  
 **Purpose:** Define security boundaries, threat model, and explicit limitations
 
 ---
@@ -11,9 +11,6 @@ This document establishes the security scope for AetherCore in **Dev Mode** depl
 
 **Key Principle:** AetherCore Dev Mode provides **tamper-evident** data streaming and **policy-dependent** trust management, not absolute security guarantees.
 
-> **Validation note (2026-02-23):** This is a scope/threat-model document and includes design-target language. Some currently active runtime paths (notably desktop gateway + Pi chat ingress) are only partial relative to this model.  
-> See `docs/4MIK_GAP_VALIDATION_2026-02-23.md` for code-validated end-to-end status.
-
 ## Security Properties
 
 ### What AetherCore Provides
@@ -23,8 +20,8 @@ This document establishes the security scope for AetherCore in **Dev Mode** depl
 **Definition:** The system can **detect** unauthorized modifications to data, but cannot **prevent** them.
 
 **Implementation:**
-- BLAKE3-based chaining is implemented in trust/stream subsystems (not all active message paths end-to-end)
-- Merkle Vine structures are implemented for integrity history in targeted components
+- BLAKE3 cryptographic hashing chains all events
+- Merkle Vine structure creates verifiable history
 - Any modification breaks hash chain and triggers alert
 
 **Guarantees:**
@@ -42,7 +39,7 @@ This document establishes the security scope for AetherCore in **Dev Mode** depl
 **Definition:** Recipients can **verify** that data originated from claimed source and was not altered in transit.
 
 **Implementation:**
-- Ed25519 signature verification is implemented on active gateway/chat ingress and targeted backend components
+- Ed25519 digital signatures bind data to originating node
 - Public key cryptography provides mathematical verification
 - Signature verification requires only public key
 
@@ -61,8 +58,9 @@ This document establishes the security scope for AetherCore in **Dev Mode** depl
 **Definition:** The system can **detect** nodes exhibiting Byzantine (arbitrary/malicious) behavior.
 
 **Implementation:**
-- Trust mesh tracking and gossip/consensus exist as architecture targets and in selected components
-- Some local desktop control-plane paths are service-centric and do not yet expose full mesh behavior end-to-end
+- Trust mesh tracks verification success/failure rates
+- Gossip protocol disseminates trust scores
+- Consensus isolates nodes with low trust
 
 **Guarantees:**
 ✅ **Detection:** Byzantine behavior eventually detected  
@@ -127,11 +125,11 @@ This document establishes the security scope for AetherCore in **Dev Mode** depl
 **Threat:** Adversary captures and re-sends legitimate messages.
 
 **Mitigation:**
-- Sequence numbers prevent out-of-order acceptance where sequence semantics are implemented
-- Timestamps enable staleness detection where enforced by verifier
-- Nonces prevent exact replays where nonce semantics are implemented
+- Sequence numbers prevent out-of-order acceptance
+- Timestamps enable staleness detection
+- Nonces prevent exact replays
 
-**Residual Risk:** If sequence tracking state is lost/reset, recent messages may be replayed until state is re-established.
+**Residual Risk:** If sequence tracking is reset, recent messages may be replayed.
 
 ### Threats NOT Addressed (Out of Scope)
 
@@ -230,9 +228,9 @@ This document establishes the security scope for AetherCore in **Dev Mode** depl
 ### Network Boundary
 
 **Inside Boundary:**
-- Message integrity via signatures (path-dependent in Dev Mode)
-- Gossip protocol correctness (for trust-mesh paths)
-- Eventual consistency guarantees (for trust-mesh paths)
+- Message integrity via signatures
+- Gossip protocol correctness
+- Eventual consistency guarantees
 
 **Outside Boundary:**
 - Network layer security (assumes TLS provided separately)
