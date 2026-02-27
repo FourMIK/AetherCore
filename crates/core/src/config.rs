@@ -79,10 +79,10 @@ fn is_running_in_container() -> bool {
     let container_var = std::env::var("CONTAINER")
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false);
-    
+
     // Check for Docker marker file
     let dockerenv_exists = std::path::Path::new("/.dockerenv").exists();
-    
+
     running_in_container || container_var || dockerenv_exists
 }
 

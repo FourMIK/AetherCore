@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 #[cfg(unix)]
@@ -160,6 +161,13 @@ pub fn bootstrap_local_control_plane() -> Result<LocalControlPlaneRuntime, Strin
             continue;
         }
 
+        if is_port_listening(service.port) {
+            return Err(format!(
+                "Service '{}' cannot start because port {} is already in use by another process. Remediation hint: {}",
+                service.name, service.port, service.remediation_hint
+            ));
+        }
+
         log::info!(
             "Starting local service {} ({})",
             service.name,
@@ -211,6 +219,21 @@ pub fn ensure_local_data_dirs() -> Result<Vec<String>, String> {
     }
 
     Ok(created)
+}
+
+fn resolve_local_logs_dir() -> Result<PathBuf, String> {
+    let base = std::env::var("AETHERCORE_LOCAL_DATA_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("aethercore"));
+    let logs_dir = base.join("dashboard").join("logs");
+    std::fs::create_dir_all(&logs_dir).map_err(|error| {
+        format!(
+            "Failed to initialize local control plane log directory {}: {}",
+            logs_dir.display(),
+            error
+        )
+    })?;
+    Ok(logs_dir)
 }
 
 pub fn check_service_statuses() -> Result<Vec<ServiceStatus>, String> {
@@ -350,6 +373,13 @@ pub fn start_managed_services() -> Result<Vec<ServiceStatus>, String> {
             continue;
         }
 
+        if is_port_listening(service.port) {
+            return Err(format!(
+                "Service '{}' cannot start because port {} is already in use by another process. Remediation hint: {}",
+                service.name, service.port, service.remediation_hint
+            ));
+        }
+
         runtime
             .spawned_children
             .insert(service.name.clone(), spawn_service(service)?);
@@ -418,6 +448,13 @@ pub fn start_dependency(service_name: &str) -> Result<ServiceStatus, String> {
     if !runtime.spawned_children.contains_key(service_name)
         && !is_service_healthy(&service.health_endpoint, service.port)
     {
+        if is_port_listening(service.port) {
+            return Err(format!(
+                "Service '{}' cannot start because port {} is already in use by another process. Remediation hint: {}",
+                service.name, service.port, service.remediation_hint
+            ));
+        }
+
         runtime
             .spawned_children
             .insert(service.name.clone(), spawn_service(service)?);
@@ -485,6 +522,15 @@ pub fn retry_dependency(service_name: &str) -> Result<ServiceReadiness, String> 
         .expect("managed runtime must be initialized")
         .lock()
         .map_err(|_| "Failed to lock managed runtime".to_string())?;
+
+    if is_port_listening(service.port)
+        && !is_service_healthy(&service.health_endpoint, service.port)
+    {
+        return Err(format!(
+            "Service '{}' cannot start because port {} is already in use by another process. Remediation hint: {}",
+            service.name, service.port, service.remediation_hint
+        ));
+    }
     runtime
         .spawned_children
         .insert(service.name.clone(), spawn_service(service)?);
@@ -773,21 +819,76 @@ fn spawn_service(service: &ManagedService) -> Result<Child, String> {
 
     validate_service_startup(service, &working_directory)?;
 
-    let executable = expand_runtime_tokens(&service.start_executable, &working_directory)?;
+    let mut executable = expand_runtime_tokens(&service.start_executable, &working_directory)?;
+    let mut args = service.start_args.clone();
+    let mut command_cwd = working_directory.clone();
+
+    if !executable.exists() && cfg!(debug_assertions) {
+        if let Some((fallback_executable, fallback_args, fallback_cwd)) =
+            resolve_dev_service_fallback(service, &repo_root)?
+        {
+            log::warn!(
+                "Service '{}' launcher missing at {}. Falling back to dev command: {} {:?}",
+                service.name,
+                executable.display(),
+                fallback_executable.display(),
+                fallback_args
+            );
+            executable = fallback_executable;
+            args = fallback_args;
+            command_cwd = fallback_cwd;
+        }
+    }
+
+    let logs_dir = resolve_local_logs_dir()?;
+    let stdout_log = logs_dir.join(format!("{}-stdout.log", service.name));
+    let stderr_log = logs_dir.join(format!("{}-stderr.log", service.name));
+
+    let stdout = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&stdout_log)
+        .map_err(|error| {
+            format!(
+                "Failed to open stdout log file for service '{}' at {}: {}",
+                service.name,
+                stdout_log.display(),
+                error
+            )
+        })?;
+    let stderr = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&stderr_log)
+        .map_err(|error| {
+            format!(
+                "Failed to open stderr log file for service '{}' at {}: {}",
+                service.name,
+                stderr_log.display(),
+                error
+            )
+        })?;
+
+    log::info!(
+        "Starting local control-plane service '{}' with logs at {} and {}",
+        service.name,
+        stdout_log.display(),
+        stderr_log.display()
+    );
 
     Command::new(&executable)
-        .args(service.start_args.iter())
-        .current_dir(working_directory)
+        .args(args.iter())
+        .current_dir(command_cwd)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr))
         .spawn()
         .map_err(|error| {
             format!(
                 "Failed to start service {} using executable '{}' and args {:?}: {}",
                 service.name,
                 executable.display(),
-                service.start_args,
+                args,
                 error
             )
         })
@@ -797,6 +898,11 @@ fn validate_service_startup(
     service: &ManagedService,
     working_directory: &Path,
 ) -> Result<(), String> {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("..");
+
     if !working_directory.exists() {
         return Err(format!(
             "Service '{}' working directory does not exist: {}. Remediation hint: {}",
@@ -808,6 +914,9 @@ fn validate_service_startup(
 
     let executable = expand_runtime_tokens(&service.start_executable, working_directory)?;
     if !executable.exists() {
+        if cfg!(debug_assertions) && resolve_dev_service_fallback(service, &repo_root)?.is_some() {
+            return Ok(());
+        }
         return Err(format!(
             "Service '{}' executable is missing at {}. Remediation hint: {}",
             service.name,
@@ -868,6 +977,39 @@ fn validate_service_startup(
     }
 
     Ok(())
+}
+
+fn resolve_dev_service_fallback(
+    service: &ManagedService,
+    repo_root: &Path,
+) -> Result<Option<(PathBuf, Vec<String>, PathBuf)>, String> {
+    if !cfg!(debug_assertions) {
+        return Ok(None);
+    }
+
+    match service.name.as_str() {
+        "gateway" | "collaboration" => {
+            let pnpm = which::which("pnpm")
+                .map_err(|_| "pnpm is required for local dev service fallback".to_string())?;
+            let service_dir = repo_root.join("services").join(&service.name);
+            if !service_dir.exists() {
+                return Err(format!(
+                    "Local dev fallback directory missing for service '{}': {}",
+                    service.name,
+                    service_dir.display()
+                ));
+            }
+
+            let args = vec![
+                "--dir".to_string(),
+                service_dir.to_string_lossy().to_string(),
+                "run".to_string(),
+                "dev".to_string(),
+            ];
+            Ok(Some((pnpm, args, repo_root.to_path_buf())))
+        }
+        _ => Ok(None),
+    }
 }
 
 fn runtime_root() -> PathBuf {
@@ -1056,6 +1198,17 @@ fn is_service_healthy(health_endpoint: &str, fallback_port: u16) -> bool {
         }
         _ => false,
     }
+}
+
+fn is_port_listening(port: u16) -> bool {
+    let address = format!("127.0.0.1:{port}");
+    TcpStream::connect_timeout(
+        &address
+            .parse()
+            .unwrap_or_else(|_| std::net::SocketAddr::from(([127, 0, 0, 1], port))),
+        Duration::from_millis(250),
+    )
+    .is_ok()
 }
 
 fn default_max_retries() -> u32 {

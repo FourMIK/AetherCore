@@ -961,9 +961,10 @@ fn is_timestamp_fresh(timestamp: u64, now: u64, window_ms: u64) -> bool {
 /// Calculate trust score based on attestation type.
 fn calculate_trust_score(attestation: &Attestation) -> f64 {
     match attestation {
-        Attestation::Tpm { .. } => 1.0,      // Highest trust
-        Attestation::Software { .. } => 0.7, // Medium trust
-        Attestation::None => 0.0,            // No trust
+        Attestation::Tpm { .. } => 1.0,           // Highest trust
+        Attestation::SecureEnclave { .. } => 1.0, // Highest trust
+        Attestation::Software { .. } => 0.7,      // Medium trust
+        Attestation::None => 0.0,                 // No trust
     }
 }
 
@@ -1224,6 +1225,15 @@ mod tests {
                 certificate: vec![],
             }),
             0.7
+        );
+
+        assert_eq!(
+            calculate_trust_score(&Attestation::SecureEnclave {
+                key_tag: "com.4mik.test.sep".to_string(),
+                public_key: vec![0x04, 0x01, 0x02],
+                signature: vec![0x30, 0x44],
+            }),
+            1.0
         );
 
         assert_eq!(calculate_trust_score(&Attestation::None), 0.0);

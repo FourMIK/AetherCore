@@ -84,3 +84,8 @@ infra/k8s/overlays/bunker/secrets.env
 packages/dashboard/src-tauri/resources/payloads/*
 !packages/dashboard/src-tauri/resources/payloads/.gitkeep
 *.backup
+
+# Generated artifacts
+__pycache__/
+*.py[cod]
+*.orig
