@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
+import re
+import shutil
 import signal
+import subprocess
 import sys
 import time
 import urllib.error
@@ -175,7 +179,7 @@ def build_telemetry(node: Dict[str, Any]) -> Dict[str, Any]:
         telemetry["radio"] = radio
 
     user = as_dict(get_any(node, "user"))
-    device: Dict[str, Any] = {"transport": "meshtastic-serial"}
+    device: Dict[str, Any] = {"transport": "meshtastic"}
     model = get_any(user, "hwModel", "model")
     if model is not None:
         device["model"] = str(model)
@@ -204,6 +208,99 @@ def post_presence(url: str, payload: Dict[str, Any], timeout_sec: float) -> Tupl
         return int(resp.getcode()), body
 
 
+def run_node_script(script: str, env_overrides: Dict[str, str], stdin_text: Optional[str] = None) -> str:
+    env = os.environ.copy()
+    env.update(env_overrides)
+    completed = subprocess.run(
+        ["node", "-e", script],
+        input=(stdin_text.encode("utf-8") if stdin_text is not None else None),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        check=False,
+    )
+    if completed.returncode != 0:
+        stderr = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"node signer failed: {stderr or 'unknown error'}")
+    return completed.stdout.decode("utf-8", errors="replace").strip()
+
+
+def ensure_signing_public_key(signing_key_path: str) -> str:
+    script = r"""
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const keyPath = process.env.SIGNING_KEY_PATH;
+if (!keyPath) {
+  console.error('SIGNING_KEY_PATH is required');
+  process.exit(2);
+}
+
+fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+if (!fs.existsSync(keyPath)) {
+  const generated = crypto.generateKeyPairSync('ed25519', {
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+  fs.writeFileSync(keyPath, generated.privateKey, { mode: 0o600 });
+}
+
+const privateKeyPem = fs.readFileSync(keyPath, 'utf-8');
+const privateKey = crypto.createPrivateKey(privateKeyPem);
+const publicKeyPem = crypto
+  .createPublicKey(privateKey)
+  .export({ type: 'spki', format: 'pem' })
+  .toString();
+
+process.stdout.write(publicKeyPem);
+"""
+    return run_node_script(script, {"SIGNING_KEY_PATH": signing_key_path})
+
+
+def sign_payload(payload: Dict[str, Any], signing_key_path: str) -> str:
+    script = r"""
+const fs = require('fs');
+const crypto = require('crypto');
+
+const keyPath = process.env.SIGNING_KEY_PATH;
+if (!keyPath) {
+  console.error('SIGNING_KEY_PATH is required');
+  process.exit(2);
+}
+
+function stableJsonValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => stableJsonValue(entry));
+  }
+  if (value && typeof value === 'object') {
+    const normalized = {};
+    for (const key of Object.keys(value).sort((a, b) => a.localeCompare(b))) {
+      normalized[key] = stableJsonValue(value[key]);
+    }
+    return normalized;
+  }
+  return value;
+}
+
+const payloadRaw = fs.readFileSync(0, 'utf-8');
+const payload = JSON.parse(payloadRaw);
+const canonicalPayload = JSON.stringify(stableJsonValue(payload));
+const privateKeyPem = fs.readFileSync(keyPath, 'utf-8');
+const privateKey = crypto.createPrivateKey(privateKeyPem);
+const signature = crypto
+  .sign(null, Buffer.from(canonicalPayload, 'utf-8'), privateKey)
+  .toString('hex');
+
+process.stdout.write(signature);
+"""
+    return run_node_script(
+        script,
+        {"SIGNING_KEY_PATH": signing_key_path},
+        stdin_text=json.dumps(payload, separators=(",", ":")),
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Bridge Meshtastic USB telemetry into AetherCore RALPHIE_PRESENCE."
@@ -217,6 +314,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--certificate-serial", default=None, help="Certificate serial (default: heltech-<device-id>)")
     parser.add_argument("--mesh-endpoint", default="ws://localhost:3000", help="Mesh endpoint metadata")
     parser.add_argument("--gateway-http", default="http://127.0.0.1:3000", help="Gateway HTTP base URL")
+    parser.add_argument(
+        "--signing-key-path",
+        default=None,
+        help="Persistent Ed25519 private key path used to sign RALPHIE_PRESENCE (default: /tmp/aethercore-keys/heltech-<device-id>.ed25519.pem)",
+    )
     parser.add_argument("--trust-score", type=float, default=0.35, help="Trust score [0..1]")
     parser.add_argument("--tpm-backed", action="store_true", help="Set tpm_backed=true (default false)")
     parser.add_argument("--enrolled-at-ms", type=int, default=now_ms(), help="Enrollment epoch ms")
@@ -243,9 +345,19 @@ def main() -> int:
     if args.host and (args.tcp_port < 1 or args.tcp_port > 65535):
         print("ERROR: --tcp-port must be between 1 and 65535", file=sys.stderr)
         return 2
+    if shutil.which("node") is None:
+        print("ERROR: node is required for presence signing", file=sys.stderr)
+        return 2
 
     hardware_serial = args.hardware_serial or args.device_id
     certificate_serial = args.certificate_serial or f"heltech-{args.device_id}"
+    safe_device_id = re.sub(r"[^a-zA-Z0-9._-]+", "-", args.device_id).strip("-") or "heltech-v4"
+    signing_key_path = args.signing_key_path or f"/tmp/aethercore-keys/heltech-{safe_device_id}.ed25519.pem"
+    try:
+        signing_public_key = ensure_signing_public_key(signing_key_path)
+    except Exception as exc:
+        print(f"ERROR: failed to initialize presence signing key: {exc}", file=sys.stderr)
+        return 2
 
     try:
         if args.host:
@@ -292,6 +404,7 @@ def main() -> int:
     print(f"  device_id={args.device_id}")
     print(f"  mesh_endpoint={args.mesh_endpoint}")
     print(f"  gateway_http={args.gateway_http}")
+    print(f"  signing_key_path={signing_key_path}")
     print(f"  interval_sec={args.interval_sec}")
     print(f"  trust_score={args.trust_score}")
     print(f"  tpm_backed={args.tpm_backed}")
@@ -326,6 +439,7 @@ def main() -> int:
                 "last_disconnect_reason": last_disconnect_reason,
                 "identity": {
                     "device_id": args.device_id,
+                    "public_key": signing_public_key,
                     "hardware_serial": hardware_serial,
                     "certificate_serial": certificate_serial,
                     "trust_score": args.trust_score,
@@ -337,6 +451,7 @@ def main() -> int:
                 payload["telemetry"] = telemetry
 
             try:
+                payload["signature"] = sign_payload(payload, signing_key_path)
                 status_code, body = post_presence(args.gateway_http, payload, args.http_timeout_sec)
                 print(f"publish reason={reason} status={status_code} body={body}")
                 if status_code != 202:

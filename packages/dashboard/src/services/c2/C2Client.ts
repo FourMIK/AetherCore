@@ -196,6 +196,16 @@ export class C2Client {
     });
   }
 
+  private isLocalEndpoint(): boolean {
+    try {
+      const url = new URL(this.config.endpoint);
+      const host = url.hostname.toLowerCase();
+      return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Connect to C2 endpoint
    */
@@ -311,7 +321,34 @@ export class C2Client {
     await this.chatCryptoReady;
     let outgoingPayload = payload;
     if (type === 'chat' && payload && typeof payload === 'object') {
-      outgoingPayload = await this.encryptChatPayload(payload as Record<string, unknown>);
+      const chatPayload = payload as Record<string, unknown>;
+      const shouldEncrypt = chatPayload.encrypted !== false;
+      if (shouldEncrypt) {
+        try {
+          outgoingPayload = await this.encryptChatPayload(chatPayload);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const missingRecipientChatKey = message.includes('has not advertised a chat encryption key yet');
+          if (missingRecipientChatKey && this.isLocalEndpoint()) {
+            const chatRecipientId =
+              typeof chatPayload.recipientId === 'string' ? chatPayload.recipientId : 'unknown';
+            console.warn(
+              `[C2] Recipient ${chatRecipientId} has no chat key advertisement; sending local plaintext fallback`,
+            );
+            outgoingPayload = {
+              ...chatPayload,
+              encrypted: false,
+            };
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        outgoingPayload = {
+          ...chatPayload,
+          encrypted: false,
+        };
+      }
     }
     if (type === 'presence' && payload && typeof payload === 'object') {
       outgoingPayload = {
@@ -1001,6 +1038,17 @@ export class C2Client {
     const keyEpoch = typeof payload.keyEpoch === 'number' && Number.isFinite(payload.keyEpoch) ? payload.keyEpoch : 0;
 
     if (!ciphertextB64 || !nonceB64 || !authTagB64 || !senderEphemeralPublicKey || !recipientId) {
+      // Backward compatibility: some field nodes still emit plaintext payloads
+      // with encrypted=true but without cipher material.
+      if (typeof payload.content === 'string') {
+        console.warn(
+          `[C2] Received legacy chat payload marked encrypted from ${senderId}; accepting plaintext fallback`,
+        );
+        return {
+          ...payload,
+          encrypted: false,
+        };
+      }
       throw new Error('encrypted chat payload is missing required fields');
     }
 

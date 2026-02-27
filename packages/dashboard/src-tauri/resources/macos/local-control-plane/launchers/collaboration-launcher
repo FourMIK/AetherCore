@@ -2,4 +2,22 @@
 set -eu
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 RUNTIME_ROOT="${SCRIPT_DIR}/.."
-exec "${RUNTIME_ROOT}/node" "${RUNTIME_ROOT}/services/collaboration/dist/index.js"
+
+BUNDLED_ENTRY="${RUNTIME_ROOT}/services/collaboration/dist/index.js"
+if [ -f "${BUNDLED_ENTRY}" ]; then
+  exec "${RUNTIME_ROOT}/node" "${BUNDLED_ENTRY}"
+fi
+
+# Dev fallback for source checkouts where bundled dist assets are not present.
+REPO_ROOT="${PWD}"
+REPO_ENTRY="${REPO_ROOT}/services/collaboration/dist/index.js"
+if [ -f "${REPO_ENTRY}" ]; then
+  exec node "${REPO_ENTRY}"
+fi
+
+if command -v pnpm >/dev/null 2>&1 && [ -d "${REPO_ROOT}/services/collaboration" ]; then
+  exec pnpm --dir "${REPO_ROOT}/services/collaboration" run dev
+fi
+
+echo "ERROR: collaboration launcher could not find bundled or repo runtime entrypoint" >&2
+exit 1

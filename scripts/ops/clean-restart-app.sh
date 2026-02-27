@@ -177,7 +177,17 @@ wait_for_listener() {
 }
 
 verify_or_recover_stack() {
-  if wait_for_listener 3000 "$STACK_WAIT_SECS" && wait_for_listener 8080 "$STACK_WAIT_SECS"; then
+  local gateway_ready=0
+  local collaboration_ready=0
+
+  if wait_for_listener 3000 "$STACK_WAIT_SECS"; then
+    gateway_ready=1
+  fi
+  if wait_for_listener 8080 "$STACK_WAIT_SECS"; then
+    collaboration_ready=1
+  fi
+
+  if [[ "$gateway_ready" -eq 1 && "$collaboration_ready" -eq 1 ]]; then
     return 0
   fi
 
@@ -188,12 +198,23 @@ verify_or_recover_stack() {
     sleep 1
   fi
 
-  if ! wait_for_listener 3000 "$STACK_WAIT_SECS"; then
+  if [[ "$gateway_ready" -eq 0 ]] && ! wait_for_listener 3000 "$STACK_WAIT_SECS"; then
     echo "WARN: gateway listener (:3000) is still missing"
+  else
+    gateway_ready=1
   fi
-  if ! wait_for_listener 8080 "$STACK_WAIT_SECS"; then
+
+  if [[ "$collaboration_ready" -eq 0 ]] && ! wait_for_listener 8080 "$STACK_WAIT_SECS"; then
     echo "WARN: collaboration listener (:8080) is still missing"
+  else
+    collaboration_ready=1
   fi
+
+  if [[ "$gateway_ready" -eq 0 ]]; then
+    return 1
+  fi
+
+  return 0
 }
 
 if [[ "$SKIP_APP_RESTART" -eq 0 ]]; then

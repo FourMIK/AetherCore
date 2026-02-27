@@ -207,16 +207,82 @@ if [[ -n "$HELTECH_DEVICE_ID" ]]; then
   CONNECT_CMD+=(--device-id "$HELTECH_DEVICE_ID")
 fi
 
+STEP_RESULTS=()
+STEP_WARNINGS=0
+
+record_step_ok() {
+  local label="$1"
+  local detail="$2"
+  STEP_RESULTS+=("PASS | ${label} | ${detail}")
+}
+
+record_step_warn() {
+  local label="$1"
+  local detail="$2"
+  STEP_RESULTS+=("WARN | ${label} | ${detail}")
+  STEP_WARNINGS=$((STEP_WARNINGS + 1))
+}
+
+record_step_fail() {
+  local label="$1"
+  local detail="$2"
+  STEP_RESULTS+=("FAIL | ${label} | ${detail}")
+}
+
+is_port_listening() {
+  local port="$1"
+  lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+print_summary() {
+  echo "== Bringup Summary =="
+  for line in "${STEP_RESULTS[@]}"; do
+    echo "$line"
+  done
+  if [[ "$STEP_WARNINGS" -gt 0 ]]; then
+    echo "Completed with $STEP_WARNINGS warning(s)."
+  fi
+}
+
 echo "== Step 1/6: Bring up local app + Heltech bridge =="
-"${CONNECT_CMD[@]}"
+if "${CONNECT_CMD[@]}"; then
+  if ! is_port_listening 3000; then
+    record_step_fail "Step 1/6" "gateway listener :3000 is not active after local bring-up"
+    print_summary
+    exit 1
+  fi
+
+  if is_port_listening 8080; then
+    record_step_ok "Step 1/6" "local app + Heltech bridge active (gateway :3000, collaboration :8080)"
+  else
+    record_step_warn "Step 1/6" "local app + Heltech bridge active; collaboration listener :8080 is not active"
+    echo "WARN: continuing without collaboration listener :8080"
+  fi
+else
+  record_step_fail "Step 1/6" "local app + Heltech bridge failed"
+  print_summary
+  exit 1
+fi
 echo
 
 echo "== Step 2/6: Configure Pi C2 endpoint =="
-"$ROOT_DIR/scripts/ops/configure-pi-c2.sh" "$PI_SSH" "$MAC_IP"
+if "$ROOT_DIR/scripts/ops/configure-pi-c2.sh" "$PI_SSH" "$MAC_IP"; then
+  record_step_ok "Step 2/6" "Pi C2 endpoint configured"
+else
+  record_step_fail "Step 2/6" "Pi C2 endpoint configuration failed"
+  print_summary
+  exit 1
+fi
 echo
 
 echo "== Step 3/6: Force one Pi presence publish =="
-"$ROOT_DIR/scripts/ops/force-pi-presence.sh" "$PI_SSH" "$MAC_IP"
+if "$ROOT_DIR/scripts/ops/force-pi-presence.sh" "$PI_SSH" "$MAC_IP"; then
+  record_step_ok "Step 3/6" "Pi presence publish triggered"
+else
+  record_step_fail "Step 3/6" "Pi presence publish failed"
+  print_summary
+  exit 1
+fi
 echo
 
 echo "== Step 4/6: Verify Heltech telemetry =="
@@ -224,15 +290,34 @@ HELTECH_CHECK_CMD=("$ROOT_DIR/scripts/ops/check-heltech-telemetry.sh")
 if [[ -n "$HELTECH_DEVICE_ID" ]]; then
   HELTECH_CHECK_CMD+=(--device-id "$HELTECH_DEVICE_ID")
 fi
-"${HELTECH_CHECK_CMD[@]}"
+if "${HELTECH_CHECK_CMD[@]}"; then
+  record_step_ok "Step 4/6" "Heltech telemetry verified"
+else
+  record_step_fail "Step 4/6" "Heltech telemetry verification failed"
+  print_summary
+  exit 1
+fi
 echo
 
 echo "== Step 5/6: Verify local Mac mesh state =="
-PROBE_SECONDS="$PROBE_SECONDS" "$ROOT_DIR/scripts/ops/check-mac-mesh.sh"
+if PROBE_SECONDS="$PROBE_SECONDS" "$ROOT_DIR/scripts/ops/check-mac-mesh.sh"; then
+  record_step_ok "Step 5/6" "local Mac mesh checks completed"
+else
+  record_step_fail "Step 5/6" "local Mac mesh check failed"
+  print_summary
+  exit 1
+fi
 echo
 
 echo "== Step 6/6: Verify Pi mesh state =="
-"$ROOT_DIR/scripts/ops/check-pi-mesh.sh" "$PI_SSH" "$MAC_IP"
+if "$ROOT_DIR/scripts/ops/check-pi-mesh.sh" "$PI_SSH" "$MAC_IP"; then
+  record_step_ok "Step 6/6" "Pi mesh checks completed"
+else
+  record_step_fail "Step 6/6" "Pi mesh check failed"
+  print_summary
+  exit 1
+fi
 echo
 
+print_summary
 echo "DONE: all node bring-up checks completed"

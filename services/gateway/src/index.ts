@@ -87,6 +87,10 @@ const REVOCATION_SOURCE_URL = process.env.AETHERCORE_REVOCATION_SOURCE_URL?.trim
 const REVOCATION_REFRESH_INTERVAL_MS = parsePositiveIntEnv('AETHERCORE_REVOCATION_REFRESH_INTERVAL_MS', 30000);
 const REVOCATION_REQUEST_TIMEOUT_MS = parsePositiveIntEnv('AETHERCORE_REVOCATION_REQUEST_TIMEOUT_MS', 5000);
 const REVOCATION_FAIL_CLOSED = parseBooleanEnv('AETHERCORE_REVOCATION_FAIL_CLOSED', isProductionMode());
+const EXPOSE_PRESENCE_REJECT_DETAILS = parseBooleanEnv(
+  'AETHERCORE_DEBUG_PRESENCE_ERRORS',
+  !isProductionMode(),
+);
 
 function warnOnLocalhostTargetInContainer(target: string, variableName: string): void {
   if (isRunningInContainer() && isLocalhostTarget(target)) {
@@ -201,6 +205,18 @@ type RalphiePresenceRecord = RalphiePresence & {
   received_at: number;
   verification: PresenceVerificationProvenance;
 };
+type RalphiePresenceUpsertSuccess = {
+  ok: true;
+  record: RalphiePresenceRecord;
+};
+type RalphiePresenceUpsertFailure = {
+  ok: false;
+  code: string;
+  message: string;
+  details?: unknown;
+  httpStatus: number;
+};
+type RalphiePresenceUpsertResult = RalphiePresenceUpsertSuccess | RalphiePresenceUpsertFailure;
 type OperatorPresenceStatus = 'online' | 'offline' | 'busy' | 'away';
 type OperatorSession = {
   clientId: string | null;
@@ -242,12 +258,25 @@ app.get('/health', (req, res) => {
 });
 
 app.post('/ralphie/presence', (req, res) => {
-  const record = upsertRalphiePresence(req.body);
-  if (!record) {
-    res.status(400).json({ status: 'error', message: 'invalid presence payload' });
+  const result = upsertRalphiePresence(req.body);
+  if (!result.ok) {
+    const responsePayload: {
+      status: 'error';
+      code: string;
+      message: string;
+      details?: unknown;
+    } = {
+      status: 'error',
+      code: result.code,
+      message: result.message,
+    };
+    if (EXPOSE_PRESENCE_REJECT_DETAILS && result.details !== undefined) {
+      responsePayload.details = result.details;
+    }
+    res.status(result.httpStatus).json(responsePayload);
     return;
   }
-  res.status(202).json({ status: 'accepted', node_id: record.identity.device_id });
+  res.status(202).json({ status: 'accepted', node_id: result.record.identity.device_id });
 });
 
 const server = createServer(app);
@@ -943,12 +972,17 @@ wss.on('connection', (ws: WebSocket) => {
     try {
       const raw = JSON.parse(message.toString());
       if (raw.type === 'RALPHIE_PRESENCE') {
-        const record = upsertRalphiePresence(raw);
-        if (!record) {
-          sendGatewayError(ws, 'INVALID_SCHEMA', 'Invalid RALPHIE_PRESENCE frame');
+        const result = upsertRalphiePresence(raw);
+        if (!result.ok) {
+          sendGatewayError(
+            ws,
+            result.code,
+            result.message,
+            EXPOSE_PRESENCE_REJECT_DETAILS ? result.details : undefined,
+          );
           return;
         }
-        sendWsJson(ws, { type: 'RALPHIE_PRESENCE_ACK', node_id: record.identity.device_id });
+        sendWsJson(ws, { type: 'RALPHIE_PRESENCE_ACK', node_id: result.record.identity.device_id });
         return;
       }
       if (raw.type === 'COMMAND_FRAME') {
@@ -1046,11 +1080,17 @@ function broadcast(data: unknown) {
   });
 }
 
-function upsertRalphiePresence(payload: unknown): RalphiePresenceRecord | null {
+function upsertRalphiePresence(payload: unknown): RalphiePresenceUpsertResult {
   const parsed = RalphiePresenceSchema.safeParse(payload);
   if (!parsed.success) {
     logger.warn({ validation_error: parsed.error.flatten() }, 'Rejected invalid RALPHIE_PRESENCE payload');
-    return null;
+    return {
+      ok: false,
+      code: 'PRESENCE_SCHEMA_INVALID',
+      message: 'Presence payload failed schema validation',
+      details: parsed.error.flatten(),
+      httpStatus: 400,
+    };
   }
 
   const revocationCheck = verifySenderNotRevoked(
@@ -1066,7 +1106,13 @@ function upsertRalphiePresence(payload: unknown): RalphiePresenceRecord | null {
       },
       'Rejected revoked RALPHIE_PRESENCE payload',
     );
-    return null;
+    return {
+      ok: false,
+      code: revocationCheck.code,
+      message: revocationCheck.message,
+      details: revocationCheck.details,
+      httpStatus: revocationCheck.code === 'IDENTITY_REVOKED' ? 403 : 503,
+    };
   }
 
   const signatureCheck = verifyRalphiePresenceSignature(parsed.data);
@@ -1080,7 +1126,13 @@ function upsertRalphiePresence(payload: unknown): RalphiePresenceRecord | null {
       },
       'Rejected unauthenticated RALPHIE_PRESENCE payload',
     );
-    return null;
+    return {
+      ok: false,
+      code: signatureCheck.code,
+      message: signatureCheck.message,
+      details: signatureCheck.details,
+      httpStatus: 401,
+    };
   }
 
   const normalizedPublicKey =
@@ -1129,7 +1181,10 @@ function upsertRalphiePresence(payload: unknown): RalphiePresenceRecord | null {
   );
 
   broadcast({ type: 'RALPHIE_PRESENCE', data: record });
-  return record;
+  return {
+    ok: true,
+    record,
+  };
 }
 
 process.on('SIGTERM', () => {

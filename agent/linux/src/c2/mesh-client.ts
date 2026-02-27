@@ -73,7 +73,7 @@ type PresencePayload = {
   timestamp: number;
   endpoint: string;
   last_disconnect_reason: string;
-  identity: MeshIdentity & { public_key: string; chat_public_key: string };
+  identity: MeshIdentity & { public_key: string };
   telemetry?: unknown;
 };
 
@@ -615,9 +615,13 @@ export class MeshClient {
       endpoint: this.config.endpoint,
       last_disconnect_reason: this.lastDisconnectReason,
       identity: {
-        ...this.config.identity,
+        device_id: this.config.identity.device_id,
+        hardware_serial: this.config.identity.hardware_serial,
+        certificate_serial: this.config.identity.certificate_serial,
+        trust_score: this.config.identity.trust_score,
+        enrolled_at: this.config.identity.enrolled_at,
+        tpm_backed: this.config.identity.tpm_backed,
         public_key: this.advertisedPublicKeyPem,
-        chat_public_key: this.chatEncryptionPublicKeyPem,
       },
     };
 
@@ -639,7 +643,13 @@ export class MeshClient {
   private initializeSigningMaterial(): { privateKey: crypto.KeyObject; publicKeyPem: string } {
     const configuredPath = process.env.CODERALPHIE_CHAT_SIGNING_KEY_PATH?.trim();
     const fallbackPath = process.env.AETHERCORE_SIGNING_PRIVATE_KEY_PATH?.trim();
-    const keyCandidates = [configuredPath, fallbackPath, '/tmp/ralphie_dev.key'].filter(
+    const keyCandidates = [
+      configuredPath,
+      fallbackPath,
+      '/tmp/ralphie_dev.key',
+      '/etc/coderalphie/keys/signing-private.pem',
+      '/etc/coderalphie/keys/ed25519-private.pem',
+    ].filter(
       (value): value is string => !!value && value.length > 0,
     );
 
@@ -675,15 +685,42 @@ export class MeshClient {
       }
     }
 
-    const generated = crypto.generateKeyPairSync('ed25519', {
-      publicKeyEncoding: { type: 'spki', format: 'pem' },
-      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-    });
-    console.warn('[Mesh] No persisted signing key available; using ephemeral Ed25519 identity for this process');
-    return {
-      privateKey: crypto.createPrivateKey(generated.privateKey),
-      publicKeyPem: generated.publicKey.toString(),
-    };
+    // Keep the fallback key stable across process restarts so gateway key binding remains valid.
+    const fallbackKeyPath = '/tmp/ralphie_dev.key';
+    try {
+      const generated = crypto.generateKeyPairSync('ed25519', {
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      });
+      fs.writeFileSync(fallbackKeyPath, generated.privateKey, { mode: 0o600 });
+      const privateKey = crypto.createPrivateKey(generated.privateKey);
+      const publicKeyPem = crypto
+        .createPublicKey(privateKey)
+        .export({ type: 'spki', format: 'pem' })
+        .toString();
+      console.warn(
+        `[Mesh] No persisted signing key found; generated fallback signing key at ${fallbackKeyPath}`,
+      );
+      return {
+        privateKey,
+        publicKeyPem,
+      };
+    } catch (error) {
+      const generated = crypto.generateKeyPairSync('ed25519', {
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      });
+      console.warn(
+        `[Mesh] Failed to persist fallback signing key (${fallbackKeyPath}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      console.warn(
+        '[Mesh] Using ephemeral Ed25519 signing identity for this process; presence key binding may break after restart',
+      );
+      return {
+        privateKey: crypto.createPrivateKey(generated.privateKey),
+        publicKeyPem: generated.publicKey.toString(),
+      };
+    }
   }
 
   private initializeChatEncryptionMaterial(): {
@@ -727,12 +764,26 @@ function postPresence(endpoint: string, body: string, timeoutMs: number): Promis
       },
       (response) => {
         const status = response.statusCode ?? 0;
-        response.resume();
-        if (status >= 200 && status < 300) {
-          resolve();
-          return;
-        }
-        reject(new Error(`presence_post_failed status=${status}`));
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer | string) => {
+          chunks.push(typeof chunk === 'string' ? Buffer.from(chunk, 'utf-8') : chunk);
+        });
+        response.on('end', () => {
+          if (status >= 200 && status < 300) {
+            resolve();
+            return;
+          }
+          const responseBody = Buffer.concat(chunks)
+            .toString('utf-8')
+            .trim()
+            .replace(/\s+/g, ' ')
+            .slice(0, 400);
+          if (responseBody.length > 0) {
+            reject(new Error(`presence_post_failed status=${status} body=${responseBody}`));
+            return;
+          }
+          reject(new Error(`presence_post_failed status=${status}`));
+        });
       },
     );
 

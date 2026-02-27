@@ -12,6 +12,8 @@ TRUST_SCORE="${TRUST_SCORE:-0.35}"
 TPM_BACKED="${TPM_BACKED:-false}"
 ENROLLED_AT_MS="${ENROLLED_AT_MS:-$(( $(date +%s) * 1000 ))}"
 INTERVAL_SEC="${INTERVAL_SEC:-30}"
+SIGNING_KEY_PATH="${SIGNING_KEY_PATH:-}"
+SIGNING_PUBLIC_KEY=""
 ONESHOT=0
 VERIFY_SNAPSHOT=1
 GPS_LAT=""
@@ -43,6 +45,7 @@ Optional:
   --tpm-backed <true|false>     Defaults to false
   --interval-sec <seconds>      Defaults to 30
   --enrolled-at-ms <epoch-ms>   Defaults to now
+  --signing-key-path <path>     Ed25519 private key path (default: /tmp/aethercore-keys/heltech-<device-id>.ed25519.pem)
   --lat <decimal-deg>           Optional GPS latitude
   --lon <decimal-deg>           Optional GPS longitude
   --alt-m <meters>              Optional GPS altitude in meters
@@ -102,6 +105,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --enrolled-at-ms)
       ENROLLED_AT_MS="${2:-}"
+      shift 2
+      ;;
+    --signing-key-path)
+      SIGNING_KEY_PATH="${2:-}"
       shift 2
       ;;
     --lat)
@@ -167,6 +174,10 @@ if ! command -v curl >/dev/null 2>&1; then
   echo "ERROR: curl is required" >&2
   exit 1
 fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "ERROR: node is required for presence signing" >&2
+  exit 1
+fi
 
 if [[ -z "$HARDWARE_SERIAL" ]]; then
   HARDWARE_SERIAL="$DEVICE_ID"
@@ -202,6 +213,45 @@ if ! [[ "$INTERVAL_SEC" =~ ^[0-9]+$ ]] || [[ "$INTERVAL_SEC" -lt 5 ]]; then
   echo "ERROR: --interval-sec must be an integer >= 5" >&2
   exit 1
 fi
+
+if [[ -z "$SIGNING_KEY_PATH" ]]; then
+  safe_id="$(printf '%s' "$DEVICE_ID" | tr -cs 'a-zA-Z0-9._-' '-')"
+  safe_id="${safe_id#-}"
+  safe_id="${safe_id%-}"
+  SIGNING_KEY_PATH="/tmp/aethercore-keys/heltech-${safe_id}.ed25519.pem"
+fi
+
+SIGNING_PUBLIC_KEY="$(
+  SIGNING_KEY_PATH="$SIGNING_KEY_PATH" node - <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const keyPath = process.env.SIGNING_KEY_PATH;
+if (!keyPath) {
+  console.error('SIGNING_KEY_PATH is required');
+  process.exit(2);
+}
+
+fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+if (!fs.existsSync(keyPath)) {
+  const generated = crypto.generateKeyPairSync('ed25519', {
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  });
+  fs.writeFileSync(keyPath, generated.privateKey, { mode: 0o600 });
+}
+
+const privateKeyPem = fs.readFileSync(keyPath, 'utf-8');
+const privateKey = crypto.createPrivateKey(privateKeyPem);
+const publicKeyPem = crypto
+  .createPublicKey(privateKey)
+  .export({ type: 'spki', format: 'pem' })
+  .toString();
+
+process.stdout.write(publicKeyPem);
+NODE
+)"
 
 if [[ -n "$GPS_LAT" || -n "$GPS_LON" ]]; then
   if [[ -z "$GPS_LAT" || -z "$GPS_LON" ]]; then
@@ -247,6 +297,7 @@ publish_presence() {
   local reason="$1"
   local disconnect_reason="$2"
   local timestamp_ms
+  local signature
   local has_gps has_gps_alt has_battery has_voltage has_power has_snr has_rssi has_radio
   timestamp_ms="$(( $(date +%s) * 1000 ))"
 
@@ -289,6 +340,7 @@ publish_presence() {
     --arg endpoint "$MESH_ENDPOINT" \
     --arg disconnect_reason "$disconnect_reason" \
     --arg device_id "$DEVICE_ID" \
+    --arg public_key "$SIGNING_PUBLIC_KEY" \
     --arg hardware_serial "$HARDWARE_SERIAL" \
     --arg certificate_serial "$CERTIFICATE_SERIAL" \
     --argjson trust_score "$TRUST_SCORE" \
@@ -318,6 +370,7 @@ publish_presence() {
       last_disconnect_reason: $disconnect_reason,
       identity: {
         device_id: $device_id,
+        public_key: $public_key,
         hardware_serial: $hardware_serial,
         certificate_serial: $certificate_serial,
         trust_score: $trust_score,
@@ -357,6 +410,45 @@ publish_presence() {
       end
     | if (.telemetry | type == "object" and (.telemetry | length == 0)) then del(.telemetry) else . end
     ')"
+
+  signature="$(
+    PAYLOAD_JSON="$payload" SIGNING_KEY_PATH="$SIGNING_KEY_PATH" node - <<'NODE'
+const fs = require('fs');
+const crypto = require('crypto');
+
+function stableJsonValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => stableJsonValue(entry));
+  }
+  if (value && typeof value === 'object') {
+    const normalized = {};
+    for (const key of Object.keys(value).sort((a, b) => a.localeCompare(b))) {
+      normalized[key] = stableJsonValue(value[key]);
+    }
+    return normalized;
+  }
+  return value;
+}
+
+const keyPath = process.env.SIGNING_KEY_PATH;
+const payloadJson = process.env.PAYLOAD_JSON;
+if (!keyPath || !payloadJson) {
+  console.error('SIGNING_KEY_PATH and PAYLOAD_JSON are required');
+  process.exit(2);
+}
+
+const payload = JSON.parse(payloadJson);
+const canonicalPayload = JSON.stringify(stableJsonValue(payload));
+const privateKeyPem = fs.readFileSync(keyPath, 'utf-8');
+const privateKey = crypto.createPrivateKey(privateKeyPem);
+const signature = crypto
+  .sign(null, Buffer.from(canonicalPayload, 'utf-8'), privateKey)
+  .toString('hex');
+
+process.stdout.write(signature);
+NODE
+  )"
+  payload="$(printf '%s' "$payload" | jq -c --arg signature "$signature" '. + {signature: $signature}')"
 
   status_code="$(curl -sS -o /tmp/aethercore-heltech-presence-response.json \
     -w "%{http_code}" \
@@ -444,6 +536,7 @@ echo "  hardware_serial=$HARDWARE_SERIAL"
 echo "  certificate_serial=$CERTIFICATE_SERIAL"
 echo "  trust_score=$TRUST_SCORE"
 echo "  tpm_backed=$TPM_BACKED"
+echo "  signing_key_path=$SIGNING_KEY_PATH"
 echo "  mesh_endpoint=$MESH_ENDPOINT"
 echo "  gateway_http=$GATEWAY_HTTP"
 echo "  interval_sec=$INTERVAL_SEC"
