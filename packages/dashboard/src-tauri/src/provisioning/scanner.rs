@@ -179,10 +179,11 @@ async fn scan_network_devices() -> Result<Vec<CandidateNode>, String> {
                     _ => {}
                 }
             }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                // Continue waiting
-            }
             Err(e) => {
+                if e.to_string().to_lowercase().contains("timeout") {
+                    // Continue waiting during scan window.
+                    continue;
+                }
                 log::warn!("mDNS receive error: {}", e);
                 break;
             }

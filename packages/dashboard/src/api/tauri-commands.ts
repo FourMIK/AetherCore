@@ -185,27 +185,6 @@ export const TauriCommands = {
 
 
 
-
-export type AttestationMode = 'required' | 'optional' | 'disabled';
-export type AndroidBackendCapability = 'strongbox' | 'tee' | 'software';
-export type AttestationProbeStatus = 'healthy' | 'degraded' | 'error';
-export type AttestationFailureReason =
-  | 'bootloader_unlocked'
-  | 'chain_unverifiable'
-  | 'challenge_mismatch'
-  | 'backend_unavailable'
-  | 'policy_disabled'
-  | 'ci_override'
-  | 'unknown';
-
-export interface StartupProbeStatus {
-  policy_mode: AttestationMode;
-  selected_backend: 'tpm' | 'android_keystore' | 'none' | string;
-  security_level: AndroidBackendCapability;
-  status: AttestationProbeStatus;
-  failure_reason?: AttestationFailureReason | null;
-}
-
 export interface DiagnosticCheck {
   id: string;
   label: string;
@@ -252,20 +231,8 @@ export interface AppConfig {
     mesh_endpoint: string;
   };
   tpm_policy: {
-    mode: AttestationMode;
+    mode: 'required' | 'optional' | 'disabled';
     enforce_hardware: boolean;
-  };
-  attestation_policy: {
-    mode: AttestationMode;
-    enforce_hardware: boolean;
-    backends: {
-      tpm: {
-        mode: AttestationMode;
-      };
-      android_keystore: {
-        mode: AttestationMode;
-      };
-    };
   };
   ports: {
     api: number;
@@ -287,7 +254,6 @@ export interface SentinelTrustStatus {
   reduced_trust: boolean;
   headline: string;
   detail: string;
-  startup_probe?: StartupProbeStatus;
 }
 
 export interface GenesisBundle {

@@ -47,7 +47,8 @@ interface DeploymentStatus {
 
 const RETRY_LIMIT = 3;
 const RETRY_DELAY_MS = 1000;
-const TIMEOUT_BUDGET_MS = 30000;
+const DEFAULT_TIMEOUT_BUDGET_MS = 30000;
+const STACK_BOOT_TIMEOUT_MS = 120000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -69,14 +70,18 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const recommendedProfile = 'commander-edition';
-  const recommendedMeshEndpoint = 'ws://127.0.0.1:8080';
+  const recommendedMeshEndpoint = 'ws://127.0.0.1:3000';
   const firstNodeId = 'first-node';
 
   const updateStep = useCallback((id: string, patch: Partial<BootstrapStep>) => {
     setSteps((prev) => prev.map((step) => (step.id === id ? { ...step, ...patch } : step)));
   }, []);
 
-  const runWithRetry = useCallback(async <T,>(stepId: string, action: () => Promise<T>) => {
+  const runWithRetry = useCallback(async <T,>(
+    stepId: string,
+    action: () => Promise<T>,
+    timeoutMs: number = DEFAULT_TIMEOUT_BUDGET_MS,
+  ) => {
     let lastError = 'unknown error';
     for (let attempt = 1; attempt <= RETRY_LIMIT; attempt += 1) {
       updateStep(stepId, { state: 'running', attempts: attempt, detail: `Attempt ${attempt}/${RETRY_LIMIT}` });
@@ -84,7 +89,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
         return await Promise.race([
           action(),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Timeout exceeded (${TIMEOUT_BUDGET_MS}ms)`)), TIMEOUT_BUDGET_MS)
+            setTimeout(() => reject(new Error(`Timeout exceeded (${timeoutMs}ms)`)), timeoutMs)
           ),
         ]);
       } catch (error) {
@@ -124,7 +129,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
           detail: `Required services healthy ${status.healthy_required_services}/${status.required_services}`
         });
         return invoke<StackStatus>('stack_status');
-      });
+      }, STACK_BOOT_TIMEOUT_MS);
       const serviceStatuses = stackStatus.services;
       setLatestServiceStatus(serviceStatuses);
 

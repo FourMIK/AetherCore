@@ -20,7 +20,7 @@
       "id": "esptool",
       "kind": "sidecar",
       "description": "Bundled esptool utility used for USB firmware flashing workflows.",
-      "required": true,
+      "required": false,
       "platform_paths": {
         "linux": "linux/esptool",
         "macos": "macos/esptool",
@@ -35,7 +35,7 @@
       "id": "coderalphie-linux-arm64",
       "kind": "payload",
       "description": "Remote provisioning payload copied to edge assets during network enrollment.",
-      "required": true,
+      "required": false,
       "platform_paths": {
         "linux": "payloads/coderalphie-linux-arm64",
         "macos": "payloads/coderalphie-linux-arm64",

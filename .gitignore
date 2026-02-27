@@ -134,3 +134,7 @@ gradle-wrapper.jar
 # Stub binaries (generated from stub sources)
 plugins/atak-trust-overlay/stub-bin/
 
+# Generated artifacts
+__pycache__/
+*.py[cod]
+*.orig
