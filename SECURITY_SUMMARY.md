@@ -1,11 +1,13 @@
 # Security Summary
 
-## Post-Hardening Security Status (2026-02-12)
+## Post-Hardening Security Status (2026-02-23)
 
-**Core Enforcement:** ✅ **Ed25519 Signature Verification Active**
-**Trust Gating:** ✅ **Quarantine/Suspect Rejection Enforced**
-**Red Cell Validation:** ✅ **Spoofed-Signature Gap Closed**
-**Operational Status:** ⚠️ **Field Validation Pending**
+> **Validation note (2026-02-23):** This summary reflects current validated runtime behavior.  
+> See `docs/4MIK_GAP_VALIDATION_2026-02-23.md` for current, code-validated end-to-end gaps.
+
+**Core Enforcement (active path):** ✅ **Ed25519 ingress + replay controls active**
+**Desktop Gateway + Pi Chat Path:** ⚠️ **Partially complete (trust-derivation and lifecycle work remains)**
+**Operational Status:** ⚠️ **Field validation pending for enrollment/revocation**
 
 ---
 
@@ -52,7 +54,7 @@
 **Data Handling:**
 
 - ✅ No sensitive data in logs
-- ✅ Signature placeholders clearly marked
+- ✅ Active chat/presence path uses Ed25519 signatures
 - ✅ Trust status tracked on all messages
 - ✅ Failed verification visible to operators
 
@@ -72,9 +74,11 @@
 
 ### Core Enforcement Paths (Implemented)
 
-**Message Signing:**
+**Message Signing and Ingress Verification:**
 
 - ✅ C2 gRPC enforces Ed25519 signatures from registered device keys
+- ✅ Gateway WebSocket ingress verifies Ed25519 signatures before trust elevation
+- ✅ HTTP `/ralphie/presence` ingress now verifies Ed25519 signatures
 - ✅ Invalid keys/encodings/signatures rejected at edge ([grpc.rs:117-285](crates/c2-router/src/grpc.rs#L117-L285))
 - ✅ Audit trail for signature failures
 - ✅ Integration tests use real deterministic per-node keys
@@ -103,11 +107,9 @@
 
 **Encryption:**
 
-- ✅ TLS for transport layer (wss://)
-- ⚠️ No end-to-end message payload encryption
-- ✅ Message payload field present for future encryption
-
-**Recommendation:** Implement ChaCha20-Poly1305 message encryption in Sprint 2
+- ✅ TLS for transport layer (wss:// + production-gated gRPC TLS/mTLS)
+- ✅ Authenticated chat payload encryption is active on the dashboard <-> Pi chat path (ECDH P-256 + AES-256-GCM)
+- ✅ Per-message ephemeral sender keys provide continuous key rotation on active chat flow
 
 ### Operational Gaps & Required Actions
 
@@ -181,18 +183,17 @@
 
 ### Conclusion
 
-**Security Status:** ✅ **PRODUCTION-GRADE SIGNATURE ENFORCEMENT IMPLEMENTED**
+**Security Status:** ⚠️ **MIXED - STRONG AUTHENTICITY/INTEGRITY, CONFIDENTIALITY/PKI GAPS REMAIN**
 
 The implementation provides hardened security with:
 
-- Ed25519 signature enforcement at C2 gRPC edge
-- Explicit trust gating with quarantine/suspect rejection
-- Stream integrity with replay defense
-- Spoofed-signature gap closed and Red Cell validated
-- TLS enforcement for all remote communications
+- Ed25519 signature enforcement at C2 gRPC edge and gateway ingress
+- Replay defenses (nonce/sequence/chain) in active chat envelope flow
+- Signed HTTP presence ingestion with sender key binding checks
+- TLS enforcement for remote communications with production gRPC TLS/mTLS gating
 - No critical vulnerabilities detected by CodeQL
 
-**Current State:** Core cryptographic enforcement paths are production-ready. Operational validation (full test matrix, hardware integration, CI hardening) required before field deployment.
+**Current State:** Impersonation/replay weaknesses on the active desktop gateway + Pi chat ingress path are closed, and chat payload confidentiality is now enforced on that path. Remaining deployment blockers are server-derived trust semantics and production-grade enrollment/revocation lifecycle.
 
 **Operator Notice:** This system enforces Ed25519 signatures with trust-based access control. Field deployment requires:
 
@@ -203,8 +204,8 @@ The implementation provides hardened security with:
 
 ---
 
-**Reviewed By:** GitHub CodeQL Security Scanner + Red Cell Assault Suite
-**Date:** 2026-02-12
-**Status:** ✅ CORE ENFORCEMENT COMPLETE | ⚠️ OPERATIONAL VALIDATION PENDING
+**Reviewed By:** GitHub CodeQL Security Scanner + Red Cell Assault Suite + 2026-02-23 implementation reconciliation
+**Date:** 2026-02-23
+**Status:** ⚠️ MIXED ENFORCEMENT (AUTHENTICITY+CHAT-CONFIDENTIALITY STRONG, TRUST/PKI-PARTIAL) | ⚠️ OPERATIONAL VALIDATION PENDING
 **Alerts:** 0
 **Recommendation:** Deploy to controlled test bed; complete operational validation before field deployment

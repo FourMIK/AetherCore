@@ -1,0 +1,24 @@
+{
+  "legal": {
+    "redistribution_status": "requires-legal-approval",
+    "redistributable": false,
+    "internal_policy_reference": "POL-OSS-REDISTRIBUTION-001",
+    "legal_approval_ticket": "LEGAL-APPROVAL-PENDING",
+    "conveyance_obligations": [
+      "Include complete, corresponding license text for each bundled third-party component in the binary distribution.",
+      "Provide complete corresponding source (or a valid written source offer) for copyleft-covered components when required by license terms.",
+      "Maintain a documented conveyance process recording artifact hashes, distributed binaries, recipient scope, and fulfillment path for source/license requests."
+    ],
+    "notes": "Do not set redistributable=true until counsel/policy issues explicit written approval and updates legal_approval_ticket to a real approved ID."
+  },
+  "artifacts": [
+    {
+      "name": "atak-main-jar",
+      "path": "atak/ATAK/app/build/libs/main.jar",
+      "pinned_commit": "889eee292c43d3d2eafdd1f2fbf378ad5cd89ecc",
+      "sha256": "6a7a774df859fbd8ee5181a7858c7bf9f58aaca8943e39e5cb73c6276515bfd3"
+    }
+  ],
+  "atak_version": "4.6.0.5",
+  "atak_tag_or_commit": "889eee292c43d3d2eafdd1f2fbf378ad5cd89ecc"
+}

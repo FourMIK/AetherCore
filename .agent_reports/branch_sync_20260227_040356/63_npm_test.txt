@@ -1,0 +1,130 @@
+
+> aethercore-monorepo@0.2.0 test
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ WARN  Unsupported engine: wanted: {"node":"20.x"} (current: {"node":"v22.21.1","pnpm":"9.15.0"})
+
+> aethercore-monorepo@0.2.0 test /workspace/AetherCore
+> pnpm run test --recursive --filter="./packages/*" --filter="./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*" "--recursive" "--filter=./packages/*" "--filter=./services/*"
+
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.
+ ELIFECYCLE  Test failed. See above for more details.

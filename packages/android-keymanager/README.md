@@ -1,0 +1,42 @@
+# Android Key Manager Module
+
+This module adds Android-side enrollment key handling with hardware security preferences:
+
+1. Requests a StrongBox-backed EC key first when supported.
+2. Falls back to TEE-backed key if StrongBox generation is unavailable.
+3. Exposes runtime security-level introspection (`STRONGBOX` vs `TRUSTED_ENVIRONMENT`).
+4. Collects attestation artifacts and packages them into an enrollment `prove` payload.
+5. Persists only key references (alias + security level metadata), never private key bytes.
+5. Runs enrollment against CodeRalphie-compatible endpoint flow (`/api/v1/enroll/hello` then `/api/v1/enroll/prove`).
+6. Persists enrollment outputs: client certificate, trust bundle, and key reference metadata.
+7. Provides startup gating checks to block service activation unless enrollment artifacts and keystore key are valid.
+
+## Main API
+
+- `AndroidEnrollmentKeyManager.ensureEnrollmentKey(challenge)`
+- `AndroidEnrollmentKeyManager.securityLevel()`
+- `AndroidEnrollmentKeyManager.collectAttestation(challenge)`
+- `AndroidEnrollmentKeyManager.buildEnrollmentProvePayload(challenge)`
+
+## Tests
+
+Instrumentation tests are under `src/androidTest` and cover:
+
+- StrongBox available path
+- StrongBox fallback to TEE path
+- alias persistence behavior across manager recreation (restart/update simulation)
+
+
+## Enrollment Client
+
+- `AndroidEnrollmentClient.enroll(deviceId)` executes hello/prove sequence and stores issued artifacts.
+- `EnrollmentStartupGate.assertServiceActivationAllowed()` enforces enrollment artifact integrity at startup.
+
+
+## IPC Security Assumptions
+
+- Caller identity verification computes SHA-256 digests of app signing certificates via `PackageManager.GET_SIGNING_CERTIFICATES`.
+- On API 33+ the module uses the typed `getPackageInfo(packageName, PackageInfoFlags.of(...))` lookup.
+- On API 28-32 (the current `minSdk`) it falls back to the legacy `getPackageInfo(packageName, GET_SIGNING_CERTIFICATES)` call.
+- If package info lookup fails (`NameNotFoundException`) or signature access is denied (`SecurityException`), the IPC layer treats the caller as untrusted by returning an empty digest set and logging a warning.
+

@@ -166,6 +166,9 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
+      - name: Security regression gate (spoof/replay/tamper + transport/encryption invariants)
+        run: pnpm --dir services/gateway run test:security
+
   legacy-isolation:
     needs: [network-prerequisites]
     name: Check Legacy Isolation

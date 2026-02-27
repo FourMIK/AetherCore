@@ -1,0 +1,17 @@
+<event version="2.0"
+       uid="trust-quarantined-001"
+       type="a-f-AETHERCORE-TRUST"
+       how="m-g"
+       time="2026-01-14T10:17:00Z"
+       start="2026-01-14T10:17:00Z"
+       stale="2026-01-14T10:22:00Z">
+  <point lat="34.122100" lon="-117.125500" hae="0.0" ce="40.0" le="40.0"/>
+  <detail>
+    <trust trust_score="0.21"
+           last_updated="2026-01-14T10:16:30Z"
+           trust_level="quarantined"
+           integrity_packet_loss="0.49"
+           integrity_signature_fail_rate="0.22"
+           integrity_replay_events="77"/>
+  </detail>
+</event>

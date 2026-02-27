@@ -1,0 +1,44 @@
+{
+  "name": "@aethercore/shared",
+  "version": "0.1.0",
+  "description": "AetherCore Shared Utilities",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./c2-message-schema": {
+      "types": "./dist/c2-message-schema.d.ts",
+      "require": "./dist/c2-message-schema.js",
+      "default": "./dist/c2-message-schema.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "lint": "echo \"No linting configured yet\""
+  },
+  "keywords": [
+    "aethercore",
+    "shared"
+  ],
+  "author": "AetherCore Team",
+  "license": "MIT",
+  "dependencies": {
+    "hash-wasm": "^4.12.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.10.6",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.3"
+  }
+}

@@ -17,7 +17,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 /// Serial device information
 #[derive(Debug, Clone, Serialize, Deserialize)]

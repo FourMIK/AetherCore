@@ -1,4 +1,4 @@
-FROM rust:1.85-slim AS builder
+FROM rust:slim AS builder
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -6,8 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libs
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY services/h2-ingest ./services/h2-ingest
+COPY services/aethercore-node ./services/aethercore-node
+COPY packages/dashboard/src-tauri ./packages/dashboard/src-tauri
+COPY tests/integration ./tests/integration
 
-RUN cargo build --release --bin h2-ingest
+RUN cargo build --profile release-fast --bin h2-ingest
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
@@ -15,7 +18,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/* \
   && groupadd --system aether && useradd --system --gid aether --create-home aether
 
-COPY --from=builder /app/target/release/h2-ingest /usr/local/bin/h2-ingest
+COPY --from=builder /app/target/release-fast/h2-ingest /usr/local/bin/h2-ingest
 
 ENV PORT=8090
 EXPOSE 8090

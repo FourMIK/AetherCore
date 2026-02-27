@@ -1,0 +1,12 @@
+Cherry-pick source->result mapping
+- 907dd54 -> 7a38677
+- 89244e3 -> d1f96af
+- a770e92 -> 4e41355
+- bcfec9f -> f7c1bbe
+- 376ac94 -> 1143f3f
+
+Conflict handling summary
+- scripts/ops/*.sh and scripts/ops/README.md were modify/delete conflicts (deleted on dev line, present on JM); resolved by taking JM versions.
+- packages/dashboard/src/services/c2/C2Client.ts content conflict; resolved by taking JM version for touched area.
+- services/gateway/src/index.ts content conflict; resolved by taking JM version for touched area.
+- services/gateway/package.json and docs/PRIORITIZED_BACKLOG_2026-02-23.md conflicts on security commit; resolved by taking JM version.

@@ -15,8 +15,8 @@ use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{error, info, warn};
 
-use aethercore_trust_mesh::node_health::NodeHealthComputer;
 use crate::types::UnitStatus;
+use aethercore_trust_mesh::node_health::NodeHealthComputer;
 
 /// WebSocket message types
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -84,3 +84,57 @@ infra/k8s/overlays/bunker/secrets.env
 packages/dashboard/src-tauri/resources/payloads/*
 !packages/dashboard/src-tauri/resources/payloads/.gitkeep
 *.backup
+
+# Android Build Artifacts
+.gradle/
+.cxx/
+local.properties
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+bin/
+gen/
+out/
+release/
+
+# Android Studio
+*.iml
+.idea/
+.gradle/
+build/
+captures/
+.externalNativeBuild
+.cxx/
+
+# NDK
+obj/
+.externalNativeBuild/
+
+# Android Keystore (NEVER COMMIT production keystores)
+*.jks
+*.keystore
+debug.keystore
+
+# ATAK SDK (acquired separately from TAK.gov)
+plugins/atak-trust-overlay/libs/*.jar
+plugins/atak-trust-overlay/libs/*.aar
+!plugins/atak-trust-overlay/libs/README.md
+
+# Native Libraries (built by cargo-ndk)
+plugins/atak-trust-overlay/src/main/jniLibs/
+
+# ATAK SDK Source (external dependency)
+_sdk/
+
+# Gradle wrapper JARs (can be regenerated)
+gradle-wrapper.jar
+
+# Stub binaries (generated from stub sources)
+plugins/atak-trust-overlay/stub-bin/
+
+# Generated artifacts
+__pycache__/
+*.py[cod]
+*.orig
