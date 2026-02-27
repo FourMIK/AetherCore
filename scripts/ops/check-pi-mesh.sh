@@ -61,12 +61,19 @@ ssh_pi "MAC_IP='$MAC_IP' bash -s" <<'EOF'
 set -euo pipefail
 
 sudo systemctl show coderalphie -p Environment --no-pager
+MAIN_PID="$(sudo systemctl show coderalphie -p MainPID --value)"
+echo "MainPID=${MAIN_PID}"
+if [[ -n "$MAIN_PID" && "$MAIN_PID" != "0" ]]; then
+  echo
+  echo "== Pi live process env =="
+  sudo bash -c "if [[ -r /proc/${MAIN_PID}/environ ]]; then tr '\0' '\n' < /proc/${MAIN_PID}/environ | egrep -i '^(C2_WS_URL|C2_SERVER|C2_PORT|ENROLLMENT_URL|ENROLLMENT_CA_CERT_PATH|TPM2TOOLS_TCTI|NODE_ENV|AETHERCORE_PRODUCTION|CODERALPHIE_CHAT_SIGNING_KEY_PATH|AETHERCORE_SIGNING_PRIVATE_KEY_PATH)=' || true; fi"
+fi
 
 echo
 echo "== Pi override file =="
 sudo systemctl cat coderalphie --no-pager \
   | sed -n '/\[Service\]/,/\[Install\]/p' \
-  | egrep -i 'C2_WS_URL|ENROLLMENT_URL|ENROLLMENT_CA_CERT_PATH|TPM2TOOLS_TCTI|NODE_ENV|AETHERCORE_PRODUCTION|CODERALPHIE_CHAT_SIGNING_KEY_PATH|AETHERCORE_SIGNING_PRIVATE_KEY_PATH' || true
+  | egrep -i 'C2_WS_URL|C2_SERVER|C2_PORT|ENROLLMENT_URL|ENROLLMENT_CA_CERT_PATH|TPM2TOOLS_TCTI|NODE_ENV|AETHERCORE_PRODUCTION|CODERALPHIE_CHAT_SIGNING_KEY_PATH|AETHERCORE_SIGNING_PRIVATE_KEY_PATH' || true
 
 echo
 echo "== Pi -> Mac TCP reachability (${MAC_IP}:3000) =="
