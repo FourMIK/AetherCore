@@ -9,12 +9,18 @@ import pino from 'pino';
 import { parseTpmEnabled } from './tpm';
 import { createC2RouterClient, dispatchCommand } from './c2-client';
 import {
+  DistributedRevocationRegistry,
+  evaluateRevocationGate,
+  type RevocationSyncSummary,
+} from './revocation';
+import {
   isRunningInContainer,
   getDefaultC2Endpoint,
   isLocalhostTarget,
   createMessageEnvelope,
   parseMessageEnvelope,
   serializeForSigning,
+  setEnvelopeVerificationStatus,
   type MessageEnvelope,
 } from '@aethercore/shared';
 
@@ -39,10 +45,48 @@ if (parsedTpmEnabled.warning) {
 }
 const TPM_ENABLED = parsedTpmEnabled.value;
 
+function parsePositiveIntEnv(name: string, defaultValue: number): number {
+  const raw = process.env[name];
+  if (!raw) {
+    return defaultValue;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    logger.warn({ variable: name, value: raw, default_value: defaultValue }, 'Invalid integer env value');
+    return defaultValue;
+  }
+  return parsed;
+}
+
+function parseBooleanEnv(name: string, defaultValue: boolean): boolean {
+  const raw = process.env[name];
+  if (!raw) {
+    return defaultValue;
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
+    return true;
+  }
+  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
+    return false;
+  }
+  logger.warn({ variable: name, value: raw, default_value: defaultValue }, 'Invalid boolean env value');
+  return defaultValue;
+}
+
+function isProductionMode(): boolean {
+  const flag = process.env.AETHERCORE_PRODUCTION;
+  return process.env.NODE_ENV === 'production' || flag === '1' || flag === 'true';
+}
+
 const PORT = process.env.PORT || 3000;
 const C2_GRPC_TARGET = process.env.C2_ADDR || getDefaultC2Endpoint();
 // Backend endpoint for future integration with AetherBunker services
 const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || process.env.C2_ADDR || getDefaultC2Endpoint();
+const REVOCATION_SOURCE_URL = process.env.AETHERCORE_REVOCATION_SOURCE_URL?.trim() || '';
+const REVOCATION_REFRESH_INTERVAL_MS = parsePositiveIntEnv('AETHERCORE_REVOCATION_REFRESH_INTERVAL_MS', 30000);
+const REVOCATION_REQUEST_TIMEOUT_MS = parsePositiveIntEnv('AETHERCORE_REVOCATION_REQUEST_TIMEOUT_MS', 5000);
+const REVOCATION_FAIL_CLOSED = parseBooleanEnv('AETHERCORE_REVOCATION_FAIL_CLOSED', isProductionMode());
 
 function warnOnLocalhostTargetInContainer(target: string, variableName: string): void {
   if (isRunningInContainer() && isLocalhostTarget(target)) {
@@ -182,6 +226,11 @@ const operatorPresenceById = new Map<string, MessageEnvelope>();
 const senderPublicKeysById = new Map<string, string>();
 const replayStateBySenderId = new Map<string, SenderReplayState>();
 const MAX_REPLAY_NONCE_WINDOW = 2048;
+const revocationRegistry = new DistributedRevocationRegistry({
+  sourceUrl: REVOCATION_SOURCE_URL,
+  refreshIntervalMs: REVOCATION_REFRESH_INTERVAL_MS,
+  requestTimeoutMs: REVOCATION_REQUEST_TIMEOUT_MS,
+});
 
 const app = express();
 app.use(cors());
@@ -205,6 +254,52 @@ const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
 let backendHealthy = false;
+
+if (revocationRegistry.isConfigured()) {
+  logger.info(
+    {
+      source: REVOCATION_SOURCE_URL,
+      refresh_interval_ms: REVOCATION_REFRESH_INTERVAL_MS,
+      request_timeout_ms: REVOCATION_REQUEST_TIMEOUT_MS,
+      fail_closed: REVOCATION_FAIL_CLOSED,
+    },
+    'Distributed revocation source enabled',
+  );
+
+  void revocationRegistry
+    .refresh()
+    .then((summary) => {
+      if (summary) {
+        enforceRevocationAcrossActiveSessions(summary);
+      }
+    })
+    .catch((error) => {
+      logger.error(
+        {
+          source: REVOCATION_SOURCE_URL,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Initial revocation sync failed',
+      );
+    });
+
+  revocationRegistry.startPolling(
+    (summary) => {
+      enforceRevocationAcrossActiveSessions(summary);
+    },
+    (error) => {
+      logger.warn(
+        {
+          source: REVOCATION_SOURCE_URL,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Revocation sync attempt failed',
+      );
+    },
+  );
+} else {
+  logger.info('No distributed revocation source configured; revocation gate disabled');
+}
 
 function sendWsJson(ws: WebSocket, payload: unknown): void {
   if (ws.readyState !== WebSocket.OPEN) {
@@ -452,6 +547,77 @@ function verifyRalphiePresenceSignature(presence: RalphiePresence): EnvelopeVeri
   };
 }
 
+type RevocationVerificationResult =
+  | { ok: true }
+  | { ok: false; code: 'REVOCATION_UNAVAILABLE' | 'IDENTITY_REVOKED'; message: string; details?: unknown };
+
+function verifySenderNotRevoked(nodeId: string, certificateSerial?: string | null): RevocationVerificationResult {
+  const revocationGate = evaluateRevocationGate(revocationRegistry, {
+    nodeId,
+    certificateSerial,
+    failClosed: REVOCATION_FAIL_CLOSED,
+  });
+
+  if (!revocationGate.ok) {
+    logger.warn(
+      {
+        node_id: nodeId,
+        certificate_serial: certificateSerial ?? null,
+        code: revocationGate.code,
+        details: revocationGate.details,
+      },
+      'Rejected revoked identity in active verification path',
+    );
+    return revocationGate;
+  }
+  return { ok: true };
+}
+
+function disconnectRevokedOperators(): void {
+  for (const [operatorId, sockets] of socketsByOperatorId.entries()) {
+    const gate = verifySenderNotRevoked(operatorId);
+    if (gate.ok) {
+      continue;
+    }
+    sockets.forEach((operatorSocket) => {
+      sendGatewayError(operatorSocket, gate.code, gate.message, gate.details);
+      if (operatorSocket.readyState === WebSocket.OPEN) {
+        operatorSocket.close(4003, 'identity_revoked');
+      }
+    });
+  }
+}
+
+function evictRevokedRalphiePresence(): void {
+  for (const [nodeId, record] of ralphiePresenceByNode.entries()) {
+    const gate = verifySenderNotRevoked(nodeId, record.identity.certificate_serial);
+    if (gate.ok) {
+      continue;
+    }
+    ralphiePresenceByNode.delete(nodeId);
+    broadcast({
+      type: 'REVOCATION_EVENT',
+      node_id: nodeId,
+      code: gate.code,
+      details: gate.details,
+    });
+  }
+}
+
+function enforceRevocationAcrossActiveSessions(summary: RevocationSyncSummary): void {
+  logger.info(
+    {
+      source: summary.sourceUrl,
+      revoked_nodes: summary.revokedNodeCount,
+      revoked_certificates: summary.revokedCertificateCount,
+      last_updated_ns: summary.lastUpdatedNs,
+    },
+    'Revocation ledger synchronized from distributed source',
+  );
+  disconnectRevokedOperators();
+  evictRevokedRalphiePresence();
+}
+
 type ReplayVerificationResult =
   | { ok: true }
   | { ok: false; code: string; message: string; details?: unknown };
@@ -572,8 +738,7 @@ function buildAckEnvelope(
     delivered,
     reason,
   });
-  ack.trust_status = 'verified';
-  return ack;
+  return setEnvelopeVerificationStatus(ack, 'STATUS_UNVERIFIED');
 }
 
 function handleOperatorPresenceEnvelope(ws: WebSocket, envelope: MessageEnvelope): void {
@@ -584,6 +749,12 @@ function handleOperatorPresenceEnvelope(ws: WebSocket, envelope: MessageEnvelope
 
   if (session.clientId && session.clientId !== envelope.from) {
     sendGatewayError(ws, 'AUTH_MISMATCH', 'Envelope sender does not match authenticated operator');
+    return;
+  }
+
+  const revocationCheck = verifySenderNotRevoked(envelope.from);
+  if (!revocationCheck.ok) {
+    sendGatewayError(ws, revocationCheck.code, revocationCheck.message, revocationCheck.details);
     return;
   }
 
@@ -636,7 +807,7 @@ function handleOperatorPresenceEnvelope(ws: WebSocket, envelope: MessageEnvelope
   session.verified = true;
   session.lastSeen = trustProvenance.evaluated_at;
 
-  const outboundPresence: MessageEnvelope = {
+  const outboundPresence = {
     ...envelope,
     payload: {
       ...payload,
@@ -646,8 +817,8 @@ function handleOperatorPresenceEnvelope(ws: WebSocket, envelope: MessageEnvelope
       trust_source: 'server_derived',
       verification: trustProvenance,
     },
-    trust_status: session.verified ? 'verified' : 'unverified',
   };
+  setEnvelopeVerificationStatus(outboundPresence, session.verified ? 'VERIFIED' : 'STATUS_UNVERIFIED');
 
   operatorPresenceById.set(envelope.from, outboundPresence);
   broadcast(outboundPresence);
@@ -662,6 +833,12 @@ function routeEnvelopeByRecipient(ws: WebSocket, envelope: MessageEnvelope): voi
 
   if (envelope.from !== session.clientId) {
     sendGatewayError(ws, 'AUTH_MISMATCH', 'Envelope sender does not match authenticated operator');
+    return;
+  }
+
+  const revocationCheck = verifySenderNotRevoked(envelope.from);
+  if (!revocationCheck.ok) {
+    sendGatewayError(ws, revocationCheck.code, revocationCheck.message, revocationCheck.details);
     return;
   }
 
@@ -683,10 +860,8 @@ function routeEnvelopeByRecipient(ws: WebSocket, envelope: MessageEnvelope): voi
     return;
   }
 
-  const routedEnvelope: MessageEnvelope = {
-    ...envelope,
-    trust_status: 'verified',
-  };
+  const routedEnvelope: MessageEnvelope = { ...envelope };
+  setEnvelopeVerificationStatus(routedEnvelope, 'VERIFIED');
 
   const recipientSockets = socketsByOperatorId.get(recipientId);
   let delivered = false;
@@ -722,7 +897,7 @@ function handleC2Envelope(ws: WebSocket, envelope: MessageEnvelope): void {
       const heartbeat = createMessageEnvelope('heartbeat', 'gateway', {
         timestamp: Date.now(),
       });
-      heartbeat.trust_status = 'verified';
+      setEnvelopeVerificationStatus(heartbeat, 'STATUS_UNVERIFIED');
       sendWsJson(ws, heartbeat);
       break;
     }
@@ -830,7 +1005,7 @@ wss.on('connection', (ws: WebSocket) => {
             trustScore: session.trustScore,
             verified: session.verified,
           });
-          offlinePresence.trust_status = session.verified ? 'verified' : 'unverified';
+          setEnvelopeVerificationStatus(offlinePresence, 'STATUS_UNVERIFIED');
           operatorPresenceById.set(session.clientId, offlinePresence);
           broadcast(offlinePresence);
         }
@@ -875,6 +1050,22 @@ function upsertRalphiePresence(payload: unknown): RalphiePresenceRecord | null {
   const parsed = RalphiePresenceSchema.safeParse(payload);
   if (!parsed.success) {
     logger.warn({ validation_error: parsed.error.flatten() }, 'Rejected invalid RALPHIE_PRESENCE payload');
+    return null;
+  }
+
+  const revocationCheck = verifySenderNotRevoked(
+    parsed.data.identity.device_id,
+    parsed.data.identity.certificate_serial,
+  );
+  if (!revocationCheck.ok) {
+    logger.warn(
+      {
+        node_id: parsed.data.identity.device_id,
+        certificate_serial: parsed.data.identity.certificate_serial,
+        code: revocationCheck.code,
+      },
+      'Rejected revoked RALPHIE_PRESENCE payload',
+    );
     return null;
   }
 
@@ -940,6 +1131,14 @@ function upsertRalphiePresence(payload: unknown): RalphiePresenceRecord | null {
   broadcast({ type: 'RALPHIE_PRESENCE', data: record });
   return record;
 }
+
+process.on('SIGTERM', () => {
+  revocationRegistry.stopPolling();
+});
+
+process.on('SIGINT', () => {
+  revocationRegistry.stopPolling();
+});
 
 server.listen(PORT, () => {
   logger.info({ port: PORT, c2_core: C2_GRPC_TARGET }, '4MIK Gateway active');
