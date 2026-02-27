@@ -34,30 +34,6 @@ if command -v pkg &> /dev/null || [ -x "./node_modules/.bin/pkg" ]; then
         echo "[Build] ERROR: Binary creation failed"
         exit 1
     fi
-
-    echo "[Build] Creating Pi chat app binary..."
-    npx pkg dist/chat-app.js --targets node18-linux-arm64 --output dist/coderalphie-chat-linux-arm64 --compress GZip
-
-    if [ -f "dist/coderalphie-chat-linux-arm64" ]; then
-        chmod +x dist/coderalphie-chat-linux-arm64
-        echo "[Build] ✓ Binary created: dist/coderalphie-chat-linux-arm64"
-        ls -lh dist/coderalphie-chat-linux-arm64
-    else
-        echo "[Build] ERROR: Chat binary creation failed"
-        exit 1
-    fi
-
-    echo "[Build] Creating Pi chat GUI app binary..."
-    npx pkg dist/chat-gui-app.js --targets node18-linux-arm64 --output dist/coderalphie-chat-gui-linux-arm64 --compress GZip
-
-    if [ -f "dist/coderalphie-chat-gui-linux-arm64" ]; then
-        chmod +x dist/coderalphie-chat-gui-linux-arm64
-        echo "[Build] ✓ Binary created: dist/coderalphie-chat-gui-linux-arm64"
-        ls -lh dist/coderalphie-chat-gui-linux-arm64
-    else
-        echo "[Build] ERROR: Chat GUI binary creation failed"
-        exit 1
-    fi
 else
     echo "[Build] WARNING: pkg not available. Creating placeholder binary..."
     echo "[Build] In production, this should be built on an appropriate build server."
@@ -72,22 +48,6 @@ exit 1
 EOF
     chmod +x dist/coderalphie-linux-arm64
     echo "[Build] ⚠️  Placeholder binary created (not functional)"
-
-    cat > dist/coderalphie-chat-linux-arm64 << 'EOF'
-#!/bin/bash
-echo "ERROR: This is a placeholder binary. Build on production build server with pkg support."
-exit 1
-EOF
-    chmod +x dist/coderalphie-chat-linux-arm64
-    echo "[Build] ⚠️  Placeholder chat binary created (not functional)"
-
-    cat > dist/coderalphie-chat-gui-linux-arm64 << 'EOF'
-#!/bin/bash
-echo "ERROR: This is a placeholder binary. Build on production build server with pkg support."
-exit 1
-EOF
-    chmod +x dist/coderalphie-chat-gui-linux-arm64
-    echo "[Build] ⚠️  Placeholder chat GUI binary created (not functional)"
 fi
 
 echo ""
@@ -101,8 +61,6 @@ echo "╚═══════════════════════�
 echo ""
 echo "Artifacts:"
 echo "  • Binary:     dist/coderalphie-linux-arm64"
-echo "  • Chat App:   dist/coderalphie-chat-linux-arm64"
-echo "  • Chat GUI:   dist/coderalphie-chat-gui-linux-arm64"
 echo "  • Installer:  install.sh"
 echo "  • Dashboard:  ../../packages/dashboard/src-tauri/resources/payloads/"
 echo ""

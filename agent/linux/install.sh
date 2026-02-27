@@ -30,10 +30,8 @@ fi
 
 # Configuration
 BINARY_NAME="coderalphie-linux-arm64"
-CHAT_BINARY_NAME="coderalphie-chat-linux-arm64"
 INSTALL_DIR="/usr/local/bin"
 INSTALL_PATH="${INSTALL_DIR}/coderalphie"
-CHAT_INSTALL_PATH="${INSTALL_DIR}/coderalphie-chat"
 KEYS_DIR="/etc/coderalphie/keys"
 CONFIG_DIR="/etc/coderalphie"
 SERVICE_NAME="coderalphie.service"
@@ -55,15 +53,6 @@ else
   echo "[Install] User '${USER_NAME}' already exists"
 fi
 
-# Ensure service user can access TPM device nodes (/dev/tpm0, /dev/tpmrm0),
-# which are typically owned by group "tss".
-if getent group tss >/dev/null 2>&1; then
-  usermod -aG tss ${USER_NAME}
-  echo "[Install] Added '${USER_NAME}' to supplementary group 'tss'"
-else
-  echo -e "${YELLOW}[Install] WARNING: group 'tss' not found; TPM access may fail${NC}"
-fi
-
 # Ensure home directory exists
 mkdir -p ${USER_HOME}
 chown ${USER_NAME}:${USER_NAME} ${USER_HOME}
@@ -81,15 +70,6 @@ cp "./${BINARY_NAME}" "${INSTALL_PATH}"
 chmod 755 "${INSTALL_PATH}"
 chown root:root "${INSTALL_PATH}"
 echo -e "${GREEN}[Install] Binary installed to ${INSTALL_PATH}${NC}"
-
-if [ -f "./${CHAT_BINARY_NAME}" ]; then
-  cp "./${CHAT_BINARY_NAME}" "${CHAT_INSTALL_PATH}"
-  chmod 755 "${CHAT_INSTALL_PATH}"
-  chown root:root "${CHAT_INSTALL_PATH}"
-  echo -e "${GREEN}[Install] Chat app installed to ${CHAT_INSTALL_PATH}${NC}"
-else
-  echo -e "${YELLOW}[Install] Chat binary not found (${CHAT_BINARY_NAME}) - skipping chat app install${NC}"
-fi
 
 echo "[Install] Step 4/7: Creating configuration directories..."
 mkdir -p ${CONFIG_DIR}
@@ -116,7 +96,6 @@ StartLimitBurst=5
 Type=simple
 User=ralphie
 Group=ralphie
-SupplementaryGroups=tss
 Restart=on-failure
 RestartSec=5s
 
@@ -134,7 +113,6 @@ RestrictNamespaces=true
 # Environment
 Environment="NODE_ENV=production"
 Environment="AETHERCORE_PRODUCTION=1"
-Environment="TPM2TOOLS_TCTI=device:/dev/tpmrm0"
 
 # Execution
 ExecStart=/usr/local/bin/coderalphie
@@ -156,18 +134,9 @@ echo "[Install] Step 6/7: Generating identity (--genesis mode)..."
 # Run genesis mode as ralphie user to generate keys
 echo "[Install] Executing: sudo -u ${USER_NAME} ${INSTALL_PATH} --genesis"
 
-# Capture output including IdentityBlock JSON, but do not abort silently
-# if genesis fails.
-set +e
+# Capture output including IdentityBlock JSON
 GENESIS_OUTPUT=$(sudo -u ${USER_NAME} ${INSTALL_PATH} --genesis 2>&1)
-GENESIS_EXIT=$?
-set -e
 echo "${GENESIS_OUTPUT}"
-
-if [ ${GENESIS_EXIT} -ne 0 ]; then
-  echo -e "${RED}[Install] ERROR: Genesis failed (exit ${GENESIS_EXIT})${NC}"
-  exit ${GENESIS_EXIT}
-fi
 
 # Extract IdentityBlock JSON and output to stdout
 IDENTITY_JSON=$(echo "${GENESIS_OUTPUT}" | sed -n '/=== IDENTITY_BLOCK_START ===/,/=== IDENTITY_BLOCK_END ===/p' | grep -v "=== IDENTITY_BLOCK")
@@ -233,7 +202,6 @@ echo ""
 echo "Installation Summary:"
 echo "  • Binary: ${INSTALL_PATH}"
 echo "  • Service: ${SERVICE_NAME}"
-echo "  • Chat App: ${CHAT_INSTALL_PATH}"
 echo "  • User: ${USER_NAME} (non-root)"
 echo "  • Keys: ${KEYS_DIR} (chmod 700)"
 echo "  • Status: $(systemctl is-active ${SERVICE_NAME})"
@@ -243,7 +211,6 @@ echo "  • Status:  systemctl status ${SERVICE_NAME}"
 echo "  • Stop:    systemctl stop ${SERVICE_NAME}"
 echo "  • Restart: systemctl restart ${SERVICE_NAME}"
 echo "  • Logs:    journalctl -u ${SERVICE_NAME} -f"
-echo "  • Chat:    sudo -u ${USER_NAME} ${CHAT_INSTALL_PATH}"
 echo ""
 echo -e "${GREEN}CodeRalphie is now operational and hardware-rooted.${NC}"
 echo ""

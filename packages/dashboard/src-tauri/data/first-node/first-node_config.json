@@ -1,7 +1,0 @@
-{
-  "data_dir": "/Users/duskone/Downloads/AetherCore-0.2.3-field-test/packages/dashboard/src-tauri/data/first-node",
-  "listen_port": 9000,
-  "log_level": "info",
-  "mesh_endpoint": "ws://127.0.0.1:3000",
-  "node_id": "first-node"
-}

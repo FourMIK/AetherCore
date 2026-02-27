@@ -34,7 +34,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
   
   // Deployment configuration
   const [deployLocally, setDeployLocally] = useState(false);
-  const [meshEndpoint, setMeshEndpoint] = useState('ws://localhost:3000');
+  const [meshEndpoint, setMeshEndpoint] = useState('ws://localhost:8080');
   const [listenPort, setListenPort] = useState(9000);
   const [dataDir, setDataDir] = useState('');
   const [logLevel, setLogLevel] = useState('info');
@@ -538,7 +538,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
                       value={meshEndpoint}
                       onChange={(e) => setMeshEndpoint(e.target.value)}
                       className="w-full px-4 py-2 bg-carbon/50 border border-tungsten/20 rounded-lg text-tungsten focus:outline-none focus:border-overmatch"
-                      placeholder="ws://localhost:3000"
+                      placeholder="ws://localhost:8080"
                     />
                     <p className="text-xs text-tungsten/50 mt-1">WebSocket endpoint for mesh connectivity</p>
                   </div>

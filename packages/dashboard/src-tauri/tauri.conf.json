@@ -5,7 +5,7 @@
   "identifier": "com.aethercore.commander",
   "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://127.0.0.1:1420",
+    "devUrl": "http://localhost:1420",
     "beforeDevCommand": "pnpm run dev",
     "beforeBuildCommand": "pnpm run build"
   },
@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:* wss://testnet.aethercore.local:* wss://*.aethercore.local:*; font-src 'self'; worker-src 'self' blob:; frame-src 'none'; object-src 'none';"
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self' ws://localhost:* wss://testnet.aethercore.local:* wss://*.aethercore.local:*; font-src 'self'; worker-src 'self' blob:; frame-src 'none'; object-src 'none';"
     }
   },
   "bundle": {
@@ -53,6 +53,7 @@
       "frameworks": [],
       "minimumSystemVersion": "11.0",
       "exceptionDomain": "",
+      "signingIdentity": "$APPLE_SIGNING_IDENTITY",
       "providerShortName": "$APPLE_TEAM_ID",
       "entitlements": "entitlements.plist",
       "dmg": {
@@ -70,13 +71,16 @@
           "y": 120
         }
       },
-      "hardenedRuntime": true
+      "hardenedRuntime": true,
+      "notarize": true
     },
     "resources": [
       "resources/runtime-components.manifest.json",
-      "resources/config",
-      "resources/payloads",
-      "resources/macos"
+      "resources/config/**",
+      "resources/windows/**",
+      "resources/macos/**",
+      "resources/linux/**",
+      "resources/payloads/**"
     ]
   }
 }

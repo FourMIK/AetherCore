@@ -4,7 +4,7 @@
 //! for maintaining integrity across the trust mesh.
 
 use crate::gossip::GossipMessage;
-use crate::trust::{TrustScore, TrustScorer, QUARANTINE_THRESHOLD as TRUST_QUARANTINE_THRESHOLD};
+use crate::trust::{TrustScore, TrustScorer};
 use aethercore_crypto::ChainProof;
 use aethercore_stream::{IntegrityStatus, StreamIntegrityTracker, StreamProcessor};
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,9 @@ use tracing::{debug, error, warn};
 
 /// Trust score delta for successful chain proof verification
 pub const TRUST_DELTA_SUCCESS: f64 = 0.05;
+
+/// Trust score threshold for quarantine
+pub const QUARANTINE_THRESHOLD: f64 = 0.3;
 
 /// Audit configuration
 #[derive(Debug, Clone)]
@@ -144,7 +147,7 @@ impl StreamAuditor {
                 let current_score = self.trust_scorer.get_score(&stream_id);
                 if self.config.auto_quarantine
                     && current_score
-                        .map(|s| s.score < TRUST_QUARANTINE_THRESHOLD)
+                        .map(|s| s.score < QUARANTINE_THRESHOLD)
                         .unwrap_or(false)
                 {
                     warn!(stream_id = %stream_id, "Stream audit failed, node quarantined");

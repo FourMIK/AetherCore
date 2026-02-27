@@ -6,7 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use tauri::Manager;
 use thiserror::Error;
 
 pub const CONFIG_SCHEMA_VERSION: u32 = 3;
@@ -132,7 +131,7 @@ fn default_api_port() -> u16 {
 }
 
 fn default_mesh_port() -> u16 {
-    3000
+    8080
 }
 
 fn default_tpm_enforcement() -> bool {
@@ -149,18 +148,6 @@ fn default_initial_delay() -> u64 {
 
 fn default_max_delay() -> u64 {
     30000
-}
-
-fn is_localhost_hostname(hostname: &str) -> bool {
-    matches!(hostname, "localhost" | "127.0.0.1" | "::1")
-}
-
-fn endpoint_targets_localhost(endpoint: &str) -> bool {
-    url::Url::parse(endpoint)
-        .ok()
-        .and_then(|url| url.host_str().map(str::to_string))
-        .map(|host| is_localhost_hostname(host.as_str()))
-        .unwrap_or(false)
 }
 
 impl Default for RetryConfig {
@@ -198,8 +185,8 @@ impl AppConfig {
             product_profile: ProductProfile::CommanderEdition,
             profile: ConnectionProfile::CommanderLocal,
             connection: RuntimeConnection {
-                api_endpoint: "http://localhost:3000".to_string(),
-                mesh_endpoint: "ws://localhost:3000".to_string(),
+                api_endpoint: "http://127.0.0.1:3000".to_string(),
+                mesh_endpoint: "ws://127.0.0.1:8080".to_string(),
             },
             tpm_policy: RuntimeTpmPolicy::default(),
             ports: RuntimePorts::default(),
@@ -338,26 +325,18 @@ impl AppConfig {
             self.connection.mesh_endpoint = AppConfig::commander_local().connection.mesh_endpoint;
         }
 
-        // Keep port fields aligned with endpoint URLs to avoid hard-failing startup
-        // when only endpoint strings are updated (for example via manual jq edits).
-        self.ports.api = url::Url::parse(&self.connection.api_endpoint)
-            .ok()
-            .and_then(|url| url.port_or_known_default())
-            .unwrap_or(default_api_port());
+        if self.ports.api == 0 {
+            self.ports.api = url::Url::parse(&self.connection.api_endpoint)
+                .ok()
+                .and_then(|url| url.port_or_known_default())
+                .unwrap_or(default_api_port());
+        }
 
-        self.ports.mesh = url::Url::parse(&self.connection.mesh_endpoint)
-            .ok()
-            .and_then(|url| url.port_or_known_default())
-            .unwrap_or(default_mesh_port());
-
-        // Commander-local profile should always allow insecure localhost links.
-        // This prevents ws://localhost and http://localhost from being rejected
-        // when users switch profiles or hand-edit endpoints.
-        if self.profile == ConnectionProfile::CommanderLocal
-            && (endpoint_targets_localhost(&self.connection.api_endpoint)
-                || endpoint_targets_localhost(&self.connection.mesh_endpoint))
-        {
-            self.features.allow_insecure_localhost = true;
+        if self.ports.mesh == 0 {
+            self.ports.mesh = url::Url::parse(&self.connection.mesh_endpoint)
+                .ok()
+                .and_then(|url| url.port_or_known_default())
+                .unwrap_or(default_mesh_port());
         }
 
         self
@@ -432,10 +411,9 @@ impl ConfigManager {
         if self.config_path.exists() {
             let contents = std::fs::read_to_string(&self.config_path)?;
             let parsed: AppConfig = serde_json::from_str(&contents)?;
-            let original_schema_version = parsed.schema_version;
             let config = parsed.migrate_legacy();
             self.validate(&config)?;
-            if config.schema_version != original_schema_version {
+            if config.schema_version != parsed.schema_version {
                 self.save(&config)?;
             }
             return Ok(config);

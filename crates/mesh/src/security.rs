@@ -164,23 +164,6 @@ impl MeshSecurity {
 
                 Ok(0.7)
             }
-            Attestation::SecureEnclave {
-                key_tag,
-                public_key,
-                signature,
-            } => {
-                if key_tag.is_empty() {
-                    return Err("Secure Enclave key tag missing".to_string());
-                }
-                if public_key.is_empty() {
-                    return Err("Secure Enclave public key missing".to_string());
-                }
-                if signature.is_empty() {
-                    return Err("Secure Enclave signature missing".to_string());
-                }
-
-                Ok(1.0)
-            }
             Attestation::None => {
                 // No attestation = no trust
                 Ok(0.0)

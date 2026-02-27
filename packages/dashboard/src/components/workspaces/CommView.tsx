@@ -14,9 +14,7 @@ import {
   Send,
   Shield,
   User,
-  Clock,
-  CheckCircle2,
-  AlertTriangle,
+  Clock
 } from 'lucide-react';
 import { useCommStore } from '../../store/useCommStore';
 
@@ -36,9 +34,7 @@ export const CommView: React.FC = () => {
   const [messageInput, setMessageInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const operatorList = Array.from(operators.values()).filter(
-    (operator) => operator.id !== currentOperator?.id,
-  );
+  const operatorList = Array.from(operators.values());
   const selectedOperator = selectedOperatorId ? operators.get(selectedOperatorId) : null;
   const conversation = selectedOperatorId ? getConversation(selectedOperatorId) : [];
 
@@ -232,17 +228,6 @@ export const CommView: React.FC = () => {
                               <span className="flex items-center gap-1 text-verified-green">
                                 <Shield size={10} />
                                 E2E
-                              </span>
-                            )}
-                            {msg.verified ? (
-                              <span className="flex items-center gap-1 text-verified-green">
-                                <CheckCircle2 size={10} />
-                                Authenticated
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1 text-jamming">
-                                <AlertTriangle size={10} />
-                                Unverified
                               </span>
                             )}
                           </div>

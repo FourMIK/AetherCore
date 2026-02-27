@@ -60,8 +60,8 @@ export function validateUnifiedRuntimeConfig(input: UnifiedRuntimeConfig): Unifi
 }
 
 export function buildEnvFallbackConfig(): UnifiedRuntimeConfig {
-  const apiEndpoint = runtimeEnv.REACT_APP_API_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000';
-  const meshEndpoint = runtimeEnv.REACT_APP_WS_URL || import.meta.env.VITE_GATEWAY_URL || 'ws://localhost:3000';
+  const apiEndpoint = runtimeEnv.REACT_APP_API_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:3000';
+  const meshEndpoint = runtimeEnv.REACT_APP_WS_URL || import.meta.env.VITE_GATEWAY_URL || 'ws://127.0.0.1:8080';
   // TPM fallback policy is optional by default and only enforced when explicitly enabled.
   const enforceHardware = parseBooleanEnv(runtimeEnv.REACT_APP_TPM_ENABLED || import.meta.env.VITE_TPM_ENABLED, false);
 
@@ -79,7 +79,7 @@ export function buildEnvFallbackConfig(): UnifiedRuntimeConfig {
     },
     ports: {
       api: 3000,
-      mesh: 3000,
+      mesh: 8080,
     },
     features: {
       allow_insecure_localhost: parseBooleanEnv(import.meta.env.VITE_DEV_ALLOW_INSECURE_LOCALHOST, false),

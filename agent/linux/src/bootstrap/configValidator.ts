@@ -53,8 +53,8 @@ const DEFAULT_CONFIG: RalphieConfig = {
     retry_attempts: 3,
   },
   identity: {
-    path: '/etc/coderalphie/keys/identity.json',
-    backup_path: '/etc/coderalphie/keys/identity.backup.json',
+    path: '/etc/ralphie/identity.json',
+    backup_path: '/etc/ralphie/identity.backup.json',
   },
   c2: {
     server: 'c2.aethercore.local',

@@ -115,10 +115,9 @@ mod test_utils {
         request
             .metadata_mut()
             .insert("x-device-id", MetadataValue::from_static(device_id));
-        request.metadata_mut().insert(
-            "x-signature",
-            MetadataValue::try_from(signature_b64.as_str()).unwrap(),
-        );
+        request
+            .metadata_mut()
+            .insert("x-signature", MetadataValue::try_from(signature_b64.as_str()).unwrap());
 
         request
     }

@@ -38,15 +38,6 @@ pub enum Attestation {
         /// Self-signed certificate
         certificate: Vec<u8>,
     },
-    /// Secure Enclave-based attestation (Apple platforms)
-    SecureEnclave {
-        /// Stable key tag used to locate the SEP key in keychain
-        key_tag: String,
-        /// Public key in SEC1 encoding
-        public_key: Vec<u8>,
-        /// DER-encoded ECDSA signature over an attestation nonce
-        signature: Vec<u8>,
-    },
     /// No attestation (testing only - never use in production)
     None,
 }
@@ -138,23 +129,6 @@ impl IdentityManager {
                 // In production, verify TPM quote and PCRs
                 debug!("TPM attestation verified");
                 (true, 1.0, "TPM attestation verified".to_string())
-            }
-            Attestation::SecureEnclave {
-                key_tag,
-                public_key,
-                signature,
-            } => {
-                if key_tag.is_empty() || public_key.is_empty() || signature.is_empty() {
-                    warn!("Secure Enclave attestation missing required fields");
-                    (
-                        false,
-                        0.0,
-                        "Secure Enclave attestation missing required fields".to_string(),
-                    )
-                } else {
-                    debug!("Secure Enclave attestation verified");
-                    (true, 1.0, "Secure Enclave attestation verified".to_string())
-                }
             }
             Attestation::Software { .. } => {
                 // Software attestation has lower trust
@@ -322,27 +296,6 @@ mod tests {
 
         assert!(!verification.verified);
         assert_eq!(verification.trust_score, 0.0);
-    }
-
-    #[test]
-    fn test_secure_enclave_attestation_trust() {
-        let manager = IdentityManager::new();
-        let identity = PlatformIdentity {
-            id: "test-1".to_string(),
-            public_key: vec![1, 2, 3, 4],
-            attestation: Attestation::SecureEnclave {
-                key_tag: "com.4mik.test.sep".to_string(),
-                public_key: vec![0x04, 0x01, 0x02, 0x03],
-                signature: vec![0x30, 0x44, 0x02, 0x20],
-            },
-            created_at: 1000,
-            metadata: HashMap::new(),
-        };
-
-        let verification = manager.verify(&identity);
-
-        assert!(verification.verified);
-        assert_eq!(verification.trust_score, 1.0);
     }
 
     #[test]

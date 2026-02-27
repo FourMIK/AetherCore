@@ -15,8 +15,8 @@
 //! # Trust Mesh Integration
 //!
 //! Commands are gated by trust level with explicit rejection semantics:
-//! - **Quarantined** (score < 0.6): Hard reject with detailed reason
-//! - **Suspect** (score 0.6-0.9): Reject if below operational threshold (0.8)
+//! - **Quarantined** (score < 0.5): Hard reject with detailed reason
+//! - **Suspect** (score 0.5-0.9): Reject if below operational threshold (0.8)
 //! - **Healthy** (score ≥ 0.9): Allow through to dispatch
 //!
 //! All rejections include structured error messages for UI display.
@@ -37,7 +37,7 @@ use crate::offline::OfflineMateriaBuffer;
 use crate::quorum::QuorumGate;
 use crate::replay_protection::ReplayProtector;
 use aethercore_identity::IdentityManager;
-use aethercore_trust_mesh::{NodeHealthComputer, TrustLevel, TrustScore, TrustScorer};
+use aethercore_trust_mesh::{TrustLevel, TrustScorer};
 use base64::engine::general_purpose;
 use base64::Engine as _;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -73,8 +73,6 @@ pub struct C2GrpcServer {
     quorum_gate: Arc<QuorumGate>,
     /// Trust scorer for checking node trust levels
     trust_scorer: Arc<RwLock<TrustScorer>>,
-    /// Integrity metrics recorder feeding trust score computation
-    health_computer: Arc<NodeHealthComputer>,
     /// Identity manager for TPM-backed verification
     identity_manager: Arc<RwLock<IdentityManager>>,
     /// Replay attack protector
@@ -95,7 +93,6 @@ impl C2GrpcServer {
             dispatcher: Arc::new(dispatcher),
             quorum_gate: Arc::new(quorum_gate),
             trust_scorer: Arc::new(RwLock::new(trust_scorer)),
-            health_computer: Arc::new(NodeHealthComputer::new()),
             identity_manager: Arc::new(RwLock::new(identity_manager)),
             replay_protector: Arc::new(ReplayProtector::new()),
             offline_buffer: None,
@@ -114,102 +111,9 @@ impl C2GrpcServer {
             dispatcher: Arc::new(dispatcher),
             quorum_gate: Arc::new(quorum_gate),
             trust_scorer: Arc::new(RwLock::new(trust_scorer)),
-            health_computer: Arc::new(NodeHealthComputer::new()),
             identity_manager: Arc::new(RwLock::new(identity_manager)),
             replay_protector: Arc::new(ReplayProtector::new()),
             offline_buffer: Some(Arc::new(Mutex::new(offline_buffer))),
-        }
-    }
-
-    /// Recompute and persist trust score for a device using current integrity metrics.
-    fn recompute_trust_from_health(&self, device_id: &str) -> Result<TrustScore, Status> {
-        let health = self.health_computer.get_node_health(device_id);
-
-        let scorer = self.trust_scorer.write().map_err(|e| {
-            self.audit_log(
-                "TRUST_UPDATE_FAILED",
-                device_id,
-                "None",
-                &format!("Lock error: {}", e),
-            );
-            Status::internal("Trust scorer lock error")
-        })?;
-
-        scorer.compute_from_health(&health);
-        scorer.get_score(device_id).ok_or_else(|| {
-            self.audit_log(
-                "TRUST_UPDATE_FAILED",
-                device_id,
-                "None",
-                "Failed to compute trust score from health metrics",
-            );
-            Status::internal("Failed to compute trust score")
-        })
-    }
-
-    /// Ingest a root comparison result and refresh trust score for the device.
-    pub fn ingest_integrity_root_comparison(
-        &self,
-        device_id: &str,
-        matches_majority: bool,
-    ) -> Result<TrustScore, Status> {
-        self.health_computer
-            .record_root_comparison(device_id, matches_majority);
-        self.recompute_trust_from_health(device_id)
-    }
-
-    /// Ingest a chain break event and refresh trust score for the device.
-    pub fn ingest_integrity_chain_break(&self, device_id: &str) -> Result<TrustScore, Status> {
-        self.health_computer.record_chain_break(device_id);
-        self.recompute_trust_from_health(device_id)
-    }
-
-    /// Ingest a signature failure event and refresh trust score for the device.
-    pub fn ingest_integrity_signature_failure(
-        &self,
-        device_id: &str,
-    ) -> Result<TrustScore, Status> {
-        self.health_computer.record_signature_failure(device_id);
-        self.recompute_trust_from_health(device_id)
-    }
-
-    /// Ingest a missing-window event and refresh trust score for the device.
-    pub fn ingest_integrity_missing_window(&self, device_id: &str) -> Result<TrustScore, Status> {
-        self.health_computer.record_missing_window(device_id);
-        self.recompute_trust_from_health(device_id)
-    }
-
-    /// Best-effort trust ingestion for stream chain verification outcomes.
-    ///
-    /// This keeps stream integrity verification and trust scoring coupled without
-    /// requiring external/manual trust update plumbing.
-    fn ingest_stream_chain_observation(&self, subject_id: &str, chain_intact: bool) {
-        let result = if chain_intact {
-            self.ingest_integrity_root_comparison(subject_id, true)
-        } else {
-            // Record both a chain break and a negative root comparison.
-            let _ = self.ingest_integrity_chain_break(subject_id);
-            self.ingest_integrity_root_comparison(subject_id, false)
-        };
-
-        if let Err(e) = result {
-            tracing::warn!(
-                subject_id = %subject_id,
-                chain_intact = chain_intact,
-                error = %e,
-                "Failed to ingest stream chain observation into trust model"
-            );
-        }
-    }
-
-    /// Best-effort trust ingestion for signature verification failures.
-    fn ingest_signature_failure_observation(&self, device_id: &str) {
-        if let Err(e) = self.ingest_integrity_signature_failure(device_id) {
-            tracing::warn!(
-                device_id = %device_id,
-                error = %e,
-                "Failed to ingest signature failure into trust model"
-            );
         }
     }
 
@@ -345,7 +249,6 @@ impl C2GrpcServer {
         let signature_bytes = general_purpose::STANDARD
             .decode(signature_b64)
             .map_err(|_| {
-                self.ingest_signature_failure_observation(device_id);
                 self.audit_log(
                     "AUTH_FAILED",
                     device_id,
@@ -356,7 +259,6 @@ impl C2GrpcServer {
             })?;
 
         let signature = Signature::from_slice(&signature_bytes).map_err(|_| {
-            self.ingest_signature_failure_observation(device_id);
             self.audit_log("AUTH_FAILED", device_id, "None", "Invalid signature format");
             Status::unauthenticated("Invalid signature format")
         })?;
@@ -366,7 +268,6 @@ impl C2GrpcServer {
         verifying_key
             .verify(message.as_bytes(), &signature)
             .map_err(|_| {
-                self.ingest_signature_failure_observation(device_id);
                 self.audit_log(
                     "AUTH_FAILED",
                     device_id,
@@ -746,14 +647,6 @@ impl C2Router for C2GrpcServer {
 
         self.audit_log("GET_OFFLINE_GAP", &device_id, &req.node_id, "SUCCESS");
 
-        // Wire stream verification directly into trust scoring.
-        let trust_subject = if req.node_id.is_empty() {
-            device_id.as_str()
-        } else {
-            req.node_id.as_str()
-        };
-        self.ingest_stream_chain_observation(trust_subject, gap_info.chain_intact);
-
         let response = OfflineGapResponse {
             queued_count: gap_info.queued_count as u64,
             offline_since_ns: gap_info.offline_since_ns,
@@ -867,14 +760,6 @@ impl C2Router for C2GrpcServer {
             })?
             .chain_intact;
 
-        // Wire stream verification directly into trust scoring.
-        let trust_subject = if req.node_id.is_empty() {
-            device_id.as_str()
-        } else {
-            req.node_id.as_str()
-        };
-        self.ingest_stream_chain_observation(trust_subject, chain_intact);
-
         let merkle_root = buffer.get_merkle_root().map_err(|e| {
             self.audit_log(
                 "AUTHORIZE_SYNC",
@@ -956,15 +841,11 @@ impl C2Router for C2GrpcServer {
 mod tests {
     use super::*;
     use crate::authority::AuthorityVerifier;
-    use crate::offline::EncryptedPacket;
     use aethercore_identity::{Attestation, PlatformIdentity};
     use base64::engine::general_purpose;
     use ed25519_dalek::{Signer, SigningKey};
     use proptest::prelude::*;
     use std::collections::HashMap;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
     use tonic::metadata::MetadataValue;
 
     fn create_test_server() -> C2GrpcServer {
@@ -975,92 +856,6 @@ mod tests {
         let identity_manager = IdentityManager::new();
 
         C2GrpcServer::new(dispatcher, quorum_gate, trust_scorer, identity_manager)
-    }
-
-    fn temp_db_path(prefix: &str) -> PathBuf {
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        std::env::temp_dir().join(format!("{}_{}_{}.db", prefix, std::process::id(), ts))
-    }
-
-    fn create_test_offline_buffer(node_id: &str, broken_chain: bool) -> OfflineMateriaBuffer {
-        const HASH_LEN: usize = 32;
-        let storage_path = temp_db_path("c2_router_stream_verify");
-        let _ = fs::remove_file(&storage_path);
-
-        let mut buffer =
-            OfflineMateriaBuffer::new(storage_path, node_id.to_string()).expect("buffer init");
-        buffer.enter_offline_mode().expect("enter offline mode");
-
-        let event_hash_1 = vec![1u8; HASH_LEN];
-        let event_hash_2 = vec![2u8; HASH_LEN];
-        let prev_hash_2 = if broken_chain {
-            vec![9u8; HASH_LEN]
-        } else {
-            event_hash_1.clone()
-        };
-
-        buffer
-            .queue_signed_event(EncryptedPacket {
-                event_id: "evt-001".to_string(),
-                timestamp_ns: 1_000,
-                encrypted_payload: vec![1, 2, 3],
-                nonce: vec![4, 5, 6],
-                event_hash: event_hash_1,
-                prev_event_hash: vec![0u8; HASH_LEN],
-                signature: vec![0u8; 64],
-                public_key_id: "pub-1".to_string(),
-            })
-            .expect("queue event 1");
-
-        buffer
-            .queue_signed_event(EncryptedPacket {
-                event_id: "evt-002".to_string(),
-                timestamp_ns: 2_000,
-                encrypted_payload: vec![7, 8, 9],
-                nonce: vec![1, 1, 1],
-                event_hash: event_hash_2,
-                prev_event_hash: prev_hash_2,
-                signature: vec![0u8; 64],
-                public_key_id: "pub-1".to_string(),
-            })
-            .expect("queue event 2");
-
-        buffer
-            .enter_reconnect_pending()
-            .expect("enter reconnect pending");
-        buffer
-    }
-
-    fn create_trusted_server_with_offline_buffer(
-        device_id: &str,
-        broken_chain: bool,
-    ) -> C2GrpcServer {
-        let dispatcher = CommandDispatcher::new();
-        let verifier = AuthorityVerifier::new();
-        let quorum_gate = QuorumGate::new(verifier);
-        let trust_scorer = TrustScorer::new();
-        let identity_manager = IdentityManager::new();
-        let offline_buffer = create_test_offline_buffer(device_id, broken_chain);
-
-        let server = C2GrpcServer::with_offline_buffer(
-            dispatcher,
-            quorum_gate,
-            trust_scorer,
-            identity_manager,
-            offline_buffer,
-        );
-
-        register_identity(&server, create_test_identity(device_id));
-        server
-            .trust_scorer
-            .write()
-            .unwrap()
-            .update_score(device_id, 0.0); // seed operational trust for initial gate
-
-        server
     }
 
     fn test_signing_key() -> SigningKey {
@@ -1105,24 +900,6 @@ mod tests {
         request
             .metadata_mut()
             .insert("x-signature", signature_value);
-    }
-
-    fn create_signed_unit_command_request(
-        device_id: &str,
-        unit_id: &str,
-        command_json: &str,
-    ) -> Request<UnitCommandRequest> {
-        let timestamp_ns = C2GrpcServer::current_timestamp_ns();
-        let mut request = Request::new(UnitCommandRequest {
-            unit_id: unit_id.to_string(),
-            command_json: command_json.to_string(),
-            signatures: vec!["sig1".to_string()],
-            timestamp_ns,
-        });
-
-        let signature_b64 = sign_metadata(device_id, command_json, timestamp_ns);
-        attach_signature_metadata(&mut request, device_id, &signature_b64);
-        request
     }
 
     fn create_signing_identity(device_id: &str, public_key: [u8; 32]) -> PlatformIdentity {
@@ -1286,119 +1063,6 @@ mod tests {
         assert_eq!(err.code(), tonic::Code::PermissionDenied);
         // Score 0.7 is Suspect (not Quarantined), should fail operational threshold (0.8)
         assert!(err.message().contains("Trust Score Below Threshold"));
-    }
-
-    #[tokio::test]
-    async fn test_execute_unit_command_success_after_integrity_ingest() {
-        let server = create_test_server();
-
-        // Register device identity
-        let identity = create_test_identity("device-1");
-        register_identity(&server, identity);
-
-        // Feed a real integrity signal into trust scoring
-        let score = server
-            .ingest_integrity_root_comparison("device-1", true)
-            .unwrap();
-        assert_eq!(score.level, TrustLevel::Healthy);
-        assert!(score.score >= 0.9);
-
-        let command_json = r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
-        let request = create_signed_unit_command_request("device-1", "unit-1", command_json);
-
-        let result = server.execute_unit_command(request).await;
-        assert!(result.is_ok());
-        let response = result.unwrap().into_inner();
-        assert!(response.success);
-    }
-
-    #[tokio::test]
-    async fn test_execute_unit_command_rejected_after_integrity_compromise() {
-        let server = create_test_server();
-
-        // Register device identity
-        let identity = create_test_identity("device-1");
-        register_identity(&server, identity);
-
-        // Feed an integrity failure signal into trust scoring
-        let score = server
-            .ingest_integrity_root_comparison("device-1", false)
-            .unwrap();
-        assert_eq!(score.level, TrustLevel::Quarantined);
-
-        let command_json = r#"{"Navigate":{"waypoint":{"lat":45.0,"lon":-122.0,"alt":100.0},"speed":10.0,"altitude":100.0}}"#;
-        let request = create_signed_unit_command_request("device-1", "unit-1", command_json);
-
-        let result = server.execute_unit_command(request).await;
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(err.code(), tonic::Code::PermissionDenied);
-        let message = err.message();
-        assert!(message.contains("Quarantined") || message.contains("quarantine"));
-    }
-
-    #[tokio::test]
-    async fn test_get_offline_gap_info_updates_trust_from_chain_verification() {
-        let device_id = "device-1";
-        let server = create_trusted_server_with_offline_buffer(device_id, false);
-
-        let mut request = Request::new(OfflineGapRequest {
-            node_id: device_id.to_string(),
-        });
-        request
-            .metadata_mut()
-            .insert("x-device-id", MetadataValue::from_static("device-1"));
-        request
-            .metadata_mut()
-            .insert("x-signature", MetadataValue::from_static("c2lnbmF0dXJl"));
-
-        let result = server.get_offline_gap_info(request).await;
-        assert!(result.is_ok());
-        let response = result.unwrap().into_inner();
-        assert!(response.chain_intact);
-
-        let score = server
-            .trust_scorer
-            .read()
-            .unwrap()
-            .get_score(device_id)
-            .expect("score exists");
-        assert_eq!(score.level, TrustLevel::Healthy);
-        assert!(score.score >= 0.9);
-    }
-
-    #[tokio::test]
-    async fn test_authorize_sync_bundle_updates_trust_on_chain_break() {
-        let device_id = "device-1";
-        let server = create_trusted_server_with_offline_buffer(device_id, true);
-
-        let mut request = Request::new(SyncAuthorizationRequest {
-            node_id: device_id.to_string(),
-            admin_signature: "admin-signature".to_string(),
-            admin_public_key_id: "admin-key-1".to_string(),
-            timestamp_ns: C2GrpcServer::current_timestamp_ns(),
-        });
-        request
-            .metadata_mut()
-            .insert("x-device-id", MetadataValue::from_static("device-1"));
-        request
-            .metadata_mut()
-            .insert("x-signature", MetadataValue::from_static("c2lnbmF0dXJl"));
-
-        let result = server.authorize_sync_bundle(request).await;
-        assert!(result.is_ok());
-        let response = result.unwrap().into_inner();
-        assert!(!response.merkle_verified);
-        assert_eq!(response.status, "synced_with_warnings");
-
-        let score = server
-            .trust_scorer
-            .read()
-            .unwrap()
-            .get_score(device_id)
-            .expect("score exists");
-        assert_eq!(score.level, TrustLevel::Quarantined);
-        assert_eq!(score.score, 0.0);
     }
 
     #[tokio::test]
@@ -1609,7 +1273,7 @@ mod tests {
             .register(identity)
             .unwrap();
 
-        // Set quarantined trust score (< 0.6)
+        // Set quarantined trust score (< 0.5)
         server
             .trust_scorer
             .write()
@@ -1683,14 +1347,6 @@ mod tests {
             Ok(_) => panic!("Invalid base64 signature was accepted"),
             Err(err) => assert_eq!(err.code(), tonic::Code::Unauthenticated),
         }
-
-        let score = server
-            .trust_scorer
-            .read()
-            .unwrap()
-            .get_score(device_id)
-            .expect("score should be updated on signature failure");
-        assert_eq!(score.level, TrustLevel::Quarantined);
     }
 
     #[test]
@@ -1716,14 +1372,6 @@ mod tests {
             Ok(_) => panic!("Mismatched signature was accepted"),
             Err(err) => assert_eq!(err.code(), tonic::Code::Unauthenticated),
         }
-
-        let score = server
-            .trust_scorer
-            .read()
-            .unwrap()
-            .get_score(device_id)
-            .expect("score should be updated on signature failure");
-        assert_eq!(score.level, TrustLevel::Quarantined);
     }
 
     proptest! {
