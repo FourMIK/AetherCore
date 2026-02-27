@@ -1,0 +1,68 @@
+## Detect common build/test entrypoints
+total 884
+drwxr-xr-x 22 root root   4096 Feb 27 04:03 .
+drwxr-xr-x  3 root root   4096 Feb 27 03:58 ..
+drwxr-xr-x  4 root root   4096 Feb 27 04:03 .agent_reports
+drwxr-xr-x  2 root root   4096 Feb 27 03:58 .devcontainer
+-rw-r--r--  1 root root    163 Feb 27 03:58 .dockerignore
+-rw-r--r--  1 root root    414 Feb 27 03:58 .eslintrc.json
+drwxr-xr-x  8 root root   4096 Feb 27 04:04 .git
+drwxr-xr-x  4 root root   4096 Feb 27 03:58 .github
+-rw-r--r--  1 root root   1229 Feb 27 03:58 .gitignore
+-rw-r--r--  1 root root      3 Feb 27 03:58 .nvmrc
+-rw-r--r--  1 root root    126 Feb 27 03:58 .prettierrc.json
+-rw-r--r--  1 root root   8342 Feb 27 03:58 ARCHITECTURE.md
+-rw-r--r--  1 root root   4489 Feb 27 03:58 CHANGELOG.md
+-rw-r--r--  1 root root   6453 Feb 27 03:58 CONTRIBUTING.md
+-rwxr-xr-x  1 root root    646 Feb 27 03:58 COPY_SDK_ARTIFACTS.sh
+-rw-r--r--  1 root root 202123 Feb 27 03:58 Cargo.lock
+-rw-r--r--  1 root root   1620 Feb 27 03:58 Cargo.toml
+-rw-r--r--  1 root root  12392 Feb 27 03:58 DEPLOYMENT_DESKTOP.md
+-rw-r--r--  1 root root  11916 Feb 27 03:58 DEPLOYMENT_PRODUCTION.md
+-rw-r--r--  1 root root   3436 Feb 27 03:58 Dockerfile
+-rw-r--r--  1 root root  16853 Feb 27 03:58 FIELD_DEPLOYMENT_COMPLETE.md
+-rw-r--r--  1 root root  19522 Feb 27 03:58 INSTALLATION.md
+-rw-r--r--  1 root root   1072 Feb 27 03:58 LICENSE
+-rw-r--r--  1 root root   9903 Feb 27 03:58 LICENSE_COMPLIANCE.md
+-rw-r--r--  1 root root   9855 Feb 27 03:58 PROTOCOL_OVERVIEW.md
+-rw-r--r--  1 root root  23718 Feb 27 03:58 PROVENANCE.md
+-rw-r--r--  1 root root   7191 Feb 27 03:58 README.md
+-rw-r--r--  1 root root   6917 Feb 27 03:58 RELEASE.md
+-rw-r--r--  1 root root   9847 Feb 27 03:58 RELEASE_NOTES_v0.2.0.md
+-rw-r--r--  1 root root  11845 Feb 27 03:58 RUNNING_ON_WINDOWS.md
+-rw-r--r--  1 root root   1445 Feb 27 03:58 SDK_OFFLINE_MANIFEST.md
+-rw-r--r--  1 root root  22184 Feb 27 03:58 SECURITY.md
+-rw-r--r--  1 root root   8844 Feb 27 03:58 SECURITY_HARDENING.md
+-rw-r--r--  1 root root  13361 Feb 27 03:58 SECURITY_SCOPE.md
+-rw-r--r--  1 root root   7552 Feb 27 03:58 SECURITY_SUMMARY.md
+lrwxrwxrwx  1 root root      1 Feb 27 03:58 _codeql_detected_source_root -> .
+drwxr-xr-x  3 root root   4096 Feb 27 03:58 agent
+-rwxr-xr-x  1 root root   1663 Feb 27 03:58 build-and-push-all.sh
+-rw-r--r--  1 root root    728 Feb 27 03:58 buildspec.ecr.yml
+drwxr-xr-x  5 root root   4096 Feb 27 04:00 coderalphie
+drwxr-xr-x  2 root root   4096 Feb 27 03:58 config
+drwxr-xr-x 17 root root   4096 Feb 27 03:58 crates
+-rw-r--r--  1 root root   2606 Feb 27 03:58 deny.toml
+drwxr-xr-x  3 root root   4096 Feb 27 03:58 docker
+drwxr-xr-x  2 root root   4096 Feb 27 03:58 docs
+drwxr-xr-x  3 root root   4096 Feb 27 03:58 external
+-rw-r--r--  1 root root   1217 Feb 27 03:58 field-nodes.example.txt
+drwxr-xr-x  3 root root   4096 Feb 27 03:58 firmware
+drwxr-xr-x  3 root root   4096 Feb 27 03:58 fixtures
+drwxr-xr-x  9 root root   4096 Feb 27 03:58 infra
+drwxr-xr-x  8 root root   4096 Feb 27 04:01 node_modules
+-rw-r--r--  1 root root   1642 Feb 27 03:58 package.json
+drwxr-xr-x  7 root root   4096 Feb 27 03:58 packages
+drwxr-xr-x  3 root root   4096 Feb 27 03:58 plugins
+-rw-r--r--  1 root root 269236 Feb 27 04:01 pnpm-lock.yaml
+-rw-r--r--  1 root root     62 Feb 27 03:58 pnpm-workspace.yaml
+-rwxr-xr-x  1 root root  10543 Feb 27 03:58 push-release.sh
+-rw-r--r--  1 root root   2253 Feb 27 03:58 release-manifest.schema.json
+-rw-r--r--  1 root root     69 Feb 27 03:58 rust-toolchain.toml
+drwxr-xr-x  2 root root   4096 Feb 27 03:58 scripts
+-rw-r--r--  1 root root   1216 Feb 27 03:58 sdk-offline-manifest.json
+drwxr-xr-x  9 root root   4096 Feb 27 03:58 services
+drwxr-xr-x  5 root root   4096 Feb 27 03:58 tests
+\n## Look for task runners
+package.json found
+Cargo.toml found

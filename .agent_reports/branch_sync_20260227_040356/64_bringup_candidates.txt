@@ -1,0 +1,25 @@
+## Candidate bringup scripts
+agent/linux/src/bootstrap/configValidator.ts
+coderalphie/src/bootstrap/configValidator.ts
+infra/deploy/bunker/docker-compose.bunker.yml
+infra/docker/Dockerfile.gateway
+infra/docker/docker-compose.yml
+infra/docker/ecs/gateway/.dockerignore
+infra/docker/ecs/gateway/Dockerfile
+infra/k8s/overlays/bunker/gateway-deployment.yaml
+infra/scripts/bootstrap-aws-testbed.sh
+infra/scripts/bootstrap-aws.sh
+packages/dashboard/src/components/onboarding/BootstrapOnboarding.tsx
+plugins/atak-trust-overlay/src/test/kotlin/com/aethercore/atak/trustoverlay/core/LifecycleBootstrapResolverTest.kt
+services/gateway/Dockerfile
+services/gateway/README.md
+services/gateway/package.json
+services/gateway/proto/c2.proto
+services/gateway/scripts/copy-proto-assets.mjs
+services/gateway/scripts/sync-c2-proto.mjs
+services/gateway/src/__tests__/c2-client.integration.test.ts
+services/gateway/src/c2-client.ts
+services/gateway/src/field-telemetry-collector.ts
+services/gateway/src/index.ts
+services/gateway/src/tpm.ts
+services/gateway/tsconfig.json

@@ -1,0 +1,14 @@
+=== PHASE 0: Preflight ===
+true
+ M pnpm-lock.yaml
+?? .agent_reports/
+?? packages/android-keymanager/.gradle/
+origin	https://github.com/FourMIK/Aethercore.git (fetch)
+origin	https://github.com/FourMIK/Aethercore.git (push)
+* work                                          9aa4f33 Merge pull request #257 from FourMIK/copilot/analyze-atak-plugin-status
+  remotes/origin/JM-Dev-Branch                  907dd54 feat(ops): add production enrollment wiring and harden Pi mesh bringup
+  remotes/origin/dev                            9aa4f33 Merge pull request #257 from FourMIK/copilot/analyze-atak-plugin-status
+  remotes/origin/integrate/field-test-into-jm   1cdfdb4 Integrate field-test snapshot onto JM-Dev-Branch baseline
+  remotes/origin/main                           ba9affb Add files via upload
+  remotes/origin/merge/field-test-sync-20260224 b1ff77d Initial import from field-test workspace
+9aa4f33 Merge pull request #257 from FourMIK/copilot/analyze-atak-plugin-status

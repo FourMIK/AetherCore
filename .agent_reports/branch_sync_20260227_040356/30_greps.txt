@@ -1,0 +1,500 @@
+## Enrollment env vars
+origin/JM-Dev-Branch:scripts/ops/README.md:20:  - set `PI_ENROLLMENT_CA_CERT_LOCAL_PATH=<local pem path>` to copy CA cert to Pi
+origin/JM-Dev-Branch:scripts/ops/README.md:171:PI_AETHERCORE_PRODUCTION=1 \
+origin/JM-Dev-Branch:scripts/ops/README.md:172:PI_ENROLLMENT_URL="https://c2.aethercore.local:3000/api/enrollment" \
+origin/JM-Dev-Branch:scripts/ops/README.md:173:PI_ENROLLMENT_CA_CERT_LOCAL_PATH="$HOME/certs/enrollment-ca.pem" \
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:9:PI_AETHERCORE_PRODUCTION="${PI_AETHERCORE_PRODUCTION:-0}"
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:10:PI_ENROLLMENT_URL="${PI_ENROLLMENT_URL:-}"
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:12:PI_ENROLLMENT_CA_CERT_LOCAL_PATH="${PI_ENROLLMENT_CA_CERT_LOCAL_PATH:-}"
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:69:echo "AETHERCORE_PRODUCTION override: ${PI_AETHERCORE_PRODUCTION}"
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:70:if [[ -n "$PI_ENROLLMENT_URL" ]]; then
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:71:  echo "Enrollment URL override: ${PI_ENROLLMENT_URL}"
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:74:if [[ -n "$PI_ENROLLMENT_CA_CERT_LOCAL_PATH" ]]; then
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:75:  if [[ ! -f "$PI_ENROLLMENT_CA_CERT_LOCAL_PATH" ]]; then
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:76:    echo "ERROR: PI_ENROLLMENT_CA_CERT_LOCAL_PATH not found: $PI_ENROLLMENT_CA_CERT_LOCAL_PATH" >&2
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:79:  PI_ENROLLMENT_CA_CERT_B64="$(base64 < "$PI_ENROLLMENT_CA_CERT_LOCAL_PATH" | tr -d '\n')"
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:82:if [[ "$PI_AETHERCORE_PRODUCTION" == "1" || "$PI_AETHERCORE_PRODUCTION" == "true" ]]; then
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:83:  if [[ -z "$PI_ENROLLMENT_URL" ]]; then
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:84:    echo "WARN: production mode enabled without PI_ENROLLMENT_URL; enrollment may fail." >&2
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:87:    echo "WARN: production mode enabled without a CA cert payload (PI_ENROLLMENT_CA_CERT_LOCAL_PATH or PI_ENROLLMENT_CA_CERT_B64)." >&2
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:91:ssh_pi "WS_URL='$WS_URL' PI_SIGNING_KEY_PATH='$PI_SIGNING_KEY_PATH' PI_SIGNING_KEY_FALLBACK_PATH='$PI_SIGNING_KEY_FALLBACK_PATH' PI_AETHERCORE_PRODUCTION='$PI_AETHERCORE_PRODUCTION' PI_ENROLLMENT_URL='$PI_ENROLLMENT_URL' PI_ENROLLMENT_CA_CERT_PATH='$PI_ENROLLMENT_CA_CERT_PATH' PI_ENROLLMENT_CA_CERT_B64='$PI_ENROLLMENT_CA_CERT_B64' bash -s" <<'EOF'
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:151:  echo "Environment=\"AETHERCORE_PRODUCTION=${PI_AETHERCORE_PRODUCTION}\""
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:152:  if [[ -n "$PI_ENROLLMENT_URL" ]]; then
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:153:    echo "Environment=\"ENROLLMENT_URL=${PI_ENROLLMENT_URL}\""
+\n## systemd UnsetEnvironment
+origin/JM-Dev-Branch:scripts/ops/configure-pi-c2.sh:147:  echo "UnsetEnvironment=AETHERCORE_PRODUCTION ENROLLMENT_URL ENROLLMENT_CA_CERT_PATH ENROLLMENT_CA_CERT_PEM C2_WS_URL CODERALPHIE_CHAT_SIGNING_KEY_PATH AETHERCORE_SIGNING_PRIVATE_KEY_PATH"
+\n## RALPHIE_PRESENCE
+origin/JM-Dev-Branch:agent/linux/src/c2/mesh-client.ts:71:  type: 'RALPHIE_PRESENCE';
+origin/JM-Dev-Branch:agent/linux/src/c2/mesh-client.ts:320:    if (eventType === 'RALPHIE_PRESENCE') {
+origin/JM-Dev-Branch:agent/linux/src/c2/mesh-client.ts:325:    if (eventType === 'RALPHIE_PRESENCE_SNAPSHOT') {
+origin/JM-Dev-Branch:agent/linux/src/c2/mesh-client.ts:612:      type: 'RALPHIE_PRESENCE',
+origin/JM-Dev-Branch:packages/dashboard/src/services/c2/C2Client.ts:118:  type: 'RALPHIE_PRESENCE';
+origin/JM-Dev-Branch:packages/dashboard/src/services/c2/C2Client.ts:394:        if (messageType === 'RALPHIE_PRESENCE') {
+origin/JM-Dev-Branch:packages/dashboard/src/services/c2/C2Client.ts:408:        if (messageType === 'RALPHIE_PRESENCE_SNAPSHOT') {
+origin/JM-Dev-Branch:scripts/ops/README.md:39:- validates websocket stream contains `RALPHIE_PRESENCE` telemetry for target device
+origin/JM-Dev-Branch:scripts/ops/README.md:44:`RALPHIE_PRESENCE_SNAPSHOT` from local websocket.
+origin/JM-Dev-Branch:scripts/ops/README.md:49:- publishes `RALPHIE_PRESENCE` startup + heartbeat frames to `:3000`
+origin/JM-Dev-Branch:scripts/ops/README.md:104:- publishes `RALPHIE_PRESENCE` startup + heartbeats with telemetry (`gps/power/radio/device`)
+origin/JM-Dev-Branch:scripts/ops/bridge-heltech-meshtastic.py:209:        description="Bridge Meshtastic USB telemetry into AetherCore RALPHIE_PRESENCE."
+origin/JM-Dev-Branch:scripts/ops/bridge-heltech-meshtastic.py:322:                "type": "RALPHIE_PRESENCE",
+origin/JM-Dev-Branch:scripts/ops/bridge-heltech-presence.sh:32:  RALPHIE_PRESENCE frames to the local gateway.
+origin/JM-Dev-Branch:scripts/ops/bridge-heltech-presence.sh:314:      type: "RALPHIE_PRESENCE",
+origin/JM-Dev-Branch:scripts/ops/bridge-heltech-presence.sh:412:    if (msg?.type === 'RALPHIE_PRESENCE' && msg?.data?.identity?.device_id === id) {
+origin/JM-Dev-Branch:scripts/ops/bridge-heltech-presence.sh:418:    if (msg?.type === 'RALPHIE_PRESENCE_SNAPSHOT' && Array.isArray(msg.nodes)) {
+origin/JM-Dev-Branch:scripts/ops/check-heltech-telemetry.sh:149:  if (msg?.type === "RALPHIE_PRESENCE_SNAPSHOT" && Array.isArray(msg.nodes)) {
+origin/JM-Dev-Branch:scripts/ops/check-heltech-telemetry.sh:151:  } else if (msg?.type === "RALPHIE_PRESENCE" && msg?.data?.identity?.device_id) {
+origin/JM-Dev-Branch:scripts/ops/check-heltech-telemetry.sh:293:  if (msg?.type === "RALPHIE_PRESENCE" && msg?.data) {
+origin/JM-Dev-Branch:scripts/ops/check-heltech-telemetry.sh:298:  if (msg?.type === "RALPHIE_PRESENCE_SNAPSHOT" && Array.isArray(msg.nodes)) {
+origin/JM-Dev-Branch:scripts/ops/force-pi-presence.sh:169:  type: 'RALPHIE_PRESENCE',
+origin/JM-Dev-Branch:scripts/ops/force-pi-presence.sh:227:    if (msg?.type === 'RALPHIE_PRESENCE_SNAPSHOT') {
+origin/JM-Dev-Branch:scripts/ops/force-pi-presence.sh:247:    console.error('ERROR: no RALPHIE_PRESENCE_SNAPSHOT within ' + (Date.now() - startedAt) + 'ms');
+origin/JM-Dev-Branch:services/gateway/src/index.ts:172:  type: z.literal('RALPHIE_PRESENCE'),
+origin/JM-Dev-Branch:services/gateway/src/index.ts:931:      type: 'RALPHIE_PRESENCE_SNAPSHOT',
+origin/JM-Dev-Branch:services/gateway/src/index.ts:945:      if (raw.type === 'RALPHIE_PRESENCE') {
+origin/JM-Dev-Branch:services/gateway/src/index.ts:948:          sendGatewayError(ws, 'INVALID_SCHEMA', 'Invalid RALPHIE_PRESENCE frame');
+origin/JM-Dev-Branch:services/gateway/src/index.ts:951:        sendWsJson(ws, { type: 'RALPHIE_PRESENCE_ACK', node_id: record.identity.device_id });
+origin/JM-Dev-Branch:services/gateway/src/index.ts:1052:    logger.warn({ validation_error: parsed.error.flatten() }, 'Rejected invalid RALPHIE_PRESENCE payload');
+origin/JM-Dev-Branch:services/gateway/src/index.ts:1067:      'Rejected revoked RALPHIE_PRESENCE payload',
+origin/JM-Dev-Branch:services/gateway/src/index.ts:1081:      'Rejected unauthenticated RALPHIE_PRESENCE payload',
+origin/JM-Dev-Branch:services/gateway/src/index.ts:1131:  broadcast({ type: 'RALPHIE_PRESENCE', data: record });
+\n## spoof/replay/tamper invariants
+origin/JM-Dev-Branch:.github/workflows/ci.yml:169:      - name: Security regression gate (spoof/replay/tamper + transport/encryption invariants)
+origin/JM-Dev-Branch:ARCHITECTURE.md:10:AetherCore is a distributed system designed for tamper-evident data streaming and mesh network coordination. The system consists of Rust core components for edge computing and trust mesh operations, and TypeScript components for operator interfaces and service orchestration.
+origin/JM-Dev-Branch:CHANGELOG.md:20:- Shared schema tests for replay-chain and deterministic serialization behavior in `packages/shared/src/__tests__/c2-message-schema.test.ts`.
+origin/JM-Dev-Branch:CHANGELOG.md:31:- Enforced replay checks (duplicate nonce, non-monotonic sequence, chain mismatch) before routing presence/chat/call envelopes in `services/gateway/src/index.ts`.
+origin/JM-Dev-Branch:CHANGELOG.md:36:- Added presence verification provenance (`signature_verified`, `replay_verified`, key source, derivation version, evaluation timestamp) to stored/broadcast presence records in `services/gateway/src/index.ts`.
+origin/JM-Dev-Branch:CHANGELOG.md:64:- Gateway now marks operator/chat envelope trust as `verified` only after successful cryptographic verification and replay validation.
+origin/JM-Dev-Branch:CHANGELOG.md:68:- Active dashboard <-> Pi chat path now seals payloads with authenticated encryption and rejects tampered ciphertext at receiver.
+origin/JM-Dev-Branch:DEPLOYMENT_PRODUCTION.md:233:# Stop streaming valid data or tamper with stream
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:20:- Enables Merkle Vine integrity chains and spoof detection
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:25:- Spoof/replay rejection: target > 99.5%
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:71:- **SpoofDetectionEventSchema**: Rejection reasons (signature, replay, kinematics, etc.)
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:81:- Nonce/sequence number replay protection
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:117:**File**: `tests/field-spoof-replay-validation.rs` (580 lines)
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:122:2. **Replay Detection (Nonce Reuse)** - Old valid message replayed
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:132:**Expected result**: All 10 tests pass, ZERO spoofed messages accepted
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:209:- Real-time spoof/replay detection event logging
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:278:└── field-spoof-replay-validation.rs ✅ Validation test suite (READY)
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:312:cargo test --test field-spoof-replay-validation -- --nocapture
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:333:- Data always verified, spoofing always rejected
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:337:- 99.5%+ spoof/replay rejection rate
+origin/JM-Dev-Branch:FIELD_DEPLOYMENT_COMPLETE.md:462:- ✅ Spoof/replay rejection (99.5%+)
+origin/JM-Dev-Branch:PROTOCOL_OVERVIEW.md:10:AetherCore implements a distributed protocol for tamper-evident data streaming in contested multi-domain environments. The protocol combines cryptographic integrity verification, trust-based mesh networking, and Byzantine fault detection.
+origin/JM-Dev-Branch:PROTOCOL_OVERVIEW.md:31:This structure creates a **Merkle Vine** - a tamper-evident chain where any modification to historical events is detectable.
+origin/JM-Dev-Branch:PROTOCOL_OVERVIEW.md:316:- Timestamps and nonces prevent replayed messages
+origin/JM-Dev-Branch:PROVENANCE.md:300:    // 3. Check timestamp (prevent replay attacks)
+origin/JM-Dev-Branch:PROVENANCE.md:592:3. **License Poisoning**: BLAKE3 hashing detects license tampering
+origin/JM-Dev-Branch:SECURITY.md:238:    // 3. Check timestamp (prevent replay attacks)
+origin/JM-Dev-Branch:SECURITY.md:433:2. **Integrity**: BLAKE3 hash prevents tampering
+origin/JM-Dev-Branch:SECURITY.md:434:3. **Freshness**: Timestamp prevents replay attacks (5-minute window)
+origin/JM-Dev-Branch:SECURITY.md:456:        // 1. Check freshness (prevent replay)
+origin/JM-Dev-Branch:SECURITY.md:482:2. **Hash Mismatch**: Unit MUST NOT join mesh; data tampered
+origin/JM-Dev-Branch:SECURITY.md:483:3. **Expired Bundle**: Unit MUST NOT join mesh; potential replay attack
+origin/JM-Dev-Branch:SECURITY.md:504:**Integrity Property:** Any tampering breaks the chain; detected immediately.
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:123:    // Prevents replay, reordering, and gap attacks
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:129:2. Reject sequence_id <= last_sequence_id (replay)
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:137:#### Test 7: `test_spoofed_signature_rejection`
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:143:#### Test 8: `test_replay_attack_sequence_rejection`
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:145:- Attempts replay of sequence 1 and 2
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:146:- Verifies both replays are rejected
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:153:- `test_sequence_validation_rejects_replay`
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:161:✅ **Replay Prevention**: Sequence validation prevents packet replays in hardened stream/integration paths
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:163:✅ **Attack Detection**: Large gaps and replays logged for analysis
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:178:test integrity::tests::test_sequence_validation_rejects_replay ... ok
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:238:   - Track replay attempt frequency
+origin/JM-Dev-Branch:SECURITY_HARDENING.md:280:**Acknowledgments**: Implementation follows 4MIK architectural invariants and hardware-rooted trust principles.
+origin/JM-Dev-Branch:SECURITY_SCOPE.md:12:**Key Principle:** AetherCore Dev Mode provides **tamper-evident** data streaming and **policy-dependent** trust management, not absolute security guarantees.
+origin/JM-Dev-Branch:SECURITY_SCOPE.md:36:❌ **Prevention:** Cannot stop tampering from occurring  
+origin/JM-Dev-Branch:SECURITY_SCOPE.md:37:❌ **Recovery:** Cannot automatically repair tampered data  
+origin/JM-Dev-Branch:SECURITY_SCOPE.md:38:❌ **Punishment:** Cannot enforce consequences on tampering node  
+origin/JM-Dev-Branch:SECURITY_SCOPE.md:132:- Nonces prevent exact replays where nonce semantics are implemented
+origin/JM-Dev-Branch:SECURITY_SCOPE.md:134:**Residual Risk:** If sequence tracking state is lost/reset, recent messages may be replayed until state is re-established.
+origin/JM-Dev-Branch:SECURITY_SCOPE.md:211:- Merkle Vine integrity (tamper-evident by construction)
+origin/JM-Dev-Branch:SECURITY_SCOPE.md:258:**Tamper-Evident** (not "tamper-proof")
+origin/JM-Dev-Branch:SECURITY_SCOPE.md:259:- System detects tampering, does not prevent it
+origin/JM-Dev-Branch:SECURITY_SCOPE.md:370:- Emphasize tamper-evident properties
+origin/JM-Dev-Branch:SECURITY_SCOPE.md:397:✅ AetherCore provides **tamper-evident** data streaming  
+origin/JM-Dev-Branch:SECURITY_SUMMARY.md:8:**Core Enforcement (active path):** ✅ **Ed25519 ingress + replay controls active**
+origin/JM-Dev-Branch:SECURITY_SUMMARY.md:99:- ✅ Red Cell test suite validates spoofing resistance ([red_cell_assault.rs:41-121](tests/integration/red_cell_assault.rs#L41-L121), [red_cell_assault.rs:507-568](tests/integration/red_cell_assault.rs#L507-L568))
+origin/JM-Dev-Branch:SECURITY_SUMMARY.md:196:**Current State:** Impersonation/replay weaknesses on the active desktop gateway + Pi chat ingress path are closed, and chat payload confidentiality is now enforced on that path. Remaining deployment blockers are server-derived trust semantics and production-grade enrollment/revocation lifecycle.
+origin/JM-Dev-Branch:agent/linux/README.md:13:This implementation follows the 4MIK architectural invariants:
+origin/JM-Dev-Branch:config/degraded-rf-resilience.yaml:229:replay_protection:
+origin/JM-Dev-Branch:config/degraded-rf-resilience.yaml:244:    # Track recently seen nonces to detect replays
+origin/JM-Dev-Branch:config/degraded-rf-resilience.yaml:304:    log_spoof_detections: true
+origin/JM-Dev-Branch:config/mdca-field-test.yaml:6:# Optimization: Spoof/replay rejection, track origin validation, degraded RF resilience
+origin/JM-Dev-Branch:config/mdca-field-test.yaml:23:    # contested_mode: Assume RF is adversarial (jamming, spoofing, replay)
+origin/JM-Dev-Branch:config/mdca-field-test.yaml:71:    replay_protection:
+origin/JM-Dev-Branch:config/mdca-field-test.yaml:123:      # Field Test Specific: Emit metrics for spoof/replay detection rates
+origin/JM-Dev-Branch:config/mdca-field-test.yaml:170:    # Show spoofed/unverified node warnings
+origin/JM-Dev-Branch:config/mdca-field-test.yaml:171:    show_spoofed_warnings: true
+origin/JM-Dev-Branch:config/mdca-field-test.yaml:220:    spoof_rejection_events: true
+origin/JM-Dev-Branch:config/mdca-field-test.yaml:221:    replay_detection_events: true
+origin/JM-Dev-Branch:config/mdca-field-test.yaml:247:      - 'aethercore_spoof_rejections_total'
+origin/JM-Dev-Branch:config/mdca-field-test.yaml:248:      - 'aethercore_replay_detections_total'
+origin/JM-Dev-Branch:config/mdca-field-test.yaml:318:  spoof_replay_rejection:
+origin/JM-Dev-Branch:crates/c2-router/src/grpc.rs:38:use crate::replay_protection::ReplayProtector;
+origin/JM-Dev-Branch:crates/c2-router/src/grpc.rs:81:    replay_protector: Arc<ReplayProtector>,
+origin/JM-Dev-Branch:crates/c2-router/src/grpc.rs:100:            replay_protector: Arc::new(ReplayProtector::new()),
+origin/JM-Dev-Branch:crates/c2-router/src/grpc.rs:119:            replay_protector: Arc::new(ReplayProtector::new()),
+origin/JM-Dev-Branch:crates/c2-router/src/grpc.rs:393:            // Hard invariant: Explicitly reject quarantined nodes
+origin/JM-Dev-Branch:crates/c2-router/src/grpc.rs:458:        // Extract request payload early for replay protection
+origin/JM-Dev-Branch:crates/c2-router/src/grpc.rs:482:        // Validate replay protection
+origin/JM-Dev-Branch:crates/c2-router/src/grpc.rs:484:            .replay_protector
+origin/JM-Dev-Branch:crates/c2-router/src/grpc.rs:888:        // Step 9: In production, replay events to ledger here
+origin/JM-Dev-Branch:crates/c2-router/src/lib.rs:70:pub mod replay_protection;
+origin/JM-Dev-Branch:crates/c2-router/src/lib.rs:90:pub use replay_protection::{ReplayError, ReplayProtector, ReplayResult};
+origin/JM-Dev-Branch:crates/c2-router/src/offline.rs:6://! prevent replay injection attacks.
+origin/JM-Dev-Branch:crates/c2-router/src/offline.rs:17://! - No automatic resynchronization (prevents replay injection)
+origin/JM-Dev-Branch:crates/c2-router/src/replay_protection.rs:3://! Implements nonce-based and timestamp-based replay protection for C2 commands.
+origin/JM-Dev-Branch:crates/c2-router/src/replay_protection.rs:4://! Enforces the fail-visible doctrine: suspected replay attacks are rejected immediately.
+origin/JM-Dev-Branch:crates/c2-router/src/replay_protection.rs:70:/// Result type for replay protection operations
+origin/JM-Dev-Branch:crates/c2-router/src/replay_protection.rs:82:/// Tracks processed nonces per device to prevent replay attacks.
+origin/JM-Dev-Branch:crates/c2-router/src/replay_protection.rs:90:    /// Create a new replay protector
+origin/JM-Dev-Branch:crates/c2-router/src/replay_protection.rs:100:    /// 1. Timestamp is not too old (prevents replay of stale commands)
+origin/JM-Dev-Branch:crates/c2-router/src/replay_protection.rs:102:    /// 3. Nonce has not been seen before (prevents exact replay)
+origin/JM-Dev-Branch:crates/c2-router/src/replay_protection.rs:104:    /// Returns Ok if validation passes, Err for replay attack or invalid input.
+origin/JM-Dev-Branch:crates/core/src/event.rs:163:    pub const REPLAY_DETECTED: &str = "security.replay_detected";
+origin/JM-Dev-Branch:crates/core/src/event.rs:164:    pub const TAMPERING_DETECTED: &str = "security.tampering_detected";
+origin/JM-Dev-Branch:crates/core/src/merkle_aggregator.rs:493:    fn test_proof_verification_fails_on_tampered_leaf() {
+origin/JM-Dev-Branch:crates/core/src/merkle_aggregator.rs:512:    fn test_proof_verification_fails_on_tampered_sibling() {
+origin/JM-Dev-Branch:crates/crypto/src/zk/prover.rs:86://! - **Temporal Validation**: Proofs include timestamps to prevent replay attacks. The system
+origin/JM-Dev-Branch:crates/crypto/src/zk/prover.rs:89://!   operations use BLAKE3 for integrity checks per system architectural invariants.
+origin/JM-Dev-Branch:crates/domain/src/lib.rs:6://! - Domain invariants and business rules
+origin/JM-Dev-Branch:crates/h2-domain/src/alarms.rs:88:/// and linked in a Merkle Vine chain for tamper detection.
+origin/JM-Dev-Branch:crates/h2-domain/src/bridge/event_mapper.rs:137:    /// Detect replay attack via hash chain validation
+origin/JM-Dev-Branch:crates/h2-domain/src/bridge/telemetry_adapter.rs:68:    /// Hash chain validation failed, possible replay
+origin/JM-Dev-Branch:crates/h2-domain/src/bridge/telemetry_adapter.rs:257:    /// Validate replay attack detection
+origin/JM-Dev-Branch:crates/h2-domain/src/bridge/telemetry_adapter.rs:258:    pub fn validate_no_replay(
+origin/JM-Dev-Branch:crates/h2-domain/src/bridge/telemetry_adapter.rs:411:    fn test_validate_no_replay() {
+origin/JM-Dev-Branch:crates/h2-domain/src/bridge/telemetry_adapter.rs:417:        assert!(adapter.validate_no_replay(&correct_hash, prev_id).is_ok());
+origin/JM-Dev-Branch:crates/h2-domain/src/bridge/telemetry_adapter.rs:419:        // Invalid chain link (replay attack)
+origin/JM-Dev-Branch:crates/h2-domain/src/bridge/telemetry_adapter.rs:421:        assert!(adapter.validate_no_replay(&wrong_hash, prev_id).is_err());
+origin/JM-Dev-Branch:crates/identity/proto/identity_registry.proto:86:  // Timestamp from SignedEnvelope (for replay attack detection)
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:26://! - Nonces are tracked for 5 minutes to detect replays
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:48:/// Default nonce retention window for replay detection (milliseconds).
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:220:    /// Seen nonces for replay protection
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:338:        // Check for nonce replay
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:340:            self.record_replay_event(&request.identity.id);
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:341:            return Err(crate::Error::Identity("Nonce replay detected".to_string()));
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:469:        // Check for nonce replay on counter-challenge
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:471:            self.record_replay_event(&response.identity.id);
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:473:                "Counter-challenge replay detected".to_string(),
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:727:    fn record_replay_event(&mut self, identity_id: &str) {
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:739:                failure_reason: Some("Nonce replay detected".to_string()),
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:1149:    fn test_replay_detection() {
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:1180:        assert!(result.unwrap_err().to_string().contains("replay"));
+origin/JM-Dev-Branch:crates/identity/src/attestation.rs:1254:        assert!(!verify_signature(b"tampered", &signature, &identity));
+origin/JM-Dev-Branch:crates/identity/src/enrollment.rs:4://! hardware-backed identities that can never be cloned or spoofed. Private keys
+origin/JM-Dev-Branch:crates/identity/src/enrollment.rs:9://! - Private keys are TPM-resident (architecture invariant)
+origin/JM-Dev-Branch:crates/identity/src/enrollment.rs:12://! - Challenge nonces for replay protection
+origin/JM-Dev-Branch:crates/identity/src/enrollment.rs:76:    /// Challenge nonce for replay protection (32 bytes)
+origin/JM-Dev-Branch:crates/identity/src/enrollment.rs:271:            .verify(b"tampered-challenge", &parsed_signature)
+origin/JM-Dev-Branch:crates/identity/src/federation.rs:193:    /// Purge all spoofed identities
+origin/JM-Dev-Branch:crates/identity/src/federation.rs:194:    pub fn purge_spoofed(&mut self) {
+origin/JM-Dev-Branch:crates/identity/src/federation.rs:345:    fn test_federation_registry_purge_spoofed() {
+origin/JM-Dev-Branch:crates/identity/src/federation.rs:362:        registry.purge_spoofed();
+origin/JM-Dev-Branch:crates/identity/src/grpc_server.rs:268:        // Verify timestamp (prevent replay attacks - check within 5 minutes)
+origin/JM-Dev-Branch:crates/identity/src/grpc_server.rs:280:                security_event_type: "replay_attack".to_string(),
+origin/JM-Dev-Branch:crates/identity/src/lib.rs:6://! identity to prevent spoofing and ensure trusted decision-making.
+origin/JM-Dev-Branch:crates/identity/src/lib.rs:21://! - Resistant to replay and spoofing attacks
+origin/JM-Dev-Branch:crates/identity/src/secure_enclave.rs:749:    fn verify_quote_rejects_tampered_nonce() {
+origin/JM-Dev-Branch:crates/identity/src/secure_enclave.rs:759:        let mut tampered_nonce = nonce.clone();
+origin/JM-Dev-Branch:crates/identity/src/secure_enclave.rs:760:        tampered_nonce[0] ^= 0xFF;
+origin/JM-Dev-Branch:crates/identity/src/secure_enclave.rs:763:            nonce: tampered_nonce,
+origin/JM-Dev-Branch:crates/identity/tests/enrollment_integration.rs:8://! - Security invariants (replay protection, trust thresholds)
+origin/JM-Dev-Branch:crates/identity/tests/enrollment_integration.rs:318:fn test_replay_attack_detection() {
+origin/JM-Dev-Branch:crates/identity/tests/enrollment_integration.rs:333:    // Simulate replay - reuse the same nonce
+origin/JM-Dev-Branch:crates/identity/tests/enrollment_integration.rs:340:        challenge_nonce: nonce1, // SAME nonce - replay attack
+origin/JM-Dev-Branch:crates/identity/tests/enrollment_integration.rs:365:    sm.revoke("Platform compromised - firmware tampering detected".to_string())
+origin/JM-Dev-Branch:crates/mesh/README.md:91:- Security invariants
+origin/JM-Dev-Branch:crates/mesh/src/security.rs:269:    /// Check if message is too old (replay protection)
+origin/JM-Dev-Branch:crates/stream/src/integrity.rs:45:    /// Last seen sequence ID for replay attack prevention
+origin/JM-Dev-Branch:crates/stream/src/integrity.rs:123:    /// Validate sequence ID for replay attack prevention
+origin/JM-Dev-Branch:crates/stream/src/integrity.rs:124:    /// Returns Ok(()) if sequence is valid, Err with reason if replay detected
+origin/JM-Dev-Branch:crates/stream/src/integrity.rs:215:    /// Validate sequence ID for a stream (replay attack prevention)
+origin/JM-Dev-Branch:crates/stream/src/integrity.rs:329:    fn test_sequence_validation_rejects_replay() {
+origin/JM-Dev-Branch:crates/trust_mesh/src/merkle.rs:364:    fn test_merkle_tree_detects_tampering() {
+origin/JM-Dev-Branch:crates/trust_mesh/src/merkle.rs:374:            "hash2_tampered".to_string(),
+origin/JM-Dev-Branch:crates/trust_mesh/src/signing.rs:281:    fn test_verify_tampered_event() {
+origin/JM-Dev-Branch:crates/unit-status/src/gospel.rs:482:    async fn test_tampered_field_rejected_even_with_matching_merkle_root() {
+origin/JM-Dev-Branch:crates/unit-status/src/gospel.rs:486:            "node-tamper",
+origin/JM-Dev-Branch:crates/unit-status/src/gospel.rs:493:        // signature must fail due to tampered signed field.
+origin/JM-Dev-Branch:crates/unit-status/src/trust.rs:87:            // Unverifiable telemetry is spoofed
+origin/JM-Dev-Branch:crates/unit-status/src/trust.rs:227:    fn test_unverified_telemetry_spoofed() {
+origin/JM-Dev-Branch:crates/unit-status/src/trust.rs:234:            "Unverified telemetry should be scored as spoofed"
+origin/JM-Dev-Branch:docs/4MIK_GAP_VALIDATION_2026-02-23.md:41:- Closed: ingress cryptographic verification, replay metadata/enforcement, active TS Ed25519 signing, C2 transport TLS/mTLS gating, macOS optional-skip default, signed HTTP presence ingestion, and server-derived presence trust.
+origin/JM-Dev-Branch:docs/4MIK_GAP_VALIDATION_2026-02-23.md:47:The high-risk spoof/replay gaps in the active desktop gateway + Pi chat path are now closed.  
+origin/JM-Dev-Branch:docs/AETHERIC_LINK.md:24:   - Freshness check (3s anti-replay)
+origin/JM-Dev-Branch:docs/AETHERIC_LINK_COMPLETE.md:37:    - Freshness check: Reject if timestamp > 3s old (anti-replay)
+origin/JM-Dev-Branch:docs/AETHERIC_LINK_COMPLETE.md:119:2. **Anti-Replay Protection**: 3-second freshness window prevents replay attacks
+origin/JM-Dev-Branch:docs/AETHERIC_LINK_COMPLETE.md:182:- ✅ Anti-replay protection
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:49:| Spoof/Replay Rejection       | > 99.5% of spoofed messages rejected                  | Spoof detection event count     |
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:241:- Monitor spoof rejection rate (should be 99.5%+)
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:316:4. **Minute 10-15**: Verify spoof rejection
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:317:   - Inject spoofed position from rogue device (192.168.1.99):
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:320:     ./inject-spoofed-position.sh 192.168.1.99 38.53 -120.12
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:323:   - Check spoof detection event shows correct reason (INVALID_SIGNATURE, etc.)
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:331:- ✅ "Spoof/replay rejection rate" measured at 100% (1 attempt, 1 rejection)
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:370:   - Even with GNSS denied, positions should still verify (not spoofed)
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:638:- ✅ No spoofed data entered mesh during offline operation
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:654:# 1. Check spoof detection rate
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:657:# Expected: > 99% of injected spoofed messages
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:782:# Check if spoof detection is enabled:
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:809:3. **Inject spoofed signature (not just wrong position)**:
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:812:   # Proper spoofing attempt includes:
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:816:   ./inject-spoofed-position.sh --bad-signature 192.168.1.99
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:903:spoof_count=$(grep "SPOOF_DETECTION" "$OUTPUT_DIR"/*-events.log | wc -l)
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:904:total_spoofed_attempts=10  # Record manually
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:905:rejection_rate=$((spoof_count * 100 / total_spoofed_attempts))
+origin/JM-Dev-Branch:docs/FIELD_TEST_OPERATOR_MANUAL.md:973:   - Action: Verify spoofing signature actually invalid (see Troubleshooting)
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:94:- Spoof/replay protection configuration
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:105:- Kinematic validation (spoofing detection)
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:132:### 5. **Spoof/Replay Detection Tests** (`tests/field-spoof-replay-validation.rs`)
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:135:- Tests for signature validation, replay nonces, chain integrity, kinematics, attestation, revocation
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:136:- Integration test validating 100% spoof/replay rejection rate
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:141:cargo test --test field-spoof-replay-validation -- --nocapture
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:167:- Real-time KPI collection (spoof/replay rejection, origin validation, coordination success)
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:249:# Test spoof detection
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:253:cargo test --test field-spoof-replay-validation -- --nocapture 2>&1 | tail -20
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:256:# Inject spoofed test message (optional)
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:266:   - Spoof/replay rejection rate: > 99.5%
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:323:   - Inject 1 spoofed position, verify rejection
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:387:**Solution**: Verify spoof has invalid signature (not just wrong position), check kinematic validation enabled
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:410:- ✅ Event logs (spoof detections, verifications, coordinations)
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:440:- `tests/field-spoof-replay-validation.rs` - Validation test suite
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:500:    - Spoof/replay rejection
+origin/JM-Dev-Branch:docs/FIELD_TEST_READINESS.md:511:- Inject 100 spoofed messages
+origin/JM-Dev-Branch:docs/IDENTITY_CROSS_PLATFORM.md:124:- ✓ Protocol invariants (concatenation order, sensitivity, edge cases)
+origin/JM-Dev-Branch:docs/OFFLINE_MODE.md:118:        replay_to_ledger(event);
+origin/JM-Dev-Branch:docs/OFFLINE_MODE.md:213:**Zero automatic resynchronization is a security invariant.** This prevents:
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:11:- AC-P0-03 (replay envelope fields + gateway enforcement)
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:17:- AC-P1-05 (CI security regression gates for spoof/replay/tamper and transport/encryption invariants)
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:39:| AC-P0-01 | P0 | Enforce cryptographic verification at gateway ingress | Current trust can be spoofed with non-empty signature string | M | none | Completed |
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:41:| AC-P0-03 | P0 | Add replay defenses to chat envelope and verifier | Prevent captured-message replay and order tampering | M | AC-P0-01 | Completed |
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:49:| AC-P1-05 | P1 | CI security regression gates | Prevent backsliding on signature/replay/encryption requirements | M | AC-P0-01..AC-P0-06 | Completed |
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:89:- Security tests demonstrate spoofed-signature rejection end-to-end.
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:93:Status: Completed (schema + gateway replay checks are active).
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:96:- Add replay/ordering fields to envelope (nonce + monotonic sequence + optional previous hash).
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:177:- Gateway now derives trust score from verification factors (`signature`, `replay`, prior key binding, TPM-backed flag) and clamps the value server-side.
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:179:- Presence/session payloads now carry provenance metadata (`key_source`, `signature_verified`, `replay_verified`, derivation version, evaluation timestamp).
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:234:- Nonce/timestamp/signature invariants enforced consistently.
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:237:- Shared C2 schema now normalizes `trust_status` with Guardian-style `verification_status` and enforces consistency invariants.
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:245:- Add CI checks that fail on reintroduction of placeholder signing, insecure transport, missing replay checks, or plaintext payload mode in production profile.
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:248:- CI pipeline blocks merges on failed security invariants.
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:249:- Negative tests include spoof, replay, and tamper cases.
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:252:- Added `services/gateway/src/__tests__/security-regression.integration.test.ts` covering spoof/replay/tamper negative cases and active-path static invariant checks.
+origin/JM-Dev-Branch:docs/PRIORITIZED_BACKLOG_2026-02-23.md:271:- Emit structured events for signature failures, replay blocks, attestation failures, and revocation hits.
+origin/JM-Dev-Branch:docs/RELEASE_PROCESS.md:16:Following 4MIK architectural invariants:
+origin/JM-Dev-Branch:docs/SECRET_PROVISIONING.md:124:Per AetherCore architectural invariants, production deployments should eventually migrate to TPM-backed Ed25519 keys (CodeRalphie). Current certificate-based signing is a transitional approach for desktop releases.
+origin/JM-Dev-Branch:docs/SUPPLY_CHAIN_SECURITY.md:220:3. **License Poisoning**: BLAKE3 hashing detects license tampering
+origin/JM-Dev-Branch:docs/TPM_CONFIGURATION.md:15:- Susceptible to identity spoofing and software-based attacks
+origin/JM-Dev-Branch:docs/TPM_CONFIGURATION.md:390:- Attacker can spoof identity in software
+origin/JM-Dev-Branch:docs/production-deployment-playbook.md:316:- If Merkle root mismatch → Investigate tampering; restore from backup
+origin/JM-Dev-Branch:packages/dashboard/e2e/README.md:9:The E2E test suite follows the 4MIK architectural invariants:
+origin/JM-Dev-Branch:packages/dashboard/e2e/c2-control.spec.ts:144:          reason: 'Signature verification failed - potential replay attack',
+origin/JM-Dev-Branch:packages/dashboard/e2e/fixtures/index.ts:5: * Follows 4MIK architectural invariants:
+Binary file origin/JM-Dev-Branch:packages/dashboard/src-tauri/resources/macos/local-control-plane/node matches
+origin/JM-Dev-Branch:packages/dashboard/src-tauri/resources/macos/local-control-plane/pnpm-store/lock.yaml:3759:  tiny-invariant@1.3.3:
+origin/JM-Dev-Branch:packages/dashboard/src-tauri/resources/macos/local-control-plane/pnpm-store/lock.yaml:7615:      tiny-invariant: 1.3.3
+origin/JM-Dev-Branch:packages/dashboard/src-tauri/resources/macos/local-control-plane/pnpm-store/lock.yaml:8015:  tiny-invariant@1.3.3: {}
+origin/JM-Dev-Branch:packages/dashboard/src-tauri/resources/macos/local-control-plane/services/collaboration/proto/identity_registry.proto:86:  // Timestamp from SignedEnvelope (for replay attack detection)
+origin/JM-Dev-Branch:packages/dashboard/src-tauri/src/commands.rs:1624:/// If the hardware attestor fails to sign (hardware error, tampered device), this command
+origin/JM-Dev-Branch:packages/dashboard/src-tauri/src/lib.rs:198:                            "STEP 1: This may indicate tampering or unauthorized boot modifications.\n\
+origin/JM-Dev-Branch:packages/dashboard/src-tauri/src/lib.rs:232:                            "STEP 1: Treat this as potential tamper or keychain corruption.\n\
+origin/JM-Dev-Branch:packages/dashboard/src/components/guardian/IntegrityOverlay.ts:49:            The incoming video may have been tampered with.
+origin/JM-Dev-Branch:packages/shared/src/__tests__/c2-message-schema.test.ts:66:    it('should include sender-local replay chain metadata', () => {
+origin/JM-Dev-Branch:packages/shared/src/__tests__/c2-message-schema.test.ts:214:    it('should reject verified/spoofed status without signature', () => {
+origin/JM-Dev-Branch:packages/shared/src/c2-message-schema.ts:276:    throw new Error('Message envelope verified/spoofed status requires signature');
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:9: * - Spoof/replay detection and rejection metrics
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:77:  // Confidence in position (0.0-1.0): 1.0 = high confidence, 0.0 = spoofed/untrustworthy
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:176:  // Replay/spoofing protection
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:268: * Logged when a spoofed/invalid track or intent is detected and rejected.
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:269: * Used to measure field test KPI: "Spoof/replay rejection rate"
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:274:  // What was spoofed
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:275:  spoofed_data_type: z.enum(['POSITION', 'INTENT', 'TARGETING']),
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:281:    'REPLAY_DETECTED', // Nonce/sequence number indicates replay
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:408:    // KPI 1: Spoof/replay rejection rates
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:409:    total_spoofed_detections: z.number().int().min(0),
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:410:    spoof_rejection_rate_percent: z.number().min(0).max(100),
+origin/JM-Dev-Branch:packages/shared/src/mdca-telemetry-schema.ts:457:  'spoof_detection',
+origin/JM-Dev-Branch:packages/shared/src/types/guardian.ts:22: * - SPOOFED: Invalid signature, replay attack, or Byzantine behavior detected
+origin/JM-Dev-Branch:packages/shared/src/types/guardian.ts:57:  /** Nonce to prevent replay attacks */
+origin/JM-Dev-Branch:packages/shared/src/types/guardian.ts:129:  /** Reason if unverified or spoofed */
+origin/JM-Dev-Branch:packages/shared/src/types/guardian.ts:260:    'replay_attack',
+origin/JM-Dev-Branch:packages/shared/tests/protocol.test.ts:81:    it('should satisfy concatenation order invariant', async () => {
+origin/JM-Dev-Branch:packages/shared/tests/protocol.test.ts:234:    it('should verify protocol invariants', () => {
+origin/JM-Dev-Branch:packages/shared/tests/protocol.test.ts:235:      const invariants = testVectors.protocol_invariants;
+origin/JM-Dev-Branch:packages/shared/tests/protocol.test.ts:237:      expect(invariants.hash_algorithm).toBe(PROTOCOL_CONSTANTS.HASH_ALGORITHM);
+origin/JM-Dev-Branch:packages/shared/tests/protocol.test.ts:238:      expect(invariants.hash_output_length_bytes).toBe(PROTOCOL_CONSTANTS.HASH_OUTPUT_LENGTH_BYTES);
+origin/JM-Dev-Branch:packages/shared/tests/protocol.test.ts:239:      expect(invariants.hash_output_length_hex).toBe(PROTOCOL_CONSTANTS.HASH_OUTPUT_LENGTH_HEX);
+origin/JM-Dev-Branch:packages/shared/tests/protocol.test.ts:240:      expect(invariants.concatenation_order).toEqual(PROTOCOL_CONSTANTS.CONCATENATION_ORDER);
+origin/JM-Dev-Branch:pnpm-lock.yaml:3759:  tiny-invariant@1.3.3:
+origin/JM-Dev-Branch:pnpm-lock.yaml:7615:      tiny-invariant: 1.3.3
+origin/JM-Dev-Branch:pnpm-lock.yaml:8015:  tiny-invariant@1.3.3: {}
+origin/JM-Dev-Branch:scripts/README.md:337:# Verify script hasn't been tampered with
+origin/JM-Dev-Branch:services/collaboration/README.md:169:- `replay_attack`: Timestamp outside 5-minute window
+origin/JM-Dev-Branch:services/collaboration/TPM_INTEGRATION.md:16:4. **Timestamp**: Unix timestamp (prevents replay attacks)
+origin/JM-Dev-Branch:services/collaboration/TPM_INTEGRATION.md:17:5. **Nonce**: Random nonce (prevents replay attacks)
+origin/JM-Dev-Branch:services/collaboration/TPM_INTEGRATION.md:50:         │                                        │     - Check timestamp (replay attack)   │
+origin/JM-Dev-Branch:services/collaboration/TPM_INTEGRATION.md:156:  type: 'invalid_signature' | 'unknown_node' | 'replay_attack' | 'integrity_violation';
+origin/JM-Dev-Branch:services/collaboration/TPM_INTEGRATION.md:168:- `replay_attack`: Timestamp outside acceptable window (5 minutes)
+origin/JM-Dev-Branch:services/collaboration/TPM_INTEGRATION_V2.md:56:- `VerifySignature(...)`: Full signature verification with replay attack detection
+origin/JM-Dev-Branch:services/collaboration/TPM_INTEGRATION_V2.md:369:- **Nonce**: Random 16-byte hex string (prevents replay)
+origin/JM-Dev-Branch:services/collaboration/proto/identity_registry.proto:86:  // Timestamp from SignedEnvelope (for replay attack detection)
+origin/JM-Dev-Branch:services/collaboration/src/VerificationService.ts:191:      replay_attack: 'Timestamp outside acceptable window (replay attack)',
+origin/JM-Dev-Branch:services/collaboration/src/VerificationServiceV2.ts:177:      replay_attack: 'Timestamp outside acceptable window (replay attack)',
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:76:test('replay regression check: sequence without nonce is rejected', () => {
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:84:        from: 'sender-replay',
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:85:        payload: { content: 'replay-attempt', recipientId: 'target-node' },
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:92:test('spoof regression check: verified status without signature is rejected', () => {
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:100:        from: 'sender-spoof',
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:101:        payload: { content: 'spoof-attempt', recipientId: 'target-node' },
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:110:test('tamper regression check: payload mutation invalidates Ed25519 signature', () => {
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:118:    from: 'sender-tamper',
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:136:  const tamperedCore = {
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:138:    payload: { content: 'tampered-message', recipientId: 'target-node' },
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:140:  const canonicalTampered = serializeForSigning(tamperedCore);
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:141:  const tamperedValid = crypto.verify(
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:147:  assert.equal(tamperedValid, false);
+origin/JM-Dev-Branch:services/gateway/src/__tests__/security-regression.integration.test.ts:184:test('replay and ordering fields remain enforced in shared schema and gateway', () => {
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:8: * - Spoof/replay rejection rates
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:35:  spoof_detections: SpoofDetectionMetric[];
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:36:  total_spoofed_attempts: number;
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:37:  total_spoofed_rejections: number;
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:38:  spoof_rejection_rate_percent: number;
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:87:  spoofed_source: string;
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:134:  spoof_attempts_detected: number;
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:166:      spoof_detections: [],
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:167:      total_spoofed_attempts: 0,
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:168:      total_spoofed_rejections: 0,
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:169:      spoof_rejection_rate_percent: 0,
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:214:    spoofed_source: string,
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:218:    this.metrics.spoof_detections.push({
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:221:      spoofed_source,
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:225:    this.metrics.total_spoofed_rejections++;
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:227:    this.emit('spoof_detection', { detector, spoofed_source, reason });
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:358:        spoof_attempts_detected: 0,
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:382:      unit_metrics.spoof_attempts_detected++;
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:388:    if (this.metrics.total_spoofed_attempts > 0) {
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:389:      this.metrics.spoof_rejection_rate_percent =
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:390:        (this.metrics.total_spoofed_rejections / this.metrics.total_spoofed_attempts) * 100;
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:457:    if (this.metrics.spoof_rejection_rate_percent < 99.0) {
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:459:        `Spoof rejection rate ${this.metrics.spoof_rejection_rate_percent.toFixed(1)}% < 99%`
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:541:  1. Spoof/Replay Rejection:    ${this.metrics.spoof_rejection_rate_percent.toFixed(1)}% (target: >99.5%)
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:553:  Total Spoofed Attempts:  ${this.metrics.total_spoofed_attempts}
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:554:  Total Rejections:        ${this.metrics.total_spoofed_rejections}
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:597:| Spoof/Replay Rejection | > 99.5% | ${this.metrics.spoof_rejection_rate_percent.toFixed(1)}% | ${this.metrics.spoof_rejection_rate_percent >= 99.5 ? '✅' : '❌'} |
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:606:- Total spoofed attempts: ${this.metrics.total_spoofed_attempts}
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:607:- Successful rejections: ${this.metrics.total_spoofed_rejections}
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:608:- Rejection rate: ${this.metrics.spoof_rejection_rate_percent.toFixed(1)}%
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:647:- Spoof attempts detected: ${metrics.spoof_attempts_detected}
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:654:This field test validates 4MIK as a foundational trust layer for MDCA under contested RF conditions. All critical security checks (spoof/replay rejection, track origin validation) functioned as designed, enabling autonomous coordination without persistent broadcast.
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:689:  collector.on('spoof_detection', (evt) => {
+origin/JM-Dev-Branch:services/gateway/src/field-telemetry-collector.ts:690:    console.log(`[SPOOF] ${evt.detector} detected ${evt.spoofed_source}: ${evt.reason}`);
+origin/JM-Dev-Branch:services/gateway/src/index.ts:195:  replay_verified: boolean;
+origin/JM-Dev-Branch:services/gateway/src/index.ts:227:const replayStateBySenderId = new Map<string, SenderReplayState>();
+origin/JM-Dev-Branch:services/gateway/src/index.ts:335:  replayVerified: boolean;
+origin/JM-Dev-Branch:services/gateway/src/index.ts:343:  if (input.replayVerified) {
+origin/JM-Dev-Branch:services/gateway/src/index.ts:638:      message: 'Envelope nonce must be present for replay defense',
+origin/JM-Dev-Branch:services/gateway/src/index.ts:642:  let state = replayStateBySenderId.get(envelope.from);
+origin/JM-Dev-Branch:services/gateway/src/index.ts:650:    replayStateBySenderId.set(envelope.from, state);
+origin/JM-Dev-Branch:services/gateway/src/index.ts:711:        replayStateBySenderId.delete(session.clientId);
+origin/JM-Dev-Branch:services/gateway/src/index.ts:767:  const replayCheck = verifyAndTrackReplay(envelope);
+origin/JM-Dev-Branch:services/gateway/src/index.ts:768:  if (!replayCheck.ok) {
+origin/JM-Dev-Branch:services/gateway/src/index.ts:769:    sendGatewayError(ws, replayCheck.code, replayCheck.message, replayCheck.details);
+origin/JM-Dev-Branch:services/gateway/src/index.ts:794:    replay_verified: true,
+origin/JM-Dev-Branch:services/gateway/src/index.ts:801:    replayVerified: true,
+origin/JM-Dev-Branch:services/gateway/src/index.ts:851:  const replayCheck = verifyAndTrackReplay(envelope);
+origin/JM-Dev-Branch:services/gateway/src/index.ts:852:  if (!replayCheck.ok) {
+origin/JM-Dev-Branch:services/gateway/src/index.ts:853:    sendGatewayError(ws, replayCheck.code, replayCheck.message, replayCheck.details);
+origin/JM-Dev-Branch:services/gateway/src/index.ts:996:          replayStateBySenderId.delete(session.clientId);
+origin/JM-Dev-Branch:services/gateway/src/index.ts:1090:    replay_verified: true,
+origin/JM-Dev-Branch:services/gateway/src/index.ts:1097:    replayVerified: true,
+origin/JM-Dev-Branch:services/h2-ingest/src/_deprecated/README.md:11:Per AetherCore architectural invariants:
+origin/JM-Dev-Branch:tests/cross-platform/identity.test.ts:134:    it('should reject tampered genesis hash', async () => {
+origin/JM-Dev-Branch:tests/cross-platform/identity.test.ts:143:      const tamperedBlock: IdentityBlock = {
+origin/JM-Dev-Branch:tests/cross-platform/identity.test.ts:148:      const valid = await verifyIdentityBlock(tamperedBlock, TEST_VECTORS.salt);
+origin/JM-Dev-Branch:tests/cross-platform/identity.test.ts:166:    it('should satisfy concatenation order invariant', async () => {
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:4: * Test suite for validating spoof/replay rejection functionality.
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:12:mod field_spoof_replay_tests {
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:83:    fn test_replay_detection_nonce_reuse() {
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:84:        // Scenario: Attacker replays old valid position update
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:99:        // Attacker replays same position 60 seconds later with same nonce
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:100:        let replay_timestamp = 1707882100000 + 60000;
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:111:        let rejection = detect_replay(&position_time_100ms, replay_timestamp, &nonce_cache);
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:344:    fn test_full_spoof_replay_assault() {
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:346:        // 1. Inject spoofed position (wrong signature) → Should reject
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:353:        let mut spoof_count = 0;
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:357:        if test_spoofed_message("ISR-01", "wrong-sig") {
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:358:            spoof_count += 1;
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:363:        if test_replay_old_update("ISR-02") {
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:364:            spoof_count += 1;
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:365:            rejection_count += verify_rejects_replay();
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:370:            spoof_count += 1;
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:376:            spoof_count += 1;
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:382:            spoof_count += 1;
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:387:        assert_eq!(spoof_count, 5);           // 5 attacks injected
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:389:        assert_eq!(rejection_count, spoof_count);  // 100% rejection rate!
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:425:    fn detect_replay(
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:494:    fn test_spoofed_message(_unit: &str, _sig: &str) -> bool { true }
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:496:    fn test_replay_old_update(_unit: &str) -> bool { true }
+origin/JM-Dev-Branch:tests/field-spoof-replay-validation.rs:497:    fn verify_rejects_replay() -> i32 { 1 }
+origin/JM-Dev-Branch:tests/integration/BOUNDARY_INTEGRITY_REPORT.md:31:**Phase 5 (Attack Scenarios)**: 🚧 50% Complete - replay tests documented  
+origin/JM-Dev-Branch:tests/integration/BOUNDARY_INTEGRITY_REPORT.md:126:**Impact**: Valid signed commands can be replayed  
+origin/JM-Dev-Branch:tests/integration/BOUNDARY_INTEGRITY_REPORT.md:128:**Test Status**: ⚠️ Gap documented in `boundary_replay_attack_tests.rs`
+origin/JM-Dev-Branch:tests/integration/BOUNDARY_INTEGRITY_REPORT.md:142:**Test Status**: ⚠️ Gap documented in `boundary_replay_attack_tests.rs`
+origin/JM-Dev-Branch:tests/integration/BOUNDARY_INTEGRITY_REPORT.md:226:**Operational Impact**: Medium - System can operate with documented gaps, but replay protection and full signature verification should be prioritized.
+origin/JM-Dev-Branch:tests/integration/BOUNDARY_INTEGRITY_REPORT.md:242:│   ├── boundary_replay_attack_tests.rs (3 tests - temporal integrity)
+origin/JM-Dev-Branch:tests/integration/DESKTOP_TEST_HARNESS.md:161:All tests follow the 4MIK architectural invariants:
+origin/JM-Dev-Branch:tests/integration/DESKTOP_TEST_HARNESS.md:217:   - TODO: Nonce-based replay prevention
+origin/JM-Dev-Branch:tests/integration/README.md:25:│   ├── boundary_replay_attack_tests.rs # Replay attack scenarios
+origin/JM-Dev-Branch:tests/integration/README.md:41:### Replay Attack Tests (`boundary_replay_attack_tests.rs`)
+origin/JM-Dev-Branch:tests/integration/README.md:100:All tests follow the 4MIK architectural invariants:
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:3://! Tests that the system can detect and reject replayed commands
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:17:async fn test_replay_attack_same_signature_rejected() {
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:54:            timestamp_ns, // SAME timestamp - this is the replay
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:75:    // Attempt to replay the EXACT same command with same signature and timestamp
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:78:    // NOTE: Current implementation may not have replay protection yet
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:80:    // If replay protection is not implemented, this test will fail and serve as a TODO
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:82:    // EXPECTED: Second identical request should be rejected as a replay
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:83:    // For now, we document the behavior but don't enforce it until replay protection is added
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:85:        eprintln!("WARNING: Replay attack not detected - replay protection not yet implemented");
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:86:        eprintln!("TODO: Implement nonce-based or timestamp-based replay protection");
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:95:async fn test_replay_attack_with_different_timestamp_requires_new_signature() {
+origin/JM-Dev-Branch:tests/integration/src/boundary_replay_attack_tests.rs:174:    // to prevent replay of legitimately signed but outdated commands
+origin/JM-Dev-Branch:tests/integration/src/desktop_integration_tests.rs:479:        "reason": "Invalid signature - potential spoofing attempt"
+origin/JM-Dev-Branch:tests/integration/src/desktop_integration_tests.rs:486:        audit_event["reason"].as_str().unwrap().contains("spoofing"),
+origin/JM-Dev-Branch:tests/integration/src/lib.rs:17:// mod boundary_replay_attack_tests;
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:332:    const REPLAY_NODE: &str = "replay-byzantine-001";
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:519:async fn test_spoofed_signature_rejection() {
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:525:    const SPOOFED_DEVICE: &str = "spoofed-attacker-001";
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:533:    let spoofed_key = SigningKey::from_bytes(&secret);
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:540:    // Phase 4: Sign with spoofed key
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:542:    let spoofed_signature = spoofed_key.sign(message.as_bytes());
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:543:    let spoofed_sig_b64 = base64::encode(spoofed_signature.to_bytes());
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:545:    // Phase 5: Create request with spoofed signature
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:549:        signatures: vec![spoofed_sig_b64.clone()],
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:558:        MetadataValue::try_from(spoofed_sig_b64.as_str()).unwrap(),
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:561:    // Phase 6: Attempt command execution with spoofed signature
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:567:        "Command with spoofed signature MUST be rejected"
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:599:/// 2. Send the SAME event again (replay attack)
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:600:/// 3. Verify the system detects and rejects the replay
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:602:async fn test_replay_attack_sequence_rejection() {
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:606:    const STREAM_ID: &str = "replay-test-stream";
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:618:    // Phase 3: Replay attack - try to replay sequence 1
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:619:    let result_replay = tracker.validate_sequence(STREAM_ID, 1);
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:620:    assert!(result_replay.is_err(), "Replay attack MUST be rejected");
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:622:        result_replay.unwrap_err().contains("Replay attack"),
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:623:        "Error should indicate replay attack"
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:626:    // Phase 4: Replay attack - try to replay sequence 2
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:627:    let result_replay2 = tracker.validate_sequence(STREAM_ID, 2);
+origin/JM-Dev-Branch:tests/integration/src/red_cell_assault.rs:629:        result_replay2.is_err(),
+origin/JM-Dev-Branch:tests/vectors.json:48:  "protocol_invariants": {
+\n## chat key / KDF indicators
+origin/JM-Dev-Branch:CHANGELOG.md:34:- Extended Ralphie presence identity schema to include `chat_public_key` for encrypted chat key distribution in `services/gateway/src/index.ts`.
+origin/JM-Dev-Branch:Heltech Lora V4/WiFi_Kit_series-master/libraries/NetworkClientSecure/examples/WiFiClientSecureEnterprise/WiFiClientSecureEnterprise.ino:40:                           "MFz4J4JE8N7NA1uJwUEFMUvHLs0scLoPZkKcewIRm1RV2AxmFQxJkdf7YN9Pckki\n"
+origin/JM-Dev-Branch:docs/OFFLINE_MODE.md:268:- Each entry encrypted with key derived from TPM
+origin/JM-Dev-Branch:docs/OFFLINE_MODE.md:340:- [ ] Add secure key derivation function
+Binary file origin/JM-Dev-Branch:packages/dashboard/src-tauri/resources/macos/local-control-plane/node matches
+origin/JM-Dev-Branch:packages/dashboard/src/services/c2/C2Client.ts:747:      throw new Error('WebCrypto subtle API is unavailable; cannot derive chat key');
+Binary file origin/JM-Dev-Branch:packages/shared/app-icon.png matches

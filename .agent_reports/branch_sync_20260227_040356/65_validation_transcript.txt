@@ -1,0 +1,16 @@
+Validation transcript (post-cherry-pick)
+
+$ pnpm --dir services/gateway run test:security
+- FAIL (TS compile): missing @aethercore/shared types before shared build.
+
+$ pnpm --filter @aethercore/shared run build
+- PASS.
+
+$ pnpm --dir services/gateway run test:security
+- FAIL (TS compile): schema/type mismatch in services/gateway/src/index.ts for nonce/sequence/previous_message_id fields.
+
+$ cargo test -p c2-router --lib
+- FAIL: package ID specification `c2-router` did not match any packages.
+
+$ cargo test --workspace
+- WARNING: compile started successfully but was interrupted due runtime limits while still compiling dependencies.

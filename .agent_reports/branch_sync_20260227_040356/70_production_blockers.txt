@@ -1,0 +1,4 @@
+Production-mode validation (AETHERCORE_PRODUCTION=1) is expected to fail-closed until:
+1) DNS or hosts mapping resolves c2.aethercore.local on both Mac and Pi.
+2) Enrollment CA PEM is available locally and injected via the configured path/var.
+These are infra prerequisites, not code defects.
