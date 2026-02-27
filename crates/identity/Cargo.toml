@@ -10,7 +10,7 @@ repository.workspace = true
 default = []
 hardware-tpm = ["tss-esapi"]
 hardware-tpm-tests = ["hardware-tpm"]
-grpc-server = ["tonic", "tonic-build", "prost"]
+grpc-server = ["tonic", "tonic-build", "prost", "protoc-bin-vendored"]
 
 [dependencies]
 aethercore-core = { path = "../core" }
@@ -29,7 +29,6 @@ signature = "2.1"
 hex = { workspace = true }
 rand = { workspace = true }
 ed25519-dalek = { workspace = true }
-x509-parser = "0.16"
 # Hardware Binding
 tss-esapi = { version = "7.2.0", optional = true }
 # gRPC
@@ -43,3 +42,4 @@ tracing-subscriber = { workspace = true }
 
 [build-dependencies]
 tonic-build = { version = "0.10", optional = true }
+protoc-bin-vendored = { version = "3", optional = true }

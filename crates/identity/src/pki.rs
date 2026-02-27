@@ -177,23 +177,7 @@ impl CertificateAuthority {
 
     fn verify_attestation(&self, attestation: &crate::device::Attestation) -> bool {
         // In production: verify attestation data
-        match attestation {
-            crate::device::Attestation::Tpm { .. } => true,
-            crate::device::Attestation::Android {
-                challenge,
-                signature,
-                public_key,
-                cert_chain,
-                ..
-            } => {
-                !challenge.is_empty()
-                    && !signature.is_empty()
-                    && !public_key.is_empty()
-                    && !cert_chain.is_empty()
-            }
-            crate::device::Attestation::Software { .. } => true,
-            crate::device::Attestation::None => false,
-        }
+        !matches!(attestation, crate::device::Attestation::None)
     }
 
     fn sign_certificate(&self, cert: &Certificate) -> Vec<u8> {

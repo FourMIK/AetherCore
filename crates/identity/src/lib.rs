@@ -27,7 +27,6 @@
 //! - Identity enrollment and lifecycle management APIs
 //! - Audit logging and identity event streaming
 
-pub mod android_keystore;
 pub mod attestation;
 pub mod device;
 pub mod enrollment;
@@ -37,29 +36,22 @@ pub mod federation;
 pub mod genesis_bundle;
 pub mod materia_slot;
 pub mod pki;
+pub mod secure_enclave;
 pub mod tpm;
 
 #[cfg(feature = "grpc-server")]
 pub mod grpc_server;
 
-pub use android_keystore::{
-    AndroidAttestationExtension, AndroidBackendMetadata, AndroidKeystoreManager, AndroidQuote,
-    AndroidQuoteVerification, AndroidSecuritySignals, AndroidVerificationFailure,
-};
 pub use attestation::{
     AttestationFinalize, AttestationManager, AttestationRequest, AttestationResponse,
     AttestationResult, HandshakeState, PROTOCOL_VERSION,
 };
-pub use device::{
-    evaluate_trust_policy, Attestation, IdentityManager, IdentityVerification, PlatformIdentity,
-    TrustPolicyDecision, TrustPolicyTier, TrustReasonCode,
-};
+pub use device::{Attestation, IdentityManager, IdentityVerification, PlatformIdentity};
 pub use enrollment::{
     EnrollmentContext, EnrollmentRequest, PlatformType, CHALLENGE_WINDOW_MS, REQUIRED_PCRS,
 };
 pub use enrollment_state::{
-    DiagnosticSeverity, EnrollmentDiagnosticEvent, EnrollmentError, EnrollmentState,
-    EnrollmentStateMachine, FailureClass, OperatorStatusHook, StateTransition,
+    EnrollmentError, EnrollmentState, EnrollmentStateMachine, StateTransition,
 };
 pub use error::{IdentityError, IdentityResult};
 pub use federation::{FederatedIdentity, FederationRegistry, TrustLevel};
@@ -69,6 +61,7 @@ pub use genesis_bundle::{
 };
 pub use materia_slot::{FederatedMateriaSlot, Materia, MateriaSlot};
 pub use pki::{Certificate, CertificateAuthority, CertificateRequest, TrustChainValidator};
+pub use secure_enclave::{SecureEnclaveAttestor, SecureEnclaveQuote};
 pub use tpm::{AttestationKey, PcrValue, TpmManager, TpmQuote};
 
 #[cfg(feature = "grpc-server")]

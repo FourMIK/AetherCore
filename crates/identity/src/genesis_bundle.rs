@@ -143,15 +143,10 @@ impl GenesisBundleGenerator {
         }
 
         // Reject platforms with no attestation
-        match attestation {
-            Attestation::Tpm { .. }
-            | Attestation::Software { .. }
-            | Attestation::Android { .. } => {}
-            Attestation::None => {
-                return Err(crate::Error::Identity(
-                    "Cannot issue genesis bundle without attestation".to_string(),
-                ));
-            }
+        if matches!(attestation, Attestation::None) {
+            return Err(crate::Error::Identity(
+                "Cannot issue genesis bundle without attestation".to_string(),
+            ));
         }
 
         // Validate device certificate is signed

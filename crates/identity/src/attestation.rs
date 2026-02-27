@@ -37,9 +37,7 @@ use ed25519_dalek::SigningKey as Ed25519SigningKey;
 use ed25519_dalek::Verifier as _;
 use p256::ecdsa::{signature::Signer as _, Signature, SigningKey};
 
-use crate::{
-    evaluate_trust_policy, Attestation, Certificate, PlatformIdentity, TrustPolicyTier,
-};
+use crate::{Attestation, Certificate, PlatformIdentity};
 
 /// Protocol version for attestation handshake.
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -133,10 +131,6 @@ pub struct AttestationResult {
     pub trust_score: f64,
     /// Details about the result
     pub details: String,
-    /// Deterministic policy tier used for this attestation.
-    pub policy_tier: TrustPolicyTier,
-    /// Machine-readable reason codes emitted by policy.
-    pub reason_codes: Vec<crate::TrustReasonCode>,
     /// Attestation event for audit trail
     pub event: event::AttestationEvent,
 }
@@ -198,7 +192,7 @@ pub mod event {
     pub struct AttestationMetadata {
         /// Protocol version used
         pub protocol_version: u32,
-        /// Attestation type (TPM, Android, Software, None)
+        /// Attestation type (TPM, Software, None)
         pub attestation_type: String,
         /// Certificate chain length
         pub cert_chain_length: usize,
@@ -380,7 +374,7 @@ impl AttestationManager {
                     attestation_data: vec![],
                 })
             }
-            Attestation::Software { .. } | Attestation::Android { .. } | Attestation::None => None,
+            _ => None,
         };
 
         // Update state
@@ -612,9 +606,8 @@ impl AttestationManager {
             ));
         }
 
-        // Calculate trust score and policy metadata.
-        let policy = evaluate_trust_policy(&peer_identity);
-        let trust_score = policy.trust_score;
+        // Calculate trust score based on attestation type
+        let trust_score = calculate_trust_score(&peer_identity.attestation);
 
         // Mark handshake as completed
         self.handshakes.insert(
@@ -639,16 +632,7 @@ impl AttestationManager {
                 tpm_quote_present: matches!(peer_identity.attestation, Attestation::Tpm { .. }),
                 trust_score,
                 failure_reason: None,
-                additional_data: HashMap::from([
-                    (
-                        "policy_tier".to_string(),
-                        format!("{:?}", policy.tier),
-                    ),
-                    (
-                        "reason_codes".to_string(),
-                        format!("{:?}", policy.reason_codes),
-                    ),
-                ]),
+                additional_data: HashMap::new(),
             },
         };
 
@@ -659,8 +643,6 @@ impl AttestationManager {
             peer_identity: Some(peer_identity),
             trust_score,
             details: "Attestation completed successfully".to_string(),
-            policy_tier: policy.tier,
-            reason_codes: policy.reason_codes,
             event,
         })
     }
@@ -919,10 +901,7 @@ fn verify_tpm_quote(quote: &crate::TpmQuote, identity: &PlatformIdentity) -> boo
         Attestation::Tpm { pcrs, .. } if !pcrs.is_empty() => {
             serde_json::from_slice::<Vec<crate::PcrValue>>(pcrs).ok()
         }
-        Attestation::Tpm { .. }
-        | Attestation::Software { .. }
-        | Attestation::Android { .. }
-        | Attestation::None => None,
+        _ => None,
     };
 
     if let Some(expected_pcrs) = expected_pcrs {
@@ -977,6 +956,16 @@ fn is_timestamp_fresh(timestamp: u64, now: u64, window_ms: u64) -> bool {
         return true; // Within skew tolerance
     }
     now - timestamp <= window_ms
+}
+
+/// Calculate trust score based on attestation type.
+fn calculate_trust_score(attestation: &Attestation) -> f64 {
+    match attestation {
+        Attestation::Tpm { .. } => 1.0,           // Highest trust
+        Attestation::SecureEnclave { .. } => 1.0, // Highest trust
+        Attestation::Software { .. } => 0.7,      // Medium trust
+        Attestation::None => 0.0,                 // No trust
+    }
 }
 
 /// Generate event ID.
@@ -1221,26 +1210,33 @@ mod tests {
     }
 
     #[test]
-    fn test_trust_policy_scores() {
-        let tpm = create_test_identity(
-            "node-tpm",
-            Attestation::Tpm {
+    fn test_trust_score_calculation() {
+        assert_eq!(
+            calculate_trust_score(&Attestation::Tpm {
                 quote: vec![],
                 pcrs: vec![],
                 ak_cert: vec![],
-            },
+            }),
+            1.0
         );
-        let software = create_test_identity(
-            "node-sw",
-            Attestation::Software {
-                certificate: vec![],
-            },
-        );
-        let none = create_test_identity("node-none", Attestation::None);
 
-        assert_eq!(evaluate_trust_policy(&tpm).trust_score, 0.2);
-        assert_eq!(evaluate_trust_policy(&software).trust_score, 0.2);
-        assert_eq!(evaluate_trust_policy(&none).trust_score, 0.0);
+        assert_eq!(
+            calculate_trust_score(&Attestation::Software {
+                certificate: vec![],
+            }),
+            0.7
+        );
+
+        assert_eq!(
+            calculate_trust_score(&Attestation::SecureEnclave {
+                key_tag: "com.4mik.test.sep".to_string(),
+                public_key: vec![0x04, 0x01, 0x02],
+                signature: vec![0x30, 0x44],
+            }),
+            1.0
+        );
+
+        assert_eq!(calculate_trust_score(&Attestation::None), 0.0);
     }
 
     #[test]

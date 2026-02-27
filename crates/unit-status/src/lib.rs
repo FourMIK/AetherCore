@@ -55,7 +55,6 @@
 
 pub mod feed;
 pub mod gospel;
-pub mod schema;
 pub mod trust;
 pub mod types;
 pub mod websocket;
@@ -63,15 +62,11 @@ pub mod websocket;
 // Re-export commonly used types
 pub use feed::{ChangeFeedEvent, CosmosDbFeedSubscriber, FeedError};
 pub use gospel::{GospelError, GospelLedger, GospelState, RevocationCertificate, RevocationReason};
-pub use schema::{
-    HealthMetrics, MeshEvent, MeshHealthPayload, RevocationPayload,
-    RevocationReason as SchemaRevocationReason,
-};
 pub use trust::{TelemetryTrustScorer, TrustLevel};
 pub use types::{
     ConnectivityState, Coordinate, OperationalState, PlatformType, UnitStatus, UnitTelemetry,
 };
 pub use websocket::{
-    MeshHealthMessage, RevocationCertificate as WsRevocationCertificate,
+    HealthMetrics, MeshHealthMessage, RevocationCertificate as WsRevocationCertificate,
     RevocationReason as WsRevocationReason, WsMessage, WsServer,
 };

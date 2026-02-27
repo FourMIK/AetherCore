@@ -4,24 +4,11 @@
 
 use aethercore_crypto::signing::EventSigningService;
 use aethercore_identity::{
-    AndroidQuote, AndroidVerificationFailure, Attestation, AttestationKey, Certificate,
-    PlatformIdentity, TpmManager, TpmQuote, TrustChainValidator,
+    Attestation, AttestationKey, Certificate, PlatformIdentity, TpmManager, TpmQuote,
+    TrustChainValidator,
 };
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
-
-/// Structured attestation verification failures for UI/log consumption.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum AttestationFailureReason {
-    /// TPM attestation verification failed with explanation.
-    Tpm(String),
-    /// Software attestation verification failed with explanation.
-    Software(String),
-    /// Android attestation verification failed with structured reason.
-    Android(AndroidVerificationFailure),
-    /// Unsupported attestation mode or policy.
-    Unsupported(String),
-}
 
 /// Security context for mesh operations
 pub struct MeshSecurity {
@@ -100,60 +87,38 @@ impl MeshSecurity {
     /// # Security Note
     /// Validates AK certificate chain, TPM quote signatures, and PCR policy.
     pub fn verify_attestation(&self, attestation: &Attestation) -> Result<f64, String> {
-        self.verify_attestation_with_reason(attestation, None, &[])
-            .map_err(|reason| format!("{reason:?}"))
-    }
-
-    /// Verify attestation and return structured failure reason for diagnostics.
-    pub fn verify_attestation_with_reason(
-        &self,
-        attestation: &Attestation,
-        expected_challenge: Option<&[u8]>,
-        trusted_android_roots: &[Vec<u8>],
-    ) -> Result<f64, AttestationFailureReason> {
         match attestation {
             Attestation::Tpm {
                 quote,
                 pcrs,
                 ak_cert,
             } => {
-                let cert_chain: Vec<Certificate> =
-                    serde_json::from_slice(ak_cert).map_err(|e| {
-                        AttestationFailureReason::Tpm(format!("Invalid AK certificate chain: {e}"))
-                    })?;
+                let cert_chain: Vec<Certificate> = serde_json::from_slice(ak_cert)
+                    .map_err(|e| format!("Invalid AK certificate chain: {}", e))?;
                 if cert_chain.is_empty() {
-                    return Err(AttestationFailureReason::Tpm(
-                        "AK certificate chain is empty".to_string(),
-                    ));
+                    return Err("AK certificate chain is empty".to_string());
                 }
 
-                let root = cert_chain.last().ok_or_else(|| {
-                    AttestationFailureReason::Tpm("Missing root certificate".to_string())
-                })?;
+                let root = cert_chain
+                    .last()
+                    .ok_or_else(|| "Missing root certificate".to_string())?;
                 let mut validator = TrustChainValidator::new();
                 validator.add_trusted_root(root.issuer.clone(), root.public_key.clone());
                 if !validator.verify_chain(&cert_chain) {
-                    return Err(AttestationFailureReason::Tpm(
-                        "AK certificate chain validation failed".to_string(),
-                    ));
+                    return Err("AK certificate chain validation failed".to_string());
                 }
 
                 let ak_public_key = cert_chain
                     .first()
-                    .ok_or_else(|| {
-                        AttestationFailureReason::Tpm("Missing AK certificate".to_string())
-                    })?
+                    .ok_or_else(|| "Missing AK certificate".to_string())?
                     .public_key
                     .clone();
                 if ak_public_key.is_empty() {
-                    return Err(AttestationFailureReason::Tpm(
-                        "AK public key missing".to_string(),
-                    ));
+                    return Err("AK public key missing".to_string());
                 }
 
-                let tpm_quote: TpmQuote = serde_json::from_slice(quote).map_err(|e| {
-                    AttestationFailureReason::Tpm(format!("Invalid TPM quote: {e}"))
-                })?;
+                let tpm_quote: TpmQuote = serde_json::from_slice(quote)
+                    .map_err(|e| format!("Invalid TPM quote: {}", e))?;
 
                 let ak = AttestationKey {
                     key_id: cert_chain
@@ -166,83 +131,60 @@ impl MeshSecurity {
 
                 let tpm_manager = TpmManager::new(false);
                 if !tpm_manager.verify_quote(&tpm_quote, &ak) {
-                    return Err(AttestationFailureReason::Tpm(
-                        "TPM quote signature verification failed".to_string(),
-                    ));
+                    return Err("TPM quote signature verification failed".to_string());
                 }
 
-                let attestation_pcrs = parse_pcrs(pcrs).map_err(AttestationFailureReason::Tpm)?;
-                let quote_pcrs =
-                    extract_quote_pcrs(&tpm_quote).map_err(AttestationFailureReason::Tpm)?;
+                let attestation_pcrs = parse_pcrs(pcrs)?;
+                let quote_pcrs = extract_quote_pcrs(&tpm_quote)?;
 
-                validate_pcr_policy(&attestation_pcrs).map_err(AttestationFailureReason::Tpm)?;
-                validate_pcr_policy(&quote_pcrs).map_err(AttestationFailureReason::Tpm)?;
+                validate_pcr_policy(&attestation_pcrs)?;
+                validate_pcr_policy(&quote_pcrs)?;
 
                 if attestation_pcrs != quote_pcrs {
-                    return Err(AttestationFailureReason::Tpm(
-                        "PCR values do not match TPM quote".to_string(),
-                    ));
+                    return Err("PCR values do not match TPM quote".to_string());
                 }
 
                 Ok(1.0)
             }
             Attestation::Software { certificate } => {
-                let cert_chain = parse_certificate_chain(certificate)
-                    .map_err(AttestationFailureReason::Software)?;
+                let cert_chain = parse_certificate_chain(certificate)?;
                 if cert_chain.is_empty() {
-                    return Err(AttestationFailureReason::Software(
-                        "Software attestation certificate chain is empty".to_string(),
-                    ));
+                    return Err("Software attestation certificate chain is empty".to_string());
                 }
 
-                let root = cert_chain.last().ok_or_else(|| {
-                    AttestationFailureReason::Software(
-                        "Missing software attestation root certificate".to_string(),
-                    )
-                })?;
+                let root = cert_chain
+                    .last()
+                    .ok_or_else(|| "Missing software attestation root certificate".to_string())?;
                 let mut validator = TrustChainValidator::new();
                 validator.add_trusted_root(root.issuer.clone(), root.public_key.clone());
 
                 if !validator.verify_chain(&cert_chain) {
-                    return Err(AttestationFailureReason::Software(
-                        "Software attestation certificate validation failed".to_string(),
-                    ));
+                    return Err("Software attestation certificate validation failed".to_string());
                 }
 
                 Ok(0.7)
             }
-            Attestation::Android {
-                challenge,
-                signature,
+            Attestation::SecureEnclave {
+                key_tag,
                 public_key,
-                cert_chain,
-                security_signals: _,
+                signature,
             } => {
-                let expected = expected_challenge.unwrap_or(challenge);
-                let quote = AndroidQuote {
-                    challenge: challenge.clone(),
-                    signature: signature.clone(),
-                    public_key: public_key.clone(),
-                    cert_chain: cert_chain.clone(),
-                    security_signals: Default::default(),
-                    timestamp: 0,
-                };
-                let mut manager = aethercore_identity::AndroidKeystoreManager::new();
-                for root in trusted_android_roots {
-                    manager.add_trusted_android_root(root.clone());
+                if key_tag.is_empty() {
+                    return Err("Secure Enclave key tag missing".to_string());
                 }
-                let result = manager.verify_quote_detailed(&quote, expected);
-                if result.verified {
-                    Ok(0.9)
-                } else {
-                    Err(AttestationFailureReason::Android(
-                        result
-                            .failure
-                            .unwrap_or(AndroidVerificationFailure::SignatureInvalid),
-                    ))
+                if public_key.is_empty() {
+                    return Err("Secure Enclave public key missing".to_string());
                 }
+                if signature.is_empty() {
+                    return Err("Secure Enclave signature missing".to_string());
+                }
+
+                Ok(1.0)
             }
-            Attestation::None => Ok(0.0),
+            Attestation::None => {
+                // No attestation = no trust
+                Ok(0.0)
+            }
         }
     }
 
@@ -642,50 +584,6 @@ mod tests {
             .verify_routing_update(&payload, &signature, &wrong_key)
             .unwrap();
         assert!(!is_valid);
-    }
-
-    #[test]
-    fn test_android_attestation_reports_challenge_mismatch() {
-        let security = MeshSecurity::new();
-        let attestation = Attestation::Android {
-            challenge: b"nonce-a".to_vec(),
-            signature: vec![1, 2, 3],
-            public_key: vec![4, 5, 6],
-            cert_chain: vec![vec![7, 8, 9]],
-            security_signals: Default::default(),
-        };
-
-        let result = security.verify_attestation_with_reason(
-            &attestation,
-            Some(b"nonce-b"),
-            &[vec![7, 8, 9]],
-        );
-        assert!(matches!(
-            result,
-            Err(AttestationFailureReason::Android(
-                AndroidVerificationFailure::ChallengeMismatch
-            ))
-        ));
-    }
-
-    #[test]
-    fn test_android_attestation_requires_trusted_root() {
-        let security = MeshSecurity::new();
-        let attestation = Attestation::Android {
-            challenge: b"nonce".to_vec(),
-            signature: vec![1, 2, 3],
-            public_key: vec![4, 5, 6],
-            cert_chain: vec![vec![7, 8, 9]],
-            security_signals: Default::default(),
-        };
-
-        let result = security.verify_attestation_with_reason(&attestation, None, &[]);
-        assert!(matches!(
-            result,
-            Err(AttestationFailureReason::Android(
-                AndroidVerificationFailure::CertificateParseFailure(_)
-            ))
-        ));
     }
 
     #[test]
