@@ -144,8 +144,9 @@ fi
 
 {
   echo "[Service]"
-  echo "UnsetEnvironment=AETHERCORE_PRODUCTION ENROLLMENT_URL ENROLLMENT_CA_CERT_PATH ENROLLMENT_CA_CERT_PEM C2_WS_URL CODERALPHIE_CHAT_SIGNING_KEY_PATH AETHERCORE_SIGNING_PRIVATE_KEY_PATH"
   echo "Environment=\"C2_WS_URL=${WS_URL}\""
+  echo "Environment=\"C2_SERVER=${WS_URL}\""
+  echo "Environment=\"C2_PORT=3000\""
   echo "Environment=\"CODERALPHIE_CHAT_SIGNING_KEY_PATH=${PI_SIGNING_KEY_PATH}\""
   echo "Environment=\"AETHERCORE_SIGNING_PRIVATE_KEY_PATH=${PI_SIGNING_KEY_FALLBACK_PATH}\""
   echo "Environment=\"AETHERCORE_PRODUCTION=${PI_AETHERCORE_PRODUCTION}\""
@@ -169,6 +170,11 @@ fi
 
 sudo systemctl is-active coderalphie >/dev/null
 sudo systemctl show coderalphie -p Environment --no-pager
+MAIN_PID="$(sudo systemctl show coderalphie -p MainPID --value)"
+echo "MainPID=${MAIN_PID}"
+if [[ -n "$MAIN_PID" && "$MAIN_PID" != "0" ]]; then
+  sudo bash -c "if [[ -r /proc/${MAIN_PID}/environ ]]; then tr '\0' '\n' < /proc/${MAIN_PID}/environ | egrep -i '^(C2_WS_URL|C2_SERVER|C2_PORT|AETHERCORE_PRODUCTION|ENROLLMENT_URL|ENROLLMENT_CA_CERT_PATH|CODERALPHIE_CHAT_SIGNING_KEY_PATH|AETHERCORE_SIGNING_PRIVATE_KEY_PATH)=' || true; fi"
+fi
 EOF
 
 echo "DONE: Pi override applied"
