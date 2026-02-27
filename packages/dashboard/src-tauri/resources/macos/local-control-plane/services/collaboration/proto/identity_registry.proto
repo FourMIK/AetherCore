@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package aethercore.identity;
+
+// Identity Registry Service - The Chain of Ancestry
+// 
+// This service provides hardware-rooted identity verification for the 4MIK Trust Fabric.
+// All nodes must prove enrollment status via TPM-backed certificates before telemetry
+// is marked as TRUSTED in the AetherCore.
+//
+// Security Model:
+// - NO GRACEFUL DEGRADATION: If hardware attestation fails, the node is Byzantine
+// - All queries must complete within timeout windows (contested/congested aware)
+// - Private keys NEVER leave the TPM (CodeRalphie integration)
+service IdentityRegistry {
+  // Get public key for a NodeID (Ed25519 32 bytes)
+  rpc GetPublicKey(GetPublicKeyRequest) returns (GetPublicKeyResponse);
+  
+  // Check if a node is enrolled in the Trust Fabric
+  rpc IsNodeEnrolled(IsNodeEnrolledRequest) returns (IsNodeEnrolledResponse);
+  
+  // Verify a signed envelope (full verification including timestamp, nonce)
+  rpc VerifySignature(VerifySignatureRequest) returns (VerifySignatureResponse);
+  
+  // Register a new node (enrollment)
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+  
+  // Revoke a node identity (Aetheric Sweep)
+  rpc RevokeNode(RevokeNodeRequest) returns (RevokeNodeResponse);
+}
+
+// Request to get a node's public key
+message GetPublicKeyRequest {
+  // NodeID (64-character hex string - BLAKE3 hash of public key)
+  string node_id = 1;
+}
+
+// Response containing the public key
+message GetPublicKeyResponse {
+  // Whether the request succeeded
+  bool success = 1;
+  
+  // Ed25519 public key (32 bytes, hex-encoded)
+  // Empty if node not found
+  string public_key_hex = 2;
+  
+  // Error message if failed
+  string error_message = 3;
+  
+  // Response timestamp (Unix epoch milliseconds)
+  uint64 timestamp_ms = 4;
+}
+
+// Request to check if a node is enrolled
+message IsNodeEnrolledRequest {
+  // NodeID (64-character hex string)
+  string node_id = 1;
+}
+
+// Response indicating enrollment status
+message IsNodeEnrolledResponse {
+  // Whether the request succeeded
+  bool success = 1;
+  
+  // Whether the node is enrolled in Trust Fabric
+  bool is_enrolled = 2;
+  
+  // Error message if failed
+  string error_message = 3;
+  
+  // Response timestamp (Unix epoch milliseconds)
+  uint64 timestamp_ms = 4;
+}
+
+// Request to verify a signature
+message VerifySignatureRequest {
+  // NodeID of the signer
+  string node_id = 1;
+  
+  // Payload that was signed (raw bytes)
+  bytes payload = 2;
+  
+  // Ed25519 signature (64 bytes, hex-encoded)
+  string signature_hex = 3;
+  
+  // Timestamp from SignedEnvelope (for replay attack detection)
+  uint64 timestamp_ms = 4;
+  
+  // Nonce from SignedEnvelope
+  string nonce_hex = 5;
+}
+
+// Response from signature verification
+message VerifySignatureResponse {
+  // Whether verification succeeded
+  bool is_valid = 1;
+  
+  // Detailed reason if verification failed
+  string failure_reason = 2;
+  
+  // Response timestamp (Unix epoch milliseconds)
+  uint64 timestamp_ms = 3;
+  
+  // Security event type (if verification failed)
+  string security_event_type = 4;
+}
+
+// Request to register a new node
+message RegisterNodeRequest {
+  // NodeID (derived from public key)
+  string node_id = 1;
+  
+  // Ed25519 public key (32 bytes, hex-encoded)
+  string public_key_hex = 2;
+  
+  // TPM attestation quote (hardware proof)
+  bytes tpm_quote = 3;
+  
+  // Platform Configuration Registers (PCRs)
+  bytes pcrs = 4;
+  
+  // Attestation key certificate
+  bytes ak_cert = 5;
+  
+  // Enrollment timestamp
+  uint64 timestamp_ms = 6;
+}
+
+// Response from node registration
+message RegisterNodeResponse {
+  // Whether registration succeeded
+  bool success = 1;
+  
+  // Error message if failed
+  string error_message = 2;
+  
+  // Response timestamp (Unix epoch milliseconds)
+  uint64 timestamp_ms = 3;
+}
+
+// Request to revoke a node (Aetheric Sweep)
+message RevokeNodeRequest {
+  // NodeID to revoke
+  string node_id = 1;
+  
+  // Reason for revocation
+  string reason = 2;
+  
+  // Authority signature (must be from admin node)
+  string authority_signature_hex = 3;
+  
+  // Revocation timestamp
+  uint64 timestamp_ms = 4;
+}
+
+// Response from node revocation
+message RevokeNodeResponse {
+  // Whether revocation succeeded
+  bool success = 1;
+  
+  // Error message if failed
+  string error_message = 2;
+  
+  // Response timestamp (Unix epoch milliseconds)
+  uint64 timestamp_ms = 3;
+}

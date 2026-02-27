@@ -6,9 +6,10 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use tauri::Manager;
 use thiserror::Error;
 
-pub const CONFIG_SCHEMA_VERSION: u32 = 4;
+pub const CONFIG_SCHEMA_VERSION: u32 = 3;
 const LEGACY_CONFIG_FILE: &str = "config.json";
 const RUNTIME_CONFIG_FILE: &str = "runtime-config.json";
 
@@ -62,29 +63,10 @@ pub struct RuntimePorts {
     pub mesh: u16,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeTpmPolicy {
     pub mode: String,
     pub enforce_hardware: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RuntimeAttestationBackendPolicy {
-    pub mode: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RuntimeAttestationBackends {
-    pub tpm: RuntimeAttestationBackendPolicy,
-    #[serde(default)]
-    pub android_keystore: RuntimeAttestationBackendPolicy,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct RuntimeAttestationPolicy {
-    pub mode: String,
-    pub enforce_hardware: bool,
-    pub backends: RuntimeAttestationBackends,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,8 +96,6 @@ pub struct AppConfig {
     pub connection: RuntimeConnection,
     #[serde(default, alias = "tpm")]
     pub tpm_policy: RuntimeTpmPolicy,
-    #[serde(default, alias = "attestation")]
-    pub attestation_policy: RuntimeAttestationPolicy,
     #[serde(default)]
     pub ports: RuntimePorts,
     pub features: RuntimeFeatureFlags,
@@ -152,7 +132,7 @@ fn default_api_port() -> u16 {
 }
 
 fn default_mesh_port() -> u16 {
-    8080
+    3000
 }
 
 fn default_tpm_enforcement() -> bool {
@@ -169,6 +149,18 @@ fn default_initial_delay() -> u64 {
 
 fn default_max_delay() -> u64 {
     30000
+}
+
+fn is_localhost_hostname(hostname: &str) -> bool {
+    matches!(hostname, "localhost" | "127.0.0.1" | "::1")
+}
+
+fn endpoint_targets_localhost(endpoint: &str) -> bool {
+    url::Url::parse(endpoint)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_string))
+        .map(|host| is_localhost_hostname(host.as_str()))
+        .unwrap_or(false)
 }
 
 impl Default for RetryConfig {
@@ -199,44 +191,6 @@ impl Default for RuntimeTpmPolicy {
     }
 }
 
-impl Default for RuntimeAttestationBackendPolicy {
-    fn default() -> Self {
-        Self {
-            mode: "optional".to_string(),
-        }
-    }
-}
-
-impl Default for RuntimeAttestationBackends {
-    fn default() -> Self {
-        Self {
-            tpm: RuntimeAttestationBackendPolicy::default(),
-            android_keystore: RuntimeAttestationBackendPolicy::default(),
-        }
-    }
-}
-
-impl RuntimeAttestationPolicy {
-    fn from_tpm_policy(tpm_policy: &RuntimeTpmPolicy) -> Self {
-        Self {
-            mode: tpm_policy.mode.clone(),
-            enforce_hardware: tpm_policy.enforce_hardware,
-            backends: RuntimeAttestationBackends {
-                tpm: RuntimeAttestationBackendPolicy {
-                    mode: tpm_policy.mode.clone(),
-                },
-                android_keystore: RuntimeAttestationBackendPolicy::default(),
-            },
-        }
-    }
-}
-
-impl Default for RuntimeAttestationPolicy {
-    fn default() -> Self {
-        Self::from_tpm_policy(&RuntimeTpmPolicy::default())
-    }
-}
-
 impl AppConfig {
     pub fn commander_local() -> Self {
         Self {
@@ -244,11 +198,10 @@ impl AppConfig {
             product_profile: ProductProfile::CommanderEdition,
             profile: ConnectionProfile::CommanderLocal,
             connection: RuntimeConnection {
-                api_endpoint: "http://127.0.0.1:3000".to_string(),
-                mesh_endpoint: "ws://127.0.0.1:8080".to_string(),
+                api_endpoint: "http://localhost:3000".to_string(),
+                mesh_endpoint: "ws://localhost:3000".to_string(),
             },
             tpm_policy: RuntimeTpmPolicy::default(),
-            attestation_policy: RuntimeAttestationPolicy::default(),
             ports: RuntimePorts::default(),
             features: RuntimeFeatureFlags {
                 allow_insecure_localhost: true,
@@ -270,11 +223,6 @@ impl AppConfig {
             tpm_policy: RuntimeTpmPolicy {
                 mode: "optional".to_string(),
                 enforce_hardware: false,
-            },
-            attestation_policy: RuntimeAttestationPolicy {
-                mode: "optional".to_string(),
-                enforce_hardware: false,
-                backends: RuntimeAttestationBackends::default(),
             },
             ports: RuntimePorts {
                 api: 443,
@@ -300,16 +248,6 @@ impl AppConfig {
             tpm_policy: RuntimeTpmPolicy {
                 mode: "required".to_string(),
                 enforce_hardware: true,
-            },
-            attestation_policy: RuntimeAttestationPolicy {
-                mode: "required".to_string(),
-                enforce_hardware: true,
-                backends: RuntimeAttestationBackends {
-                    tpm: RuntimeAttestationBackendPolicy {
-                        mode: "required".to_string(),
-                    },
-                    android_keystore: RuntimeAttestationBackendPolicy::default(),
-                },
             },
             ports: RuntimePorts {
                 api: 443,
@@ -364,7 +302,6 @@ impl AppConfig {
             } else {
                 "optional".to_string()
             };
-            self.attestation_policy = RuntimeAttestationPolicy::from_tpm_policy(&self.tpm_policy);
         }
 
         if let Ok(allow_insecure) = std::env::var("VITE_DEV_ALLOW_INSECURE_LOCALHOST") {
@@ -401,34 +338,26 @@ impl AppConfig {
             self.connection.mesh_endpoint = AppConfig::commander_local().connection.mesh_endpoint;
         }
 
-        if self.ports.api == 0 {
-            self.ports.api = url::Url::parse(&self.connection.api_endpoint)
-                .ok()
-                .and_then(|url| url.port_or_known_default())
-                .unwrap_or(default_api_port());
-        }
+        // Keep port fields aligned with endpoint URLs to avoid hard-failing startup
+        // when only endpoint strings are updated (for example via manual jq edits).
+        self.ports.api = url::Url::parse(&self.connection.api_endpoint)
+            .ok()
+            .and_then(|url| url.port_or_known_default())
+            .unwrap_or(default_api_port());
 
-        if self.ports.mesh == 0 {
-            self.ports.mesh = url::Url::parse(&self.connection.mesh_endpoint)
-                .ok()
-                .and_then(|url| url.port_or_known_default())
-                .unwrap_or(default_mesh_port());
-        }
+        self.ports.mesh = url::Url::parse(&self.connection.mesh_endpoint)
+            .ok()
+            .and_then(|url| url.port_or_known_default())
+            .unwrap_or(default_mesh_port());
 
-        if self.attestation_policy == RuntimeAttestationPolicy::default()
-            && self.tpm_policy != RuntimeTpmPolicy::default()
+        // Commander-local profile should always allow insecure localhost links.
+        // This prevents ws://localhost and http://localhost from being rejected
+        // when users switch profiles or hand-edit endpoints.
+        if self.profile == ConnectionProfile::CommanderLocal
+            && (endpoint_targets_localhost(&self.connection.api_endpoint)
+                || endpoint_targets_localhost(&self.connection.mesh_endpoint))
         {
-            self.attestation_policy = RuntimeAttestationPolicy::from_tpm_policy(&self.tpm_policy);
-        } else {
-            self.tpm_policy.mode = self.attestation_policy.backends.tpm.mode.clone();
-            self.tpm_policy.enforce_hardware = self.attestation_policy.enforce_hardware
-                && self
-                    .attestation_policy
-                    .backends
-                    .tpm
-                    .mode
-                    .to_ascii_lowercase()
-                    != "disabled";
+            self.features.allow_insecure_localhost = true;
         }
 
         self
@@ -503,9 +432,10 @@ impl ConfigManager {
         if self.config_path.exists() {
             let contents = std::fs::read_to_string(&self.config_path)?;
             let parsed: AppConfig = serde_json::from_str(&contents)?;
+            let original_schema_version = parsed.schema_version;
             let config = parsed.migrate_legacy();
             self.validate(&config)?;
-            if config.schema_version != parsed.schema_version {
+            if config.schema_version != original_schema_version {
                 self.save(&config)?;
             }
             return Ok(config);
@@ -596,59 +526,6 @@ impl ConfigManager {
             ));
         }
 
-        let attestation_mode = config.attestation_policy.mode.to_ascii_lowercase();
-        if attestation_mode != "required"
-            && attestation_mode != "optional"
-            && attestation_mode != "disabled"
-        {
-            return Err(ConfigError::ValidationError(
-                "attestation_policy.mode must be one of: required, optional, disabled".to_string(),
-            ));
-        }
-
-        let tpm_backend_mode = config
-            .attestation_policy
-            .backends
-            .tpm
-            .mode
-            .to_ascii_lowercase();
-        let android_backend_mode = config
-            .attestation_policy
-            .backends
-            .android_keystore
-            .mode
-            .to_ascii_lowercase();
-        for (backend, backend_mode) in [
-            ("tpm", tpm_backend_mode.as_str()),
-            ("android_keystore", android_backend_mode.as_str()),
-        ] {
-            if backend_mode != "required"
-                && backend_mode != "optional"
-                && backend_mode != "disabled"
-            {
-                return Err(ConfigError::ValidationError(format!(
-                    "attestation_policy.backends.{}.mode must be one of: required, optional, disabled",
-                    backend
-                )));
-            }
-
-            if attestation_mode == "disabled" && backend_mode == "required" {
-                return Err(ConfigError::ValidationError(format!(
-                    "attestation_policy.backends.{}.mode cannot be required when attestation_policy.mode is disabled",
-                    backend
-                )));
-            }
-        }
-
-        if attestation_mode == "required"
-            && tpm_backend_mode == "disabled"
-            && android_backend_mode == "disabled"
-        {
-            return Err(ConfigError::ValidationError(
-                "attestation_policy.mode is required but all backends are disabled".to_string(),
-            ));
-        }
-
         if config.connection_retry.max_retries == 0 {
             return Err(ConfigError::ValidationError(
                 "max_retries must be greater than 0".to_string(),
@@ -732,33 +609,6 @@ mod tests {
         let enterprise = AppConfig::enterprise_remote();
         assert_eq!(enterprise.profile, ConnectionProfile::EnterpriseRemote);
         assert!(enterprise.tpm_policy.enforce_hardware);
-    }
-
-    #[test]
-    fn test_migrate_tpm_policy_to_attestation_policy() {
-        let mut config = AppConfig::commander_local();
-        config.attestation_policy = RuntimeAttestationPolicy::default();
-        config.tpm_policy.mode = "required".to_string();
-        config.tpm_policy.enforce_hardware = true;
-
-        let migrated = config.migrate_legacy();
-
-        assert_eq!(migrated.attestation_policy.mode, "required");
-        assert_eq!(migrated.attestation_policy.backends.tpm.mode, "required");
-        assert!(migrated.attestation_policy.enforce_hardware);
-    }
-
-    #[test]
-    fn test_migrate_attestation_policy_to_tpm_policy_alias() {
-        let mut config = AppConfig::commander_local();
-        config.attestation_policy.mode = "optional".to_string();
-        config.attestation_policy.enforce_hardware = true;
-        config.attestation_policy.backends.tpm.mode = "disabled".to_string();
-
-        let migrated = config.migrate_legacy();
-
-        assert_eq!(migrated.tpm_policy.mode, "disabled");
-        assert!(!migrated.tpm_policy.enforce_hardware);
     }
 
     #[test]

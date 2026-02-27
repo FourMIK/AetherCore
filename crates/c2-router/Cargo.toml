@@ -11,8 +11,6 @@ aethercore-core = { path = "../core" }
 aethercore-identity = { path = "../identity" }
 aethercore-trust-mesh = { path = "../trust_mesh" }
 aethercore-stream = { path = "../stream" }
-aethercore-tak-bridge = { path = "../tak-bridge" }
-aethercore-unit-status = { path = "../unit-status" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -28,6 +26,7 @@ base64 = "0.21"
 
 [build-dependencies]
 tonic-build = "0.10"
+protoc-bin-vendored = "3"
 
 [dev-dependencies]
 tokio = { workspace = true }

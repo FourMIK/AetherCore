@@ -24,13 +24,16 @@ import { VideoCallPanel } from '../comms/VideoCallPanel';
 import { SettingsPanel } from '../SettingsPanel';
 import { ConnectionStatusIndicator } from '../ConnectionStatus';
 import { SentinelTrustBanner } from './SentinelTrustBanner';
-import type { SentinelTrustStatus } from '../../api/tauri-commands';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { useCommStore } from '../../store/useCommStore';
 import { Plus } from 'lucide-react';
 
 interface DashboardLayoutProps {
-  sentinelTrustStatus?: SentinelTrustStatus | null;
+  sentinelTrustStatus?: {
+    reduced_trust: boolean;
+    headline: string;
+    detail: string;
+  } | null;
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ sentinelTrustStatus = null }) => {
@@ -85,7 +88,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ sentinelTrustS
       case 'comms':
         return <CommView />;
       case 'guardian':
-        return <TrustGuardianView sentinelTrustStatus={sentinelTrustStatus} />;
+        return <TrustGuardianView />;
       case 'mesh':
         return <MeshNetworkView />;
       case 'deployments':
@@ -108,7 +111,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ sentinelTrustS
 
       {/* Main Content Wrapper */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {sentinelTrustStatus && <SentinelTrustBanner status={sentinelTrustStatus} />}
+        {sentinelTrustStatus?.reduced_trust && (
+          <SentinelTrustBanner
+            headline={sentinelTrustStatus.headline}
+            detail={sentinelTrustStatus.detail}
+          />
+        )}
         {/* TopBar - Fixed Height */}
         <div className="flex items-center gap-4 p-4 pb-2 flex-shrink-0">
           <NavigationMenu currentView={currentView} onViewChange={setCurrentView} />
