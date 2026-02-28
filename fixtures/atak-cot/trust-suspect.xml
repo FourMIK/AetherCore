@@ -1,0 +1,17 @@
+<event version="2.0"
+       uid="trust-suspect-001"
+       type="a-f-AETHERCORE-TRUST"
+       how="m-g"
+       time="2026-01-14T10:16:00Z"
+       start="2026-01-14T10:16:00Z"
+       stale="2026-01-14T10:21:00Z">
+  <point lat="34.123900" lon="-117.124000" hae="0.0" ce="25.0" le="25.0"/>
+  <detail>
+    <trust trust_score="0.57"
+           last_updated="2026-01-14T10:15:45Z"
+           trust_level="suspect"
+           integrity_packet_loss="0.18"
+           integrity_clock_skew_ms="3500"
+           integrity_replay_events="3"/>
+  </detail>
+</event>

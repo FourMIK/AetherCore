@@ -10,6 +10,7 @@ repository.workspace = true
 aethercore-trust-mesh = { path = "../trust_mesh" }
 aethercore-unit-status = { path = "../unit-status" }
 serde = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 aethercore-identity = { path = "../identity" }

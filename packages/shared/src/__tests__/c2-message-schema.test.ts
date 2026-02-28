@@ -9,6 +9,8 @@ import {
   parseMessageEnvelope,
   createMessageEnvelope,
   serializeForSigning,
+  isEnvelopeVerified,
+  setEnvelopeVerificationStatus,
   type MessageEnvelope,
 } from '../c2-message-schema';
 
@@ -28,6 +30,8 @@ describe('C2 Message Envelope Schema', () => {
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
       );
       expect(envelope.timestamp).toBeGreaterThan(0);
+      expect(envelope.nonce).toMatch(/^[0-9a-f]{32}$/);
+      expect(envelope.sequence).toBeGreaterThan(0);
       expect(envelope.payload).toEqual({
         content: 'Test message',
         recipientId: 'recipient-001',
@@ -58,6 +62,21 @@ describe('C2 Message Envelope Schema', () => {
 
       expect(envelope.signature).toBe('test-signature');
     });
+
+    it('should include sender-local replay chain metadata', () => {
+      const first = createMessageEnvelope('chat', 'sender-chain-001', {
+        content: 'one',
+        recipientId: 'recipient-001',
+      });
+      const second = createMessageEnvelope('chat', 'sender-chain-001', {
+        content: 'two',
+        recipientId: 'recipient-001',
+      });
+
+      expect(first.sequence).toBe(1);
+      expect(second.sequence).toBe(2);
+      expect(second.previous_message_id).toBe(first.message_id);
+    });
   });
 
   describe('parseMessageEnvelope', () => {
@@ -69,10 +88,16 @@ describe('C2 Message Envelope Schema', () => {
         type: 'chat',
         from: 'sender-001',
         payload: { content: 'Hello' },
+        nonce: '00112233445566778899aabbccddeeff',
+        sequence: 1,
       };
 
       const parsed = parseMessageEnvelope(validEnvelope);
-      expect(parsed).toEqual(validEnvelope);
+      expect(parsed).toMatchObject({
+        ...validEnvelope,
+        trust_status: 'unverified',
+        verification_status: 'STATUS_UNVERIFIED',
+      });
     });
 
     it('should reject envelope with invalid UUID', () => {
@@ -109,23 +134,112 @@ describe('C2 Message Envelope Schema', () => {
         type: 'chat',
         from: 'sender-001',
         payload: {},
-        signature: 'placeholder:abc123',
+        nonce: '00112233445566778899aabbccddeeff',
+        sequence: 1,
+        signature: 'a'.repeat(128),
       };
 
       const parsed = parseMessageEnvelope(validEnvelope);
-      expect(parsed.signature).toBe('placeholder:abc123');
+      expect(parsed.signature).toBe('a'.repeat(128));
+    });
+
+    it('should map legacy trust_status into guardian verification_status', () => {
+      const parsed = parseMessageEnvelope({
+        schema_version: '1.0',
+        message_id: '550e8400-e29b-41d4-a716-446655440000',
+        timestamp: Date.now(),
+        type: 'chat',
+        from: 'sender-001',
+        payload: {},
+        nonce: '00112233445566778899aabbccddeeff',
+        sequence: 1,
+        trust_status: 'verified',
+        signature: 'a'.repeat(128),
+      });
+
+      expect(parsed.verification_status).toBe('VERIFIED');
+      expect(isEnvelopeVerified(parsed)).toBe(true);
+    });
+
+    it('should map guardian verification_status into legacy trust_status', () => {
+      const parsed = parseMessageEnvelope({
+        schema_version: '1.0',
+        message_id: '550e8400-e29b-41d4-a716-446655440000',
+        timestamp: Date.now(),
+        type: 'chat',
+        from: 'sender-001',
+        payload: {},
+        nonce: '00112233445566778899aabbccddeeff',
+        sequence: 1,
+        verification_status: 'SPOOFED',
+        signature: 'a'.repeat(128),
+      });
+
+      expect(parsed.trust_status).toBe('invalid');
+      expect(isEnvelopeVerified(parsed)).toBe(false);
+    });
+
+    it('should reject envelopes with conflicting trust_status and verification_status', () => {
+      expect(() =>
+        parseMessageEnvelope({
+          schema_version: '1.0',
+          message_id: '550e8400-e29b-41d4-a716-446655440000',
+          timestamp: Date.now(),
+          type: 'chat',
+          from: 'sender-001',
+          payload: {},
+          nonce: '00112233445566778899aabbccddeeff',
+          sequence: 1,
+          trust_status: 'verified',
+          verification_status: 'SPOOFED',
+          signature: 'a'.repeat(128),
+        }),
+      ).toThrow();
+    });
+
+    it('should reject sequence envelopes without nonce', () => {
+      expect(() =>
+        parseMessageEnvelope({
+          schema_version: '1.0',
+          message_id: '550e8400-e29b-41d4-a716-446655440000',
+          timestamp: Date.now(),
+          type: 'chat',
+          from: 'sender-001',
+          payload: {},
+          sequence: 1,
+        }),
+      ).toThrow();
+    });
+
+    it('should reject verified/spoofed status without signature', () => {
+      expect(() =>
+        parseMessageEnvelope({
+          schema_version: '1.0',
+          message_id: '550e8400-e29b-41d4-a716-446655440000',
+          timestamp: Date.now(),
+          type: 'chat',
+          from: 'sender-001',
+          payload: {},
+          nonce: '00112233445566778899aabbccddeeff',
+          sequence: 1,
+          verification_status: 'VERIFIED',
+        }),
+      ).toThrow();
     });
   });
 
   describe('serializeForSigning', () => {
     it('should produce deterministic output', () => {
-      const envelope: Omit<MessageEnvelope, 'signature' | 'trust_status'> = {
+      const envelope: Omit<MessageEnvelope, 'signature' | 'trust_status' | 'verification_status'> = {
         schema_version: '1.0',
         message_id: '550e8400-e29b-41d4-a716-446655440000',
         timestamp: 1234567890,
         type: 'chat',
         from: 'sender-001',
         payload: { content: 'Test' },
+        nonce: '00112233445566778899aabbccddeeff',
+        sequence: 42,
+        previous_message_id: '550e8400-e29b-41d4-a716-446655440111',
       };
 
       const serialized1 = serializeForSigning(envelope);
@@ -135,13 +249,16 @@ describe('C2 Message Envelope Schema', () => {
     });
 
     it('should not include signature or trust_status', () => {
-      const envelope: Omit<MessageEnvelope, 'signature' | 'trust_status'> = {
+      const envelope: Omit<MessageEnvelope, 'signature' | 'trust_status' | 'verification_status'> = {
         schema_version: '1.0',
         message_id: '550e8400-e29b-41d4-a716-446655440000',
         timestamp: 1234567890,
         type: 'chat',
         from: 'sender-001',
         payload: { content: 'Test' },
+        nonce: '00112233445566778899aabbccddeeff',
+        sequence: 42,
+        previous_message_id: '550e8400-e29b-41d4-a716-446655440111',
       };
 
       const serialized = serializeForSigning(envelope);
@@ -149,6 +266,20 @@ describe('C2 Message Envelope Schema', () => {
 
       expect(parsed).not.toHaveProperty('signature');
       expect(parsed).not.toHaveProperty('trust_status');
+      expect(parsed).not.toHaveProperty('verification_status');
+    });
+  });
+
+  describe('setEnvelopeVerificationStatus', () => {
+    it('should update both trust_status and verification_status together', () => {
+      const envelope = createMessageEnvelope('chat', 'sender-001', {
+        content: 'hello',
+        recipientId: 'recipient-001',
+      });
+
+      setEnvelopeVerificationStatus(envelope, 'VERIFIED');
+      expect(envelope.trust_status).toBe('verified');
+      expect(envelope.verification_status).toBe('VERIFIED');
     });
   });
 });

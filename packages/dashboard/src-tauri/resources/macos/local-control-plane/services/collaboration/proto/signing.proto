@@ -1,0 +1,138 @@
+syntax = "proto3";
+
+package aethercore.crypto;
+
+// Signing Service - TPM-Backed Ed25519 Signatures (CodeRalphie)
+// 
+// This service provides hardware-rooted Ed25519 signing for the 4MIK Trust Fabric.
+// Private keys are TPM-resident and NEVER leave the secure element.
+//
+// Security Model:
+// - Private keys generated and stored in TPM (CodeRalphie)
+// - < 1ms signing latency for high-velocity telemetry streams
+// - Zero-copy operations for performance
+// - NO GRACEFUL DEGRADATION: If TPM fails, the node is compromised
+service SigningService {
+  // Sign a message with TPM-backed Ed25519 key
+  rpc SignMessage(SignMessageRequest) returns (SignMessageResponse);
+  
+  // Get public key for a node (Ed25519 32 bytes)
+  rpc GetPublicKey(GetPublicKeyRequest) returns (GetPublicKeyResponse);
+  
+  // Create a signed envelope (convenience method)
+  rpc CreateSignedEnvelope(CreateSignedEnvelopeRequest) returns (CreateSignedEnvelopeResponse);
+  
+  // Verify a signature (for local verification)
+  rpc VerifySignature(VerifySignatureRequest) returns (VerifySignatureResponse);
+}
+
+// Request to sign a message
+message SignMessageRequest {
+  // NodeID (identifies the TPM key to use)
+  string node_id = 1;
+  
+  // Message to sign (raw bytes)
+  bytes message = 2;
+  
+  // Request timestamp (for logging/auditing)
+  uint64 timestamp_ms = 3;
+}
+
+// Response containing the signature
+message SignMessageResponse {
+  // Whether signing succeeded
+  bool success = 1;
+  
+  // Ed25519 signature (64 bytes, hex-encoded)
+  string signature_hex = 2;
+  
+  // Public key ID (for verification)
+  string public_key_id = 3;
+  
+  // Error message if failed
+  string error_message = 4;
+  
+  // Response timestamp
+  uint64 timestamp_ms = 5;
+  
+  // Signing latency in microseconds (for performance monitoring)
+  uint64 latency_us = 6;
+}
+
+// Request to get public key
+message GetPublicKeyRequest {
+  // NodeID
+  string node_id = 1;
+}
+
+// Response containing the public key
+message GetPublicKeyResponse {
+  // Whether request succeeded
+  bool success = 1;
+  
+  // Ed25519 public key (32 bytes, hex-encoded)
+  string public_key_hex = 2;
+  
+  // Public key ID
+  string public_key_id = 3;
+  
+  // Error message if failed
+  string error_message = 4;
+  
+  // Response timestamp
+  uint64 timestamp_ms = 5;
+}
+
+// Request to create a signed envelope
+message CreateSignedEnvelopeRequest {
+  // NodeID (signer)
+  string node_id = 1;
+  
+  // Payload to sign (will be JSON stringified)
+  bytes payload = 2;
+  
+  // Request timestamp
+  uint64 timestamp_ms = 3;
+}
+
+// Response containing the signed envelope
+message CreateSignedEnvelopeResponse {
+  // Whether signing succeeded
+  bool success = 1;
+  
+  // Signed envelope (JSON-serialized)
+  string envelope_json = 2;
+  
+  // Error message if failed
+  string error_message = 3;
+  
+  // Response timestamp
+  uint64 timestamp_ms = 4;
+  
+  // Signing latency in microseconds
+  uint64 latency_us = 5;
+}
+
+// Request to verify a signature (local verification)
+message VerifySignatureRequest {
+  // Public key (32 bytes, hex-encoded)
+  string public_key_hex = 1;
+  
+  // Message that was signed
+  bytes message = 2;
+  
+  // Signature to verify (64 bytes, hex-encoded)
+  string signature_hex = 3;
+}
+
+// Response from signature verification
+message VerifySignatureResponse {
+  // Whether signature is valid
+  bool is_valid = 1;
+  
+  // Error message if verification failed
+  string error_message = 2;
+  
+  // Response timestamp
+  uint64 timestamp_ms = 3;
+}

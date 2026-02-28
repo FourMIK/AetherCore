@@ -16,7 +16,6 @@ members = [
     "crates/h2-domain",
     "crates/c2-router",
     "crates/unit-status",
-    "crates/tak-bridge",
     "services/h2-ingest",
     "services/aethercore-node",
     "packages/dashboard/src-tauri",
@@ -57,10 +56,3 @@ prost-types = "0.12"
 opt-level = 3
 lto = true
 codegen-units = 1
-
-# Fast build profile for Docker/CI (no LTO to reduce memory usage)
-[profile.release-fast]
-inherits = "release"
-lto = false
-codegen-units = 16
-opt-level = 1        # Reduced optimization to save memory

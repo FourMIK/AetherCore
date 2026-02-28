@@ -1,0 +1,3135 @@
+diff --git a/crates/c2-router/src/replay_protection.rs b/crates/c2-router/src/replay_protection.rs
+index 53fe155..7b16ca8 100644
+--- a/crates/c2-router/src/replay_protection.rs
++++ b/crates/c2-router/src/replay_protection.rs
+@@ -1,378 +1,378 @@
+-//! Replay attack protection module
+-//!
+-//! Implements nonce-based and timestamp-based replay protection for C2 commands.
+-//! Enforces the fail-visible doctrine: suspected replay attacks are rejected immediately.
+-
+-use std::collections::HashMap;
+-use std::sync::{Arc, RwLock};
+-use std::time::{SystemTime, UNIX_EPOCH};
+-use thiserror::Error;
+-
+-/// Maximum age of a command timestamp (5 minutes)
+-const MAX_TIMESTAMP_AGE_SECS: u64 = 300;
+-
+-/// Maximum future timestamp skew allowed (30 seconds)
+-const MAX_FUTURE_SKEW_SECS: u64 = 30;
+-
+-/// Time window to keep processed nonces in memory (10 minutes)
+-const NONCE_RETENTION_SECS: u64 = 600;
+-
+-/// Maximum number of nonces to track per device (prevents memory exhaustion)
+-const MAX_NONCES_PER_DEVICE: usize = 1000;
+-
+-/// Replay protection error types
+-#[derive(Debug, Error)]
+-pub enum ReplayError {
+-    /// Command timestamp is older than allowed window
+-    #[error("Timestamp too old: {0} seconds ago (max: {1} seconds)")]
+-    TimestampTooOld(
+-        /// Age in seconds
+-        u64,
+-        /// Maximum allowed age in seconds
+-        u64,
+-    ),
+-
+-    /// Command timestamp is too far ahead of local clock
+-    #[error("Timestamp too far in future: {0} seconds ahead (max: {1} seconds)")]
+-    TimestampTooFuture(
+-        /// Future skew in seconds
+-        u64,
+-        /// Maximum allowed future skew in seconds
+-        u64,
+-    ),
+-
+-    /// Nonce was already observed for this device
+-    #[error("Duplicate nonce detected: {0}")]
+-    DuplicateNonce(
+-        /// Nonce value
+-        String,
+-    ),
+-
+-    /// Nonce tracking limit exceeded
+-    #[error("Nonce tracking limit exceeded for device")]
+-    NonceLimitExceeded,
+-
+-    /// Timestamp could not be parsed or validated
+-    #[error("Invalid timestamp: {0}")]
+-    InvalidTimestamp(
+-        /// Timestamp details
+-        String,
+-    ),
+-
+-    /// System time source failed
+-    #[error("System time error: {0}")]
+-    SystemTimeError(
+-        /// System time error details
+-        String,
+-    ),
+-}
+-
+-/// Result type for replay protection operations
+-pub type ReplayResult<T> = Result<T, ReplayError>;
+-
+-/// Nonce entry with timestamp for cleanup
+-#[derive(Debug, Clone)]
+-struct NonceEntry {
+-    nonce: String,
+-    timestamp_ns: u64,
+-}
+-
+-/// Replay protection tracker
+-///
+-/// Tracks processed nonces per device to prevent replay attacks.
+-/// Uses time-based cleanup to prevent memory exhaustion.
+-pub struct ReplayProtector {
+-    /// Nonces seen per device ID
+-    nonces: Arc<RwLock<HashMap<String, Vec<NonceEntry>>>>,
+-}
+-
+-impl ReplayProtector {
+-    /// Create a new replay protector
+-    pub fn new() -> Self {
+-        Self {
+-            nonces: Arc::new(RwLock::new(HashMap::new())),
+-        }
+-    }
+-
+-    /// Validate command timestamp and nonce
+-    ///
+-    /// Checks:
+-    /// 1. Timestamp is not too old (prevents replay of stale commands)
+-    /// 2. Timestamp is not too far in future (prevents time manipulation)
+-    /// 3. Nonce has not been seen before (prevents exact replay)
+-    ///
+-    /// Returns Ok if validation passes, Err for replay attack or invalid input.
+-    pub fn validate_command(
+-        &self,
+-        device_id: &str,
+-        timestamp_ns: u64,
+-        nonce: &str,
+-    ) -> ReplayResult<()> {
+-        // Step 1: Validate timestamp freshness
+-        self.validate_timestamp(timestamp_ns)?;
+-
+-        // Step 2: Check for duplicate nonce
+-        self.check_and_record_nonce(device_id, timestamp_ns, nonce)?;
+-
+-        // Step 3: Cleanup old nonces (async cleanup to avoid blocking)
+-        self.cleanup_old_nonces();
+-
+-        Ok(())
+-    }
+-
+-    /// Validate that timestamp is within acceptable window
+-    fn validate_timestamp(&self, timestamp_ns: u64) -> ReplayResult<()> {
+-        let now = SystemTime::now()
+-            .duration_since(UNIX_EPOCH)
+-            .map_err(|e| ReplayError::SystemTimeError(e.to_string()))?
+-            .as_nanos() as u64;
+-
+-        // Check if timestamp is too old
+-        if timestamp_ns < now {
+-            let age_secs = (now - timestamp_ns) / 1_000_000_000;
+-            if age_secs > MAX_TIMESTAMP_AGE_SECS {
+-                return Err(ReplayError::TimestampTooOld(
+-                    age_secs,
+-                    MAX_TIMESTAMP_AGE_SECS,
+-                ));
+-            }
+-        } else {
+-            // Check if timestamp is too far in future
+-            let future_secs = (timestamp_ns - now) / 1_000_000_000;
+-            if future_secs > MAX_FUTURE_SKEW_SECS {
+-                return Err(ReplayError::TimestampTooFuture(
+-                    future_secs,
+-                    MAX_FUTURE_SKEW_SECS,
+-                ));
+-            }
+-        }
+-
+-        Ok(())
+-    }
+-
+-    /// Check if nonce has been seen before and record it
+-    fn check_and_record_nonce(
+-        &self,
+-        device_id: &str,
+-        timestamp_ns: u64,
+-        nonce: &str,
+-    ) -> ReplayResult<()> {
+-        let mut nonces = self
+-            .nonces
+-            .write()
+-            .map_err(|e| ReplayError::InvalidTimestamp(format!("Lock error: {}", e)))?;
+-
+-        let device_nonces = nonces.entry(device_id.to_string()).or_insert_with(Vec::new);
+-
+-        // Check if nonce already exists
+-        if device_nonces.iter().any(|entry| entry.nonce == nonce) {
+-            return Err(ReplayError::DuplicateNonce(nonce.to_string()));
+-        }
+-
+-        // Check nonce limit
+-        if device_nonces.len() >= MAX_NONCES_PER_DEVICE {
+-            return Err(ReplayError::NonceLimitExceeded);
+-        }
+-
+-        // Record the nonce
+-        device_nonces.push(NonceEntry {
+-            nonce: nonce.to_string(),
+-            timestamp_ns,
+-        });
+-
+-        Ok(())
+-    }
+-
+-    /// Clean up old nonces that are beyond the retention window
+-    fn cleanup_old_nonces(&self) {
+-        if let Ok(mut nonces) = self.nonces.write() {
+-            let cutoff_time = SystemTime::now()
+-                .duration_since(UNIX_EPOCH)
+-                .map(|d| d.as_nanos() as u64 - (NONCE_RETENTION_SECS * 1_000_000_000))
+-                .unwrap_or(0);
+-
+-            for (_, device_nonces) in nonces.iter_mut() {
+-                device_nonces.retain(|entry| entry.timestamp_ns >= cutoff_time);
+-            }
+-
+-            // Remove devices with no nonces
+-            nonces.retain(|_, device_nonces| !device_nonces.is_empty());
+-        }
+-    }
+-
+-    /// Get the number of tracked nonces for a device (for testing/monitoring)
+-    pub fn nonce_count(&self, device_id: &str) -> usize {
+-        self.nonces
+-            .read()
+-            .ok()
+-            .and_then(|nonces| nonces.get(device_id).map(|v| v.len()))
+-            .unwrap_or(0)
+-    }
+-
+-    /// Clear all tracked nonces (for testing)
+-    #[cfg(test)]
+-    pub fn clear(&self) {
+-        if let Ok(mut nonces) = self.nonces.write() {
+-            nonces.clear();
+-        }
+-    }
+-}
+-
+-impl Default for ReplayProtector {
+-    fn default() -> Self {
+-        Self::new()
+-    }
+-}
+-
+-#[cfg(test)]
+-mod tests {
+-    use super::*;
+-
+-    fn current_timestamp_ns() -> u64 {
+-        SystemTime::now()
+-            .duration_since(UNIX_EPOCH)
+-            .unwrap()
+-            .as_nanos() as u64
+-    }
+-
+-    #[test]
+-    fn test_valid_command_accepted() {
+-        let protector = ReplayProtector::new();
+-        let device_id = "device-001";
+-        let timestamp = current_timestamp_ns();
+-        let nonce = "nonce-001";
+-
+-        let result = protector.validate_command(device_id, timestamp, nonce);
+-        assert!(result.is_ok());
+-    }
+-
+-    #[test]
+-    fn test_duplicate_nonce_rejected() {
+-        let protector = ReplayProtector::new();
+-        let device_id = "device-001";
+-        let timestamp = current_timestamp_ns();
+-        let nonce = "nonce-001";
+-
+-        // First attempt should succeed
+-        assert!(protector
+-            .validate_command(device_id, timestamp, nonce)
+-            .is_ok());
+-
+-        // Second attempt with same nonce should fail
+-        let result = protector.validate_command(device_id, timestamp, nonce);
+-        assert!(matches!(result, Err(ReplayError::DuplicateNonce(_))));
+-    }
+-
+-    #[test]
+-    fn test_old_timestamp_rejected() {
+-        let protector = ReplayProtector::new();
+-        let device_id = "device-001";
+-        // Timestamp from 1 hour ago
+-        let old_timestamp = current_timestamp_ns() - (3600 * 1_000_000_000);
+-        let nonce = "nonce-001";
+-
+-        let result = protector.validate_command(device_id, old_timestamp, nonce);
+-        assert!(matches!(result, Err(ReplayError::TimestampTooOld(_, _))));
+-    }
+-
+-    #[test]
+-    fn test_future_timestamp_rejected() {
+-        let protector = ReplayProtector::new();
+-        let device_id = "device-001";
+-        // Timestamp 1 hour in future
+-        let future_timestamp = current_timestamp_ns() + (3600 * 1_000_000_000);
+-        let nonce = "nonce-001";
+-
+-        let result = protector.validate_command(device_id, future_timestamp, nonce);
+-        assert!(matches!(result, Err(ReplayError::TimestampTooFuture(_, _))));
+-    }
+-
+-    #[test]
+-    fn test_different_devices_independent() {
+-        let protector = ReplayProtector::new();
+-        let timestamp = current_timestamp_ns();
+-        let nonce = "nonce-001";
+-
+-        // Same nonce should be allowed for different devices
+-        assert!(protector
+-            .validate_command("device-001", timestamp, nonce)
+-            .is_ok());
+-        assert!(protector
+-            .validate_command("device-002", timestamp, nonce)
+-            .is_ok());
+-    }
+-
+-    #[test]
+-    fn test_different_nonces_allowed() {
+-        let protector = ReplayProtector::new();
+-        let device_id = "device-001";
+-        let timestamp = current_timestamp_ns();
+-
+-        // Different nonces should be allowed
+-        assert!(protector
+-            .validate_command(device_id, timestamp, "nonce-001")
+-            .is_ok());
+-        assert!(protector
+-            .validate_command(device_id, timestamp, "nonce-002")
+-            .is_ok());
+-        assert!(protector
+-            .validate_command(device_id, timestamp, "nonce-003")
+-            .is_ok());
+-    }
+-
+-    #[test]
+-    fn test_nonce_cleanup() {
+-        let protector = ReplayProtector::new();
+-        let device_id = "device-001";
+-
+-        // Add some nonces
+-        for i in 0..5 {
+-            let timestamp = current_timestamp_ns();
+-            let nonce = format!("nonce-{}", i);
+-            protector
+-                .validate_command(device_id, timestamp, &nonce)
+-                .unwrap();
+-        }
+-
+-        assert_eq!(protector.nonce_count(device_id), 5);
+-
+-        // Cleanup doesn't remove recent nonces
+-        protector.cleanup_old_nonces();
+-        assert_eq!(protector.nonce_count(device_id), 5);
+-    }
+-
+-    #[test]
+-    fn test_nonce_limit() {
+-        let protector = ReplayProtector::new();
+-        let device_id = "device-001";
+-        let timestamp = current_timestamp_ns();
+-
+-        // Add nonces up to the limit
+-        for i in 0..MAX_NONCES_PER_DEVICE {
+-            let nonce = format!("nonce-{}", i);
+-            protector
+-                .validate_command(device_id, timestamp, &nonce)
+-                .unwrap();
+-        }
+-
+-        // Adding one more should fail
+-        let result = protector.validate_command(device_id, timestamp, "nonce-overflow");
+-        assert!(matches!(result, Err(ReplayError::NonceLimitExceeded)));
+-    }
+-
+-    #[test]
+-    fn test_timestamp_within_window_accepted() {
+-        let protector = ReplayProtector::new();
+-        let device_id = "device-001";
+-
+-        // Timestamp 1 minute ago (within 5 minute window)
+-        let recent_timestamp = current_timestamp_ns() - (60 * 1_000_000_000);
+-        let result = protector.validate_command(device_id, recent_timestamp, "nonce-001");
+-        assert!(result.is_ok());
+-
+-        // Timestamp 10 seconds in future (within 30 second window)
+-        let near_future = current_timestamp_ns() + (10 * 1_000_000_000);
+-        let result = protector.validate_command(device_id, near_future, "nonce-002");
+-        assert!(result.is_ok());
+-    }
+-}
++//! Replay attack protection module
++//!
++//! Implements nonce-based and timestamp-based replay protection for C2 commands.
++//! Enforces the fail-visible doctrine: suspected replay attacks are rejected immediately.
++
++use std::collections::HashMap;
++use std::sync::{Arc, RwLock};
++use std::time::{SystemTime, UNIX_EPOCH};
++use thiserror::Error;
++
++/// Maximum age of a command timestamp (5 minutes)
++const MAX_TIMESTAMP_AGE_SECS: u64 = 300;
++
++/// Maximum future timestamp skew allowed (30 seconds)
++const MAX_FUTURE_SKEW_SECS: u64 = 30;
++
++/// Time window to keep processed nonces in memory (10 minutes)
++const NONCE_RETENTION_SECS: u64 = 600;
++
++/// Maximum number of nonces to track per device (prevents memory exhaustion)
++const MAX_NONCES_PER_DEVICE: usize = 1000;
++
++/// Replay protection error types
++#[derive(Debug, Error)]
++pub enum ReplayError {
++    /// Command timestamp is older than allowed window
++    #[error("Timestamp too old: {0} seconds ago (max: {1} seconds)")]
++    TimestampTooOld(
++        /// Age in seconds
++        u64,
++        /// Maximum allowed age in seconds
++        u64,
++    ),
++
++    /// Command timestamp is too far ahead of local clock
++    #[error("Timestamp too far in future: {0} seconds ahead (max: {1} seconds)")]
++    TimestampTooFuture(
++        /// Future skew in seconds
++        u64,
++        /// Maximum allowed future skew in seconds
++        u64,
++    ),
++
++    /// Nonce was already observed for this device
++    #[error("Duplicate nonce detected: {0}")]
++    DuplicateNonce(
++        /// Nonce value
++        String,
++    ),
++
++    /// Nonce tracking limit exceeded
++    #[error("Nonce tracking limit exceeded for device")]
++    NonceLimitExceeded,
++
++    /// Timestamp could not be parsed or validated
++    #[error("Invalid timestamp: {0}")]
++    InvalidTimestamp(
++        /// Timestamp details
++        String,
++    ),
++
++    /// System time source failed
++    #[error("System time error: {0}")]
++    SystemTimeError(
++        /// System time error details
++        String,
++    ),
++}
++
++/// Result type for replay protection operations
++pub type ReplayResult<T> = Result<T, ReplayError>;
++
++/// Nonce entry with timestamp for cleanup
++#[derive(Debug, Clone)]
++struct NonceEntry {
++    nonce: String,
++    timestamp_ns: u64,
++}
++
++/// Replay protection tracker
++///
++/// Tracks processed nonces per device to prevent replay attacks.
++/// Uses time-based cleanup to prevent memory exhaustion.
++pub struct ReplayProtector {
++    /// Nonces seen per device ID
++    nonces: Arc<RwLock<HashMap<String, Vec<NonceEntry>>>>,
++}
++
++impl ReplayProtector {
++    /// Create a new replay protector
++    pub fn new() -> Self {
++        Self {
++            nonces: Arc::new(RwLock::new(HashMap::new())),
++        }
++    }
++
++    /// Validate command timestamp and nonce
++    ///
++    /// Checks:
++    /// 1. Timestamp is not too old (prevents replay of stale commands)
++    /// 2. Timestamp is not too far in future (prevents time manipulation)
++    /// 3. Nonce has not been seen before (prevents exact replay)
++    ///
++    /// Returns Ok if validation passes, Err for replay attack or invalid input.
++    pub fn validate_command(
++        &self,
++        device_id: &str,
++        timestamp_ns: u64,
++        nonce: &str,
++    ) -> ReplayResult<()> {
++        // Step 1: Validate timestamp freshness
++        self.validate_timestamp(timestamp_ns)?;
++
++        // Step 2: Check for duplicate nonce
++        self.check_and_record_nonce(device_id, timestamp_ns, nonce)?;
++
++        // Step 3: Cleanup old nonces (async cleanup to avoid blocking)
++        self.cleanup_old_nonces();
++
++        Ok(())
++    }
++
++    /// Validate that timestamp is within acceptable window
++    fn validate_timestamp(&self, timestamp_ns: u64) -> ReplayResult<()> {
++        let now = SystemTime::now()
++            .duration_since(UNIX_EPOCH)
++            .map_err(|e| ReplayError::SystemTimeError(e.to_string()))?
++            .as_nanos() as u64;
++
++        // Check if timestamp is too old
++        if timestamp_ns < now {
++            let age_secs = (now - timestamp_ns) / 1_000_000_000;
++            if age_secs > MAX_TIMESTAMP_AGE_SECS {
++                return Err(ReplayError::TimestampTooOld(
++                    age_secs,
++                    MAX_TIMESTAMP_AGE_SECS,
++                ));
++            }
++        } else {
++            // Check if timestamp is too far in future
++            let future_secs = (timestamp_ns - now) / 1_000_000_000;
++            if future_secs > MAX_FUTURE_SKEW_SECS {
++                return Err(ReplayError::TimestampTooFuture(
++                    future_secs,
++                    MAX_FUTURE_SKEW_SECS,
++                ));
++            }
++        }
++
++        Ok(())
++    }
++
++    /// Check if nonce has been seen before and record it
++    fn check_and_record_nonce(
++        &self,
++        device_id: &str,
++        timestamp_ns: u64,
++        nonce: &str,
++    ) -> ReplayResult<()> {
++        let mut nonces = self
++            .nonces
++            .write()
++            .map_err(|e| ReplayError::InvalidTimestamp(format!("Lock error: {}", e)))?;
++
++        let device_nonces = nonces.entry(device_id.to_string()).or_insert_with(Vec::new);
++
++        // Check if nonce already exists
++        if device_nonces.iter().any(|entry| entry.nonce == nonce) {
++            return Err(ReplayError::DuplicateNonce(nonce.to_string()));
++        }
++
++        // Check nonce limit
++        if device_nonces.len() >= MAX_NONCES_PER_DEVICE {
++            return Err(ReplayError::NonceLimitExceeded);
++        }
++
++        // Record the nonce
++        device_nonces.push(NonceEntry {
++            nonce: nonce.to_string(),
++            timestamp_ns,
++        });
++
++        Ok(())
++    }
++
++    /// Clean up old nonces that are beyond the retention window
++    fn cleanup_old_nonces(&self) {
++        if let Ok(mut nonces) = self.nonces.write() {
++            let cutoff_time = SystemTime::now()
++                .duration_since(UNIX_EPOCH)
++                .map(|d| d.as_nanos() as u64 - (NONCE_RETENTION_SECS * 1_000_000_000))
++                .unwrap_or(0);
++
++            for (_, device_nonces) in nonces.iter_mut() {
++                device_nonces.retain(|entry| entry.timestamp_ns >= cutoff_time);
++            }
++
++            // Remove devices with no nonces
++            nonces.retain(|_, device_nonces| !device_nonces.is_empty());
++        }
++    }
++
++    /// Get the number of tracked nonces for a device (for testing/monitoring)
++    pub fn nonce_count(&self, device_id: &str) -> usize {
++        self.nonces
++            .read()
++            .ok()
++            .and_then(|nonces| nonces.get(device_id).map(|v| v.len()))
++            .unwrap_or(0)
++    }
++
++    /// Clear all tracked nonces (for testing)
++    #[cfg(test)]
++    pub fn clear(&self) {
++        if let Ok(mut nonces) = self.nonces.write() {
++            nonces.clear();
++        }
++    }
++}
++
++impl Default for ReplayProtector {
++    fn default() -> Self {
++        Self::new()
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn current_timestamp_ns() -> u64 {
++        SystemTime::now()
++            .duration_since(UNIX_EPOCH)
++            .unwrap()
++            .as_nanos() as u64
++    }
++
++    #[test]
++    fn test_valid_command_accepted() {
++        let protector = ReplayProtector::new();
++        let device_id = "device-001";
++        let timestamp = current_timestamp_ns();
++        let nonce = "nonce-001";
++
++        let result = protector.validate_command(device_id, timestamp, nonce);
++        assert!(result.is_ok());
++    }
++
++    #[test]
++    fn test_duplicate_nonce_rejected() {
++        let protector = ReplayProtector::new();
++        let device_id = "device-001";
++        let timestamp = current_timestamp_ns();
++        let nonce = "nonce-001";
++
++        // First attempt should succeed
++        assert!(protector
++            .validate_command(device_id, timestamp, nonce)
++            .is_ok());
++
++        // Second attempt with same nonce should fail
++        let result = protector.validate_command(device_id, timestamp, nonce);
++        assert!(matches!(result, Err(ReplayError::DuplicateNonce(_))));
++    }
++
++    #[test]
++    fn test_old_timestamp_rejected() {
++        let protector = ReplayProtector::new();
++        let device_id = "device-001";
++        // Timestamp from 1 hour ago
++        let old_timestamp = current_timestamp_ns() - (3600 * 1_000_000_000);
++        let nonce = "nonce-001";
++
++        let result = protector.validate_command(device_id, old_timestamp, nonce);
++        assert!(matches!(result, Err(ReplayError::TimestampTooOld(_, _))));
++    }
++
++    #[test]
++    fn test_future_timestamp_rejected() {
++        let protector = ReplayProtector::new();
++        let device_id = "device-001";
++        // Timestamp 1 hour in future
++        let future_timestamp = current_timestamp_ns() + (3600 * 1_000_000_000);
++        let nonce = "nonce-001";
++
++        let result = protector.validate_command(device_id, future_timestamp, nonce);
++        assert!(matches!(result, Err(ReplayError::TimestampTooFuture(_, _))));
++    }
++
++    #[test]
++    fn test_different_devices_independent() {
++        let protector = ReplayProtector::new();
++        let timestamp = current_timestamp_ns();
++        let nonce = "nonce-001";
++
++        // Same nonce should be allowed for different devices
++        assert!(protector
++            .validate_command("device-001", timestamp, nonce)
++            .is_ok());
++        assert!(protector
++            .validate_command("device-002", timestamp, nonce)
++            .is_ok());
++    }
++
++    #[test]
++    fn test_different_nonces_allowed() {
++        let protector = ReplayProtector::new();
++        let device_id = "device-001";
++        let timestamp = current_timestamp_ns();
++
++        // Different nonces should be allowed
++        assert!(protector
++            .validate_command(device_id, timestamp, "nonce-001")
++            .is_ok());
++        assert!(protector
++            .validate_command(device_id, timestamp, "nonce-002")
++            .is_ok());
++        assert!(protector
++            .validate_command(device_id, timestamp, "nonce-003")
++            .is_ok());
++    }
++
++    #[test]
++    fn test_nonce_cleanup() {
++        let protector = ReplayProtector::new();
++        let device_id = "device-001";
++
++        // Add some nonces
++        for i in 0..5 {
++            let timestamp = current_timestamp_ns();
++            let nonce = format!("nonce-{}", i);
++            protector
++                .validate_command(device_id, timestamp, &nonce)
++                .unwrap();
++        }
++
++        assert_eq!(protector.nonce_count(device_id), 5);
++
++        // Cleanup doesn't remove recent nonces
++        protector.cleanup_old_nonces();
++        assert_eq!(protector.nonce_count(device_id), 5);
++    }
++
++    #[test]
++    fn test_nonce_limit() {
++        let protector = ReplayProtector::new();
++        let device_id = "device-001";
++        let timestamp = current_timestamp_ns();
++
++        // Add nonces up to the limit
++        for i in 0..MAX_NONCES_PER_DEVICE {
++            let nonce = format!("nonce-{}", i);
++            protector
++                .validate_command(device_id, timestamp, &nonce)
++                .unwrap();
++        }
++
++        // Adding one more should fail
++        let result = protector.validate_command(device_id, timestamp, "nonce-overflow");
++        assert!(matches!(result, Err(ReplayError::NonceLimitExceeded)));
++    }
++
++    #[test]
++    fn test_timestamp_within_window_accepted() {
++        let protector = ReplayProtector::new();
++        let device_id = "device-001";
++
++        // Timestamp 1 minute ago (within 5 minute window)
++        let recent_timestamp = current_timestamp_ns() - (60 * 1_000_000_000);
++        let result = protector.validate_command(device_id, recent_timestamp, "nonce-001");
++        assert!(result.is_ok());
++
++        // Timestamp 10 seconds in future (within 30 second window)
++        let near_future = current_timestamp_ns() + (10 * 1_000_000_000);
++        let result = protector.validate_command(device_id, near_future, "nonce-002");
++        assert!(result.is_ok());
++    }
++}
+diff --git a/infra/docker/Dockerfile.gateway b/infra/docker/Dockerfile.gateway
+index 35819e3..58c9d1f 100644
+--- a/infra/docker/Dockerfile.gateway
++++ b/infra/docker/Dockerfile.gateway
+@@ -1,50 +1,50 @@
+-# Multi-stage build for AetherCore Gateway Service
+-FROM node:18-alpine AS builder
+-
+-WORKDIR /app
+-
+-# Copy package files and toolchain scripts required by preinstall
+-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+-COPY scripts ./scripts
+-COPY services/gateway/package.json ./services/gateway/
+-COPY packages/shared/package.json ./packages/shared/
+-
+-# Install dependencies
+-RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --filter @aethercore/gateway --filter @aethercore/shared
+-
+-# Copy source code (proto is vendored in services/gateway/proto)
+-COPY services/gateway ./services/gateway
+-COPY packages/shared ./packages/shared
+-
+-# Build the service (includes proto validation + generated TS stubs + packaged proto asset copy)
+-RUN pnpm --filter @aethercore/gateway run build
+-
+-# Production stage
+-FROM node:18-alpine
+-
+-WORKDIR /app
+-
+-# Copy built artifacts and dependencies
+-COPY --from=builder /app/services/gateway/dist ./dist
+-COPY --from=builder /app/services/gateway/package.json ./
+-COPY --from=builder /app/node_modules ./node_modules
+-
+-# Environment variables
+-ENV NODE_ENV=production
+-ENV PORT=3000
+-
+-# Create non-root user
+-RUN addgroup -g 1001 nonroot && adduser -D -u 1001 -G nonroot nonroot
+-
+-# Health check
+-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
+-
+-# Expose port
+-EXPOSE 3000
+-
+-# Switch to non-root user
+-USER nonroot:nonroot
+-
+-# Run the service
+-CMD ["node", "dist/index.js"]
++# Multi-stage build for AetherCore Gateway Service
++FROM node:18-alpine AS builder
++
++WORKDIR /app
++
++# Copy package files and toolchain scripts required by preinstall
++COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
++COPY scripts ./scripts
++COPY services/gateway/package.json ./services/gateway/
++COPY packages/shared/package.json ./packages/shared/
++
++# Install dependencies
++RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --filter @aethercore/gateway --filter @aethercore/shared
++
++# Copy source code (proto is vendored in services/gateway/proto)
++COPY services/gateway ./services/gateway
++COPY packages/shared ./packages/shared
++
++# Build the service (includes proto validation + generated TS stubs + packaged proto asset copy)
++RUN pnpm --filter @aethercore/gateway run build
++
++# Production stage
++FROM node:18-alpine
++
++WORKDIR /app
++
++# Copy built artifacts and dependencies
++COPY --from=builder /app/services/gateway/dist ./dist
++COPY --from=builder /app/services/gateway/package.json ./
++COPY --from=builder /app/node_modules ./node_modules
++
++# Environment variables
++ENV NODE_ENV=production
++ENV PORT=3000
++
++# Create non-root user
++RUN addgroup -g 1001 nonroot && adduser -D -u 1001 -G nonroot nonroot
++
++# Health check
++HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
++  CMD node -e "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
++
++# Expose port
++EXPOSE 3000
++
++# Switch to non-root user
++USER nonroot:nonroot
++
++# Run the service
++CMD ["node", "dist/index.js"]
+diff --git a/infra/docker/ecs/gateway/.dockerignore b/infra/docker/ecs/gateway/.dockerignore
+deleted file mode 100644
+index 24fc92a..0000000
+--- a/infra/docker/ecs/gateway/.dockerignore
++++ /dev/null
+@@ -1,7 +0,0 @@
+-.git
+-.github
+-**/node_modules
+-**/dist
+-**/target
+-**/.DS_Store
+-**/*.log
+diff --git a/infra/docker/ecs/gateway/Dockerfile b/infra/docker/ecs/gateway/Dockerfile
+deleted file mode 100644
+index fff4101..0000000
+--- a/infra/docker/ecs/gateway/Dockerfile
++++ /dev/null
+@@ -1,33 +0,0 @@
+-FROM node:20-alpine AS builder
+-WORKDIR /app
+-
+-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+-COPY scripts ./scripts
+-COPY services/gateway/package.json ./services/gateway/
+-COPY packages/shared/package.json ./packages/shared/
+-
+-RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --filter @aethercore/gateway --filter @aethercore/shared
+-
+-COPY services/gateway ./services/gateway
+-COPY packages/shared ./packages/shared
+-RUN pnpm --filter @aethercore/shared run build \
+-  && pnpm --filter @aethercore/gateway run build \
+-  && pnpm --filter @aethercore/gateway --prod deploy /prod/gateway
+-
+-FROM node:20-alpine AS runtime
+-WORKDIR /app
+-
+-RUN apk add --no-cache dumb-init wget \
+-  && addgroup -S aether && adduser -S -G aether aether
+-
+-COPY --from=builder /prod/gateway ./
+-
+-ENV NODE_ENV=production PORT=3000
+-EXPOSE 3000
+-
+-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+-  CMD wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1
+-
+-USER aether
+-ENTRYPOINT ["dumb-init", "--"]
+-CMD ["node", "dist/index.js"]
+diff --git a/packages/dashboard/src-tauri/resources/macos/local-control-plane/launchers/gateway-launcher b/packages/dashboard/src-tauri/resources/macos/local-control-plane/launchers/gateway-launcher
+new file mode 100755
+index 0000000..806966d
+--- /dev/null
++++ b/packages/dashboard/src-tauri/resources/macos/local-control-plane/launchers/gateway-launcher
+@@ -0,0 +1,5 @@
++#!/usr/bin/env sh
++set -eu
++SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
++RUNTIME_ROOT="${SCRIPT_DIR}/.."
++exec "${RUNTIME_ROOT}/node" "${RUNTIME_ROOT}/services/gateway/dist/index.js"
+diff --git a/packages/dashboard/src-tauri/resources/macos/local-control-plane/services/gateway/package.json b/packages/dashboard/src-tauri/resources/macos/local-control-plane/services/gateway/package.json
+new file mode 100644
+index 0000000..ad730b1
+--- /dev/null
++++ b/packages/dashboard/src-tauri/resources/macos/local-control-plane/services/gateway/package.json
+@@ -0,0 +1,43 @@
++{
++  "name": "@aethercore/gateway",
++  "version": "0.1.0",
++  "description": "AetherCore Gateway Service",
++  "main": "dist/index.js",
++  "types": "dist/index.d.ts",
++  "scripts": {
++    "build": "pnpm run proto:sync && pnpm run proto:types && tsc && node ./scripts/copy-proto-assets.mjs",
++    "clean": "rm -rf dist",
++    "dev": "tsc && node dist/index.js",
++    "start": "node dist/index.js",
++    "test": "pnpm run test:integration",
++    "lint": "eslint src --ext .ts",
++    "test:integration": "pnpm run build && node --test dist/__tests__/c2-client.integration.test.js",
++    "proto:sync": "node ./scripts/sync-c2-proto.mjs",
++    "proto:types": "pnpm exec proto-loader-gen-types --grpcLib=@grpc/grpc-js --outDir dist/generated proto/c2.proto"
++  },
++  "keywords": [
++    "aethercore",
++    "gateway"
++  ],
++  "author": "AetherCore Team",
++  "license": "MIT",
++  "dependencies": {
++    "@aethercore/shared": "workspace:*",
++    "@grpc/grpc-js": "^1.14.3",
++    "@grpc/proto-loader": "^0.8.0",
++    "@types/ws": "^8.5.10",
++    "cors": "^2.8.6",
++    "dotenv": "^17.2.3",
++    "express": "^5.2.1",
++    "pino": "^10.3.0",
++    "pino-pretty": "^13.1.3",
++    "ws": "^8.16.0",
++    "zod": "^4.3.6"
++  },
++  "devDependencies": {
++    "@types/cors": "^2.8.19",
++    "@types/express": "^5.0.6",
++    "@types/node": "^20.19.30",
++    "typescript": "^5.3.3"
++  }
++}
+diff --git a/packages/dashboard/src-tauri/resources/macos/local-control-plane/services/gateway/proto/c2.proto b/packages/dashboard/src-tauri/resources/macos/local-control-plane/services/gateway/proto/c2.proto
+new file mode 100644
+index 0000000..0dde64f
+--- /dev/null
++++ b/packages/dashboard/src-tauri/resources/macos/local-control-plane/services/gateway/proto/c2.proto
+@@ -0,0 +1,119 @@
++syntax = "proto3";
++
++package aethercore.c2;
++
++// C2 Router service for command dispatch
++service C2Router {
++  // Execute a command on a single unit
++  rpc ExecuteUnitCommand(UnitCommandRequest) returns (UnitCommandResponse);
++  
++  // Execute a command on multiple units (swarm)
++  rpc ExecuteSwarmCommand(SwarmCommandRequest) returns (SwarmCommandResponse);
++  
++  // Get the status of a command
++  rpc GetCommandStatus(CommandStatusRequest) returns (CommandStatusResponse);
++  
++  // Abort a swarm command
++  rpc AbortSwarmCommand(AbortRequest) returns (AbortResponse);
++
++  // Get offline gap information (Guardian Gate visibility)
++  rpc GetOfflineGapInfo(OfflineGapRequest) returns (OfflineGapResponse);
++
++  // Authorize sync of offline buffer (requires Sovereign signature)
++  rpc AuthorizeSyncBundle(SyncAuthorizationRequest) returns (SyncAuthorizationResponse);
++}
++
++// Request to execute a unit command
++message UnitCommandRequest {
++  string unit_id = 1;
++  string command_json = 2;  // JSON-serialized UnitCommand
++  repeated string signatures = 3;  // Authority signatures
++  uint64 timestamp_ns = 4;
++}
++
++// Response from unit command execution
++message UnitCommandResponse {
++  bool success = 1;
++  string unit_id = 2;
++  string message = 3;
++  uint64 timestamp_ns = 4;
++}
++
++// Request to execute a swarm command
++message SwarmCommandRequest {
++  string swarm_command_id = 1;
++  repeated string target_unit_ids = 2;
++  string command_json = 3;  // JSON-serialized SwarmCommand
++  repeated string signatures = 4;  // Authority signatures
++  uint64 timestamp_ns = 5;
++}
++
++// Response from swarm command execution
++message SwarmCommandResponse {
++  string swarm_command_id = 1;
++  uint32 total_units = 2;
++  uint32 success_count = 3;
++  uint32 failure_count = 4;
++  uint32 timeout_count = 5;
++  float completion_percent = 6;
++  uint64 timestamp_ns = 7;
++}
++
++// Request to get command status
++message CommandStatusRequest {
++  string command_id = 1;
++}
++
++// Response with command status
++message CommandStatusResponse {
++  string command_id = 1;
++  string status = 2;  // "pending", "executing", "completed", "failed", "aborted"
++  string details_json = 3;  // JSON-serialized status details
++  uint64 timestamp_ns = 4;
++}
++
++// Request to abort a swarm command
++message AbortRequest {
++  string swarm_command_id = 1;
++  string reason = 2;
++}
++
++// Response to abort request
++message AbortResponse {
++  bool success = 1;
++  string message = 2;
++  uint64 timestamp_ns = 3;
++}
++
++// Request to get offline gap information
++message OfflineGapRequest {
++  string node_id = 1;
++}
++
++// Response with offline gap information
++message OfflineGapResponse {
++  uint64 queued_count = 1;
++  uint64 offline_since_ns = 2;
++  uint64 reconnect_at_ns = 3;
++  bool chain_intact = 4;
++  double buffer_utilization = 5;
++  string connection_state = 6;
++}
++
++// Request to authorize sync of offline buffer
++message SyncAuthorizationRequest {
++  string node_id = 1;
++  string admin_signature = 2;  // Sovereign-level signature
++  string admin_public_key_id = 3;
++  uint64 timestamp_ns = 4;
++}
++
++// Response to sync authorization
++message SyncAuthorizationResponse {
++  bool success = 1;
++  string message = 2;
++  uint64 events_synced = 3;
++  uint64 timestamp_ns = 4;
++  bool merkle_verified = 5;
++  string status = 6;  // "synced", "verification_failed", "unauthorized"
++}
+diff --git a/services/gateway/Dockerfile b/services/gateway/Dockerfile
+deleted file mode 100644
+index 02a3c4f..0000000
+--- a/services/gateway/Dockerfile
++++ /dev/null
+@@ -1,33 +0,0 @@
+-FROM node:20-alpine AS build
+-WORKDIR /workspace
+-
+-ENV PNPM_HOME="/pnpm"
+-ENV PATH="$PNPM_HOME:$PATH"
+-RUN corepack enable
+-
+-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+-COPY packages/shared/package.json packages/shared/tsconfig.json ./packages/shared/
+-COPY services/gateway/package.json services/gateway/tsconfig.json ./services/gateway/
+-COPY services/gateway/scripts ./services/gateway/scripts
+-COPY services/gateway/proto ./services/gateway/proto
+-COPY packages/shared/src ./packages/shared/src
+-COPY services/gateway/src ./services/gateway/src
+-
+-RUN pnpm install --frozen-lockfile --filter @aethercore/gateway...
+-RUN pnpm --filter @aethercore/shared build
+-RUN pnpm --filter @aethercore/gateway build
+-RUN pnpm --filter @aethercore/gateway deploy --prod /app
+-
+-FROM node:20-alpine AS runtime
+-WORKDIR /app
+-ENV NODE_ENV=production
+-ENV PORT=3000
+-
+-COPY --from=build /app ./
+-
+-USER node
+-EXPOSE 3000
+-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+-  CMD node -e "const http=require('http');http.get({host:'127.0.0.1',port:process.env.PORT||3000,path:'/health'},(res)=>process.exit(res.statusCode===200?0:1)).on('error',()=>process.exit(1));"
+-
+-CMD ["node", "dist/index.js"]
+diff --git a/services/gateway/package.json b/services/gateway/package.json
+index ad730b1..e9bf361 100644
+--- a/services/gateway/package.json
++++ b/services/gateway/package.json
+@@ -11,7 +11,8 @@
+     "start": "node dist/index.js",
+     "test": "pnpm run test:integration",
+     "lint": "eslint src --ext .ts",
+-    "test:integration": "pnpm run build && node --test dist/__tests__/c2-client.integration.test.js",
++    "test:integration": "pnpm run build && node --test dist/__tests__/c2-client.integration.test.js dist/__tests__/revocation.integration.test.js dist/__tests__/security-regression.integration.test.js",
++    "test:security": "pnpm run build && node --test dist/__tests__/security-regression.integration.test.js",
+     "proto:sync": "node ./scripts/sync-c2-proto.mjs",
+     "proto:types": "pnpm exec proto-loader-gen-types --grpcLib=@grpc/grpc-js --outDir dist/generated proto/c2.proto"
+   },
+diff --git a/services/gateway/src/__tests__/revocation.integration.test.ts b/services/gateway/src/__tests__/revocation.integration.test.ts
+new file mode 100644
+index 0000000..e01abf8
+--- /dev/null
++++ b/services/gateway/src/__tests__/revocation.integration.test.ts
+@@ -0,0 +1,154 @@
++import assert from 'node:assert/strict';
++import * as http from 'node:http';
++import { after, before, beforeEach, describe, it } from 'node:test';
++
++import {
++  DistributedRevocationRegistry,
++  evaluateRevocationGate,
++} from '../revocation';
++
++let server: http.Server;
++let baseUrl = '';
++let currentPayload: unknown = {};
++
++describe('distributed revocation registry', () => {
++  before(async () => {
++    server = http.createServer((_req, res) => {
++      res.writeHead(200, { 'content-type': 'application/json' });
++      res.end(JSON.stringify(currentPayload));
++    });
++
++    await new Promise<void>((resolve) => {
++      server.listen(0, '127.0.0.1', () => resolve());
++    });
++
++    const address = server.address();
++    if (!address || typeof address === 'string') {
++      throw new Error('Failed to bind revocation test server');
++    }
++    baseUrl = `http://127.0.0.1:${address.port}`;
++  });
++
++  after(async () => {
++    await new Promise<void>((resolve, reject) => {
++      server.close((error) => (error ? reject(error) : resolve()));
++    });
++  });
++
++  beforeEach(() => {
++    currentPayload = {
++      revoked_nodes: {},
++      last_updated_ns: Date.now() * 1_000_000,
++    };
++  });
++
++  it('loads sovereign revocation certificates from gospel-state payload', async () => {
++    currentPayload = {
++      revoked_nodes: {
++        'ralphie-node-1': {
++          node_id: 'ralphie-node-1',
++          certificate_serial: 'AA:BB:CC:11',
++          revocation_reason: 'ByzantineDetection',
++          issuer_id: 'federation-1',
++          timestamp_ns: 123456,
++          signature: 'deadbeef',
++          merkle_root: 'cafebabe',
++        },
++      },
++      last_updated_ns: 123456,
++    };
++
++    const registry = new DistributedRevocationRegistry({
++      sourceUrl: `${baseUrl}/revocations`,
++      refreshIntervalMs: 15000,
++      requestTimeoutMs: 2000,
++    });
++
++    const summary = await registry.refresh();
++    assert.ok(summary);
++    assert.equal(summary.revokedNodeCount, 1);
++    assert.equal(summary.revokedCertificateCount, 1);
++
++    const byNode = registry.checkIdentity('ralphie-node-1');
++    assert.equal(byNode.revoked, true);
++
++    const bySerial = registry.checkIdentity('another-node', 'aabbcc11');
++    assert.equal(bySerial.revoked, true);
++  });
++
++  it('tracks propagation updates after source changes', async () => {
++    const registry = new DistributedRevocationRegistry({
++      sourceUrl: `${baseUrl}/revocations`,
++      refreshIntervalMs: 15000,
++      requestTimeoutMs: 2000,
++    });
++
++    currentPayload = {
++      revoked_nodes: {},
++      last_updated_ns: 1000,
++    };
++    await registry.refresh();
++    assert.equal(registry.checkIdentity('ralphie-node-2').revoked, false);
++
++    currentPayload = {
++      revocations: [
++        {
++          node_id: 'ralphie-node-2',
++          revocation_reason: 'OperatorOverride',
++          certificate_serial: '99ff01',
++        },
++      ],
++      last_updated_ns: 2000,
++    };
++    const summary = await registry.refresh();
++    assert.ok(summary);
++    assert.equal(summary.revokedNodeCount, 1);
++    assert.equal(registry.checkIdentity('ralphie-node-2').revoked, true);
++  });
++
++  it('rejects identities across simulated process restarts after sync', async () => {
++    currentPayload = {
++      revoked_nodes: {
++        'ralphie-node-3': {
++          node_id: 'ralphie-node-3',
++          revocation_reason: 'IdentityCollapse',
++        },
++      },
++      last_updated_ns: 3000,
++    };
++
++    const firstRegistry = new DistributedRevocationRegistry({
++      sourceUrl: `${baseUrl}/revocations`,
++      refreshIntervalMs: 15000,
++      requestTimeoutMs: 2000,
++    });
++    await firstRegistry.refresh();
++    assert.equal(firstRegistry.checkIdentity('ralphie-node-3').revoked, true);
++
++    const restartedRegistry = new DistributedRevocationRegistry({
++      sourceUrl: `${baseUrl}/revocations`,
++      refreshIntervalMs: 15000,
++      requestTimeoutMs: 2000,
++    });
++    await restartedRegistry.refresh();
++    assert.equal(restartedRegistry.checkIdentity('ralphie-node-3').revoked, true);
++  });
++
++  it('fails closed when revocation source is configured but unsynchronized', () => {
++    const registry = new DistributedRevocationRegistry({
++      sourceUrl: `${baseUrl}/revocations`,
++      refreshIntervalMs: 15000,
++      requestTimeoutMs: 2000,
++    });
++
++    const gate = evaluateRevocationGate(registry, {
++      nodeId: 'ralphie-node-4',
++      failClosed: true,
++    });
++
++    assert.equal(gate.ok, false);
++    if (!gate.ok) {
++      assert.equal(gate.code, 'REVOCATION_UNAVAILABLE');
++    }
++  });
++});
+diff --git a/services/gateway/src/__tests__/security-regression.integration.test.ts b/services/gateway/src/__tests__/security-regression.integration.test.ts
+new file mode 100644
+index 0000000..575509c
+--- /dev/null
++++ b/services/gateway/src/__tests__/security-regression.integration.test.ts
+@@ -0,0 +1,195 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import * as crypto from 'node:crypto';
++import * as fs from 'node:fs';
++import * as path from 'node:path';
++import {
++  parseMessageEnvelope,
++  serializeForSigning,
++} from '@aethercore/shared';
++import { createC2RouterClient } from '../c2-client';
++
++const repoRoot = path.resolve(process.cwd(), '../..');
++
++function withTemporaryEnv(
++  overrides: Record<string, string | undefined>,
++  fn: () => void,
++): void {
++  const original: Record<string, string | undefined> = {};
++  for (const [key, value] of Object.entries(overrides)) {
++    original[key] = process.env[key];
++    if (value === undefined) {
++      delete process.env[key];
++    } else {
++      process.env[key] = value;
++    }
++  }
++
++  try {
++    fn();
++  } finally {
++    for (const [key, value] of Object.entries(original)) {
++      if (value === undefined) {
++        delete process.env[key];
++      } else {
++        process.env[key] = value;
++      }
++    }
++  }
++}
++
++function readRepoFile(relativePath: string): string {
++  return fs.readFileSync(path.join(repoRoot, relativePath), 'utf-8');
++}
++
++test('production mode rejects insecure C2 gRPC transport', () => {
++  withTemporaryEnv(
++    {
++      NODE_ENV: 'production',
++      AETHERCORE_PRODUCTION: '1',
++      C2_GRPC_INSECURE: '1',
++    },
++    () => {
++      assert.throws(
++        () => createC2RouterClient('localhost:50051'),
++        /Refusing insecure C2 gRPC transport/,
++      );
++    },
++  );
++});
++
++test('development mode permits insecure C2 gRPC transport only when requested', () => {
++  withTemporaryEnv(
++    {
++      NODE_ENV: 'development',
++      AETHERCORE_PRODUCTION: '0',
++      C2_GRPC_INSECURE: '1',
++    },
++    () => {
++      const client = createC2RouterClient('localhost:50051');
++      assert.equal(typeof client.ExecuteUnitCommand, 'function');
++      client.close();
++    },
++  );
++});
++
++test('replay regression check: sequence without nonce is rejected', () => {
++  assert.throws(
++    () =>
++      parseMessageEnvelope({
++        schema_version: '1.0',
++        message_id: '550e8400-e29b-41d4-a716-446655440000',
++        timestamp: Date.now(),
++        type: 'chat',
++        from: 'sender-replay',
++        payload: { content: 'replay-attempt', recipientId: 'target-node' },
++        sequence: 1,
++      }),
++    /sequence requires nonce/,
++  );
++});
++
++test('spoof regression check: verified status without signature is rejected', () => {
++  assert.throws(
++    () =>
++      parseMessageEnvelope({
++        schema_version: '1.0',
++        message_id: '550e8400-e29b-41d4-a716-446655440000',
++        timestamp: Date.now(),
++        type: 'chat',
++        from: 'sender-spoof',
++        payload: { content: 'spoof-attempt', recipientId: 'target-node' },
++        nonce: '00112233445566778899aabbccddeeff',
++        sequence: 1,
++        verification_status: 'VERIFIED',
++      }),
++    /requires signature/,
++  );
++});
++
++test('tamper regression check: payload mutation invalidates Ed25519 signature', () => {
++  const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
++
++  const signedEnvelopeCore = {
++    schema_version: '1.0',
++    message_id: '550e8400-e29b-41d4-a716-446655440000',
++    timestamp: Date.now(),
++    type: 'chat' as const,
++    from: 'sender-tamper',
++    payload: { content: 'authenticated-message', recipientId: 'target-node' },
++    nonce: '00112233445566778899aabbccddeeff',
++    sequence: 7,
++    previous_message_id: '550e8400-e29b-41d4-a716-446655440111',
++  };
++
++  const canonicalOriginal = serializeForSigning(signedEnvelopeCore);
++  const signature = crypto.sign(null, Buffer.from(canonicalOriginal, 'utf-8'), privateKey);
++
++  const originalValid = crypto.verify(
++    null,
++    Buffer.from(canonicalOriginal, 'utf-8'),
++    publicKey,
++    signature,
++  );
++  assert.equal(originalValid, true);
++
++  const tamperedCore = {
++    ...signedEnvelopeCore,
++    payload: { content: 'tampered-message', recipientId: 'target-node' },
++  };
++  const canonicalTampered = serializeForSigning(tamperedCore);
++  const tamperedValid = crypto.verify(
++    null,
++    Buffer.from(canonicalTampered, 'utf-8'),
++    publicKey,
++    signature,
++  );
++  assert.equal(tamperedValid, false);
++});
++
++test('active trust path has no placeholder signature implementation', () => {
++  const activeTrustPathFiles = [
++    'agent/linux/src/c2/mesh-client.ts',
++    'packages/dashboard/src/services/c2/C2Client.ts',
++    'services/gateway/src/index.ts',
++    'services/gateway/src/c2-client.ts',
++  ];
++
++  for (const filePath of activeTrustPathFiles) {
++    const source = readRepoFile(filePath);
++    assert.equal(
++      source.includes('placeholder:sha256'),
++      false,
++      `placeholder signing found in ${filePath}`,
++    );
++  }
++});
++
++test('active chat path enforces encrypted payload construction', () => {
++  const dashboardClient = readRepoFile('packages/dashboard/src/services/c2/C2Client.ts');
++  const meshClient = readRepoFile('agent/linux/src/c2/mesh-client.ts');
++
++  assert.match(
++    dashboardClient,
++    /if \(type === 'chat'[\s\S]*outgoingPayload = await this\.encryptChatPayload/,
++  );
++  assert.match(dashboardClient, /encrypted:\s*true/);
++  assert.match(dashboardClient, /cipher:\s*'AES-256-GCM'/);
++
++  assert.match(meshClient, /const encryptedPayload = this\.encryptChatPayload\(recipientId, content\);/);
++  assert.match(meshClient, /encrypted:\s*true/);
++  assert.match(meshClient, /cipher:\s*'AES-256-GCM'/);
++});
++
++test('replay and ordering fields remain enforced in shared schema and gateway', () => {
++  const sharedSchema = readRepoFile('packages/shared/src/c2-message-schema.ts');
++  const gatewayIndex = readRepoFile('services/gateway/src/index.ts');
++
++  assert.match(sharedSchema, /nonce:\s*z\.string\(\)\.regex/);
++  assert.match(sharedSchema, /sequence:\s*z\.number\(\)\.int\(\)\.positive\(\)\.optional\(\)/);
++  assert.match(sharedSchema, /previous_message_id:\s*z\.string\(\)\.uuid\(\)\.optional\(\)/);
++  assert.match(sharedSchema, /sequence requires nonce/);
++
++  assert.match(gatewayIndex, /function verifyAndTrackReplay/);
++  assert.match(gatewayIndex, /REPLAY_DETECTED/);
++});
+diff --git a/services/gateway/src/c2-client.ts b/services/gateway/src/c2-client.ts
+index 53fbb94..12dc811 100644
+--- a/services/gateway/src/c2-client.ts
++++ b/services/gateway/src/c2-client.ts
+@@ -1,6 +1,7 @@
+ import * as grpc from '@grpc/grpc-js';
+ import * as protoLoader from '@grpc/proto-loader';
+ import path from 'path';
++import fs from 'fs';
+ 
+ export type CommandFrame = {
+   id: string;
+@@ -33,6 +34,87 @@ export type C2RouterClient = grpc.Client & {
+ 
+ const PROTO_PATH = path.resolve(__dirname, 'proto/c2.proto');
+ 
++function parseEnvBool(value: string | undefined, fallback: boolean): boolean {
++  if (typeof value !== 'string') {
++    return fallback;
++  }
++  const normalized = value.trim().toLowerCase();
++  if (normalized === '1' || normalized === 'true' || normalized === 'yes') {
++    return true;
++  }
++  if (normalized === '0' || normalized === 'false' || normalized === 'no') {
++    return false;
++  }
++  return fallback;
++}
++
++function readOptionalFile(pathValue: string | undefined, label: string): Buffer | null {
++  const normalizedPath = pathValue?.trim();
++  if (!normalizedPath) {
++    return null;
++  }
++  if (!fs.existsSync(normalizedPath)) {
++    throw new Error(`${label} file not found at ${normalizedPath}`);
++  }
++  return fs.readFileSync(normalizedPath);
++}
++
++function createRouterCredentials(target: string): {
++  credentials: grpc.ChannelCredentials;
++  options: grpc.ChannelOptions;
++} {
++  const isProduction =
++    process.env.NODE_ENV === 'production' ||
++    parseEnvBool(process.env.AETHERCORE_PRODUCTION, false);
++  const allowInsecure = parseEnvBool(process.env.C2_GRPC_INSECURE, !isProduction);
++
++  if (allowInsecure) {
++    if (isProduction) {
++      throw new Error(
++        `Refusing insecure C2 gRPC transport for ${target}. Unset C2_GRPC_INSECURE in production.`,
++      );
++    }
++    return {
++      credentials: grpc.credentials.createInsecure(),
++      options: {},
++    };
++  }
++
++  const caCert = readOptionalFile(process.env.C2_GRPC_CA_CERT_PATH, 'C2_GRPC_CA_CERT_PATH');
++  const clientCert = readOptionalFile(
++    process.env.C2_GRPC_CLIENT_CERT_PATH,
++    'C2_GRPC_CLIENT_CERT_PATH',
++  );
++  const clientKey = readOptionalFile(process.env.C2_GRPC_CLIENT_KEY_PATH, 'C2_GRPC_CLIENT_KEY_PATH');
++  const hasClientMaterial = !!clientCert || !!clientKey;
++
++  if (hasClientMaterial && (!clientCert || !clientKey)) {
++    throw new Error('Both C2_GRPC_CLIENT_CERT_PATH and C2_GRPC_CLIENT_KEY_PATH are required for mTLS');
++  }
++
++  if (isProduction && !caCert) {
++    throw new Error('C2_GRPC_CA_CERT_PATH is required in production mode');
++  }
++
++  if (isProduction && !hasClientMaterial) {
++    throw new Error(
++      'mTLS is required in production mode (set C2_GRPC_CLIENT_CERT_PATH and C2_GRPC_CLIENT_KEY_PATH)',
++    );
++  }
++
++  const serverNameOverride = process.env.C2_GRPC_SERVER_NAME_OVERRIDE?.trim();
++  const options: grpc.ChannelOptions = {};
++  if (serverNameOverride) {
++    options['grpc.ssl_target_name_override'] = serverNameOverride;
++    options['grpc.default_authority'] = serverNameOverride;
++  }
++
++  return {
++    credentials: grpc.credentials.createSsl(caCert ?? undefined, clientKey ?? undefined, clientCert ?? undefined),
++    options,
++  };
++}
++
+ export function loadC2RouterClientConstructor(protoPath = PROTO_PATH) {
+   const packageDefinition = protoLoader.loadSync(protoPath, {
+     keepCase: true,
+@@ -60,7 +142,8 @@ export function loadC2RouterClientConstructor(protoPath = PROTO_PATH) {
+ 
+ export function createC2RouterClient(target: string, protoPath = PROTO_PATH): C2RouterClient {
+   const C2RouterClientCtor = loadC2RouterClientConstructor(protoPath);
+-  return new C2RouterClientCtor(target, grpc.credentials.createInsecure()) as unknown as C2RouterClient;
++  const channel = createRouterCredentials(target);
++  return new C2RouterClientCtor(target, channel.credentials, channel.options) as unknown as C2RouterClient;
+ }
+ 
+ export function buildUnitCommandRequest(command: CommandFrame): UnitCommandRequest {
+diff --git a/services/gateway/src/index.ts b/services/gateway/src/index.ts
+index fb50200..481a822 100644
+--- a/services/gateway/src/index.ts
++++ b/services/gateway/src/index.ts
+@@ -1,14 +1,28 @@
+ import express from 'express';
+ import { createServer } from 'http';
+-import fs from 'fs';
+-import { WebSocketServer, WebSocket } from 'ws';
++import * as crypto from 'node:crypto';
++import { WebSocketServer, WebSocket, type RawData } from 'ws';
+ import { z } from 'zod';
+ import cors from 'cors';
+ import dotenv from 'dotenv';
+ import pino from 'pino';
+ import { parseTpmEnabled } from './tpm';
+ import { createC2RouterClient, dispatchCommand } from './c2-client';
+-import { isRunningInContainer, getDefaultC2Endpoint, isLocalhostTarget } from '@aethercore/shared';
++import {
++  DistributedRevocationRegistry,
++  evaluateRevocationGate,
++  type RevocationSyncSummary,
++} from './revocation';
++import {
++  isRunningInContainer,
++  getDefaultC2Endpoint,
++  isLocalhostTarget,
++  createMessageEnvelope,
++  parseMessageEnvelope,
++  serializeForSigning,
++  setEnvelopeVerificationStatus,
++  type MessageEnvelope,
++} from '@aethercore/shared';
+ 
+ dotenv.config();
+ 
+@@ -31,10 +45,48 @@ if (parsedTpmEnabled.warning) {
+ }
+ const TPM_ENABLED = parsedTpmEnabled.value;
+ 
++function parsePositiveIntEnv(name: string, defaultValue: number): number {
++  const raw = process.env[name];
++  if (!raw) {
++    return defaultValue;
++  }
++  const parsed = Number.parseInt(raw, 10);
++  if (!Number.isFinite(parsed) || parsed < 1) {
++    logger.warn({ variable: name, value: raw, default_value: defaultValue }, 'Invalid integer env value');
++    return defaultValue;
++  }
++  return parsed;
++}
++
++function parseBooleanEnv(name: string, defaultValue: boolean): boolean {
++  const raw = process.env[name];
++  if (!raw) {
++    return defaultValue;
++  }
++  const normalized = raw.trim().toLowerCase();
++  if (normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on') {
++    return true;
++  }
++  if (normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off') {
++    return false;
++  }
++  logger.warn({ variable: name, value: raw, default_value: defaultValue }, 'Invalid boolean env value');
++  return defaultValue;
++}
++
++function isProductionMode(): boolean {
++  const flag = process.env.AETHERCORE_PRODUCTION;
++  return process.env.NODE_ENV === 'production' || flag === '1' || flag === 'true';
++}
++
+ const PORT = process.env.PORT || 3000;
+ const C2_GRPC_TARGET = process.env.C2_ADDR || getDefaultC2Endpoint();
+ // Backend endpoint for future integration with AetherBunker services
+ const AETHER_BUNKER_ENDPOINT = process.env.AETHER_BUNKER_ENDPOINT || process.env.C2_ADDR || getDefaultC2Endpoint();
++const REVOCATION_SOURCE_URL = process.env.AETHERCORE_REVOCATION_SOURCE_URL?.trim() || '';
++const REVOCATION_REFRESH_INTERVAL_MS = parsePositiveIntEnv('AETHERCORE_REVOCATION_REFRESH_INTERVAL_MS', 30000);
++const REVOCATION_REQUEST_TIMEOUT_MS = parsePositiveIntEnv('AETHERCORE_REVOCATION_REQUEST_TIMEOUT_MS', 5000);
++const REVOCATION_FAIL_CLOSED = parseBooleanEnv('AETHERCORE_REVOCATION_FAIL_CLOSED', isProductionMode());
+ 
+ function warnOnLocalhostTargetInContainer(target: string, variableName: string): void {
+   if (isRunningInContainer() && isLocalhostTarget(target)) {
+@@ -70,8 +122,115 @@ const CommandSchema = z.object({
+   signature: z.string().min(1, "Operator signature required"), 
+ });
+ 
++const RalphieTelemetrySchema = z
++  .object({
++    gps: z
++      .object({
++        lat: z.number().min(-90).max(90).optional(),
++        lon: z.number().min(-180).max(180).optional(),
++        latitude: z.number().min(-90).max(90).optional(),
++        longitude: z.number().min(-180).max(180).optional(),
++        alt_m: z.number().optional(),
++        altitude_m: z.number().optional(),
++        fix: z.boolean().optional(),
++        sats: z.number().int().nonnegative().optional(),
++        hdop: z.number().nonnegative().optional(),
++        speed_mps: z.number().nonnegative().optional(),
++        course_deg: z.number().min(0).max(360).optional(),
++        timestamp: z.number().int().positive().optional(),
++        source: z.string().min(1).optional(),
++      })
++      .optional(),
++    power: z
++      .object({
++        battery_pct: z.number().min(0).max(100).optional(),
++        voltage_v: z.number().positive().optional(),
++        charging: z.boolean().optional(),
++        external_power: z.boolean().optional(),
++      })
++      .optional(),
++    radio: z
++      .object({
++        snr_db: z.number().optional(),
++        rssi_dbm: z.number().optional(),
++        lora_snr_db: z.number().optional(),
++        lora_rssi_dbm: z.number().optional(),
++      })
++      .optional(),
++    device: z
++      .object({
++        model: z.string().min(1).optional(),
++        firmware: z.string().min(1).optional(),
++        transport: z.string().min(1).optional(),
++        role: z.string().min(1).optional(),
++      })
++      .optional(),
++  })
++  .optional();
++
++const RalphiePresenceSchema = z.object({
++  type: z.literal('RALPHIE_PRESENCE'),
++  reason: z.enum(['startup', 'heartbeat']),
++  timestamp: z.number().int().positive(),
++  endpoint: z.string().min(1),
++  last_disconnect_reason: z.string().optional().default('unknown'),
++  signature: z.string().min(1),
++  identity: z.object({
++    device_id: z.string().min(1),
++    public_key: z.string().min(1).optional(),
++    chat_public_key: z.string().min(1).optional(),
++    hardware_serial: z.string().min(1),
++    certificate_serial: z.string().min(1),
++    trust_score: z.number().min(0).max(1),
++    enrolled_at: z.number().int().positive(),
++    tpm_backed: z.boolean(),
++  }),
++  telemetry: RalphieTelemetrySchema,
++});
++
++type RalphiePresence = z.infer<typeof RalphiePresenceSchema>;
++type VerificationKeySource = 'bound' | 'payload';
++type PresenceVerificationProvenance = {
++  signature_verified: true;
++  replay_verified: boolean;
++  key_source: VerificationKeySource;
++  trust_derivation: 'gateway-v1';
++  evaluated_at: number;
++};
++type RalphiePresenceRecord = RalphiePresence & {
++  received_at: number;
++  verification: PresenceVerificationProvenance;
++};
++type OperatorPresenceStatus = 'online' | 'offline' | 'busy' | 'away';
++type OperatorSession = {
++  clientId: string | null;
++  publicKeyPem: string | null;
++  status: OperatorPresenceStatus;
++  trustScore: number;
++  verified: boolean;
++  lastSeen: number;
++};
++
++type SenderReplayState = {
++  lastSequence: number;
++  lastMessageId: string | null;
++  seenNonces: Set<string>;
++  nonceWindow: string[];
++};
+ 
+ const client = createC2RouterClient(C2_GRPC_TARGET);
++const ralphiePresenceByNode = new Map<string, RalphiePresenceRecord>();
++const operatorSessionBySocket = new Map<WebSocket, OperatorSession>();
++const socketsByOperatorId = new Map<string, Set<WebSocket>>();
++const operatorPresenceById = new Map<string, MessageEnvelope>();
++const senderPublicKeysById = new Map<string, string>();
++const replayStateBySenderId = new Map<string, SenderReplayState>();
++const MAX_REPLAY_NONCE_WINDOW = 2048;
++const revocationRegistry = new DistributedRevocationRegistry({
++  sourceUrl: REVOCATION_SOURCE_URL,
++  refreshIntervalMs: REVOCATION_REFRESH_INTERVAL_MS,
++  requestTimeoutMs: REVOCATION_REQUEST_TIMEOUT_MS,
++});
+ 
+ const app = express();
+ app.use(cors());
+@@ -82,23 +241,721 @@ app.get('/health', (req, res) => {
+   res.status(200).json({ status: 'ok' });
+ });
+ 
++app.post('/ralphie/presence', (req, res) => {
++  const record = upsertRalphiePresence(req.body);
++  if (!record) {
++    res.status(400).json({ status: 'error', message: 'invalid presence payload' });
++    return;
++  }
++  res.status(202).json({ status: 'accepted', node_id: record.identity.device_id });
++});
++
+ const server = createServer(app);
+ const wss = new WebSocketServer({ server });
+ 
+ let backendHealthy = false;
+ 
++if (revocationRegistry.isConfigured()) {
++  logger.info(
++    {
++      source: REVOCATION_SOURCE_URL,
++      refresh_interval_ms: REVOCATION_REFRESH_INTERVAL_MS,
++      request_timeout_ms: REVOCATION_REQUEST_TIMEOUT_MS,
++      fail_closed: REVOCATION_FAIL_CLOSED,
++    },
++    'Distributed revocation source enabled',
++  );
++
++  void revocationRegistry
++    .refresh()
++    .then((summary) => {
++      if (summary) {
++        enforceRevocationAcrossActiveSessions(summary);
++      }
++    })
++    .catch((error) => {
++      logger.error(
++        {
++          source: REVOCATION_SOURCE_URL,
++          error: error instanceof Error ? error.message : String(error),
++        },
++        'Initial revocation sync failed',
++      );
++    });
++
++  revocationRegistry.startPolling(
++    (summary) => {
++      enforceRevocationAcrossActiveSessions(summary);
++    },
++    (error) => {
++      logger.warn(
++        {
++          source: REVOCATION_SOURCE_URL,
++          error: error instanceof Error ? error.message : String(error),
++        },
++        'Revocation sync attempt failed',
++      );
++    },
++  );
++} else {
++  logger.info('No distributed revocation source configured; revocation gate disabled');
++}
++
++function sendWsJson(ws: WebSocket, payload: unknown): void {
++  if (ws.readyState !== WebSocket.OPEN) {
++    return;
++  }
++  ws.send(JSON.stringify(payload));
++}
++
++function sendGatewayError(ws: WebSocket, code: string, message: string, details?: unknown): void {
++  sendWsJson(ws, { type: 'ERROR', code, message, details });
++}
++
++function extractRecipientId(payload: unknown): string | null {
++  if (typeof payload !== 'object' || payload === null) {
++    return null;
++  }
++  const value = (payload as { recipientId?: unknown }).recipientId;
++  return typeof value === 'string' && value.length > 0 ? value : null;
++}
++
++function normalizePresenceStatus(status: unknown): OperatorPresenceStatus {
++  return status === 'online' || status === 'offline' || status === 'busy' || status === 'away'
++    ? status
++    : 'online';
++}
++
++function clampTrustScore(value: number): number {
++  return Math.max(0, Math.min(1, Number(value.toFixed(2))));
++}
++
++function deriveServerTrustScore(input: {
++  signatureVerified: boolean;
++  replayVerified: boolean;
++  keyPreviouslyBound: boolean;
++  tpmBacked: boolean;
++}): number {
++  let score = 0.2;
++  if (input.signatureVerified) {
++    score += 0.45;
++  }
++  if (input.replayVerified) {
++    score += 0.15;
++  }
++  if (input.keyPreviouslyBound) {
++    score += 0.1;
++  }
++  if (input.tpmBacked) {
++    score += 0.1;
++  }
++  return clampTrustScore(score);
++}
++
++function normalizePublicKeyPem(value: unknown): string | null {
++  if (typeof value !== 'string') {
++    return null;
++  }
++  const normalized = value.trim();
++  return normalized.length > 0 ? normalized : null;
++}
++
++function publicKeyFromEnvelopePayload(envelope: MessageEnvelope): string | null {
++  if (typeof envelope.payload !== 'object' || envelope.payload === null) {
++    return null;
++  }
++  const payload = envelope.payload as Record<string, unknown>;
++  return normalizePublicKeyPem(payload.public_key ?? payload.publicKey);
++}
++
++function stableJsonValue(value: unknown): unknown {
++  if (Array.isArray(value)) {
++    return value.map((item) => stableJsonValue(item));
++  }
++  if (value && typeof value === 'object') {
++    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
++      a.localeCompare(b),
++    );
++    const normalized: Record<string, unknown> = {};
++    for (const [key, entryValue] of entries) {
++      normalized[key] = stableJsonValue(entryValue);
++    }
++    return normalized;
++  }
++  return value;
++}
++
++function stableStringify(value: unknown): string {
++  return JSON.stringify(stableJsonValue(value));
++}
++
++function senderBoundPublicKey(from: string): string | null {
++  const fromPresence = normalizePublicKeyPem(ralphiePresenceByNode.get(from)?.identity.public_key);
++  if (fromPresence) {
++    return fromPresence;
++  }
++  const mapped = senderPublicKeysById.get(from);
++  return mapped ? normalizePublicKeyPem(mapped) : null;
++}
++
++type EnvelopeVerificationResult =
++  | { ok: true; verifiedWithKeyPem: string; keySource: VerificationKeySource }
++  | { ok: false; code: string; message: string; details?: unknown };
++
++function verifyEnvelopeSignature(envelope: MessageEnvelope): EnvelopeVerificationResult {
++  if (typeof envelope.signature !== 'string' || envelope.signature.length === 0) {
++    return {
++      ok: false,
++      code: 'SIGNATURE_REQUIRED',
++      message: 'Authenticated messaging requires a message signature',
++    };
++  }
++
++  const signatureHex = envelope.signature.trim();
++  if (!/^[0-9a-fA-F]{128}$/.test(signatureHex)) {
++    return {
++      ok: false,
++      code: 'SIGNATURE_INVALID',
++      message: 'Signature must be a 64-byte hex Ed25519 signature',
++    };
++  }
++
++  const payloadPublicKey = publicKeyFromEnvelopePayload(envelope);
++  const boundPublicKey = senderBoundPublicKey(envelope.from);
++  const verificationKey = boundPublicKey ?? payloadPublicKey;
++
++  if (!verificationKey) {
++    return {
++      ok: false,
++      code: 'UNKNOWN_SENDER_KEY',
++      message: 'No enrolled or announced public key for sender',
++    };
++  }
++
++  if (boundPublicKey && payloadPublicKey && boundPublicKey !== payloadPublicKey) {
++    return {
++      ok: false,
++      code: 'PUBLIC_KEY_MISMATCH',
++      message: 'Envelope payload public key does not match enrolled sender key',
++    };
++  }
++
++  try {
++    const canonicalPayload = serializeForSigning({
++      schema_version: envelope.schema_version,
++      message_id: envelope.message_id,
++      timestamp: envelope.timestamp,
++      type: envelope.type,
++      from: envelope.from,
++      payload: envelope.payload,
++      nonce: envelope.nonce,
++      sequence: envelope.sequence,
++      previous_message_id: envelope.previous_message_id,
++    });
++    const data = Buffer.from(canonicalPayload, 'utf-8');
++    const signatureBytes = Buffer.from(signatureHex, 'hex');
++    const publicKey = crypto.createPublicKey(verificationKey);
++    const verified = crypto.verify(null, data, publicKey, signatureBytes);
++    if (!verified) {
++      return {
++        ok: false,
++        code: 'SIGNATURE_INVALID',
++        message: 'Signature verification failed',
++      };
++    }
++  } catch (error) {
++    return {
++      ok: false,
++      code: 'SIGNATURE_INVALID',
++      message: 'Failed to verify signature with sender public key',
++      details: error instanceof Error ? error.message : String(error),
++    };
++  }
++
++  return {
++    ok: true,
++    verifiedWithKeyPem: verificationKey,
++    keySource: boundPublicKey ? 'bound' : 'payload',
++  };
++}
++
++function verifyRalphiePresenceSignature(presence: RalphiePresence): EnvelopeVerificationResult {
++  const signatureHex = presence.signature.trim();
++  if (!/^[0-9a-fA-F]{128}$/.test(signatureHex)) {
++    return {
++      ok: false,
++      code: 'PRESENCE_SIGNATURE_INVALID',
++      message: 'Presence signature must be a 64-byte hex Ed25519 signature',
++    };
++  }
++
++  const payloadPublicKey = normalizePublicKeyPem(presence.identity.public_key);
++  const boundPublicKey = senderBoundPublicKey(presence.identity.device_id);
++  const verificationKey = boundPublicKey ?? payloadPublicKey;
++  if (!verificationKey) {
++    return {
++      ok: false,
++      code: 'PRESENCE_UNKNOWN_SENDER_KEY',
++      message: 'Presence signature requires an enrolled or announced sender public key',
++    };
++  }
++
++  if (boundPublicKey && payloadPublicKey && boundPublicKey !== payloadPublicKey) {
++    return {
++      ok: false,
++      code: 'PRESENCE_PUBLIC_KEY_MISMATCH',
++      message: 'Presence payload public key does not match enrolled sender key',
++    };
++  }
++
++  const payloadForSignature: Omit<RalphiePresence, 'signature'> = {
++    type: presence.type,
++    reason: presence.reason,
++    timestamp: presence.timestamp,
++    endpoint: presence.endpoint,
++    last_disconnect_reason: presence.last_disconnect_reason,
++    identity: presence.identity,
++    telemetry: presence.telemetry,
++  };
++
++  try {
++    const canonicalPayload = stableStringify(payloadForSignature);
++    const data = Buffer.from(canonicalPayload, 'utf-8');
++    const signatureBytes = Buffer.from(signatureHex, 'hex');
++    const publicKey = crypto.createPublicKey(verificationKey);
++    const verified = crypto.verify(null, data, publicKey, signatureBytes);
++    if (!verified) {
++      return {
++        ok: false,
++        code: 'PRESENCE_SIGNATURE_INVALID',
++        message: 'Presence signature verification failed',
++      };
++    }
++  } catch (error) {
++    return {
++      ok: false,
++      code: 'PRESENCE_SIGNATURE_INVALID',
++      message: 'Failed to verify presence signature with sender public key',
++      details: error instanceof Error ? error.message : String(error),
++    };
++  }
++
++  return {
++    ok: true,
++    verifiedWithKeyPem: verificationKey,
++    keySource: boundPublicKey ? 'bound' : 'payload',
++  };
++}
++
++type RevocationVerificationResult =
++  | { ok: true }
++  | { ok: false; code: 'REVOCATION_UNAVAILABLE' | 'IDENTITY_REVOKED'; message: string; details?: unknown };
++
++function verifySenderNotRevoked(nodeId: string, certificateSerial?: string | null): RevocationVerificationResult {
++  const revocationGate = evaluateRevocationGate(revocationRegistry, {
++    nodeId,
++    certificateSerial,
++    failClosed: REVOCATION_FAIL_CLOSED,
++  });
++
++  if (!revocationGate.ok) {
++    logger.warn(
++      {
++        node_id: nodeId,
++        certificate_serial: certificateSerial ?? null,
++        code: revocationGate.code,
++        details: revocationGate.details,
++      },
++      'Rejected revoked identity in active verification path',
++    );
++    return revocationGate;
++  }
++  return { ok: true };
++}
++
++function disconnectRevokedOperators(): void {
++  for (const [operatorId, sockets] of socketsByOperatorId.entries()) {
++    const gate = verifySenderNotRevoked(operatorId);
++    if (gate.ok) {
++      continue;
++    }
++    sockets.forEach((operatorSocket) => {
++      sendGatewayError(operatorSocket, gate.code, gate.message, gate.details);
++      if (operatorSocket.readyState === WebSocket.OPEN) {
++        operatorSocket.close(4003, 'identity_revoked');
++      }
++    });
++  }
++}
++
++function evictRevokedRalphiePresence(): void {
++  for (const [nodeId, record] of ralphiePresenceByNode.entries()) {
++    const gate = verifySenderNotRevoked(nodeId, record.identity.certificate_serial);
++    if (gate.ok) {
++      continue;
++    }
++    ralphiePresenceByNode.delete(nodeId);
++    broadcast({
++      type: 'REVOCATION_EVENT',
++      node_id: nodeId,
++      code: gate.code,
++      details: gate.details,
++    });
++  }
++}
++
++function enforceRevocationAcrossActiveSessions(summary: RevocationSyncSummary): void {
++  logger.info(
++    {
++      source: summary.sourceUrl,
++      revoked_nodes: summary.revokedNodeCount,
++      revoked_certificates: summary.revokedCertificateCount,
++      last_updated_ns: summary.lastUpdatedNs,
++    },
++    'Revocation ledger synchronized from distributed source',
++  );
++  disconnectRevokedOperators();
++  evictRevokedRalphiePresence();
++}
++
++type ReplayVerificationResult =
++  | { ok: true }
++  | { ok: false; code: string; message: string; details?: unknown };
++
++function verifyAndTrackReplay(envelope: MessageEnvelope): ReplayVerificationResult {
++  if (typeof envelope.sequence !== 'number' || !Number.isInteger(envelope.sequence) || envelope.sequence <= 0) {
++    return {
++      ok: false,
++      code: 'REPLAY_SEQUENCE_REQUIRED',
++      message: 'Envelope sequence must be a positive integer',
++    };
++  }
++
++  if (typeof envelope.nonce !== 'string' || envelope.nonce.trim().length < 16) {
++    return {
++      ok: false,
++      code: 'REPLAY_NONCE_REQUIRED',
++      message: 'Envelope nonce must be present for replay defense',
++    };
++  }
++
++  let state = replayStateBySenderId.get(envelope.from);
++  if (!state) {
++    state = {
++      lastSequence: 0,
++      lastMessageId: null,
++      seenNonces: new Set<string>(),
++      nonceWindow: [],
++    };
++    replayStateBySenderId.set(envelope.from, state);
++  }
++
++  if (state.seenNonces.has(envelope.nonce)) {
++    return {
++      ok: false,
++      code: 'REPLAY_DETECTED',
++      message: 'Duplicate nonce detected for sender',
++    };
++  }
++
++  if (envelope.sequence <= state.lastSequence) {
++    return {
++      ok: false,
++      code: 'REPLAY_DETECTED',
++      message: 'Out-of-order or duplicate sequence detected for sender',
++      details: {
++        sequence: envelope.sequence,
++        last_sequence: state.lastSequence,
++      },
++    };
++  }
++
++  if (
++    envelope.previous_message_id &&
++    state.lastMessageId &&
++    envelope.previous_message_id !== state.lastMessageId
++  ) {
++    return {
++      ok: false,
++      code: 'REPLAY_CHAIN_MISMATCH',
++      message: 'previous_message_id does not match sender chain head',
++      details: {
++        previous_message_id: envelope.previous_message_id,
++        expected_previous_message_id: state.lastMessageId,
++      },
++    };
++  }
++
++  state.lastSequence = envelope.sequence;
++  state.lastMessageId = envelope.message_id;
++  state.seenNonces.add(envelope.nonce);
++  state.nonceWindow.push(envelope.nonce);
++  if (state.nonceWindow.length > MAX_REPLAY_NONCE_WINDOW) {
++    const removed = state.nonceWindow.shift();
++    if (removed) {
++      state.seenNonces.delete(removed);
++    }
++  }
++
++  return { ok: true };
++}
++
++function bindOperatorSession(ws: WebSocket, operatorId: string): void {
++  const session = operatorSessionBySocket.get(ws);
++  if (session?.clientId && session.clientId !== operatorId) {
++    const previousSockets = socketsByOperatorId.get(session.clientId);
++    if (previousSockets) {
++      previousSockets.delete(ws);
++      if (previousSockets.size === 0) {
++        socketsByOperatorId.delete(session.clientId);
++        replayStateBySenderId.delete(session.clientId);
++      }
++    }
++  }
++
++  let operatorSockets = socketsByOperatorId.get(operatorId);
++  if (!operatorSockets) {
++    operatorSockets = new Set<WebSocket>();
++    socketsByOperatorId.set(operatorId, operatorSockets);
++  }
++  operatorSockets.add(ws);
++
++  if (session) {
++    session.clientId = operatorId;
++    session.lastSeen = Date.now();
++  }
++}
++
++function buildAckEnvelope(
++  recipientId: string,
++  originalMessageId: string,
++  delivered: boolean,
++  reason?: string,
++): MessageEnvelope {
++  const ack = createMessageEnvelope('ack', 'gateway', {
++    recipientId,
++    originalMessageId,
++    delivered,
++    reason,
++  });
++  return setEnvelopeVerificationStatus(ack, 'STATUS_UNVERIFIED');
++}
++
++function handleOperatorPresenceEnvelope(ws: WebSocket, envelope: MessageEnvelope): void {
++  const session = operatorSessionBySocket.get(ws);
++  if (!session) {
++    return;
++  }
++
++  if (session.clientId && session.clientId !== envelope.from) {
++    sendGatewayError(ws, 'AUTH_MISMATCH', 'Envelope sender does not match authenticated operator');
++    return;
++  }
++
++  const revocationCheck = verifySenderNotRevoked(envelope.from);
++  if (!revocationCheck.ok) {
++    sendGatewayError(ws, revocationCheck.code, revocationCheck.message, revocationCheck.details);
++    return;
++  }
++
++  const signatureCheck = verifyEnvelopeSignature(envelope);
++  if (!signatureCheck.ok) {
++    sendGatewayError(ws, signatureCheck.code, signatureCheck.message, signatureCheck.details);
++    return;
++  }
++
++  const replayCheck = verifyAndTrackReplay(envelope);
++  if (!replayCheck.ok) {
++    sendGatewayError(ws, replayCheck.code, replayCheck.message, replayCheck.details);
++    return;
++  }
++
++  if (!senderPublicKeysById.has(envelope.from)) {
++    senderPublicKeysById.set(envelope.from, signatureCheck.verifiedWithKeyPem);
++  }
++
++  if (!session.clientId) {
++    bindOperatorSession(ws, envelope.from);
++  }
++
++  const payload =
++    typeof envelope.payload === 'object' && envelope.payload !== null
++      ? (envelope.payload as Record<string, unknown>)
++      : {};
++  const payloadPublicKey = normalizePublicKeyPem(payload.public_key ?? payload.publicKey);
++  if (payloadPublicKey) {
++    senderPublicKeysById.set(envelope.from, payloadPublicKey);
++    session.publicKeyPem = payloadPublicKey;
++  } else {
++    session.publicKeyPem = signatureCheck.verifiedWithKeyPem;
++  }
++  const trustProvenance: PresenceVerificationProvenance = {
++    signature_verified: true,
++    replay_verified: true,
++    key_source: signatureCheck.keySource,
++    trust_derivation: 'gateway-v1',
++    evaluated_at: Date.now(),
++  };
++  const derivedTrustScore = deriveServerTrustScore({
++    signatureVerified: true,
++    replayVerified: true,
++    keyPreviouslyBound: signatureCheck.keySource === 'bound',
++    tpmBacked: false,
++  });
++  session.status = normalizePresenceStatus(payload.status);
++  session.trustScore = derivedTrustScore;
++  session.verified = true;
++  session.lastSeen = trustProvenance.evaluated_at;
++
++  const outboundPresence = {
++    ...envelope,
++    payload: {
++      ...payload,
++      status: session.status,
++      trustScore: session.trustScore,
++      verified: session.verified,
++      trust_source: 'server_derived',
++      verification: trustProvenance,
++    },
++  };
++  setEnvelopeVerificationStatus(outboundPresence, session.verified ? 'VERIFIED' : 'STATUS_UNVERIFIED');
++
++  operatorPresenceById.set(envelope.from, outboundPresence);
++  broadcast(outboundPresence);
++}
++
++function routeEnvelopeByRecipient(ws: WebSocket, envelope: MessageEnvelope): void {
++  const session = operatorSessionBySocket.get(ws);
++  if (!session?.clientId) {
++    sendGatewayError(ws, 'AUTH_REQUIRED', 'Presence handshake required before sending messages');
++    return;
++  }
++
++  if (envelope.from !== session.clientId) {
++    sendGatewayError(ws, 'AUTH_MISMATCH', 'Envelope sender does not match authenticated operator');
++    return;
++  }
++
++  const revocationCheck = verifySenderNotRevoked(envelope.from);
++  if (!revocationCheck.ok) {
++    sendGatewayError(ws, revocationCheck.code, revocationCheck.message, revocationCheck.details);
++    return;
++  }
++
++  const signatureCheck = verifyEnvelopeSignature(envelope);
++  if (!signatureCheck.ok) {
++    sendGatewayError(ws, signatureCheck.code, signatureCheck.message, signatureCheck.details);
++    return;
++  }
++
++  const replayCheck = verifyAndTrackReplay(envelope);
++  if (!replayCheck.ok) {
++    sendGatewayError(ws, replayCheck.code, replayCheck.message, replayCheck.details);
++    return;
++  }
++
++  const recipientId = extractRecipientId(envelope.payload);
++  if (!recipientId) {
++    sendGatewayError(ws, 'INVALID_PAYLOAD', 'recipientId is required');
++    return;
++  }
++
++  const routedEnvelope: MessageEnvelope = { ...envelope };
++  setEnvelopeVerificationStatus(routedEnvelope, 'VERIFIED');
++
++  const recipientSockets = socketsByOperatorId.get(recipientId);
++  let delivered = false;
++  if (recipientSockets && recipientSockets.size > 0) {
++    recipientSockets.forEach((recipientSocket) => {
++      if (recipientSocket.readyState === WebSocket.OPEN) {
++        sendWsJson(recipientSocket, routedEnvelope);
++        delivered = true;
++      }
++    });
++  }
++
++  if (delivered) {
++    sendWsJson(ws, buildAckEnvelope(recipientId, envelope.message_id, true));
++  } else {
++    sendWsJson(ws, buildAckEnvelope(recipientId, envelope.message_id, false, 'recipient_offline'));
++  }
++}
++
++function handleC2Envelope(ws: WebSocket, envelope: MessageEnvelope): void {
++  switch (envelope.type) {
++    case 'presence':
++      handleOperatorPresenceEnvelope(ws, envelope);
++      break;
++    case 'chat':
++    case 'call_invite':
++    case 'call_accept':
++    case 'call_reject':
++    case 'call_end':
++      routeEnvelopeByRecipient(ws, envelope);
++      break;
++    case 'heartbeat': {
++      const heartbeat = createMessageEnvelope('heartbeat', 'gateway', {
++        timestamp: Date.now(),
++      });
++      setEnvelopeVerificationStatus(heartbeat, 'STATUS_UNVERIFIED');
++      sendWsJson(ws, heartbeat);
++      break;
++    }
++    case 'ack':
++    case 'control':
++      sendGatewayError(ws, 'UNSUPPORTED_MESSAGE', `Message type ${envelope.type} is not supported by gateway`);
++      break;
++    default:
++      sendGatewayError(ws, 'UNSUPPORTED_MESSAGE', 'Unsupported message type');
++  }
++}
++
+ wss.on('connection', (ws: WebSocket) => {
+   logger.info('Tactical Glass operator connected');
+-  ws.send(JSON.stringify({ type: 'SYSTEM_STATUS', status: backendHealthy ? 'ONLINE' : 'DEGRADED', backend: backendHealthy ? 'CONNECTED' : 'UNREACHABLE' }));
++  operatorSessionBySocket.set(ws, {
++    clientId: null,
++    publicKeyPem: null,
++    status: 'offline',
++    trustScore: 0.5,
++    verified: false,
++    lastSeen: Date.now(),
++  });
+ 
+-  ws.on('message', (message: string) => {
++  sendWsJson(ws, {
++    type: 'SYSTEM_STATUS',
++    status: backendHealthy ? 'ONLINE' : 'DEGRADED',
++    backend: backendHealthy ? 'CONNECTED' : 'UNREACHABLE',
++  });
++  if (ralphiePresenceByNode.size > 0) {
++    sendWsJson(ws, {
++      type: 'RALPHIE_PRESENCE_SNAPSHOT',
++      nodes: Array.from(ralphiePresenceByNode.values()),
++    });
++  }
++
++  if (operatorPresenceById.size > 0) {
++    operatorPresenceById.forEach((presenceEnvelope) => {
++      sendWsJson(ws, presenceEnvelope);
++    });
++  }
++
++  ws.on('message', (message: RawData) => {
+     try {
+       const raw = JSON.parse(message.toString());
++      if (raw.type === 'RALPHIE_PRESENCE') {
++        const record = upsertRalphiePresence(raw);
++        if (!record) {
++          sendGatewayError(ws, 'INVALID_SCHEMA', 'Invalid RALPHIE_PRESENCE frame');
++          return;
++        }
++        sendWsJson(ws, { type: 'RALPHIE_PRESENCE_ACK', node_id: record.identity.device_id });
++        return;
++      }
+       if (raw.type === 'COMMAND_FRAME') {
+         const validation = CommandSchema.safeParse(raw.data);
+         if (!validation.success) {
+           logger.warn({ validation_error: validation.error }, 'Invalid command schema');
+-          ws.send(JSON.stringify({ type: 'ERROR', code: 'INVALID_SCHEMA', details: validation.error }));
++          sendGatewayError(ws, 'INVALID_SCHEMA', 'Invalid COMMAND_FRAME schema', validation.error);
+           return;
+         }
+         const cmd = validation.data;
+@@ -106,18 +963,60 @@ wss.on('connection', (ws: WebSocket) => {
+         dispatchCommand(client, cmd, (err, response) => {
+           if (err) {
+             logger.error({ error: err.message, command_id: cmd.id }, 'C2 RPC error');
+-            ws.send(JSON.stringify({ type: 'COMMAND_ACK', status: 'FAILED', error: err.message }));
++            sendWsJson(ws, { type: 'COMMAND_ACK', status: 'FAILED', error: err.message });
+           } else {
+             logger.info({ unit_id: response.unit_id, command_id: cmd.id }, 'Command dispatched successfully');
+-            ws.send(JSON.stringify({ type: 'COMMAND_ACK', status: response.success ? 'SENT' : 'FAILED', unit_id: response.unit_id, message: response.message }));
++            sendWsJson(ws, {
++              type: 'COMMAND_ACK',
++              status: response.success ? 'SENT' : 'FAILED',
++              unit_id: response.unit_id,
++              message: response.message,
++            });
+           }
+         });
++        return;
+       }
+-    } catch (e) { 
++
++      const envelope = parseMessageEnvelope(raw);
++      handleC2Envelope(ws, envelope);
++    } catch (e) {
+       logger.error({ error: e instanceof Error ? e.message : String(e) }, 'Message parse error');
+-      ws.send(JSON.stringify({ type: 'ERROR', code: 'PARSE_ERROR', message: 'Invalid JSON format' }));
++      sendGatewayError(ws, 'PARSE_ERROR', 'Invalid JSON format');
+     }
+   });
++
++  ws.on('close', () => {
++    const session = operatorSessionBySocket.get(ws);
++    if (session?.clientId) {
++      const operatorSockets = socketsByOperatorId.get(session.clientId);
++      if (operatorSockets) {
++        operatorSockets.delete(ws);
++        if (operatorSockets.size === 0) {
++          socketsByOperatorId.delete(session.clientId);
++          replayStateBySenderId.delete(session.clientId);
++          const previousPresence = operatorPresenceById.get(session.clientId);
++          const payload =
++            previousPresence && typeof previousPresence.payload === 'object' && previousPresence.payload !== null
++              ? (previousPresence.payload as Record<string, unknown>)
++              : {};
++          const offlinePresence = createMessageEnvelope('presence', session.clientId, {
++            ...payload,
++            status: 'offline',
++            trustScore: session.trustScore,
++            verified: session.verified,
++          });
++          setEnvelopeVerificationStatus(offlinePresence, 'STATUS_UNVERIFIED');
++          operatorPresenceById.set(session.clientId, offlinePresence);
++          broadcast(offlinePresence);
++        }
++      }
++    }
++    operatorSessionBySocket.delete(ws);
++  });
++
++  ws.on('error', (error) => {
++    logger.warn({ error: error.message }, 'WebSocket client error');
++  });
+ });
+ 
+ setInterval(() => {
+@@ -130,21 +1029,117 @@ setInterval(() => {
+         backendHealthy = false;
+         broadcast({ type: 'SYSTEM_ALERT', level: 'CRITICAL', message: 'BACKEND_CONNECTION_LOST' });
+       }
+-    } else {
+-      if (!backendHealthy) {
+-        logger.info('Backend connection restored');
+-        backendHealthy = true;
+-        broadcast({ type: 'SYSTEM_STATUS', status: 'ONLINE', backend: 'CONNECTED' });
+-      }
++    } else if (!backendHealthy) {
++      logger.info('Backend connection restored');
++      backendHealthy = true;
++      broadcast({ type: 'SYSTEM_STATUS', status: 'ONLINE', backend: 'CONNECTED' });
+     }
+   });
+ }, 5000);
+ 
+-function broadcast(data: any) {
++function broadcast(data: unknown) {
+   const msg = JSON.stringify(data);
+-  wss.clients.forEach(client => { if (client.readyState === WebSocket.OPEN) client.send(msg); });
++  wss.clients.forEach((clientSocket) => {
++    if (clientSocket.readyState === WebSocket.OPEN) {
++      clientSocket.send(msg);
++    }
++  });
+ }
+ 
++function upsertRalphiePresence(payload: unknown): RalphiePresenceRecord | null {
++  const parsed = RalphiePresenceSchema.safeParse(payload);
++  if (!parsed.success) {
++    logger.warn({ validation_error: parsed.error.flatten() }, 'Rejected invalid RALPHIE_PRESENCE payload');
++    return null;
++  }
++
++  const revocationCheck = verifySenderNotRevoked(
++    parsed.data.identity.device_id,
++    parsed.data.identity.certificate_serial,
++  );
++  if (!revocationCheck.ok) {
++    logger.warn(
++      {
++        node_id: parsed.data.identity.device_id,
++        certificate_serial: parsed.data.identity.certificate_serial,
++        code: revocationCheck.code,
++      },
++      'Rejected revoked RALPHIE_PRESENCE payload',
++    );
++    return null;
++  }
++
++  const signatureCheck = verifyRalphiePresenceSignature(parsed.data);
++  if (!signatureCheck.ok) {
++    logger.warn(
++      {
++        code: signatureCheck.code,
++        message: signatureCheck.message,
++        details: signatureCheck.details,
++        node_id: parsed.data.identity.device_id,
++      },
++      'Rejected unauthenticated RALPHIE_PRESENCE payload',
++    );
++    return null;
++  }
++
++  const normalizedPublicKey =
++    normalizePublicKeyPem(parsed.data.identity.public_key) ?? signatureCheck.verifiedWithKeyPem;
++  const trustProvenance: PresenceVerificationProvenance = {
++    signature_verified: true,
++    replay_verified: true,
++    key_source: signatureCheck.keySource,
++    trust_derivation: 'gateway-v1',
++    evaluated_at: Date.now(),
++  };
++  const derivedTrustScore = deriveServerTrustScore({
++    signatureVerified: true,
++    replayVerified: true,
++    keyPreviouslyBound: signatureCheck.keySource === 'bound',
++    tpmBacked: parsed.data.identity.tpm_backed,
++  });
++
++  const record: RalphiePresenceRecord = {
++    ...parsed.data,
++    identity: {
++      ...parsed.data.identity,
++      public_key: normalizedPublicKey,
++      trust_score: derivedTrustScore,
++    },
++    received_at: trustProvenance.evaluated_at,
++    verification: trustProvenance,
++  };
++
++  ralphiePresenceByNode.set(record.identity.device_id, record);
++  senderPublicKeysById.set(record.identity.device_id, normalizedPublicKey);
++  logger.info(
++    {
++      node_id: record.identity.device_id,
++      reason: record.reason,
++      endpoint: record.endpoint,
++      trust_score: record.identity.trust_score,
++      trust_source: 'server_derived',
++      verification_key_source: record.verification.key_source,
++      tpm_backed: record.identity.tpm_backed,
++      has_public_key: !!record.identity.public_key,
++      has_telemetry: !!record.telemetry,
++      has_gps: !!record.telemetry?.gps,
++    },
++    'CodeRalphie presence accepted',
++  );
++
++  broadcast({ type: 'RALPHIE_PRESENCE', data: record });
++  return record;
++}
++
++process.on('SIGTERM', () => {
++  revocationRegistry.stopPolling();
++});
++
++process.on('SIGINT', () => {
++  revocationRegistry.stopPolling();
++});
++
+ server.listen(PORT, () => {
+   logger.info({ port: PORT, c2_core: C2_GRPC_TARGET }, '4MIK Gateway active');
+ });
+diff --git a/services/gateway/src/revocation.ts b/services/gateway/src/revocation.ts
+new file mode 100644
+index 0000000..f85b332
+--- /dev/null
++++ b/services/gateway/src/revocation.ts
+@@ -0,0 +1,385 @@
++export type RevocationCertificate = {
++  node_id: string;
++  revocation_reason?: string;
++  issuer_id?: string;
++  timestamp_ns?: number;
++  signature?: string;
++  merkle_root?: string;
++  certificate_serial?: string | null;
++};
++
++export type RevocationSyncSummary = {
++  sourceUrl: string;
++  revokedNodeCount: number;
++  revokedCertificateCount: number;
++  lastUpdatedNs: number | null;
++};
++
++export type RevocationLookup =
++  | {
++      revoked: false;
++    }
++  | {
++      revoked: true;
++      certificate: RevocationCertificate;
++      matchedBy: 'node_id' | 'certificate_serial';
++    };
++
++type RevocationPayloadMetadata = {
++  lastUpdatedNs: number | null;
++};
++
++function asObject(value: unknown): Record<string, unknown> | null {
++  if (!value || typeof value !== 'object' || Array.isArray(value)) {
++    return null;
++  }
++  return value as Record<string, unknown>;
++}
++
++function normalizeNodeId(value: unknown): string | null {
++  if (typeof value !== 'string') {
++    return null;
++  }
++  const normalized = value.trim();
++  return normalized.length > 0 ? normalized : null;
++}
++
++function normalizeCertificateSerial(value: unknown): string | null {
++  if (typeof value !== 'string') {
++    return null;
++  }
++  const normalized = value.replace(/[^a-fA-F0-9]/g, '').toLowerCase();
++  return normalized.length > 0 ? normalized : null;
++}
++
++function parseRevocationCertificate(
++  value: unknown,
++  fallbackNodeId?: string,
++): RevocationCertificate | null {
++  const record = asObject(value);
++  if (!record) {
++    return null;
++  }
++  const nodeId = normalizeNodeId(record.node_id ?? record.nodeId ?? fallbackNodeId);
++  if (!nodeId) {
++    return null;
++  }
++
++  const certificateSerial = normalizeCertificateSerial(
++    record.certificate_serial ?? record.certificateSerial ?? record.serial,
++  );
++  const timestampRaw = record.timestamp_ns ?? record.timestampNs;
++  const timestampNs =
++    typeof timestampRaw === 'number' && Number.isFinite(timestampRaw) && timestampRaw > 0
++      ? Math.trunc(timestampRaw)
++      : undefined;
++
++  return {
++    node_id: nodeId,
++    revocation_reason:
++      typeof record.revocation_reason === 'string'
++        ? record.revocation_reason
++        : typeof record.revocationReason === 'string'
++          ? record.revocationReason
++          : undefined,
++    issuer_id:
++      typeof record.issuer_id === 'string'
++        ? record.issuer_id
++        : typeof record.issuerId === 'string'
++          ? record.issuerId
++          : undefined,
++    timestamp_ns: timestampNs,
++    signature: typeof record.signature === 'string' ? record.signature : undefined,
++    merkle_root:
++      typeof record.merkle_root === 'string'
++        ? record.merkle_root
++        : typeof record.merkleRoot === 'string'
++          ? record.merkleRoot
++          : undefined,
++    certificate_serial: certificateSerial,
++  };
++}
++
++function parseLastUpdatedNs(raw: unknown): number | null {
++  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
++    return Math.trunc(raw);
++  }
++  return null;
++}
++
++function parseRevocationPayload(raw: unknown): {
++  certificates: RevocationCertificate[];
++  metadata: RevocationPayloadMetadata;
++} {
++  const metadata: RevocationPayloadMetadata = {
++    lastUpdatedNs: null,
++  };
++
++  if (Array.isArray(raw)) {
++    const certificates = raw
++      .map((entry) => parseRevocationCertificate(entry))
++      .filter((entry): entry is RevocationCertificate => !!entry);
++    return { certificates, metadata };
++  }
++
++  const root = asObject(raw);
++  if (!root) {
++    return { certificates: [], metadata };
++  }
++
++  metadata.lastUpdatedNs = parseLastUpdatedNs(
++    root.last_updated_ns ?? root.lastUpdatedNs ?? root.updated_at_ns ?? root.updatedAtNs,
++  );
++
++  const revokedNodes = asObject(root.revoked_nodes ?? root.revokedNodes);
++  if (revokedNodes) {
++    const certificates: RevocationCertificate[] = [];
++    for (const [nodeId, certValue] of Object.entries(revokedNodes)) {
++      const cert = parseRevocationCertificate(certValue, nodeId);
++      if (cert) {
++        certificates.push(cert);
++      }
++    }
++    return { certificates, metadata };
++  }
++
++  const revocations = root.revocations;
++  if (Array.isArray(revocations)) {
++    const certificates = revocations
++      .map((entry) => parseRevocationCertificate(entry))
++      .filter((entry): entry is RevocationCertificate => !!entry);
++    return { certificates, metadata };
++  }
++
++  const single = parseRevocationCertificate(root);
++  if (single) {
++    return { certificates: [single], metadata };
++  }
++  return { certificates: [], metadata };
++}
++
++export class DistributedRevocationRegistry {
++  private readonly sourceUrl: string | null;
++
++  private readonly refreshIntervalMs: number;
++
++  private readonly requestTimeoutMs: number;
++
++  private refreshTimer: NodeJS.Timeout | null = null;
++
++  private revokedByNodeId = new Map<string, RevocationCertificate>();
++
++  private revokedByCertificateSerial = new Map<string, RevocationCertificate>();
++
++  private hasSuccessfulSync = false;
++
++  private lastSyncAtMs: number | null = null;
++
++  private lastSyncError: string | null = null;
++
++  private lastUpdatedNs: number | null = null;
++
++  constructor(config: {
++    sourceUrl?: string | null;
++    refreshIntervalMs: number;
++    requestTimeoutMs: number;
++  }) {
++    const trimmed = config.sourceUrl?.trim() ?? '';
++    this.sourceUrl = trimmed.length > 0 ? trimmed : null;
++    this.refreshIntervalMs = Math.max(1000, Math.trunc(config.refreshIntervalMs));
++    this.requestTimeoutMs = Math.max(500, Math.trunc(config.requestTimeoutMs));
++  }
++
++  isConfigured(): boolean {
++    return !!this.sourceUrl;
++  }
++
++  hasSynced(): boolean {
++    return this.hasSuccessfulSync;
++  }
++
++  getLastSyncAtMs(): number | null {
++    return this.lastSyncAtMs;
++  }
++
++  getLastSyncError(): string | null {
++    return this.lastSyncError;
++  }
++
++  getRevokedNodeCount(): number {
++    return this.revokedByNodeId.size;
++  }
++
++  getSnapshot(): {
++    sourceUrl: string | null;
++    hasSynced: boolean;
++    lastSyncAtMs: number | null;
++    lastSyncError: string | null;
++    revokedNodeCount: number;
++    revokedCertificateCount: number;
++    lastUpdatedNs: number | null;
++  } {
++    return {
++      sourceUrl: this.sourceUrl,
++      hasSynced: this.hasSuccessfulSync,
++      lastSyncAtMs: this.lastSyncAtMs,
++      lastSyncError: this.lastSyncError,
++      revokedNodeCount: this.revokedByNodeId.size,
++      revokedCertificateCount: this.revokedByCertificateSerial.size,
++      lastUpdatedNs: this.lastUpdatedNs,
++    };
++  }
++
++  checkIdentity(nodeId: string, certificateSerial?: string | null): RevocationLookup {
++    const normalizedNodeId = normalizeNodeId(nodeId);
++    if (normalizedNodeId) {
++      const byNodeId = this.revokedByNodeId.get(normalizedNodeId);
++      if (byNodeId) {
++        return {
++          revoked: true,
++          certificate: byNodeId,
++          matchedBy: 'node_id',
++        };
++      }
++    }
++
++    const normalizedSerial = normalizeCertificateSerial(certificateSerial);
++    if (normalizedSerial) {
++      const bySerial = this.revokedByCertificateSerial.get(normalizedSerial);
++      if (bySerial) {
++        return {
++          revoked: true,
++          certificate: bySerial,
++          matchedBy: 'certificate_serial',
++        };
++      }
++    }
++
++    return { revoked: false };
++  }
++
++  async refresh(): Promise<RevocationSyncSummary | null> {
++    if (!this.sourceUrl) {
++      return null;
++    }
++
++    const controller = new AbortController();
++    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
++    try {
++      const response = await fetch(this.sourceUrl, {
++        method: 'GET',
++        signal: controller.signal,
++        headers: { Accept: 'application/json' },
++      });
++      if (!response.ok) {
++        throw new Error(`Revocation source returned HTTP ${response.status}`);
++      }
++
++      const payload = await response.json();
++      const { certificates, metadata } = parseRevocationPayload(payload);
++
++      const nextByNodeId = new Map<string, RevocationCertificate>();
++      const nextBySerial = new Map<string, RevocationCertificate>();
++      for (const cert of certificates) {
++        nextByNodeId.set(cert.node_id, cert);
++        if (cert.certificate_serial) {
++          const normalizedSerial = normalizeCertificateSerial(cert.certificate_serial);
++          if (normalizedSerial) {
++            nextBySerial.set(normalizedSerial, cert);
++          }
++        }
++      }
++
++      this.revokedByNodeId = nextByNodeId;
++      this.revokedByCertificateSerial = nextBySerial;
++      this.lastUpdatedNs = metadata.lastUpdatedNs;
++      this.hasSuccessfulSync = true;
++      this.lastSyncAtMs = Date.now();
++      this.lastSyncError = null;
++
++      return {
++        sourceUrl: this.sourceUrl,
++        revokedNodeCount: this.revokedByNodeId.size,
++        revokedCertificateCount: this.revokedByCertificateSerial.size,
++        lastUpdatedNs: this.lastUpdatedNs,
++      };
++    } catch (error) {
++      this.lastSyncError = error instanceof Error ? error.message : String(error);
++      throw error;
++    } finally {
++      clearTimeout(timeout);
++    }
++  }
++
++  startPolling(onRefresh?: (summary: RevocationSyncSummary) => void, onError?: (error: unknown) => void): void {
++    if (!this.sourceUrl) {
++      return;
++    }
++    if (this.refreshTimer) {
++      return;
++    }
++
++    this.refreshTimer = setInterval(() => {
++      void this.refresh()
++        .then((summary) => {
++          if (summary && onRefresh) {
++            onRefresh(summary);
++          }
++        })
++        .catch((error) => {
++          if (onError) {
++            onError(error);
++          }
++        });
++    }, this.refreshIntervalMs);
++  }
++
++  stopPolling(): void {
++    if (!this.refreshTimer) {
++      return;
++    }
++    clearInterval(this.refreshTimer);
++    this.refreshTimer = null;
++  }
++}
++
++export type RevocationGateResult =
++  | { ok: true }
++  | { ok: false; code: 'REVOCATION_UNAVAILABLE' | 'IDENTITY_REVOKED'; message: string; details?: unknown };
++
++export function evaluateRevocationGate(
++  registry: DistributedRevocationRegistry,
++  input: {
++    nodeId: string;
++    certificateSerial?: string | null;
++    failClosed: boolean;
++  },
++): RevocationGateResult {
++  if (!registry.isConfigured()) {
++    return { ok: true };
++  }
++
++  if (input.failClosed && !registry.hasSynced()) {
++    return {
++      ok: false,
++      code: 'REVOCATION_UNAVAILABLE',
++      message: 'Revocation registry is not synchronized',
++      details: registry.getSnapshot(),
++    };
++  }
++
++  const lookup = registry.checkIdentity(input.nodeId, input.certificateSerial);
++  if (!lookup.revoked) {
++    return { ok: true };
++  }
++
++  return {
++    ok: false,
++    code: 'IDENTITY_REVOKED',
++    message: `Identity ${input.nodeId} is revoked by sovereign trust ledger`,
++    details: {
++      matched_by: lookup.matchedBy,
++      certificate: lookup.certificate,
++    },
++  };
++}

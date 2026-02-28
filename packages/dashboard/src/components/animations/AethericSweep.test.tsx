@@ -24,7 +24,8 @@ class MockWebSocket {
 type StateCase = {
   name: string;
   message: Record<string, unknown>;
-  expected: string[];
+  expectedCompact: string[];
+  expectedExpanded: string[];
 };
 
 describe('AethericSweep state detail panel', () => {
@@ -55,7 +56,6 @@ describe('AethericSweep state detail panel', () => {
 
     vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
-
     (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
     container = document.createElement('div');
@@ -83,7 +83,8 @@ describe('AethericSweep state detail panel', () => {
         payload_freshness_ms: 100,
         metrics: { root_agreement_ratio: 0.98, chain_break_count: 0, signature_failure_count: 0 },
       },
-      expected: ['Trust Percent: 91%', 'Trust Level:', 'Mesh Integrity Status:', 'Healthy', 'Freshness Indicator:', 'Fresh'],
+      expectedCompact: ['Trusted: Trusted'],
+      expectedExpanded: ['Trust Percent: 91%', 'Trust Level:', 'Mesh Integrity Status:', 'Healthy', 'Root Agreement: 98.0%'],
     },
     {
       name: 'degraded',
@@ -97,7 +98,8 @@ describe('AethericSweep state detail panel', () => {
         payload_freshness_ms: 300,
         metrics: { root_agreement_ratio: 0.74, chain_break_count: 2, signature_failure_count: 0 },
       },
-      expected: ['Trust Percent: 62%', 'Mesh Integrity Status:', 'Degraded', 'Root Agreement: 74.0%', 'Chain Breaks: 2'],
+      expectedCompact: ['Trusted: Not Trusted'],
+      expectedExpanded: ['Trust Percent: 62%', 'Mesh Integrity Status:', 'Degraded', 'Chain Breaks: 2'],
     },
     {
       name: 'compromised',
@@ -111,7 +113,8 @@ describe('AethericSweep state detail panel', () => {
         payload_freshness_ms: 500,
         metrics: { root_agreement_ratio: 0.4, chain_break_count: 7, signature_failure_count: 2 },
       },
-      expected: ['Mesh Integrity Status:', 'Invalid signature', 'Signature Failures: 2', 'Error: Invalid signature payload'],
+      expectedCompact: ['Trusted: Not Trusted', 'Error: Invalid signature payload'],
+      expectedExpanded: ['Mesh Integrity Status:', 'Invalid signature', 'Signature Failures: 2'],
     },
     {
       name: 'unknown',
@@ -125,7 +128,8 @@ describe('AethericSweep state detail panel', () => {
         payload_freshness_ms: 1000,
         metrics: { root_agreement_ratio: 0.52, chain_break_count: 1, signature_failure_count: 0 },
       },
-      expected: ['Mesh Integrity Status:', 'Unknown', 'Trust Percent: 47%'],
+      expectedCompact: ['Trusted: Not Trusted'],
+      expectedExpanded: ['Trust Percent: 47%', 'Mesh Integrity Status:', 'Unknown'],
     },
     {
       name: 'stale',
@@ -139,7 +143,8 @@ describe('AethericSweep state detail panel', () => {
         payload_freshness_ms: 45_000,
         metrics: { root_agreement_ratio: 0.91, chain_break_count: 0, signature_failure_count: 0 },
       },
-      expected: ['Mesh Integrity Status:', 'Stale payload', 'Freshness Indicator:', 'Stale', 'Warning: Stale payload window exceeded'],
+      expectedCompact: ['Trusted: Trusted', 'Warning: Stale payload window exceeded'],
+      expectedExpanded: ['Mesh Integrity Status:', 'Stale payload', 'Freshness Indicator:', 'Stale'],
     },
   ];
 
@@ -164,11 +169,27 @@ describe('AethericSweep state detail panel', () => {
       const panel = container.querySelector('[data-testid="node-detail-panel"]');
       expect(panel).toBeTruthy();
 
-      for (const text of item.expected) {
+      for (const text of item.expectedCompact) {
         expect(container.textContent).toContain(text);
       }
 
-      expect(panel?.innerHTML).toMatchSnapshot();
+      expect(container.textContent).not.toContain('Trust Percent:');
+
+      const toggle = Array.from(container.querySelectorAll('button')).find((btn) => btn.textContent?.includes('Show Details')) as HTMLButtonElement;
+      expect(toggle).toBeTruthy();
+
+      await act(async () => {
+        toggle.click();
+      });
+
+      const expanded = container.querySelector('[data-testid="node-detail-expanded"]');
+      expect(expanded).toBeTruthy();
+
+      for (const text of item.expectedExpanded) {
+        expect(container.textContent).toContain(text);
+      }
+
+      expect(expanded?.innerHTML).toMatchSnapshot();
     });
   }
 });

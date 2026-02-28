@@ -31,3 +31,12 @@ Instrumentation tests are under `src/androidTest` and cover:
 
 - `AndroidEnrollmentClient.enroll(deviceId)` executes hello/prove sequence and stores issued artifacts.
 - `EnrollmentStartupGate.assertServiceActivationAllowed()` enforces enrollment artifact integrity at startup.
+
+
+## IPC Security Assumptions
+
+- Caller identity verification computes SHA-256 digests of app signing certificates via `PackageManager.GET_SIGNING_CERTIFICATES`.
+- On API 33+ the module uses the typed `getPackageInfo(packageName, PackageInfoFlags.of(...))` lookup.
+- On API 28-32 (the current `minSdk`) it falls back to the legacy `getPackageInfo(packageName, GET_SIGNING_CERTIFICATES)` call.
+- If package info lookup fails (`NameNotFoundException`) or signature access is denied (`SecurityException`), the IPC layer treats the caller as untrusted by returning an empty digest set and logging a warning.
+

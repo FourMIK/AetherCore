@@ -2,6 +2,8 @@
 
 #![warn(missing_docs)]
 
+pub mod transport;
+
 use aethercore_trust_mesh::{
     HealthThresholds, NodeHealth, NodeHealthStatus, TrustLevel, TrustScore,
 };

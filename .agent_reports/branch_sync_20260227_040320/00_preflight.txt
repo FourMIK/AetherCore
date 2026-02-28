@@ -1,0 +1,5 @@
+=== PHASE 0: Preflight ===
+true
+ M pnpm-lock.yaml
+?? .agent_reports/
+?? packages/android-keymanager/.gradle/

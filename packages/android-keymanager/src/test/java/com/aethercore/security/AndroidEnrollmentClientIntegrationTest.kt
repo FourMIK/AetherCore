@@ -45,6 +45,9 @@ class AndroidEnrollmentClientIntegrationTest {
         assertEquals("android-alias-1", provePayload.getString("key_alias"))
         assertEquals(SecurityLevel.TRUSTED_ENVIRONMENT.name, provePayload.getString("key_security_level"))
         assertEquals("AQID", provePayload.getString("challenge_b64"))
+        assertEquals(SecurityProvenance.TEE.name, provePayload.getString("key_security_provenance"))
+        assertEquals("c2lnLWZvci1hbmRyb2lkLWFsaWFzLTE=", provePayload.getString("challenge_signature_b64"))
+        assertEquals("cHViLWZvci1hbmRyb2lkLWFsaWFzLTE=", provePayload.getString("public_key_der_b64"))
         assertEquals(1, provePayload.getJSONArray("attestation_chain_b64").length())
         assertTrue(artifactStore.hasValidArtifacts())
     }
@@ -149,5 +152,13 @@ private class FakeKeyStoreFacade(private val strongBoxRequestThrows: Boolean) : 
         )
         keys[alias] = reference
         return reference
+    }
+
+    override fun signWithPrivateKey(alias: String, challenge: ByteArray): ByteArray {
+        return "sig-for-$alias".toByteArray()
+    }
+
+    override fun publicKeyDer(alias: String): ByteArray {
+        return "pub-for-$alias".toByteArray()
     }
 }

@@ -1,5 +1,6 @@
 package com.aethercore.security
 
+import android.content.Context
 import android.os.Build
 import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
@@ -20,6 +21,15 @@ class AndroidEnrollmentKeyManager(
     private val strongBoxSupport: StrongBoxSupport,
     private val aliasFactory: () -> String = { "aether_enroll_${UUID.randomUUID()}" }
 ) {
+    companion object {
+        fun create(context: Context): AndroidEnrollmentKeyManager {
+            return AndroidEnrollmentKeyManager(
+                keyStore = AndroidKeyStoreFacade(),
+                aliasStore = SharedPreferencesKeyAliasStore(context),
+                strongBoxSupport = DeviceStrongBoxSupport()
+            )
+        }
+    }
     fun ensureEnrollmentKey(challenge: ByteArray): KeyReference {
         val persistedAlias = aliasStore.readAlias()
         if (persistedAlias != null) {
@@ -56,7 +66,10 @@ class AndroidEnrollmentKeyManager(
         return AttestationArtifact(
             alias = key.alias,
             securityLevel = key.securityLevel,
+            securityProvenance = key.securityLevel.toSecurityProvenance(),
             challenge = challenge,
+            challengeSignatureDer = keyStore.signWithPrivateKey(key.alias, challenge),
+            publicKeyDer = keyStore.publicKeyDer(key.alias),
             certificateChainDer = key.attestationCertificateChainDer
         )
     }
@@ -66,9 +79,27 @@ class AndroidEnrollmentKeyManager(
         return EnrollmentProvePayload(
             keyAlias = artifact.alias,
             keySecurityLevel = artifact.securityLevel.name,
+            keySecurityProvenance = artifact.securityProvenance.name,
             challengeB64 = challenge.toB64(),
+            challengeSignatureB64 = artifact.challengeSignatureDer.toB64(),
+            publicKeyDerB64 = artifact.publicKeyDer.toB64(),
             attestationChainB64 = artifact.certificateChainDer.map { it.toB64() }
         )
+    }
+
+    fun getHardwareFingerprint(): String {
+        val persistedAlias = aliasStore.readAlias()
+        val securityLevel = securityLevel()
+        
+        val components = listOf(
+            Build.MANUFACTURER,
+            Build.MODEL,
+            Build.SERIAL,
+            persistedAlias ?: "unbound",
+            securityLevel?.name ?: "unknown"
+        )
+        
+        return components.joinToString("-")
     }
 }
 

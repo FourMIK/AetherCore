@@ -57,7 +57,10 @@ data class EnrollmentOutputs(
 data class AndroidAttestationEvidence(
     val alias: String,
     val securityLevel: SecurityLevel,
+    val securityProvenance: SecurityProvenance,
     val challenge: ByteArray,
+    val challengeSignatureDer: ByteArray,
+    val publicKeyDer: ByteArray,
     val certificateChainDer: List<ByteArray>
 )
 
@@ -112,14 +115,20 @@ class AndroidEnrollmentClient(
             .put("device_id", deviceId)
             .put("key_alias", evidence.alias)
             .put("key_security_level", evidence.securityLevel.name)
+            .put("key_security_provenance", evidence.securityProvenance.name)
             .put("challenge_b64", evidence.challenge.toB64())
+            .put("challenge_signature_b64", evidence.challengeSignatureDer.toB64())
+            .put("public_key_der_b64", evidence.publicKeyDer.toB64())
             .put("attestation_chain_b64", certChain)
     }
 
     private fun AttestationArtifact.toEvidence(): AndroidAttestationEvidence = AndroidAttestationEvidence(
         alias = alias,
         securityLevel = securityLevel,
+        securityProvenance = securityProvenance,
         challenge = challenge,
+        challengeSignatureDer = challengeSignatureDer,
+        publicKeyDer = publicKeyDer,
         certificateChainDer = certificateChainDer
     )
 }
