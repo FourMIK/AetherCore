@@ -84,3 +84,8 @@ infra/k8s/overlays/bunker/secrets.env
 packages/dashboard/src-tauri/resources/payloads/*
 !packages/dashboard/src-tauri/resources/payloads/.gitkeep
 *.backup
+
+# ATAK Plugin Build Artifacts
+plugins/atak-trust-overlay/build/
+plugins/atak-trust-overlay/.gradle/
+dist/atak/
