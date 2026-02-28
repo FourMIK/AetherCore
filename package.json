@@ -14,10 +14,16 @@
     "setup": "pnpm install --frozen-lockfile && node scripts/doctor.js",
     "doctor": "node scripts/doctor.js",
     "build": "pnpm run build --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
+    "build:atak": "node scripts/build-atak-plugin.js",
     "test": "pnpm run test --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
     "lint": "pnpm run lint --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
     "lint:check": "eslint . --ext .ts,.tsx",
-    "clean": "pnpm run clean --recursive --filter=\"./packages/*\" --filter=\"./services/*\""
+    "clean": "pnpm run clean --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
+    "clean:atak": "rimraf plugins/atak-trust-overlay/build dist/atak",
+    "verify:atak": "node scripts/verify-atak-build.js",
+    "deploy:atak": "node scripts/deploy-atak-plugin.js",
+    "setup:emulator": "node scripts/setup-atak-emulator.js",
+    "start:emulator": "emulator -avd aether-atak-api28 -no-snapshot-load"
   },
   "devDependencies": {
     "@types/node": "^20.10.6",
