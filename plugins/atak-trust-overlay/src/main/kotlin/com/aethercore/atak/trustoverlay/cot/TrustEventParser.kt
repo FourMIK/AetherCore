@@ -135,8 +135,18 @@ class TrustEventParser(
                     payloadHash = payloadHash
                 )
                 nativeVerifySignature(signerNodeId, canonicalPayload, signatureHex)
+            } catch (e: UnsatisfiedLinkError) {
+                // JNI library not loaded or native method missing
+                logger.w("Signature verification unavailable: JNI library error: ${e.message}")
+                false
+            } catch (e: IllegalArgumentException) {
+                // Invalid input parameters to native method
+                logger.w("Signature verification failed: invalid parameters: ${e.message}")
+                false
             } catch (e: Exception) {
-                logger.w("Signature verification failed with exception: ${e.message}")
+                // Unexpected error - log full details for debugging
+                logger.w("Signature verification failed with unexpected error: ${e.javaClass.simpleName}: ${e.message}")
+                logger.w("Stack trace: ${e.stackTraceToString().take(500)}")
                 false
             }
         } else {
@@ -206,6 +216,37 @@ class TrustEventParser(
         false
     }
 
+    /**
+     * Builds canonical payload for signature verification.
+     * 
+     * This payload format MUST match exactly the canonicalization implemented in
+     * crates/tak-bridge/src/lib.rs::canonicalize_snapshot_input to ensure
+     * signatures computed on the Rust side can be verified here.
+     * 
+     * Canonical format (semicolon-delimited, no spaces, no newlines):
+     * ```
+     * node_id=<uid>;trust_score=<score_as_int>;trust_level=<level_lowercase>;last_updated=<iso8601>;lat=<double>;lon=<double>;signer_node_id=<signer>;payload_hash=<hash>
+     * ```
+     * 
+     * Example:
+     * ```
+     * node_id=unit-alpha;trust_score=95;trust_level=high;last_updated=2026-03-01T04:00:00Z;lat=34.567;lon=-118.123;signer_node_id=node-001;payload_hash=abc123def
+     * ```
+     * 
+     * CRITICAL: Any changes to this format will break signature verification!
+     * Changes must be coordinated with the Rust canonicalization implementation.
+     * 
+     * @param uid The unit/node identifier
+     * @param trustScore The trust score as a decimal (0.0-1.0), converted to int percentage
+     * @param trustLevel The trust level enum, converted to lowercase string
+     * @param lastUpdated ISO 8601 timestamp string
+     * @param lat Latitude as double
+     * @param lon Longitude as double
+     * @param signerNodeId The node ID that signed this payload
+     * @param payloadHash BLAKE3 hash of the payload (hex string)
+     * @return UTF-8 encoded canonical payload for signature verification
+     * @throws IllegalArgumentException if any required parameter is invalid
+     */
     private fun buildCanonicalPayload(
         uid: String,
         trustScore: Double,
@@ -216,19 +257,17 @@ class TrustEventParser(
         signerNodeId: String,
         payloadHash: String
     ): ByteArray {
-        // Build canonical payload matching the format from tak-bridge
-        // This is a simplified version - the actual implementation should match
-        // the exact canonicalization from crates/tak-bridge/src/lib.rs::canonicalize_snapshot_input
-        val canonical = """
-            node_id=$uid;
-            trust_score=${(trustScore * 100).toInt()};
-            trust_level=${trustLevel.name.lowercase()};
-            last_updated=$lastUpdated;
-            lat=$lat;
-            lon=$lon;
-            signer_node_id=$signerNodeId;
-            payload_hash=$payloadHash
-        """.trimIndent().replace("\n", "")
+        // Validate required parameters
+        require(uid.isNotBlank()) { "uid cannot be blank" }
+        require(trustScore in 0.0..1.0) { "trustScore must be between 0.0 and 1.0, got $trustScore" }
+        require(lastUpdated.isNotBlank()) { "lastUpdated cannot be blank" }
+        require(signerNodeId.isNotBlank()) { "signerNodeId cannot be blank" }
+        require(payloadHash.isNotBlank()) { "payloadHash cannot be blank" }
+        require(lat.isFinite()) { "lat must be finite, got $lat" }
+        require(lon.isFinite()) { "lon must be finite, got $lon" }
+        
+        // Build canonical payload - must match Rust implementation exactly
+        val canonical = "node_id=$uid;trust_score=${(trustScore * 100).toInt()};trust_level=${trustLevel.name.lowercase()};last_updated=$lastUpdated;lat=$lat;lon=$lon;signer_node_id=$signerNodeId;payload_hash=$payloadHash"
         
         return canonical.toByteArray(Charsets.UTF_8)
     }
