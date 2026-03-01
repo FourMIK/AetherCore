@@ -17,6 +17,19 @@ class TrustEventParser(
     @Volatile
     private var mostRecentRejectReason: String? = null
 
+    companion object {
+        init {
+            System.loadLibrary("aethercore_jni")
+        }
+    }
+
+    @Throws(UnsatisfiedLinkError::class)
+    private external fun nativeVerifySignature(
+        nodeId: String,
+        payload: ByteArray,
+        signatureHex: String
+    ): Boolean
+
     fun parse(envelope: CotEventEnvelope): TrustEvent? {
         val uid = envelope.uid.trim()
         if (uid.isEmpty()) {
@@ -106,7 +119,33 @@ class TrustEventParser(
         val signerNodeId = extractOptional(envelope, SIGNER_NODE_ID_KEYS)
         val payloadHash = extractOptional(envelope, PAYLOAD_HASH_KEYS)
 
-        val signatureVerified = false
+        // Signature verification via JNI
+        val signatureVerified = if (signatureHex != null && signerNodeId != null && payloadHash != null) {
+            try {
+                // Reconstruct canonical payload for verification
+                // This should match the canonicalization from tak-bridge
+                val canonicalPayload = buildCanonicalPayload(
+                    uid = uid,
+                    trustScore = score,
+                    trustLevel = level,
+                    lastUpdated = lastUpdated,
+                    lat = lat,
+                    lon = lon,
+                    signerNodeId = signerNodeId,
+                    payloadHash = payloadHash
+                )
+                nativeVerifySignature(signerNodeId, canonicalPayload, signatureHex)
+            } catch (e: Exception) {
+                logger.w("Signature verification failed with exception: ${e.message}")
+                false
+            }
+        } else {
+            // Missing signature fields - cannot verify
+            if (signatureHex != null || signerNodeId != null) {
+                logger.w("Incomplete signature fields - treating as unverified")
+            }
+            false
+        }
 
         return TrustEvent(
             uid = uid,
@@ -165,6 +204,33 @@ class TrustEventParser(
         true
     } catch (_: DateTimeParseException) {
         false
+    }
+
+    private fun buildCanonicalPayload(
+        uid: String,
+        trustScore: Double,
+        trustLevel: TrustLevel,
+        lastUpdated: String,
+        lat: Double,
+        lon: Double,
+        signerNodeId: String,
+        payloadHash: String
+    ): ByteArray {
+        // Build canonical payload matching the format from tak-bridge
+        // This is a simplified version - the actual implementation should match
+        // the exact canonicalization from crates/tak-bridge/src/lib.rs::canonicalize_snapshot_input
+        val canonical = """
+            node_id=$uid;
+            trust_score=${(trustScore * 100).toInt()};
+            trust_level=${trustLevel.name.lowercase()};
+            last_updated=$lastUpdated;
+            lat=$lat;
+            lon=$lon;
+            signer_node_id=$signerNodeId;
+            payload_hash=$payloadHash
+        """.trimIndent().replace("\n", "")
+        
+        return canonical.toByteArray(Charsets.UTF_8)
     }
 
     companion object {

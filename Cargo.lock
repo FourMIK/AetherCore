@@ -203,6 +203,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "aethercore-jni"
+version = "0.1.0"
+dependencies = [
+ "aethercore-crypto",
+ "aethercore-identity",
+ "blake3",
+ "ed25519-dalek",
+ "hex",
+ "jni",
+ "once_cell",
+ "prost",
+ "tokio",
+ "tonic",
+ "tracing",
+ "tracing-subscriber 0.3.22",
+]
+
+[[package]]
 name = "aethercore-mesh"
 version = "0.2.0"
 dependencies = [
