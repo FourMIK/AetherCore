@@ -19,6 +19,8 @@ struct DaemonState {
     hardware_id: Option<String>,
     identity_manager: Option<Arc<Mutex<IdentityManager>>>,
     trust_scorer: Option<Arc<TrustScorer>>,
+    /// Hash of the last processed event for chain continuity (Phase 3 preparation)
+    last_event_hash: Option<[u8; 32]>,
     #[allow(dead_code)]
     grpc_endpoint: String,
 }
@@ -35,6 +37,7 @@ impl DaemonState {
             hardware_id: None,
             identity_manager: None,
             trust_scorer: None,
+            last_event_hash: None,
             grpc_endpoint: default_endpoint,
         }
     }

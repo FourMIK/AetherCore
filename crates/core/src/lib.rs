@@ -6,6 +6,8 @@
 pub mod config;
 pub mod error;
 pub mod event;
+pub mod event_canonicalizer;
+pub mod integrity_event;
 pub mod ledger;
 pub mod logging;
 pub mod merkle_aggregator;
@@ -17,6 +19,10 @@ pub mod zk_trait;
 
 pub use error::{Error, Result};
 pub use event::{Event, EventBuilder, EventCategory, EventMetadata, EventSeverity};
+pub use event_canonicalizer::{
+    CanonicalEvent, CanonicalValue, CanonicalizeError, EventCanonicalizer, OrderedFloat,
+};
+pub use integrity_event::{ChainVerificationResult, IntegrityEvent, verify_event_chain};
 pub use ledger::{
     EventLedger, LedgerError, LedgerHealth, LedgerHealthInfo, LedgerMetrics, SignedEvent,
 };
