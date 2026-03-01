@@ -15,6 +15,7 @@ class TrustCoTSubscriber(
     fun start(
         onTrustEvent: (TrustEvent) -> Unit,
         onMalformedEvent: (Long, String?) -> Unit = { _, _ -> },
+        onRawEnvelope: ((com.aethercore.atak.trustoverlay.atak.CotEventEnvelope) -> Unit)? = null,
     ) {
         if (subscription != null) {
             logger.w("Trust CoT subscriber already active")
@@ -22,6 +23,9 @@ class TrustCoTSubscriber(
         }
 
         subscription = cotBus.subscribe(TRUST_COT_TYPE) { envelope ->
+            // Allow processing raw envelope before parsing (for identity extraction)
+            onRawEnvelope?.invoke(envelope)
+            
             val parsedEvent = parser.parse(envelope)
             if (parsedEvent != null) {
                 onTrustEvent(parsedEvent)

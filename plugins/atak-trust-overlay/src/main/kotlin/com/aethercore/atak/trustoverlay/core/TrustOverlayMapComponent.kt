@@ -56,6 +56,43 @@ class TrustOverlayMapComponent : AtakMapComponent {
         }
 
         cotSubscriber?.start(
+            onRawEnvelope = { envelope ->
+                // Auto-register identities from CoT events
+                daemon?.let { d ->
+                    val extractionResult = com.aethercore.atak.trustoverlay.identity.TrustIdentityExtractor.extract(envelope)
+                    when (extractionResult) {
+                        is com.aethercore.atak.trustoverlay.identity.IdentityExtractionResult.IdentityExtracted -> {
+                            context.logger.d("Extracted identity from CoT: node_id=${extractionResult.nodeId}")
+                            val registrationResult = d.registerIdentity(extractionResult.nodeId, extractionResult.publicKey)
+                            when (registrationResult) {
+                                is IdentityRegistrationResult.Success -> {
+                                    context.logger.d("Auto-registered identity: node_id=${extractionResult.nodeId}")
+                                }
+                                is IdentityRegistrationResult.AlreadyRegistered -> {
+                                    // Already registered - this is fine
+                                    context.logger.d("Identity already registered: node_id=${extractionResult.nodeId}")
+                                }
+                                is IdentityRegistrationResult.KeyMismatch -> {
+                                    context.logger.w("Identity key mismatch for node_id=${extractionResult.nodeId} - possible security issue!")
+                                }
+                                is IdentityRegistrationResult.InvalidKey -> {
+                                    context.logger.w("Invalid key in CoT for node_id=${extractionResult.nodeId}: ${registrationResult.reason}")
+                                }
+                                is IdentityRegistrationResult.InternalError -> {
+                                    context.logger.e("Failed to register identity: ${registrationResult.details}")
+                                }
+                            }
+                        }
+                        is com.aethercore.atak.trustoverlay.identity.IdentityExtractionResult.IdentityMissing -> {
+                            // No identity in CoT - this is acceptable (not all events have identity)
+                            context.logger.d("No identity in CoT event: ${extractionResult.reason}")
+                        }
+                        is com.aethercore.atak.trustoverlay.identity.IdentityExtractionResult.IdentityInvalid -> {
+                            context.logger.w("Invalid identity in CoT for node_id=${extractionResult.nodeId}: ${extractionResult.reason}")
+                        }
+                    }
+                }
+            },
             onTrustEvent = { trustEvent ->
                 val markerId = "trust:${trustEvent.uid}"
                 val store = stateStore ?: return@start
@@ -74,10 +111,14 @@ class TrustOverlayMapComponent : AtakMapComponent {
                     }
 
                     // Log current computed trust score
-                    val currentScore = d.getTrustScore(trustEvent.uid)
+                    val currentScore = d.getComputedTrustScore(trustEvent.uid)
                     if (currentScore >= 0.0) {
-                        context.logger.d("Trust score for ${trustEvent.uid}: $currentScore")
+                        context.logger.d("Computed trust score for ${trustEvent.uid}: $currentScore")
                     }
+
+                    // Log identity status
+                    val identityStatus = d.getIdentityStatus(trustEvent.uid)
+                    context.logger.d("Identity status for ${trustEvent.uid}: $identityStatus")
                 }
 
                 markerRenderer?.render(resolvedState)
