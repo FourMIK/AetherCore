@@ -208,6 +208,7 @@ version = "0.1.0"
 dependencies = [
  "aethercore-crypto",
  "aethercore-identity",
+ "aethercore-trust-mesh",
  "blake3",
  "ed25519-dalek",
  "hex",

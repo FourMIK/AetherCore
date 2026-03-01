@@ -24,3 +24,4 @@ hex = "0.4"
 # even though this is a client. The proto types are needed for gRPC client implementation.
 aethercore-identity = { path = "../../crates/identity", features = ["grpc-server"] }
 aethercore-crypto = { path = "../../crates/crypto" }
+aethercore-trust-mesh = { path = "../../crates/trust_mesh" }

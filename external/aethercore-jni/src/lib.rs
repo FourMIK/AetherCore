@@ -1,11 +1,13 @@
 use jni::objects::{JByteArray, JClass, JString};
-use jni::sys::{jboolean, jstring, JNI_FALSE, JNI_TRUE};
+use jni::sys::{jboolean, jdouble, jint, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
-use aethercore_identity::IdentityManager;
+use aethercore_identity::{IdentityManager, PlatformIdentity};
+use aethercore_trust_mesh::TrustScorer;
 
 static DAEMON_STATE: Lazy<Arc<Mutex<DaemonState>>> =
     Lazy::new(|| Arc::new(Mutex::new(DaemonState::new())));
@@ -16,6 +18,7 @@ struct DaemonState {
     storage_path: Option<String>,
     hardware_id: Option<String>,
     identity_manager: Option<Arc<Mutex<IdentityManager>>>,
+    trust_scorer: Option<Arc<TrustScorer>>,
     #[allow(dead_code)]
     grpc_endpoint: String,
 }
@@ -31,6 +34,7 @@ impl DaemonState {
             storage_path: None,
             hardware_id: None,
             identity_manager: None,
+            trust_scorer: None,
             grpc_endpoint: default_endpoint,
         }
     }
@@ -96,10 +100,12 @@ pub extern "system" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDae
     }
 
     let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
+    let trust_scorer = Arc::new(TrustScorer::new());
 
     state.storage_path = Some(storage_path_str.clone());
     state.hardware_id = Some(hardware_id_str);
     state.identity_manager = Some(identity_manager);
+    state.trust_scorer = Some(trust_scorer);
     state.initialized = true;
 
     info!("RalphieNode daemon initialized successfully");
@@ -338,5 +344,255 @@ pub extern "system" fn Java_com_aethercore_atak_trustoverlay_cot_TrustEventParse
             );
             JNI_FALSE
         }
+    }
+}
+
+/// Register a new identity in the identity manager
+#[no_mangle]
+pub extern "system" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeRegisterIdentity(
+    mut env: JNIEnv,
+    _class: JClass,
+    node_id: JString,
+    public_key_bytes: JByteArray,
+) -> jboolean {
+    let node_id_str: String = match env.get_string(&node_id) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to convert node_id from JString: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    let public_key = match env.convert_byte_array(&public_key_bytes) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            error!("Failed to convert public_key from JByteArray: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    if public_key.len() != 32 {
+        error!(
+            "Invalid public key length: expected 32, got {}",
+            public_key.len()
+        );
+        return JNI_FALSE;
+    }
+
+    let state = match DAEMON_STATE.lock() {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to acquire daemon state lock: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    let identity_manager = match &state.identity_manager {
+        Some(mgr) => mgr,
+        None => {
+            error!("Identity manager not initialized");
+            return JNI_FALSE;
+        }
+    };
+
+    let mut mgr = match identity_manager.lock() {
+        Ok(m) => m,
+        Err(e) => {
+            error!("Failed to acquire identity manager lock: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    let identity = PlatformIdentity {
+        id: node_id_str.clone(),
+        public_key,
+        attestation: aethercore_identity::Attestation::None, // ATAK doesn't have hardware attestation
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64,
+        metadata: HashMap::new(),
+    };
+
+    match mgr.register(identity) {
+        Ok(()) => {
+            info!("Identity registered successfully: node_id={}", node_id_str);
+            JNI_TRUE
+        }
+        Err(e) => {
+            error!("Failed to register identity: {}", e);
+            JNI_FALSE
+        }
+    }
+}
+
+/// Get trust score for a node
+#[no_mangle]
+pub extern "system" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeGetTrustScore(
+    mut env: JNIEnv,
+    _class: JClass,
+    node_id: JString,
+) -> jdouble {
+    let node_id_str: String = match env.get_string(&node_id) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to convert node_id from JString: {}", e);
+            return -1.0;
+        }
+    };
+
+    let state = match DAEMON_STATE.lock() {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to acquire daemon state lock: {}", e);
+            return -1.0;
+        }
+    };
+
+    let trust_scorer = match &state.trust_scorer {
+        Some(scorer) => scorer.clone(),
+        None => {
+            error!("Trust scorer not initialized");
+            return -1.0;
+        }
+    };
+
+    // Drop the state lock before reading from scorer
+    drop(state);
+
+    match trust_scorer.get_score(&node_id_str) {
+        Some(score) => {
+            debug!("Trust score retrieved for node_id={}: {}", node_id_str, score.score);
+            score.score
+        }
+        None => {
+            debug!("No trust score found for node_id={}", node_id_str);
+            -1.0
+        }
+    }
+}
+
+/// Update trust score for a node (applies delta to current score)
+#[no_mangle]
+pub extern "system" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeUpdateTrustScore(
+    mut env: JNIEnv,
+    _class: JClass,
+    node_id: JString,
+    delta: jdouble,
+) -> jboolean {
+    let node_id_str: String = match env.get_string(&node_id) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to convert node_id from JString: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    if !(-1.0..=1.0).contains(&delta) {
+        error!("Invalid trust score delta: must be between -1.0 and 1.0, got {}", delta);
+        return JNI_FALSE;
+    }
+
+    let state = match DAEMON_STATE.lock() {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to acquire daemon state lock: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    let trust_scorer = match &state.trust_scorer {
+        Some(scorer) => scorer.clone(),
+        None => {
+            error!("Trust scorer not initialized");
+            return JNI_FALSE;
+        }
+    };
+
+    // Drop the state lock before calling update_score
+    drop(state);
+
+    trust_scorer.update_score(&node_id_str, delta);
+    info!("Trust score updated for node_id={} with delta={}", node_id_str, delta);
+    JNI_TRUE
+}
+
+/// Get count of registered identities
+#[no_mangle]
+pub extern "system" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeGetIdentityCount(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jint {
+    let state = match DAEMON_STATE.lock() {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to acquire daemon state lock: {}", e);
+            return -1;
+        }
+    };
+
+    let identity_manager = match &state.identity_manager {
+        Some(mgr) => mgr,
+        None => {
+            error!("Identity manager not initialized");
+            return -1;
+        }
+    };
+
+    let mgr = match identity_manager.lock() {
+        Ok(m) => m,
+        Err(e) => {
+            error!("Failed to acquire identity manager lock: {}", e);
+            return -1;
+        }
+    };
+
+    // Count by iterating - IdentityManager doesn't expose count directly
+    mgr.list().len() as jint
+}
+
+/// Check if an identity is registered
+#[no_mangle]
+pub extern "system" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeHasIdentity(
+    mut env: JNIEnv,
+    _class: JClass,
+    node_id: JString,
+) -> jboolean {
+    let node_id_str: String = match env.get_string(&node_id) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to convert node_id from JString: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    let state = match DAEMON_STATE.lock() {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to acquire daemon state lock: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    let identity_manager = match &state.identity_manager {
+        Some(mgr) => mgr,
+        None => {
+            error!("Identity manager not initialized");
+            return JNI_FALSE;
+        }
+    };
+
+    let mgr = match identity_manager.lock() {
+        Ok(m) => m,
+        Err(e) => {
+            error!("Failed to acquire identity manager lock: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    if mgr.get(&node_id_str).is_some() {
+        JNI_TRUE
+    } else {
+        JNI_FALSE
     }
 }
