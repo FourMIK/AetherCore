@@ -41,9 +41,13 @@ pub extern "system" fn Java_com_aethercore_atak_trustoverlay_NativeBridge_native
     env: JNIEnv,
     _class: JClass,
 ) -> jstring {
-    env.new_string("aethercore-jni-ok")
-        .expect("JNI string allocation failed")
-        .into_raw()
+    match env.new_string("aethercore-jni-ok") {
+        Ok(s) => s.into_raw(),
+        Err(e) => {
+            error!("Failed to allocate JNI string for healthcheck: {}", e);
+            std::ptr::null_mut()
+        }
+    }
 }
 
 #[no_mangle]
@@ -291,9 +295,19 @@ pub extern "system" fn Java_com_aethercore_atak_trustoverlay_cot_TrustEventParse
         return JNI_FALSE;
     }
 
-    let verifying_key = match VerifyingKey::from_bytes(
-        identity.public_key.as_slice().try_into().unwrap(),
-    ) {
+    // Convert public key slice to fixed-size array
+    let public_key_array: &[u8; 32] = match identity.public_key.as_slice().try_into() {
+        Ok(arr) => arr,
+        Err(_) => {
+            error!(
+                "Failed to convert public key to array: incorrect length {}",
+                identity.public_key.len()
+            );
+            return JNI_FALSE;
+        }
+    };
+
+    let verifying_key = match VerifyingKey::from_bytes(public_key_array) {
         Ok(key) => key,
         Err(e) => {
             error!("Failed to parse public key: {}", e);
