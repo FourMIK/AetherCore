@@ -89,5 +89,38 @@ pub enum IdentityError {
     Config(String),
 }
 
+/// Detailed error types for identity registration operations
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum IdentityRegistrationError {
+    /// Identity with this ID is already registered
+    #[error("Identity already registered: node_id={node_id}")]
+    AlreadyRegistered { node_id: String },
+    
+    /// Attempted to register with a different public key
+    #[error("Key mismatch for node_id={node_id}: expected={expected_key_hash}, provided={provided_key_hash}")]
+    KeyMismatch { 
+        node_id: String,
+        expected_key_hash: String,
+        provided_key_hash: String,
+    },
+    
+    /// Invalid public key format or length
+    #[error("Invalid key for node_id={node_id}: {reason}")]
+    InvalidKey { 
+        node_id: String,
+        reason: String 
+    },
+    
+    /// Internal error during registration
+    #[error("Internal error for node_id={node_id}: {details}")]
+    InternalError { 
+        node_id: String,
+        details: String 
+    },
+}
+
+/// Result type for identity registration operations.
+pub type IdentityRegistrationResult<T> = Result<T, IdentityRegistrationError>;
+
 /// Result type for identity operations.
 pub type IdentityResult<T> = Result<T, IdentityError>;

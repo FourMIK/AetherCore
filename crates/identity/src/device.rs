@@ -84,7 +84,83 @@ impl IdentityManager {
         }
     }
 
-    /// Register a new identity.
+    /// Register a new identity with comprehensive validation.
+    /// 
+    /// This method enforces the following constraints:
+    /// - No duplicate registrations (AlreadyRegistered error)
+    /// - No key mismatches for existing identities (KeyMismatch error)
+    /// - Valid public key format (InvalidKey error)
+    /// 
+    /// # Fail-Visible Design
+    /// All error conditions are explicitly returned with detailed context.
+    #[tracing::instrument(skip(self, identity), fields(identity_id = %identity.id))]
+    pub fn register_with_guards(
+        &mut self, 
+        identity: PlatformIdentity
+    ) -> crate::error::IdentityRegistrationResult<()> {
+        use crate::error::IdentityRegistrationError;
+        
+        debug!("Attempting to register identity with guards");
+
+        // Validate public key format (Ed25519 is 32 bytes)
+        if identity.public_key.len() != 32 {
+            error!(
+                "Identity registration failed: invalid public key length {} (expected 32)",
+                identity.public_key.len()
+            );
+            return Err(IdentityRegistrationError::InvalidKey {
+                node_id: identity.id.clone(),
+                reason: format!("Expected 32 bytes, got {}", identity.public_key.len()),
+            });
+        }
+
+        if identity.public_key.is_empty() || identity.public_key.iter().all(|&b| b == 0) {
+            error!("Identity registration failed: empty or zero public key");
+            return Err(IdentityRegistrationError::InvalidKey {
+                node_id: identity.id.clone(),
+                reason: "Public key is empty or all zeros".to_string(),
+            });
+        }
+
+        // Check for duplicate registration
+        if let Some(existing) = self.identities.get(&identity.id) {
+            // Compare public keys directly
+            if existing.public_key == identity.public_key {
+                warn!("Attempted to register duplicate identity with same key");
+                return Err(IdentityRegistrationError::AlreadyRegistered {
+                    node_id: identity.id.clone(),
+                });
+            } else {
+                // Calculate hex representations for error message
+                let existing_hex = existing.public_key.iter()
+                    .take(8)
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<Vec<_>>()
+                    .join("");
+                let provided_hex = identity.public_key.iter()
+                    .take(8)
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<Vec<_>>()
+                    .join("");
+                
+                error!("Attempted to register identity with different public key");
+                return Err(IdentityRegistrationError::KeyMismatch {
+                    node_id: identity.id.clone(),
+                    expected_key_hash: format!("{}...", existing_hex),
+                    provided_key_hash: format!("{}...", provided_hex),
+                });
+            }
+        }
+
+        // Insert the new identity
+        self.identities.insert(identity.id.clone(), identity);
+        info!("Identity registered successfully with guards");
+        Ok(())
+    }
+
+    /// Register a new identity (legacy method for backward compatibility).
+    /// 
+    /// Consider using `register_with_guards` for better error handling.
     #[tracing::instrument(skip(self, identity), fields(identity_id = %identity.id))]
     pub fn register(&mut self, identity: PlatformIdentity) -> crate::Result<()> {
         debug!("Registering new identity");

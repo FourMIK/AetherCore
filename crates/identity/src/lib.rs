@@ -53,7 +53,7 @@ pub use enrollment::{
 pub use enrollment_state::{
     EnrollmentError, EnrollmentState, EnrollmentStateMachine, StateTransition,
 };
-pub use error::{IdentityError, IdentityResult};
+pub use error::{IdentityError, IdentityRegistrationError, IdentityRegistrationResult, IdentityResult};
 pub use federation::{FederatedIdentity, FederationRegistry, TrustLevel};
 pub use genesis_bundle::{
     install_genesis_bundle, BootstrapNode, GenesisBundle, GenesisBundleGenerator,
