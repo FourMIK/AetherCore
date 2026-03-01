@@ -36,11 +36,13 @@ class RalphieNodeDaemon internal constructor(
     private external fun nativeStartDaemon(): Boolean
     private external fun nativeStopDaemon(): Boolean
     private external fun nativeTriggerAethericSweep(): Boolean
-    private external fun nativeRegisterIdentity(nodeId: String, publicKeyBytes: ByteArray): Boolean
+    private external fun nativeRegisterIdentity(nodeId: String, publicKeyBytes: ByteArray): Int
     private external fun nativeGetTrustScore(nodeId: String): Double
     private external fun nativeUpdateTrustScore(nodeId: String, delta: Double): Boolean
     private external fun nativeGetIdentityCount(): Int
     private external fun nativeHasIdentity(nodeId: String): Boolean
+    private external fun nativeGetIdentityStatus(nodeId: String): Int
+    private external fun nativeGetComputedTrustScore(nodeId: String): Double
 
     private val nativeBridge = object : NativeBridge {
         override fun initialize(storagePath: String, hardwareId: String): Boolean =
@@ -95,27 +97,119 @@ class RalphieNodeDaemon internal constructor(
     /**
      * Register a node identity with the identity manager.
      * 
+     * Returns detailed registration result:
+     * - IdentityRegistrationResult.Success: Registration successful
+     * - IdentityRegistrationResult.AlreadyRegistered: Identity already exists with same key
+     * - IdentityRegistrationResult.KeyMismatch: Identity exists with different key  
+     * - IdentityRegistrationResult.InvalidKey: Invalid key format
+     * - IdentityRegistrationResult.InternalError: Internal daemon error
+     * 
      * @param nodeId The unique identifier for the node
      * @param publicKey The Ed25519 public key (32 bytes)
-     * @return true if registration succeeded, false otherwise
+     * @return Detailed registration result
      */
-    fun registerIdentity(nodeId: String, publicKey: ByteArray): Boolean {
+    fun registerIdentity(nodeId: String, publicKey: ByteArray): IdentityRegistrationResult {
         if (!jniLoaded) {
             Log.w(TAG, "Identity registration skipped: JNI library is unavailable.")
-            return false
+            return IdentityRegistrationResult.InternalError("JNI library unavailable")
         }
 
         if (publicKey.size != 32) {
             Log.e(TAG, "Invalid public key length: expected 32 bytes, got ${publicKey.size}")
-            return false
+            return IdentityRegistrationResult.InvalidKey("Expected 32 bytes, got ${publicKey.size}")
         }
 
         return try {
-            nativeRegisterIdentity(nodeId, publicKey)
+            val result = nativeRegisterIdentity(nodeId, publicKey)
+            when (result) {
+                0 -> {
+                    Log.i(TAG, "Identity registered successfully: node_id=$nodeId")
+                    IdentityRegistrationResult.Success
+                }
+                1 -> {
+                    Log.w(TAG, "Identity already registered: node_id=$nodeId")
+                    IdentityRegistrationResult.AlreadyRegistered
+                }
+                2 -> {
+                    Log.e(TAG, "Invalid key for identity: node_id=$nodeId")
+                    IdentityRegistrationResult.InvalidKey("Invalid key format")
+                }
+                3 -> {
+                    Log.e(TAG, "Key mismatch for identity: node_id=$nodeId")
+                    IdentityRegistrationResult.KeyMismatch
+                }
+                else -> {
+                    Log.e(TAG, "Internal error registering identity: node_id=$nodeId, code=$result")
+                    IdentityRegistrationResult.InternalError("Error code: $result")
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to register identity for node_id=$nodeId", e)
-            false
+            IdentityRegistrationResult.InternalError("Exception: ${e.message}")
         }
+    }
+
+    /**
+     * Get identity status for a node.
+     * 
+     * @param nodeId The unique identifier for the node
+     * @return Identity status enum
+     */
+    fun getIdentityStatus(nodeId: String): IdentityStatus {
+        if (!jniLoaded) {
+            Log.w(TAG, "Identity status query skipped: JNI library is unavailable.")
+            return IdentityStatus.ERROR
+        }
+
+        return try {
+            val status = nativeGetIdentityStatus(nodeId)
+            when (status) {
+                0 -> IdentityStatus.REGISTERED
+                1 -> IdentityStatus.UNREGISTERED
+                2 -> IdentityStatus.INVALID
+                else -> {
+                    Log.e(TAG, "Unknown identity status code: $status for node_id=$nodeId")
+                    IdentityStatus.ERROR
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get identity status for node_id=$nodeId", e)
+            IdentityStatus.ERROR
+        }
+    }
+
+    /**
+     * Get the computed trust score for a node.
+     * This is the RalphieNode-computed score based on behavior and signature verification.
+     * 
+     * @param nodeId The unique identifier for the node
+     * @return The computed trust score (0.0 to 1.0), or -1.0 if not found
+     */
+    fun getComputedTrustScore(nodeId: String): Double {
+        if (!jniLoaded) {
+            Log.w(TAG, "Computed trust score query skipped: JNI library is unavailable.")
+            return -1.0
+        }
+
+        return try {
+            nativeGetComputedTrustScore(nodeId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get computed trust score for node_id=$nodeId", e)
+            -1.0
+        }
+    }
+
+    /**
+     * Get the reported trust score for a node.
+     * This is the score reported in CoT events, distinct from computed score.
+     * 
+     * @param nodeId The unique identifier for the node
+     * @return The reported trust score (0.0 to 1.0), or null if not available
+     */
+    fun getReportedTrustScore(nodeId: String): Double? {
+        // For now, reported scores are tracked in TrustStateStore
+        // This method provides an API placeholder for future integration
+        return null
     }
 
     /**
@@ -252,4 +346,38 @@ sealed interface RalphieDaemonStartupIssue {
     data class JniUnavailable(val cause: UnsatisfiedLinkError) : RalphieDaemonStartupIssue {
         override val reason: String = "JNI library unavailable"
     }
+}
+
+/**
+ * Identity status returned from daemon.
+ */
+enum class IdentityStatus {
+    /** Identity is registered and valid */
+    REGISTERED,
+    /** Identity is not registered */
+    UNREGISTERED,
+    /** Identity is registered but invalid (bad key) */
+    INVALID,
+    /** Error querying identity status */
+    ERROR
+}
+
+/**
+ * Result of identity registration operation.
+ */
+sealed class IdentityRegistrationResult {
+    /** Registration successful */
+    data object Success : IdentityRegistrationResult()
+    
+    /** Identity already registered with same key */
+    data object AlreadyRegistered : IdentityRegistrationResult()
+    
+    /** Identity already registered with different key */
+    data object KeyMismatch : IdentityRegistrationResult()
+    
+    /** Invalid key format or length */
+    data class InvalidKey(val reason: String) : IdentityRegistrationResult()
+    
+    /** Internal daemon error */
+    data class InternalError(val details: String) : IdentityRegistrationResult()
 }
