@@ -93,6 +93,7 @@ class TrustOverlayLifecycle(
             override val widgetHost = AtakWidgetHost(resolvedMapView, AndroidLogger)
             override val logger: Logger = AndroidLogger
             override val settings: PluginSettings = SharedPreferencesPluginSettings(resolvedContext)
+            override val daemon = ralphieDaemon
         }
 
         mapComponent = TrustOverlayMapComponent().apply {

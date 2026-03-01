@@ -16,6 +16,7 @@ interface PluginContext {
     val widgetHost: WidgetHost
     val logger: Logger
     val settings: PluginSettings
+    val daemon: com.aethercore.atak.trustoverlay.core.RalphieNodeDaemon?
 }
 
 interface PluginSettings {
