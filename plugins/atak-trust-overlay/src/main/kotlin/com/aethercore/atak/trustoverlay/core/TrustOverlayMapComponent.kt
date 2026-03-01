@@ -21,9 +21,13 @@ class TrustOverlayMapComponent : AtakMapComponent {
     private var mapArtifacts: UiArtifactCache? = null
     private var widgetArtifacts: UiArtifactCache? = null
     private var configuredTtlSeconds: Long = TrustStateStore.DEFAULT_TTL_SECONDS
+    private var daemon: RalphieNodeDaemon? = null
 
     override fun onCreate(context: PluginContext) {
         context.logger.d("TrustOverlayMapComponent.onCreate")
+
+        // Store reference to daemon for identity and trust score management
+        daemon = context.daemon
 
         configuredTtlSeconds = context.settings.getLong(
             SETTINGS_TTL_SECONDS,
@@ -57,6 +61,24 @@ class TrustOverlayMapComponent : AtakMapComponent {
                 val store = stateStore ?: return@start
                 store.record(trustEvent)
                 val resolvedState = store.resolve(trustEvent.uid)
+
+                // Integrate with RalphieNode daemon for identity and trust management
+                daemon?.let { d ->
+                    // Update trust score based on signature verification and trust level
+                    val delta = calculateTrustDelta(trustEvent)
+                    if (delta != 0.0) {
+                        val updated = d.updateTrustScore(trustEvent.uid, delta)
+                        if (updated) {
+                            context.logger.d("Updated trust score for ${trustEvent.uid} by $delta (signature_verified=${trustEvent.signatureVerified})")
+                        }
+                    }
+
+                    // Log current computed trust score
+                    val currentScore = d.getTrustScore(trustEvent.uid)
+                    if (currentScore >= 0.0) {
+                        context.logger.d("Trust score for ${trustEvent.uid}: $currentScore")
+                    }
+                }
 
                 markerRenderer?.render(resolvedState)
                 detailPanel?.onTrustEvent(markerId, resolvedState)
@@ -101,6 +123,35 @@ class TrustOverlayMapComponent : AtakMapComponent {
         stateStore = null
         mapArtifacts = null
         widgetArtifacts = null
+        daemon = null
+    }
+
+    /**
+     * Calculate trust score delta based on event characteristics.
+     * Positive delta increases trust, negative delta decreases trust.
+     */
+    private fun calculateTrustDelta(event: TrustEvent): Double {
+        // Signature verification is critical for trust
+        if (event.signatureVerified) {
+            // Verified signature: boost trust
+            return when (event.level) {
+                TrustLevel.HIGH -> 0.05      // Small boost for already-high nodes
+                TrustLevel.MEDIUM -> 0.1     // Medium boost for medium nodes
+                TrustLevel.LOW -> 0.15       // Larger boost for low nodes recovering
+                TrustLevel.UNKNOWN -> 0.0    // No change for unknown
+            }
+        } else if (event.signatureHex != null) {
+            // Signature present but failed verification: penalize heavily
+            return when (event.level) {
+                TrustLevel.HIGH -> -0.2      // Heavy penalty even for high nodes
+                TrustLevel.MEDIUM -> -0.3    // Severe penalty
+                TrustLevel.LOW -> -0.4       // Critical penalty
+                TrustLevel.UNKNOWN -> -0.1   // Moderate penalty
+            }
+        } else {
+            // No signature: small penalty (unsigned data is suspicious)
+            return -0.05
+        }
     }
 
     companion object {
