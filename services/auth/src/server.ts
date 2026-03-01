@@ -36,13 +36,13 @@ const server = createServer((req, res) => {
 
   if (req.url === '/auth/validate' && req.method === 'POST') {
     const token = extractBearerToken(req);
-    const authenticated = authService.authenticate(token);
-    if (!authenticated) {
-      sendJson(res, 401, { authenticated: false });
+    const authResult = authService.authenticate(token);
+    if (!authResult.ok) {
+      sendJson(res, 401, { authenticated: false, code: authResult.code });
       return;
     }
 
-    sendJson(res, 200, { authenticated: true });
+    sendJson(res, 200, { authenticated: true, claims: authResult.claims });
     return;
   }
 

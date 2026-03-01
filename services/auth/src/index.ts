@@ -40,6 +40,32 @@ type JwtPayload = {
   nbf?: number;
 };
 
+export type AuthErrorCode =
+  | 'MISSING_TOKEN'
+  | 'MALFORMED_TOKEN'
+  | 'MALFORMED_ENCODING'
+  | 'MALFORMED_JSON'
+  | 'UNSUPPORTED_ALG'
+  | 'MISSING_SIGNING_SECRET'
+  | 'BAD_SIGNATURE'
+  | 'MISSING_SUBJECT'
+  | 'EXPIRED_TOKEN'
+  | 'INVALID_ISSUED_AT'
+  | 'TOKEN_NOT_ACTIVE'
+  | 'ISSUER_MISMATCH'
+  | 'AUDIENCE_MISMATCH';
+
+export type AuthClaims = {
+  sub: string;
+  iss: string;
+  aud: string | string[];
+  exp: number;
+  iat: number;
+  nbf?: number;
+};
+
+export type AuthResult = { ok: true; claims: AuthClaims } | { ok: false; code: AuthErrorCode; context?: string };
+
 function toBase64Url(input: Buffer): string {
   return input
     .toString('base64')
@@ -72,18 +98,21 @@ export class AuthService {
     logger.info({ aetherBunkerEndpoint: AETHER_BUNKER_ENDPOINT }, 'Auth service initialized');
   }
 
-  authenticate(token: string): boolean {
+  authenticate(token: string): AuthResult {
     logger.debug({ event: 'auth.authenticate' }, 'Authenticating token');
 
+    const fail = (code: AuthErrorCode, reason: string, context?: string): AuthResult => {
+      logger.warn({ event: 'auth.validation_failed', reason, code, context }, 'Token authentication failed');
+      return { ok: false, code, context };
+    };
+
     if (!token || token.trim().length === 0) {
-      logger.warn({ event: 'auth.validation_failed', reason: 'missing_token' }, 'Token authentication failed');
-      return false;
+      return fail('MISSING_TOKEN', 'MISSING_TOKEN');
     }
 
     const segments = token.split('.');
     if (segments.length !== 3 || segments.some((segment) => segment.length === 0)) {
-      logger.warn({ event: 'auth.validation_failed', reason: 'malformed_token' }, 'Token authentication failed');
-      return false;
+      return fail('MALFORMED_TOKEN', 'MALFORMED_TOKEN');
     }
 
     const [headerSegment, payloadSegment, signatureSegment] = segments;
@@ -91,27 +120,27 @@ export class AuthService {
     const payloadJson = decodeBase64Url(payloadSegment);
 
     if (!headerJson || !payloadJson) {
-      logger.warn({ event: 'auth.validation_failed', reason: 'malformed_encoding' }, 'Token authentication failed');
-      return false;
+      return fail('MALFORMED_ENCODING', 'MALFORMED_ENCODING');
     }
 
     const header = safeParseJson<JwtHeader>(headerJson);
     const payload = safeParseJson<JwtPayload>(payloadJson);
 
     if (!header || !payload) {
-      logger.warn({ event: 'auth.validation_failed', reason: 'malformed_json' }, 'Token authentication failed');
-      return false;
+      return fail('MALFORMED_JSON', 'MALFORMED_JSON');
     }
 
     if (header.alg !== 'HS256') {
-      logger.warn({ event: 'auth.validation_failed', reason: 'unsupported_algorithm' }, 'Token authentication failed');
-      return false;
+      return fail('UNSUPPORTED_ALG', 'UNSUPPORTED_ALG', `alg=${header.alg ?? 'undefined'}`);
     }
 
     const secret = process.env.AUTH_JWT_SECRET;
     if (!secret) {
-      logger.error({ event: 'auth.validation_failed', reason: 'missing_signing_secret' }, 'Token authentication failed');
-      return false;
+      logger.error(
+        { event: 'auth.validation_failed', reason: 'MISSING_SIGNING_SECRET', code: 'MISSING_SIGNING_SECRET' },
+        'Token authentication failed',
+      );
+      return { ok: false, code: 'MISSING_SIGNING_SECRET' };
     }
 
     const expectedSignature = toBase64Url(
@@ -123,8 +152,7 @@ export class AuthService {
       providedSignature.length !== computedSignature.length ||
       !crypto.timingSafeEqual(providedSignature, computedSignature)
     ) {
-      logger.warn({ event: 'auth.validation_failed', reason: 'bad_signature' }, 'Token authentication failed');
-      return false;
+      return fail('BAD_SIGNATURE', 'BAD_SIGNATURE');
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -132,38 +160,46 @@ export class AuthService {
     const expectedAudience = process.env.AUTH_JWT_AUDIENCE || DEFAULT_JWT_AUDIENCE;
 
     if (typeof payload.sub !== 'string' || payload.sub.trim().length === 0) {
-      logger.warn({ event: 'auth.validation_failed', reason: 'missing_subject' }, 'Token authentication failed');
-      return false;
+      return fail('MISSING_SUBJECT', 'MISSING_SUBJECT');
     }
 
     if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp) || now >= payload.exp) {
-      logger.warn({ event: 'auth.validation_failed', reason: 'expired_or_missing_exp' }, 'Token authentication failed');
-      return false;
+      return fail('EXPIRED_TOKEN', 'EXPIRED_TOKEN');
     }
 
     if (typeof payload.iat !== 'number' || !Number.isFinite(payload.iat) || payload.iat > now) {
-      logger.warn({ event: 'auth.validation_failed', reason: 'invalid_or_missing_iat' }, 'Token authentication failed');
-      return false;
+      return fail('INVALID_ISSUED_AT', 'INVALID_ISSUED_AT');
     }
 
     if (typeof payload.nbf === 'number' && Number.isFinite(payload.nbf) && payload.nbf > now) {
-      logger.warn({ event: 'auth.validation_failed', reason: 'token_not_active' }, 'Token authentication failed');
-      return false;
+      return fail('TOKEN_NOT_ACTIVE', 'TOKEN_NOT_ACTIVE');
     }
 
     if (payload.iss !== expectedIssuer) {
-      logger.warn({ event: 'auth.validation_failed', reason: 'issuer_mismatch' }, 'Token authentication failed');
-      return false;
+      return fail('ISSUER_MISMATCH', 'ISSUER_MISMATCH');
+    }
+
+    if (typeof payload.aud !== 'string' && !Array.isArray(payload.aud)) {
+      return fail('AUDIENCE_MISMATCH', 'AUDIENCE_MISMATCH');
     }
 
     const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
     if (!audiences.some((audience) => audience === expectedAudience)) {
-      logger.warn({ event: 'auth.validation_failed', reason: 'audience_mismatch' }, 'Token authentication failed');
-      return false;
+      return fail('AUDIENCE_MISMATCH', 'AUDIENCE_MISMATCH');
     }
 
     logger.info({ event: 'auth.authenticated', subject: payload.sub }, 'Token authentication successful');
-    return true;
+    return {
+      ok: true,
+      claims: {
+        sub: payload.sub,
+        iss: payload.iss,
+        aud: payload.aud,
+        exp: payload.exp,
+        iat: payload.iat,
+        ...(typeof payload.nbf === 'number' ? { nbf: payload.nbf } : {}),
+      },
+    };
   }
 }
 
