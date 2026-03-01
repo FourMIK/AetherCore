@@ -605,6 +605,7 @@ pub fn run() {
             commands::get_deployment_status,
             commands::get_node_logs,
             commands::sign_heartbeat_payload,
+            commands::get_hardware_identity,
             // Configuration management commands
             commands::get_config,
             commands::update_config,

@@ -233,20 +233,96 @@ pub extern "system" fn Java_com_aethercore_atak_trustoverlay_cot_TrustEventParse
         signature_hex_str.len()
     );
 
-    // TODO: Implement signature verification via one of these approaches:
-    //
-    // Option 1: Local verification with cached public keys
-    // 1. Lookup public key for node_id from identity_manager
-    // 2. Decode signature_hex to bytes
-    // 3. Verify signature using ed25519-dalek
-    //
-    // Option 2: Remote verification via gRPC (recommended for consistency)
-    // 1. Create gRPC client to Identity Registry service
-    // 2. Call VerifySignature RPC with node_id, payload, signature_hex
-    // 3. Return verification result
-    //
-    // For now, returning false until verification is implemented.
-    // This ensures fail-visible behavior per agent instructions.
+    // Signature verification implementation
+    // 1. Lookup public key from identity manager
+    let identity_manager = match &state.identity_manager {
+        Some(mgr) => mgr,
+        None => {
+            error!("Identity manager not initialized");
+            return JNI_FALSE;
+        }
+    };
 
-    JNI_FALSE
+    let mgr = match identity_manager.lock() {
+        Ok(m) => m,
+        Err(e) => {
+            error!("Failed to acquire identity manager lock: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    let identity = match mgr.get(&node_id_str) {
+        Some(id) => id,
+        None => {
+            warn!(
+                "Signature verification failed: unknown node_id={}",
+                node_id_str
+            );
+            return JNI_FALSE;
+        }
+    };
+
+    // 2. Decode signature from hex
+    let signature_bytes = match hex::decode(&signature_hex_str) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            error!("Failed to decode signature hex: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    if signature_bytes.len() != 64 {
+        error!(
+            "Invalid signature length: expected 64, got {}",
+            signature_bytes.len()
+        );
+        return JNI_FALSE;
+    }
+
+    // 3. Parse public key as Ed25519 verifying key
+    // Assuming public_key is stored as raw 32-byte Ed25519 public key
+    use ed25519_dalek::{Signature, VerifyingKey, Verifier};
+
+    if identity.public_key.len() != 32 {
+        error!(
+            "Invalid public key length: expected 32, got {}",
+            identity.public_key.len()
+        );
+        return JNI_FALSE;
+    }
+
+    let verifying_key = match VerifyingKey::from_bytes(
+        identity.public_key.as_slice().try_into().unwrap(),
+    ) {
+        Ok(key) => key,
+        Err(e) => {
+            error!("Failed to parse public key: {}", e);
+            return JNI_FALSE;
+        }
+    };
+
+    // 4. Parse signature
+    let signature_array: [u8; 64] = match signature_bytes.as_slice().try_into() {
+        Ok(arr) => arr,
+        Err(_) => {
+            error!("Failed to convert signature to array");
+            return JNI_FALSE;
+        }
+    };
+    let signature = Signature::from_bytes(&signature_array);
+
+    // 5. Verify signature
+    match verifying_key.verify(&payload_bytes, &signature) {
+        Ok(()) => {
+            info!("Signature verification successful for node_id={}", node_id_str);
+            JNI_TRUE
+        }
+        Err(e) => {
+            warn!(
+                "Signature verification failed for node_id={}: {}",
+                node_id_str, e
+            );
+            JNI_FALSE
+        }
+    }
 }

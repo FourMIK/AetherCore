@@ -3,6 +3,7 @@
 #![warn(missing_docs)]
 
 pub mod transport;
+pub mod cot_adapter;
 
 use aethercore_trust_mesh::{
     HealthThresholds, NodeHealth, NodeHealthStatus, TrustLevel, TrustScore,
