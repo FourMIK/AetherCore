@@ -9,12 +9,13 @@
 // - Public key (DER format) - Secure Enclave P-256 public key
 // - Key tag - Deterministic keychain identifier for key persistence
 // - Device fingerprint (SHA-256 of public key)
-// - Attestation payload (optional) - Reserved for future DeviceCheck integration
+// - Attestation payload - Base64-encoded CBOR attestation object from App Attest
+// - App Attest key ID - Persistent identifier for attestation key
 // - Timestamp (ISO 8601)
 //
 // Attestation Policy:
-// Current implementation uses no-attestation mode with explicit empty attestation.
-// Future enhancement: iOS DeviceCheck API for hardware-backed attestation tokens.
+// Mandatory App Attest integration (DCAppAttestService) for hardware-backed attestation.
+// Attestation payload is non-nil and contains CBOR attestation object.
 // See: https://developer.apple.com/documentation/devicecheck
 
 import Foundation
@@ -32,9 +33,12 @@ struct GenesisBundle: Codable {
     /// Device fingerprint (SHA-256 hex of public key)
     let deviceFingerprint: String
     
-    /// Attestation payload (optional, nil for no-attestation mode)
-    /// Reserved for future DeviceCheck integration
-    let attestationPayload: String?
+    /// Attestation payload - Base64-encoded CBOR attestation object (non-nil)
+    /// Generated via DCAppAttestService with deviceFingerprint as challenge
+    let attestationPayload: String
+    
+    /// App Attest key identifier for attestation key persistence
+    let appAttestKeyID: String
     
     /// Bundle creation timestamp (ISO 8601)
     let timestamp: String
@@ -44,10 +48,12 @@ struct GenesisBundle: Codable {
     
     // MARK: - Initialization
     
-    /// Create a genesis bundle from device identity
-    /// - Parameter identity: Device identity with Secure Enclave key
+    /// Create a genesis bundle from device identity with attestation
+    /// - Parameters:
+    ///   - identity: Device identity with Secure Enclave key
+    ///   - attestationResult: App Attest attestation result
     /// - Throws: Error if public key export fails
-    init(identity: DeviceIdentity) throws {
+    init(identity: DeviceIdentity, attestationResult: AttestationResult) throws {
         // Export public key
         let publicKeyData = try identity.getPublicKeyDER()
         self.publicKeyDER = publicKeyData.base64EncodedString()
@@ -58,9 +64,11 @@ struct GenesisBundle: Codable {
         // Copy device fingerprint
         self.deviceFingerprint = identity.deviceFingerprint
         
-        // No-attestation mode: attestation payload is nil
-        // Gateway must accept nil attestation for initial enrollment
-        self.attestationPayload = nil
+        // Attestation payload: Base64-encoded CBOR attestation object (non-nil)
+        self.attestationPayload = attestationResult.attestationObject
+        
+        // App Attest key ID for key persistence
+        self.appAttestKeyID = attestationResult.keyID
         
         // ISO 8601 timestamp
         let formatter = ISO8601DateFormatter()
@@ -68,6 +76,8 @@ struct GenesisBundle: Codable {
         
         // Version
         self.version = "0.1.0"
+        
+        print("✅ GenesisBundle created with attestation - keyID: \(appAttestKeyID)")
     }
     
     // MARK: - Serialization
