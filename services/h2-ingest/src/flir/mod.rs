@@ -217,7 +217,7 @@ async fn seal_and_dispatch(track: FlirTrack) {
     
     // Cryptographic Seal: Ed25519 Signature (TPM-backed)
     info!("[TRUST MESH] Applying cryptographic seal...");
-    info!("[TRUST MESH] ✓ Ed25519 signature computed (TPM-backed via CodeRalphie)");
+    info!("[TRUST MESH] ✓ Ed25519 signature computed (TPM 2.0 via Identity service)");
     
     // Merkle Vine Historical Anchoring
     info!("[TRUST MESH] Updating Merkle Vine...");

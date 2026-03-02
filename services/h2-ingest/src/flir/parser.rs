@@ -119,9 +119,9 @@ fn parse_coordinate(coord_str: &str, direction: &str) -> Option<f64> {
     // Parse the coordinate string as a float
     let coord_val = coord_str.parse::<f64>().ok()?;
     
-    // Validate coordinate format
-    if coord_str.len() < 7 || !coord_str.contains('.') {
-        warn!("Invalid coordinate format: {}", coord_str);
+    // Validate coordinate format - must contain decimal point
+    if !coord_str.contains('.') {
+        warn!("Invalid coordinate format (no decimal): {}", coord_str);
         return None;
     }
     

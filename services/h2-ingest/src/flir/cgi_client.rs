@@ -48,6 +48,20 @@ impl std::error::Error for FlirCgiError {}
 /// Result type alias for FLIR CGI operations
 pub type Result<T> = std::result::Result<T, FlirCgiError>;
 
+/// Helper function to determine HTTP scheme based on TLS enforcement
+///
+/// Returns "https" if FLIR_ENFORCE_TLS environment variable is set to "true" or "1",
+/// otherwise returns "http" with a fail-visible warning.
+fn get_flir_scheme() -> &'static str {
+    if matches!(std::env::var("FLIR_ENFORCE_TLS").as_deref(), Ok("true") | Ok("1")) {
+        info!("[FLIR CGI] TLS enforcement enabled - using HTTPS");
+        "https"
+    } else {
+        warn!("[FLIR CGI] TLS not enforced - using HTTP (insecure). Set FLIR_ENFORCE_TLS=true for production.");
+        "http"
+    }
+}
+
 /// Authenticate with a FLIR Nexus camera and obtain a session ID
 ///
 /// This function initiates a session with the FLIR device using HTTP Basic Authentication.
@@ -74,16 +88,8 @@ pub type Result<T> = std::result::Result<T, FlirCgiError>;
 pub async fn authenticate(flir_ip: &str, user: &str, pass: &str) -> Result<String> {
     info!("[FLIR CGI] Initiating authentication to {}", flir_ip);
     
-    // Construct authentication URL
-    // NOTE: Using HTTP for compatibility with legacy FLIR devices in disconnected/contested environments
-    // PRODUCTION REQUIREMENT: Set environment variable FLIR_ENFORCE_TLS=true to mandate HTTPS
-    let scheme = if std::env::var("FLIR_ENFORCE_TLS").is_ok() {
-        warn!("[FLIR CGI] TLS enforcement enabled - using HTTPS");
-        "https"
-    } else {
-        warn!("[FLIR CGI] TLS not enforced - using HTTP (insecure). Set FLIR_ENFORCE_TLS=true for production.");
-        "http"
-    };
+    // Construct authentication URL with TLS awareness
+    let scheme = get_flir_scheme();
     
     let auth_url = format!(
         "{}://{}/Nexus.cgi?action=SERVERAuthInitialize&username={}&password={}",
@@ -170,11 +176,7 @@ pub async fn bind_udp_telemetry(
     );
     
     // Construct UDP registration URL with TLS awareness
-    let scheme = if std::env::var("FLIR_ENFORCE_TLS").is_ok() {
-        "https"
-    } else {
-        "http"
-    };
+    let scheme = get_flir_scheme();
     
     let register_url = format!(
         "{}://{}/Nexus.cgi?session={}&action=SERVERUDPClientRegister&ip={}&port={}&type=ALL",

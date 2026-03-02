@@ -57,6 +57,15 @@ pub async fn start_listening(
     port: u16,
     track_tx: mpsc::Sender<FlirTrack>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Validate bind address format
+    if bind_address.parse::<std::net::IpAddr>().is_err() {
+        error!("[FLIR UDP] Invalid bind address format: {}", bind_address);
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Invalid IP address format: {}", bind_address),
+        )));
+    }
+    
     let bind_addr = format!("{}:{}", bind_address, port);
     
     info!("[FLIR UDP] Binding listener to {}", bind_addr);

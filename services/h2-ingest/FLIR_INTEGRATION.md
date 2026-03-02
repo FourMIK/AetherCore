@@ -233,7 +233,7 @@ Integration tests require:
 
 ## References
 
-- [FLIR Nexus CGI API Documentation](https://flir.com/nexus-cgi-api)
+- FLIR Nexus CGI API Documentation (contact FLIR Systems for access - requires device purchase/support contract)
 - [NMEA-0183 Standard](https://www.nmea.org/content/STANDARDS/NMEA_0183_Standard)
 - [AetherCore Architecture](../../ARCHITECTURE.md)
 - [Trust Mesh Protocol](../../PROTOCOL_OVERVIEW.md)
