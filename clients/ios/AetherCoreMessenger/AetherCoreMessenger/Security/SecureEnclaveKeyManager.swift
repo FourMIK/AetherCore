@@ -271,21 +271,4 @@ class SecureEnclaveKeyManager {
         
         print("✅ Secure Enclave key deleted successfully")
     }
-    
-    // MARK: - Key Rotation (Stub)
-    
-    /// Rotate the Secure Enclave key (placeholder for future implementation)
-    /// - Throws: SecureEnclaveError if rotation fails
-    /// - Note: Full key rotation requires coordination with AetherCore gateway
-    static func rotateKey() throws {
-        // TODO: Implement key rotation with gateway coordination
-        // 1. Generate new key pair
-        // 2. Export new public key and create rotation certificate
-        // 3. Submit rotation request to gateway
-        // 4. Wait for gateway acknowledgment
-        // 5. Delete old key after confirmation
-        
-        print("⚠️ Key rotation not yet implemented - requires gateway coordination")
-        throw SecureEnclaveError.invalidData
-    }
 }

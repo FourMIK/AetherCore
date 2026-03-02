@@ -340,9 +340,8 @@ CI cannot fully validate Secure Enclave operations. Require manual device testin
 **Solution**:
 1. Verify device is unlocked
 2. Check entitlements are present: `codesign -d --entitlements :- YourApp.app`
-3. Try alternative accessibility level (code already handles this)
-4. Enable ephemeral fallback: `AETHERCORE_SEP_ALLOW_EPHEMERAL=true`
-5. Check device supports Secure Enclave (iPhone 5s or later)
+3. Verify device supports Secure Enclave (iPhone 5s or later)
+4. Check device passcode is set (required for Secure Enclave)
 
 ### "Compilation succeeds but runtime crashes"
 

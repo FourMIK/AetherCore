@@ -53,6 +53,7 @@ jobs:
           
           # Build for generic iOS device without code signing
           # Per problem statement: CODE_SIGNING_ALLOWED=NO for CI
+          # Treating warnings as errors to enforce code quality
           xcodebuild \
             -project AetherCoreMessenger.xcodeproj \
             -scheme AetherCoreMessenger \
@@ -61,6 +62,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
+            GCC_TREAT_WARNINGS_AS_ERRORS=YES \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
             clean build \
             | tee build.log
       
