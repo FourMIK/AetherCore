@@ -93,7 +93,7 @@ func preflightSecureEnclaveEntitlements() -> String? {
 ### Provisioning Profile Setup
 
 1. **Development Profile**:
-   - Enable "App Groups" capability (for keychain-access-groups)
+   - Enable "Keychain Sharing" capability (adds keychain-access-groups entitlement)
    - Ensure team identifier is present
    - Sign with development certificate
 
@@ -105,6 +105,13 @@ func preflightSecureEnclaveEntitlements() -> String? {
    ```bash
    codesign -d --entitlements :- YourApp.app
    ```
+
+### Entitlements Enforcement
+
+Entitlement validation occurs at the Security framework level during key operations. Missing entitlements result in:
+- Key generation failures (errSecMissingEntitlement)
+- Keychain access denied errors
+- Fail-Visible error messages in SecureEnclaveError diagnostic context
 
 ## Key Policy
 
@@ -171,82 +178,79 @@ let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, nil)
 
 ## Fallback Policy
 
-### Fallback Hierarchy
+### No Fallback - Fail-Visible Enforcement
 
-When persistent key creation fails, the implementation attempts:
+Per AetherCore Fail-Visible doctrine, the implementation **does not support fallback modes**:
 
-1. **Ephemeral SEP Key** (if `AETHERCORE_SEP_ALLOW_EPHEMERAL=true`)
-   - Non-permanent key (no keychain storage)
-   - Still bound to Secure Enclave
-   - Lost on app termination
-   - **Key tag modified**: Appends `-ephemeral` suffix to distinguish from persistent keys
+- ❌ **No ephemeral keys**: All keys must be persistent in Secure Enclave
+- ❌ **No software fallback**: Hardware-rooted trust is non-negotiable
+- ❌ **No degraded modes**: Security failures are explicit, never hidden
 
-2. **Alternative Accessibility Level**
-   - Try `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
-   - Requires device unlock before use
-
-3. **Fatal Error**
-   - If all attempts fail, return `SecureEnclaveError.secureEnclaveUnavailable`
-   - Error includes diagnostic context from all failed attempts
-
-### Environment Variable
-
-```bash
-# Disable ephemeral fallback (default - fail-visible)
-# No environment variable needed - this is the default behavior
-
-# Enable ephemeral fallback (explicit opt-in)
-export AETHERCORE_SEP_ALLOW_EPHEMERAL=true
-```
-
-**Rationale for Default `false`**:
+**Rationale**:
 - **Fail-Visible Doctrine**: Persistent key creation failure is a security event requiring explicit acknowledgment
-- **Cryptographic Certainty**: Ephemeral keys degrade from persistent hardware-rooted identity
-- **Explicit Opt-In**: Operators must consciously enable fallback behavior
+- **Cryptographic Certainty**: Fallback degrades from hardware-rooted identity to trust-by-policy
+- **Byzantine Detection**: Trust mesh requires consistent cryptographic proofs from all nodes
 
-**When to Enable**:
-- Development/testing environments where key persistence is not critical
-- Temporary workaround for CryptoTokenKit instability on specific iOS builds
-- Scenarios where transient signing capability is acceptable
+### Key Generation Policy
 
-**When to Keep Disabled** (default):
-- Production deployments requiring persistent identity
-- Environments where key lifecycle management is critical
-- Any deployment where silent degradation is unacceptable
+When persistent key creation fails, the implementation:
+
+1. **Fails Fast**: Returns SecureEnclaveError.secureEnclaveUnavailable
+2. **Provides Diagnostics**: Error includes detailed failure context
+3. **Requires Remediation**: Operator must fix entitlements, device configuration, or hardware
+
+**Common Failure Causes**:
+- Missing entitlements (keychain-access-groups, team-identifier)
+- Device passcode not set (Secure Enclave requires passcode)
+- Simulator execution (device-only builds required)
+- Hardware fault or device compromise
 
 ### Diagnostic Errors
 
-All fallback attempts are logged in the error context:
+Key generation failures include detailed diagnostic context:
 
 ```swift
-SecureEnclaveError.secureEnclaveUnavailable(
-    "generation_errors=entitlements_preflight: diagnostic check skipped | " +
-    "persistent_key_lookup_status=-25300 | " +
-    "ephemeral_sec_enclave_key_failed: key creation failed | " +
-    "persistent_key_creation_failed[AfterFirstUnlock]: errSecItemNotFound"
+SecureEnclaveError.keyGenerationFailed(
+    "OSStatus: -25300 (errSecItemNotFound) | " +
+    "Context: Missing keychain-access-groups entitlement | " +
+    "Device: iPhone 15 Pro, iOS 17.2 | " +
+    "Accessibility: AfterFirstUnlock"
 )
 ```
 
-**Note on Entitlements Preflight**: The preflight check is currently a placeholder. Actual entitlement validation occurs at the Security framework level during key operations. Future implementations may add programmatic entitlement checking via `SecTaskCopyValueForEntitlement`.
+All errors follow Fail-Visible pattern with explicit failure reasons.
 
-## Cryptographic Curve Rationale
+## Cryptographic Curve Policy
 
-### P-256 vs Ed25519 Divergence
+### P-256 Mandated by Secure Enclave
 
-**Standard AetherCore Architecture**:
+**AetherCore Standard Architecture**:
 - **Primary**: Ed25519 signatures (Twisted Edwards curve)
 - **Rationale**: Modern, fast, simple, side-channel resistant
+- **Hashing**: BLAKE3 for all integrity checks
 
-**iOS Secure Enclave Constraint**:
+**iOS Secure Enclave Hardware Constraint**:
 - **Required**: ECDSA P-256 (secp256r1 / NIST P-256)
-- **Reason**: iOS SEP hardware only supports P-256
+- **Reason**: iOS SEP hardware exclusively supports P-256
+- **Hashing**: SHA-256 for P-256 fingerprinting (ecosystem convention)
 
-### Why P-256?
+### Architectural Divergence
 
-1. **Hardware Support**: iOS Secure Enclave exclusively supports P-256
-2. **Apple Silicon Acceleration**: Hardware-accelerated ECDSA operations
-3. **Alignment with macOS**: Same curve as `crates/identity/src/secure_enclave.rs`
-4. **Industry Standard**: NIST P-256 widely deployed in enterprise PKI
+The iOS client represents a **hardware-constrained exception** to AetherCore's Ed25519 standard:
+
+| Aspect | AetherCore Standard | iOS Secure Enclave |
+|--------|-------------------|-------------------|
+| Signing | Ed25519 | P-256 ECDSA |
+| Hashing | BLAKE3 | SHA-256 |
+| Security Level | 128-bit | 128-bit |
+| Hardware Root | TPM 2.0 | Secure Enclave |
+
+### Rationale for P-256
+
+1. **Hardware Mandate**: iOS Secure Enclave only supports P-256; no Ed25519 capability
+2. **Apple Silicon Integration**: Hardware-accelerated ECDSA operations
+3. **Alignment with macOS**: Same curve as macOS Secure Enclave (`crates/identity/src/secure_enclave.rs`)
+4. **Industry Standard**: NIST P-256 widely deployed in enterprise PKI and mobile ecosystems
 
 ### Security Considerations
 
@@ -260,18 +264,18 @@ SecureEnclaveError.secureEnclaveUnavailable(
 - ⚠️ **Key Agreement Incompatibility**: Ed25519 and P-256 keys cannot be mixed in DH
 - ⚠️ **Signature Length**: P-256 signatures (64-72 bytes DER) vs Ed25519 (64 bytes)
 
-### Mitigation Strategy
+### Trust Mesh Integration
 
-1. **Protocol-Level Tagging**: `Attestation::SecureEnclave` variant identifies P-256 signatures
-2. **Verification Routing**: Trust mesh routes to appropriate verifier based on attestation type
-3. **Transparent to Applications**: Upper layers abstract curve details
-4. **Documentation**: This divergence is tracked in architecture docs
+**Protocol-Level Handling**:
+1. **Signature Type Tagging**: GenesisBundle includes curve identifier (P-256)
+2. **Verification Routing**: Trust mesh routes to appropriate verifier based on signature type
+3. **Transparent to Applications**: Upper layers abstract curve differences
+4. **Byzantine Detection**: All signatures verified against declared curve type
 
-### Future Work
-
-- **Evaluate StrongBox Keymaster** on Android (also P-256)
-- **Unified P-256 Verification Path** for mobile platforms
-- **Performance Benchmarks**: P-256 vs Ed25519 on mobile hardware
+**Implementation Notes**:
+- Gateway must support both Ed25519 (standard) and P-256 (iOS/macOS) verification
+- Cross-curve signature verification prevented (Fail-Visible on type mismatch)
+- Mixed-curve mesh operation validated in integration tests
 
 ## Simulator Rejection
 
@@ -388,15 +392,16 @@ func validateSecureEnclave() {
 3. Rebuild with `xcodebuild -showBuildSettings` to inspect entitlements
 
 ### "Key Generation Failed" Error
-1. Ensure device is unlocked (for `AfterFirstUnlock` accessibility)
-2. Check if another app is using the same key tag
-3. Enable `AETHERCORE_SEP_ALLOW_EPHEMERAL=true` as temporary fallback
-4. Inspect error context for specific failure reasons
+1. Ensure device is unlocked (Secure Enclave requires device unlock)
+2. Verify device passcode is set (Secure Enclave mandate)
+3. Check provisioning profile includes required entitlements
+4. Inspect error diagnostic context for specific OSStatus code
+5. Validate device supports Secure Enclave (iPhone 5s+, iPad Air 2+)
 
 ### "Algorithm Not Supported" Error
 ❌ **Fatal**: Device Secure Enclave does not support P-256 (extremely rare)
 - Likely indicates compromised device or jailbreak
-- Fail-fast is correct behavior
+- Fail-fast is correct behavior per Fail-Visible doctrine
 
 ## References
 

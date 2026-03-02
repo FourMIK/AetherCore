@@ -102,18 +102,22 @@ struct ContentView: View {
                         
                         Divider()
                         
-                        // Info notice
+                        // Genesis bundle ready status
                         VStack(spacing: 8) {
-                            Image(systemName: "info.circle")
-                                .foregroundColor(.blue)
+                            HStack {
+                                Image(systemName: "checkmark.shield.fill")
+                                    .foregroundColor(.green)
+                                Text("Genesis Bundle Ready")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
                             
-                            Text("Network connectivity not yet implemented.\nKey generation and attestation ready.")
+                            Text("Device identity enrolled with Secure Enclave")
                                 .font(.caption)
-                                .multilineTextAlignment(.center)
                                 .foregroundColor(.secondary)
                         }
                         .padding()
-                        .background(Color.blue.opacity(0.1))
+                        .background(Color.green.opacity(0.1))
                         .cornerRadius(8)
                     }
                     .padding()

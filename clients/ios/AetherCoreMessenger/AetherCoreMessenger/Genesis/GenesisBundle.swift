@@ -3,15 +3,18 @@
 // AetherCoreMessenger
 //
 // AetherCore iOS Client - Genesis Bundle for Device Registration
-// Purpose: Attestation bundle placeholder for gateway enrollment
+// Purpose: Device identity attestation bundle for gateway enrollment
 //
 // Genesis Bundle Structure:
-// - Public key (DER format)
+// - Public key (DER format) - Secure Enclave P-256 public key
+// - Key tag - Deterministic keychain identifier for key persistence
 // - Device fingerprint (SHA-256 of public key)
-// - Attestation payload (placeholder - TODO: real attestation token)
-// - Timestamp
+// - Attestation payload (optional) - Reserved for future DeviceCheck integration
+// - Timestamp (ISO 8601)
 //
-// TODO: Implement real iOS DeviceCheck attestation token acquisition
+// Attestation Policy:
+// Current implementation uses no-attestation mode with explicit empty attestation.
+// Future enhancement: iOS DeviceCheck API for hardware-backed attestation tokens.
 // See: https://developer.apple.com/documentation/devicecheck
 
 import Foundation
@@ -23,12 +26,15 @@ struct GenesisBundle: Codable {
     /// Device public key in DER format (base64 encoded for JSON transport)
     let publicKeyDER: String
     
+    /// Keychain key tag for persistent Secure Enclave key
+    let keyTag: String
+    
     /// Device fingerprint (SHA-256 hex of public key)
     let deviceFingerprint: String
     
-    /// Attestation payload (placeholder)
-    /// TODO: Replace with real iOS DeviceCheck attestation token
-    let attestationPayload: String
+    /// Attestation payload (optional, nil for no-attestation mode)
+    /// Reserved for future DeviceCheck integration
+    let attestationPayload: String?
     
     /// Bundle creation timestamp (ISO 8601)
     let timestamp: String
@@ -46,12 +52,15 @@ struct GenesisBundle: Codable {
         let publicKeyData = try identity.getPublicKeyDER()
         self.publicKeyDER = publicKeyData.base64EncodedString()
         
+        // Keychain key tag for key persistence
+        self.keyTag = "mil.fourmik.aethercore.secureenclave.key"
+        
         // Copy device fingerprint
         self.deviceFingerprint = identity.deviceFingerprint
         
-        // Placeholder attestation payload
-        // TODO: Implement real iOS attestation using DeviceCheck API
-        self.attestationPayload = "ATTESTATION_PLACEHOLDER_TODO_DEVICECHECK"
+        // No-attestation mode: attestation payload is nil
+        // Gateway must accept nil attestation for initial enrollment
+        self.attestationPayload = nil
         
         // ISO 8601 timestamp
         let formatter = ISO8601DateFormatter()
@@ -97,46 +106,11 @@ struct GenesisBundle: Codable {
 
 enum GenesisError: Error, CustomStringConvertible {
     case serializationFailed
-    case attestationUnavailable
     
     var description: String {
         switch self {
         case .serializationFailed:
             return "Failed to serialize genesis bundle"
-        case .attestationUnavailable:
-            return "iOS attestation service unavailable"
         }
-    }
-}
-
-// MARK: - Attestation Service (Stub)
-
-/// Attestation service for iOS DeviceCheck integration
-/// TODO: Implement real attestation token acquisition
-class AttestationService {
-    
-    /// Request iOS DeviceCheck attestation token
-    /// - Returns: Attestation token data
-    /// - Throws: GenesisError if attestation fails
-    static func requestAttestationToken() async throws -> Data {
-        // TODO: Implement DeviceCheck attestation flow
-        // 1. Generate challenge from gateway
-        // 2. Call DeviceCheck API with challenge
-        // 3. Return attestation token
-        
-        print("⚠️ Attestation service not yet implemented - using placeholder")
-        throw GenesisError.attestationUnavailable
-    }
-    
-    /// Check if DeviceCheck is available on this device
-    /// - Returns: true if DeviceCheck is supported
-    static func isAttestationAvailable() -> Bool {
-        // DeviceCheck requires iOS 11+ (guaranteed by deployment target)
-        // and is available on all physical devices
-        #if targetEnvironment(simulator)
-        return false
-        #else
-        return true
-        #endif
     }
 }

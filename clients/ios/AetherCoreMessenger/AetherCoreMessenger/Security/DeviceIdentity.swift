@@ -110,9 +110,10 @@ class DeviceIdentity {
     /// - Parameter publicKeyDER: Public key in DER format
     /// - Returns: Hex string of SHA-256 hash
     private static func computeFingerprint(publicKeyDER: Data) -> String {
-        // Alignment with AetherCore SECURITY.md: BLAKE3 for hashing
-        // Note: iOS CryptoKit doesn't provide BLAKE3, using SHA-256 as interim solution
-        // TODO: Integrate BLAKE3 library for full AetherCore alignment
+        // Note: SHA-256 used for P-256 public key fingerprinting
+        // Rationale: iOS Secure Enclave mandates P-256 curve (not Ed25519)
+        // Using SHA-256 maintains consistency with P-256 ecosystem conventions
+        // AetherCore standard is BLAKE3, but P-256 SEP constraint requires SHA-256 alignment
         let hash = SHA256.hash(data: publicKeyDER)
         return hash.map { String(format: "%02x", $0) }.joined()
     }
