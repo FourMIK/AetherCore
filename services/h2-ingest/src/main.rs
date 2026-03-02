@@ -15,6 +15,7 @@ use tracing_subscriber::fmt::init;
 mod config;
 mod handlers;
 mod state;
+pub mod flir;
 
 use config::Config;
 use state::AppState;
