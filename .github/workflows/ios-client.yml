@@ -1,0 +1,123 @@
+name: iOS Client CI
+
+on:
+  push:
+    branches: [main, develop, internal]
+    paths:
+      - 'clients/ios/**'
+      - '.github/workflows/ios-client.yml'
+  pull_request:
+    branches: [main, develop, internal]
+    paths:
+      - 'clients/ios/**'
+      - '.github/workflows/ios-client.yml'
+
+# Enforce single concurrent workflow per branch
+concurrency:
+  group: ios-client-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ios:
+    name: Build iOS Client (Xcode)
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Select Xcode version
+        run: |
+          # Use Xcode 15.2 (compatible with iOS 17 target)
+          sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
+          xcodebuild -version
+      
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            clients/ios/AetherCoreMessenger/build
+          key: ${{ runner.os }}-ios-deriveddata-${{ hashFiles('clients/ios/AetherCoreMessenger/**/*.swift', 'clients/ios/AetherCoreMessenger/AetherCoreMessenger.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            ${{ runner.os }}-ios-deriveddata-
+      
+      - name: Build iOS app (Device - Generic/iOS)
+        working-directory: clients/ios/AetherCoreMessenger
+        run: |
+          set -o pipefail
+          
+          # Build for generic iOS device without code signing
+          # Per problem statement: CODE_SIGNING_ALLOWED=NO for CI
+          xcodebuild \
+            -project AetherCoreMessenger.xcodeproj \
+            -scheme AetherCoreMessenger \
+            -destination 'generic/platform=iOS' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            clean build \
+            | tee build.log
+      
+      - name: Archive build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-logs-${{ github.sha }}
+          path: clients/ios/AetherCoreMessenger/build.log
+          retention-days: 7
+      
+      - name: Run SwiftLint (if available)
+        working-directory: clients/ios/AetherCoreMessenger
+        continue-on-error: true
+        run: |
+          # Check if swiftlint is available
+          if command -v swiftlint &> /dev/null; then
+            echo "✅ SwiftLint found, running analysis..."
+            swiftlint lint --strict
+          else
+            echo "ℹ️ SwiftLint not installed, skipping lint checks"
+            echo "Install with: brew install swiftlint"
+          fi
+      
+      - name: Verify Secure Enclave implementation
+        working-directory: clients/ios/AetherCoreMessenger
+        run: |
+          echo "🔍 Verifying Secure Enclave implementation..."
+          
+          # Check for critical security patterns
+          grep -r "kSecAttrTokenIDSecureEnclave" AetherCoreMessenger/ || {
+            echo "❌ FAIL: Secure Enclave token ID not found"
+            exit 1
+          }
+          
+          grep -r "privateKeyUsage" AetherCoreMessenger/ || {
+            echo "❌ FAIL: Private key usage access control not found"
+            exit 1
+          }
+          
+          grep -r "fatalError.*simulator" AetherCoreMessenger/ || {
+            echo "❌ FAIL: Simulator guard not found"
+            exit 1
+          }
+          
+          echo "✅ Secure Enclave security patterns verified"
+      
+      - name: Summary
+        if: success()
+        run: |
+          echo "✅ iOS Client Build Successful"
+          echo ""
+          echo "Build Configuration:"
+          echo "  - Xcode: 15.2"
+          echo "  - Platform: iOS 17+"
+          echo "  - Destination: generic/platform=iOS"
+          echo "  - Code Signing: Disabled (CI mode)"
+          echo ""
+          echo "Security Checks:"
+          echo "  ✅ Secure Enclave token ID present"
+          echo "  ✅ Private key usage access control verified"
+          echo "  ✅ Simulator guard implemented"
+          echo ""
+          echo "Note: Developers must use team provisioning for local device deployment"
