@@ -2,10 +2,14 @@
 // ContentView.swift
 // AetherCoreMessenger
 //
-// AetherCore iOS Client - Minimal UI
-// Purpose: Display device identity and Secure Enclave status
+// AetherCore iOS Client - Minimal UI with Enrollment & Telemetry
+// Purpose: Display device identity, enrollment status, and telemetry daemon control
 //
-// Phase 1: No network connectivity - local identity only
+// Features:
+// - Device identity display
+// - Gateway enrollment integration
+// - Telemetry daemon control
+// - Fail-visible error handling
 
 import SwiftUI
 
@@ -13,6 +17,10 @@ struct ContentView: View {
     @State private var deviceIdentity: DeviceIdentity?
     @State private var errorMessage: String?
     @State private var isLoading = true
+    @State private var isEnrolling = false
+    @State private var enrollmentResult: EnrollmentResult?
+    @State private var telemetryDaemon: NodeTelemetryDaemon?
+    @State private var telemetryRunning = false
     
     var body: some View {
         NavigationView {
@@ -58,69 +66,139 @@ struct ContentView: View {
                     }
                     .padding()
                 } else if let identity = deviceIdentity {
-                    // Success - display device identity
-                    VStack(spacing: 16) {
-                        // Status indicator
-                        HStack {
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 12, height: 12)
-                            Text("Secure Enclave Active")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                        }
-                        
-                        Divider()
-                        
-                        // Device fingerprint
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Device Fingerprint")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            Text(identity.deviceFingerprint)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundColor(.primary)
-                                .padding(8)
-                                .background(Color.secondary.opacity(0.1))
-                                .cornerRadius(4)
-                        }
-                        
-                        // Public key status
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Public Key Status")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            // Status indicator
                             HStack {
-                                Image(systemName: identity.hasKey ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                    .foregroundColor(identity.hasKey ? .green : .red)
-                                Text(identity.hasKey ? "Key Present" : "Key Missing")
-                                    .font(.subheadline)
-                            }
-                        }
-                        
-                        Divider()
-                        
-                        // Genesis bundle ready status
-                        VStack(spacing: 8) {
-                            HStack {
-                                Image(systemName: "checkmark.shield.fill")
-                                    .foregroundColor(.green)
-                                Text("Genesis Bundle Ready")
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 12, height: 12)
+                                Text("Secure Enclave Active")
                                     .font(.subheadline)
                                     .fontWeight(.medium)
                             }
                             
-                            Text("Device identity enrolled with Secure Enclave")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            Divider()
+                            
+                            // Device fingerprint
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Device Fingerprint")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                
+                                Text(identity.deviceFingerprint)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(.primary)
+                                    .padding(8)
+                                    .background(Color.secondary.opacity(0.1))
+                                    .cornerRadius(4)
+                            }
+                            
+                            // Public key status
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Public Key Status")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                
+                                HStack {
+                                    Image(systemName: identity.hasKey ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                        .foregroundColor(identity.hasKey ? .green : .red)
+                                    Text(identity.hasKey ? "Key Present" : "Key Missing")
+                                        .font(.subheadline)
+                                }
+                            }
+                            
+                            Divider()
+                            
+                            // Enrollment Section
+                            VStack(spacing: 12) {
+                                HStack {
+                                    Image(systemName: enrollmentResult != nil ? "checkmark.shield.fill" : "shield")
+                                        .foregroundColor(enrollmentResult != nil ? .green : .orange)
+                                    Text(enrollmentResult != nil ? "Enrolled" : "Not Enrolled")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                }
+                                
+                                if let enrollment = enrollmentResult {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack {
+                                            Text("Node ID:")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                            Text(enrollment.nodeID)
+                                                .font(.caption)
+                                                .fontWeight(.medium)
+                                        }
+                                        HStack {
+                                            Text("Trust Score:")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                            Text(String(format: "%.2f", enrollment.trustScore))
+                                                .font(.caption)
+                                                .fontWeight(.medium)
+                                        }
+                                    }
+                                } else {
+                                    Button(action: {
+                                        enrollDevice(identity: identity)
+                                    }) {
+                                        HStack {
+                                            if isEnrolling {
+                                                ProgressView()
+                                                    .progressViewStyle(CircularProgressViewStyle())
+                                                    .scaleEffect(0.8)
+                                            }
+                                            Text(isEnrolling ? "Enrolling..." : "Enroll with Gateway")
+                                                .fontWeight(.medium)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(Color.blue)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(8)
+                                    }
+                                    .disabled(isEnrolling)
+                                }
+                            }
+                            .padding()
+                            .background(Color.secondary.opacity(0.1))
+                            .cornerRadius(8)
+                            
+                            // Telemetry Section
+                            if enrollmentResult != nil {
+                                VStack(spacing: 12) {
+                                    HStack {
+                                        Image(systemName: telemetryRunning ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
+                                            .foregroundColor(telemetryRunning ? .green : .gray)
+                                        Text("Telemetry Daemon")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                    }
+                                    
+                                    Text(telemetryRunning ? "Broadcasting heartbeat every 30s" : "Idle")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    
+                                    Button(action: {
+                                        toggleTelemetry(identity: identity)
+                                    }) {
+                                        Text(telemetryRunning ? "Stop Telemetry" : "Start Telemetry")
+                                            .fontWeight(.medium)
+                                            .frame(maxWidth: .infinity)
+                                            .padding()
+                                            .background(telemetryRunning ? Color.red : Color.green)
+                                            .foregroundColor(.white)
+                                            .cornerRadius(8)
+                                    }
+                                }
+                                .padding()
+                                .background(Color.secondary.opacity(0.1))
+                                .cornerRadius(8)
+                            }
                         }
                         .padding()
-                        .background(Color.green.opacity(0.1))
-                        .cornerRadius(8)
                     }
-                    .padding()
                 }
                 
                 Spacer()
@@ -148,6 +226,13 @@ struct ContentView: View {
                 self.isLoading = false
                 
                 print("✅ Device initialized: \(identity.deviceFingerprint)")
+                
+                // Check if already enrolled
+                let gatewayClient = GatewayClient()
+                if gatewayClient.getAccessToken() != nil {
+                    print("ℹ️ Device already enrolled - access token found")
+                    // Note: Would need to fetch enrollment details from server
+                }
             } catch {
                 // Fail-Visible: Display error prominently
                 self.errorMessage = error.localizedDescription
@@ -155,6 +240,49 @@ struct ContentView: View {
                 
                 print("❌ FAIL-VISIBLE: Device initialization failed: \(error)")
             }
+        }
+    }
+    
+    private func enrollDevice(identity: DeviceIdentity) {
+        guard !isEnrolling else { return }
+        
+        isEnrolling = true
+        
+        Task {
+            do {
+                let gatewayClient = GatewayClient()
+                let result = try await gatewayClient.enrollNode(identity: identity)
+                
+                await MainActor.run {
+                    self.enrollmentResult = result
+                    self.isEnrolling = false
+                    print("✅ Enrollment successful: \(result.nodeID)")
+                }
+            } catch {
+                await MainActor.run {
+                    self.isEnrolling = false
+                    self.errorMessage = "Enrollment failed: \(error.localizedDescription)"
+                    print("❌ Enrollment error: \(error)")
+                }
+            }
+        }
+    }
+    
+    private func toggleTelemetry(identity: DeviceIdentity) {
+        if telemetryRunning {
+            // Stop telemetry
+            telemetryDaemon?.stop()
+            telemetryRunning = false
+            print("✅ Telemetry stopped")
+        } else {
+            // Start telemetry
+            let gatewayClient = GatewayClient()
+            let daemon = NodeTelemetryDaemon(identity: identity, gatewayClient: gatewayClient)
+            daemon.start(nodeID: enrollmentResult?.nodeID)
+            
+            self.telemetryDaemon = daemon
+            self.telemetryRunning = true
+            print("✅ Telemetry started")
         }
     }
 }
