@@ -7,6 +7,12 @@ enum class TrustLevel {
     UNKNOWN,
 }
 
+enum class SignatureStatus {
+    VERIFIED,
+    UNVERIFIED,
+    INVALID_OR_UNKNOWN,
+}
+
 data class TrustEvent(
     val uid: String,
     val callsign: String,
@@ -22,5 +28,6 @@ data class TrustEvent(
     val signatureHex: String? = null,
     val signerNodeId: String? = null,
     val payloadHash: String? = null,
-    val signatureVerified: Boolean = false,
+    val signatureStatus: SignatureStatus = SignatureStatus.INVALID_OR_UNKNOWN,
+    val signatureVerified: Boolean = signatureStatus == SignatureStatus.VERIFIED,
 )

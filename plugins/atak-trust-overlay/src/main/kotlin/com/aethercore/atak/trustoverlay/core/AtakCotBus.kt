@@ -133,7 +133,7 @@ class AtakCotBus(
         runCatching { detail }.getOrNull()?.let { detailXml ->
             detailMap["detail"] = detailXml
         }
-        runCatching { how }.getOrNull()?.takeIf { it.isNotBlank() }?.let { detailMap["source"] = it }
+        runCatching { how }.getOrNull()?.takeIf { it.isNotBlank() }?.let { detailMap["event.how"] = it }
         runCatching { time.toString() }.getOrNull()?.let { detailMap["time"] = it }
         runCatching { stale.toString() }.getOrNull()?.let { detailMap["stale"] = it }
 

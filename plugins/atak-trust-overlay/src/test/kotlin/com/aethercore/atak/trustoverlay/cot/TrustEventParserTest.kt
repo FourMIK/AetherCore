@@ -1,6 +1,8 @@
 package com.aethercore.atak.trustoverlay.cot
 
+import com.aethercore.atak.trustoverlay.atak.CotEventEnvelope
 import com.aethercore.atak.trustoverlay.atak.Logger
+import com.aethercore.atak.trustoverlay.core.SignatureStatus
 import com.aethercore.atak.trustoverlay.core.TrustLevel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -195,6 +197,109 @@ class TrustEventParserTest {
             assertNotNull("$fixture: last_updated", envelope.detail["last_updated"])
             assertNotNull("$fixture: trust.uid", envelope.detail["trust.uid"])
         }
+    }
+
+    @Test
+    fun `parses legacy raw detail xml when canonical fields are absent`() {
+        val parser = parser()
+        val envelope = CotEventEnvelope(
+            uid = "legacy-node",
+            type = "a-f-AETHERCORE-TRUST",
+            lat = 34.0,
+            lon = -117.0,
+            time = "2026-01-14T10:15:00Z",
+            stale = "2026-01-14T10:20:00Z",
+            detail = mapOf(
+                "detail" to """
+                    <detail>
+                      <trust trust_score="0.92" trust_level="healthy" last_updated="2026-01-14T10:14:55Z" source="aethercore" uid="legacy-node" />
+                      <contact callsign="LEGACY-1" />
+                      <metrics packet_loss="0.12" />
+                      <sourceMeta gateway="legacy-gw" />
+                    </detail>
+                """.trimIndent(),
+            ),
+        )
+
+        val parsed = parser.parse(envelope)
+        assertNotNull(parsed)
+        assertEquals(TrustLevel.HIGH, parsed?.level)
+        assertEquals("LEGACY-1", parsed?.callsign)
+        assertEquals(0.12, parsed?.metrics?.get("packet_loss"))
+        assertEquals("legacy-gw", parsed?.sourceMetadata?.get("gateway"))
+    }
+
+    @Test
+    fun `prefers canonical structured fields over legacy detail fallback`() {
+        val parser = parser()
+        val envelope = CotEventEnvelope(
+            uid = "canonical-wins",
+            type = "a-f-AETHERCORE-TRUST",
+            lat = 34.0,
+            lon = -117.0,
+            time = "2026-01-14T10:15:00Z",
+            stale = "2026-01-14T10:20:00Z",
+            detail = mapOf(
+                "detail" to """
+                    <detail>
+                      <trust trust_score="0.10" trust_level="quarantined" last_updated="2026-01-14T10:14:55Z" source="aethercore" uid="canonical-wins" />
+                    </detail>
+                """.trimIndent(),
+                "trust_score" to "0.95",
+                "trust_level" to "high",
+                "last_updated" to "2026-01-14T10:14:59Z",
+                "source" to "aethercore",
+                "trust.uid" to "canonical-wins",
+            ),
+        )
+
+        val parsed = parser.parse(envelope)
+        assertNotNull(parsed)
+        assertEquals(TrustLevel.HIGH, parsed?.level)
+        assertEquals(95, parsed?.score)
+    }
+
+    @Test
+    fun `assigns signature status from canonical fields with sensible fallback`() {
+        val parser = parser()
+        val base = CotFixtureLoader.load("healthy")
+
+        val verified = parser.parse(
+            base.copy(
+                uid = "sig-verified",
+                detail = base.detail + mapOf(
+                    "trust.uid" to "sig-verified",
+                    "signature_hex" to "aa11",
+                    "signature_status" to "verified",
+                ),
+            ),
+        )
+        assertEquals(SignatureStatus.VERIFIED, verified?.signatureStatus)
+        assertTrue(verified?.signatureVerified == true)
+
+        val unverified = parser.parse(
+            base.copy(
+                uid = "sig-unverified",
+                detail = base.detail + mapOf(
+                    "trust.uid" to "sig-unverified",
+                    "signature_hex" to "bb22",
+                    "signature_verified" to "false",
+                ),
+            ),
+        )
+        assertEquals(SignatureStatus.UNVERIFIED, unverified?.signatureStatus)
+        assertTrue(unverified?.signatureVerified == false)
+
+        val invalidOrUnknown = parser.parse(
+            base.copy(
+                uid = "sig-invalid",
+                detail = base.detail + mapOf(
+                    "trust.uid" to "sig-invalid",
+                ) - "signature_hex",
+            ),
+        )
+        assertEquals(SignatureStatus.INVALID_OR_UNKNOWN, invalidOrUnknown?.signatureStatus)
+        assertTrue(invalidOrUnknown?.signatureVerified == false)
     }
 
     private fun parser(): TrustEventParser = TrustEventParser(logger, allowedSources = setOf("aethercore"))

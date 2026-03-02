@@ -46,6 +46,7 @@ class TrustOverlayMapComponent : AtakMapComponent {
             status = stateStore?.feedStatus() ?: TrustFeedStatus.DEGRADED,
             ttlSeconds = configuredTtlSeconds,
         )
+        markerRenderer?.setFeedStatus(stateStore?.feedStatus() ?: TrustFeedStatus.DEGRADED)
 
         markerTapSubscription = context.markerTapBus.subscribe { markerHandle ->
             detailPanel?.onMarkerTapped(markerHandle.id)
@@ -56,7 +57,9 @@ class TrustOverlayMapComponent : AtakMapComponent {
                 val markerId = "trust:${trustEvent.uid}"
                 val store = stateStore ?: return@start
                 store.record(trustEvent)
+                val feedStatus = store.feedStatus()
                 val resolvedState = store.resolve(trustEvent.uid)
+                markerRenderer?.setFeedStatus(feedStatus)
 
                 markerRenderer?.render(resolvedState)
                 detailPanel?.onTrustEvent(markerId, resolvedState)
@@ -69,13 +72,14 @@ class TrustOverlayMapComponent : AtakMapComponent {
                 }
 
                 widgetController?.onFeedStatus(
-                    status = store.feedStatus(),
+                    status = feedStatus,
                     ttlSeconds = configuredTtlSeconds,
                 )
             },
             onMalformedEvent = { count, reason ->
                 context.logger.w("Trust feed malformed event count=$count reason=${reason ?: "unknown"}")
                 widgetController?.onMalformedEvent(count, reason)
+                markerRenderer?.setFeedStatus(stateStore?.feedStatus() ?: TrustFeedStatus.DEGRADED)
                 widgetController?.onFeedStatus(
                     status = stateStore?.feedStatus() ?: TrustFeedStatus.DEGRADED,
                     ttlSeconds = configuredTtlSeconds,

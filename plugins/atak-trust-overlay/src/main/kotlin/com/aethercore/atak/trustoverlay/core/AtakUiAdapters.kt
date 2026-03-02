@@ -19,13 +19,21 @@ internal object MarkerIconCatalog {
 
     private val iconsByKey: Map<String, MarkerIconSpec> = mapOf(
         "trust_marker_green" to MarkerIconSpec("trust_marker_green", "trust_marker_green"),
+        "trust_marker_yellow" to MarkerIconSpec("trust_marker_yellow", "trust_marker_yellow"),
+        "trust_marker_orange" to MarkerIconSpec("trust_marker_orange", "trust_marker_orange"),
+        // Backward compatibility for legacy references.
         "trust_marker_amber" to MarkerIconSpec("trust_marker_amber", "trust_marker_amber"),
         "trust_marker_red" to MarkerIconSpec("trust_marker_red", "trust_marker_red"),
         FALLBACK_KEY to MarkerIconSpec(FALLBACK_KEY, FALLBACK_KEY),
     )
 
     fun forKey(iconKey: String): MarkerIconSpec = iconsByKey[iconKey] ?: requireNotNull(iconsByKey[FALLBACK_KEY])
-    fun severityKeys(): List<String> = listOf("trust_marker_green", "trust_marker_amber", "trust_marker_red")
+    fun severityKeys(): List<String> = listOf(
+        "trust_marker_green",
+        "trust_marker_yellow",
+        "trust_marker_orange",
+        "trust_marker_red",
+    )
 }
 
 interface UiArtifactCache {
