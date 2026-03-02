@@ -1,273 +1,427 @@
-# iOS Client Build Guide
-
-**Classification:** UNCLASSIFIED  
-**Purpose:** Build and deployment instructions for AetherCore iOS Messenger  
-**Last Updated:** 2026-03-02
-
----
+# iOS Build Guide
 
 ## Overview
 
-AetherCore iOS Messenger is a Secure Enclave-enabled client for the AetherCore hardware-rooted trust fabric. It implements hardware-backed key storage and signing operations using iOS Secure Enclave.
+This guide covers building the AetherCore iOS Secure Enclave implementation. iOS builds require proper entitlements configuration and device-only deployment due to Secure Enclave hardware requirements.
 
-**Key Characteristics:**
-- iOS 17+ baseline (device-only)
-- Secure Enclave required (no simulator support)
-- Mac Catalyst disabled
-- Hardware-rooted identity mandatory
+## Prerequisites
 
----
+### Development Environment
 
-## Toolchain Requirements
+- **macOS**: 12.0 (Monterey) or later
+- **Xcode**: 14.0 or later
+- **Swift**: 5.9 or later (bundled with Xcode)
+- **iOS Device**: Physical iPhone/iPad running iOS 13.0 or later
+- **Apple Developer Account**: Required for device deployment
 
-### Required Tools
-
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Xcode | 15.2+ | iOS SDK, Swift compiler, build system |
-| iOS SDK | 17.0+ | Target platform APIs |
-| macOS | 14+ (Sonoma) | Host development environment |
-
-### Installation
+### Command Line Tools
 
 ```bash
-# Install Xcode from App Store or download from developer.apple.com
-# After installation, accept license:
-sudo xcodebuild -license accept
+# Install Xcode Command Line Tools
+xcode-select --install
 
 # Verify installation
 xcodebuild -version
-# Expected: Xcode 15.2+
-
-# Check available SDKs
-xcodebuild -showsdks | grep iphoneos
-# Expected: iphoneos17.0+
+swift --version
 ```
 
----
+## Entitlements Requirements
 
-## Project Structure
+### Required Entitlements
 
+iOS Secure Enclave operations require the following entitlements in your app's provisioning profile:
+
+1. **Application Identifier** (`com.apple.application-identifier` or `application-identifier`)
+2. **Keychain Access Groups** (`keychain-access-groups`)
+3. **Team Identifier** (`com.apple.developer.team-identifier`)
+
+### Xcode Configuration
+
+#### 1. Enable Keychain Sharing Capability
+
+In Xcode:
+1. Select your app target
+2. Go to **Signing & Capabilities** tab
+3. Click **+ Capability**
+4. Add **Keychain Sharing**
+5. Add keychain group: `com.aethercore.*`
+
+This automatically adds `keychain-access-groups` entitlement.
+
+#### 2. Verify Team Identifier
+
+In Xcode:
+1. Select your app target
+2. Go to **Signing & Capabilities** tab
+3. Verify **Team** is set to your Apple Developer team
+4. Verify **Bundle Identifier** matches your app ID
+
+#### 3. Create Entitlements File (Optional)
+
+If not automatically created, add `AetherCore.entitlements`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.application-identifier</key>
+    <string>$(AppIdentifierPrefix)$(CFBundleIdentifier)</string>
+    
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.aethercore.*</string>
+    </array>
+    
+    <key>com.apple.developer.team-identifier</key>
+    <string>$(AppIdentifierPrefix)</string>
+</dict>
+</plist>
 ```
-clients/ios/AetherCoreMessenger/
-├── AetherCoreMessenger.xcodeproj/   # Xcode project
-│   └── project.pbxproj              # Project configuration
-├── AetherCoreMessenger/             # Source code
-│   ├── App.swift                    # SwiftUI app entry (Secure Enclave guard)
-│   ├── ContentView.swift            # Minimal UI
-│   ├── Security/                    # Secure Enclave implementation
-│   │   ├── SecureEnclaveKeyManager.swift  # Key generation, signing
-│   │   └── DeviceIdentity.swift     # Device fingerprint wrapper
-│   ├── Genesis/                     # Genesis bundle for enrollment
-│   │   └── GenesisBundle.swift      # Attestation placeholder
-│   ├── Info.plist                   # App metadata
-│   └── AetherCoreMessenger.entitlements  # Keychain access
-└── .gitignore                       # Build artifacts exclusion
-```
 
----
+Add to project:
+1. Drag `AetherCore.entitlements` into Xcode project
+2. Select your app target
+3. Go to **Build Settings** → **Code Signing Entitlements**
+4. Set value to `AetherCore.entitlements`
 
-## Building Locally
+## Build Configurations
 
-### Prerequisites
+### Local Development Build (Device)
 
-1. **Physical iOS Device Required:**
-   - iPhone 5s or later (Secure Enclave support)
-   - iPad Air 2 or later
-   - Device passcode must be set
-   - Connected to Mac via USB or Wi-Fi
+#### Using Xcode
 
-2. **Apple Developer Account:**
-   - Free Apple ID (for local development)
-   - Or paid Apple Developer Program membership (for distribution)
+1. Open `packages/ios-secure-enclave/Package.swift` in Xcode
+2. Select your development team in **Signing & Capabilities**
+3. Connect physical iOS device
+4. Select device as build target (not simulator)
+5. Build and run: **Product → Run** (Cmd+R)
 
-3. **Code Signing Certificate:**
-   - Xcode automatically provisions a development certificate
-   - Team provisioning profile required for device deployment
-
-### Build Commands
-
-#### Option 1: Xcode GUI
+#### Using xcodebuild
 
 ```bash
-# Open project
-open clients/ios/AetherCoreMessenger/AetherCoreMessenger.xcodeproj
-
-# In Xcode:
-# 1. Select your development team: Project Settings → Signing & Capabilities
-# 2. Connect iOS device via USB
-# 3. Select device as destination: Product → Destination → [Your Device]
-# 4. Build and run: Product → Run (⌘R)
-```
-
-#### Option 2: Command Line (xcodebuild)
-
-```bash
-cd clients/ios/AetherCoreMessenger
+cd packages/ios-secure-enclave
 
 # Build for connected device
 xcodebuild \
-  -project AetherCoreMessenger.xcodeproj \
-  -scheme AetherCoreMessenger \
-  -destination 'platform=iOS,name=<DEVICE_NAME>' \
-  -configuration Debug \
-  build
+    -scheme SecureEnclaveKeyManager \
+    -destination 'generic/platform=iOS' \
+    -configuration Debug \
+    CODE_SIGN_IDENTITY="iPhone Developer" \
+    DEVELOPMENT_TEAM="YOUR_TEAM_ID" \
+    build
 
-# Replace <DEVICE_NAME> with your device name from:
-xcrun xctrace list devices
-```
-
----
-
-## CI Build (GitHub Actions)
-
-### CI Configuration
-
-The iOS client is built on GitHub Actions using macOS runners. See `.github/workflows/ios-client.yml`.
-
-**CI Build Characteristics:**
-- **Runner:** `macos-14`
-- **Xcode Version:** 15.2
-- **Destination:** `generic/platform=iOS` (device architecture, no signing)
-- **Code Signing:** Disabled (`CODE_SIGNING_ALLOWED=NO`)
-- **Triggers:** Changes to `clients/ios/**` or workflow file
-
-### Running CI Locally
-
-You can replicate CI builds locally:
-
-```bash
-cd clients/ios/AetherCoreMessenger
-
-# Build without code signing (CI mode)
+# Install on connected device
 xcodebuild \
-  -project AetherCoreMessenger.xcodeproj \
-  -scheme AetherCoreMessenger \
-  -destination 'generic/platform=iOS' \
-  -configuration Debug \
-  CODE_SIGNING_ALLOWED=NO \
-  CODE_SIGN_IDENTITY="" \
-  CODE_SIGNING_REQUIRED=NO \
-  clean build
+    -scheme SecureEnclaveKeyManager \
+    -destination 'id=YOUR_DEVICE_UDID' \
+    -configuration Debug \
+    CODE_SIGN_IDENTITY="iPhone Developer" \
+    DEVELOPMENT_TEAM="YOUR_TEAM_ID" \
+    test
 ```
 
-**Expected Output:**
-```
-** BUILD SUCCEEDED **
-```
+**Note**: Replace `YOUR_TEAM_ID` with your Apple Developer Team ID.
 
-### DerivedData Caching
+### CI Build (No Code Signing)
 
-CI caches `~/Library/Developer/Xcode/DerivedData` for faster builds. To clear locally:
+CI environments cannot sign code or deploy to devices. Use `CODE_SIGNING_ALLOWED=NO` for compilation-only validation:
 
 ```bash
-# Clear derived data cache
-rm -rf ~/Library/Developer/Xcode/DerivedData/AetherCoreMessenger-*
-
-# Or use Xcode: Product → Clean Build Folder (⇧⌘K)
+# Build without code signing (CI)
+xcodebuild \
+    -scheme SecureEnclaveKeyManager \
+    -destination 'generic/platform=iOS' \
+    -configuration Release \
+    CODE_SIGNING_ALLOWED=NO \
+    build
 ```
 
----
+**What This Validates**:
+- ✅ Swift compilation succeeds
+- ✅ No syntax errors
+- ✅ Dependencies resolve correctly
+- ✅ Build settings are valid
 
-## Linting (Optional)
+**What This Does NOT Validate**:
+- ❌ Secure Enclave operations (requires device)
+- ❌ Entitlements compliance (requires signing)
+- ❌ Runtime behavior (requires execution)
 
-### SwiftLint
-
-Install SwiftLint for code style enforcement:
+### Production Build (Distribution)
 
 ```bash
-# Install via Homebrew
-brew install swiftlint
+# Archive for App Store or Enterprise distribution
+xcodebuild \
+    -scheme AetherCore \
+    -destination 'generic/platform=iOS' \
+    -configuration Release \
+    -archivePath AetherCore.xcarchive \
+    CODE_SIGN_IDENTITY="iPhone Distribution" \
+    DEVELOPMENT_TEAM="YOUR_TEAM_ID" \
+    archive
 
-# Run lint
-cd clients/ios/AetherCoreMessenger
-swiftlint lint
-
-# Auto-fix issues (where possible)
-swiftlint --fix
+# Export IPA
+xcodebuild \
+    -exportArchive \
+    -archivePath AetherCore.xcarchive \
+    -exportPath AetherCore_Export \
+    -exportOptionsPlist ExportOptions.plist
 ```
 
-CI automatically runs SwiftLint if available (non-blocking).
+**ExportOptions.plist** (example):
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store</string>
+    <key>teamID</key>
+    <string>YOUR_TEAM_ID</string>
+    <key>uploadBitcode</key>
+    <false/>
+    <key>uploadSymbols</key>
+    <true/>
+</dict>
+</plist>
+```
 
----
+## Device-Only Restrictions
+
+### Why Device-Only?
+
+The iOS Secure Enclave is a **hardware security module** that:
+- Does not exist on iOS Simulator
+- Cannot be emulated in software
+- Requires physical device deployment
+
+**Attempting to use Secure Enclave on simulator will fail with**:
+```
+SecureEnclaveError.simulatorNotSupported: 
+Secure Enclave is not available on iOS Simulator. 
+This is a fatal error - device-only builds required.
+```
+
+### Enforce Device-Only Builds
+
+#### Method 1: Xcode Build Settings
+
+1. Select your app target
+2. Go to **Build Settings**
+3. Search for "Supported Platforms"
+4. Set **Supported Platforms** to `iphoneos` (remove `iphonesimulator`)
+
+#### Method 2: project.pbxproj
+
+```
+SUPPORTED_PLATFORMS = "iphoneos";
+```
+
+#### Method 3: Swift Package Manager
+
+In `Package.swift`:
+```swift
+platforms: [
+    .iOS(.v13)  // No simulator platform
+]
+```
+
+### Testing on Device
+
+```bash
+# List connected devices
+xcrun xctrace list devices
+
+# Example output:
+# iPhone 13 Pro (00008101-001234567890ABCD)
+
+# Run tests on device
+xcodebuild test \
+    -scheme SecureEnclaveKeyManager \
+    -destination 'id=00008101-001234567890ABCD' \
+    CODE_SIGN_IDENTITY="iPhone Developer" \
+    DEVELOPMENT_TEAM="YOUR_TEAM_ID"
+```
+
+## CI Integration
+
+### GitHub Actions Example
+
+```yaml
+name: iOS Build
+
+on:
+  pull_request:
+    paths:
+      - 'packages/ios-secure-enclave/**'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode_15.0.app
+      
+      - name: Build iOS package (no signing)
+        working-directory: packages/ios-secure-enclave
+        run: |
+          xcodebuild \
+            -scheme SecureEnclaveKeyManager \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      
+      - name: Run simulator tests (expect SEP rejection)
+        working-directory: packages/ios-secure-enclave
+        run: |
+          xcodebuild test \
+            -scheme SecureEnclaveKeyManager \
+            -destination 'platform=iOS Simulator,name=iPhone 14' \
+            || echo "Expected: Simulator tests fail due to SEP unavailability"
+```
+
+**Expected CI Behavior**:
+- ✅ Compilation succeeds
+- ⚠️ Simulator tests fail (expected due to SEP unavailability)
+- ✅ Overall build marked as passing if compilation succeeds
+
+### Validation Without Device
+
+CI cannot fully validate Secure Enclave operations. Require manual device testing:
+
+**Pre-Merge Checklist**:
+- [ ] CI build passes (compilation)
+- [ ] Manual device test confirms key generation works
+- [ ] Manual device test confirms signing operations work
+- [ ] Entitlements validation passes (`codesign -d --entitlements`)
 
 ## Troubleshooting
 
-### "Secure Enclave unavailable" Error
+### "No signing certificate found"
 
-**Symptom:** App crashes with "FAIL-VISIBLE: Secure Enclave unavailable"
+**Problem**: Xcode cannot find a valid signing certificate.
 
-**Causes:**
-1. Running on simulator (explicitly unsupported)
-2. Device passcode not set
-3. Device does not have Secure Enclave (too old)
+**Solution**:
+1. Open Xcode Preferences → Accounts
+2. Add your Apple ID
+3. Download manual signing certificates
+4. Or enable **Automatically manage signing** in target settings
 
-**Solution:**
-```bash
-# Deploy to physical device only
-# Ensure device passcode is set: Settings → Face ID & Passcode → Turn Passcode On
+### "Provisioning profile doesn't include entitlements"
+
+**Problem**: Your provisioning profile lacks required entitlements.
+
+**Solution**:
+1. Go to [Apple Developer Portal](https://developer.apple.com)
+2. Navigate to Certificates, Identifiers & Profiles
+3. Edit your App ID to include "Keychain Sharing" capability
+4. Regenerate provisioning profile
+5. Download and install new profile
+
+### "Unable to install on device"
+
+**Problem**: Device UDID not in provisioning profile.
+
+**Solution**:
+1. Connect device and get UDID: `xcrun xctrace list devices`
+2. Add device UDID to Apple Developer Portal
+3. Regenerate provisioning profile
+4. Reinstall profile in Xcode
+
+### "Secure Enclave key generation fails"
+
+**Problem**: Key creation returns `errSecItemNotFound` or similar.
+
+**Solution**:
+1. Verify device is unlocked
+2. Check entitlements are present: `codesign -d --entitlements :- YourApp.app`
+3. Try alternative accessibility level (code already handles this)
+4. Enable ephemeral fallback: `AETHERCORE_SEP_ALLOW_EPHEMERAL=true`
+5. Check device supports Secure Enclave (iPhone 5s or later)
+
+### "Compilation succeeds but runtime crashes"
+
+**Problem**: Missing entitlements cause runtime failures.
+
+**Solution**:
+1. Build with signing enabled: Remove `CODE_SIGNING_ALLOWED=NO`
+2. Deploy to device and check logs
+3. Verify entitlements with: `codesign -d --entitlements :- YourApp.app`
+
+## Best Practices
+
+### 1. Use Deterministic Key Tags
+
+```swift
+// Good: Stable tag enables key reuse
+let keyTag = "com.4mik.aethercore.sep.v1"
+
+// Bad: Random tag loses key on app restart
+let keyTag = "sep-\(UUID().uuidString)"
 ```
 
-### Code Signing Issues
+### 2. Validate Secure Enclave Availability Early
 
-**Symptom:** "Code signing is required for product type 'Application' in SDK 'iOS 17.0'"
-
-**Solution:**
-```bash
-# In Xcode: Project Settings → Signing & Capabilities
-# 1. Enable "Automatically manage signing"
-# 2. Select your Apple ID team
-# 3. Wait for provisioning profile generation
+```swift
+// In app delegate
+func application(_ application: UIApplication, didFinishLaunchingWithOptions...) {
+    guard SecureEnclaveKeyManager.isSupported() else {
+        fatalError("Secure Enclave required but not available")
+    }
+}
 ```
 
-### Keychain Access Denied
+### 3. Handle Entitlement Errors Gracefully
 
-**Symptom:** "SecItemCopyMatching returned errSecInteractionNotAllowed"
+```swift
+do {
+    let quote = try keyManager.signNonce(nonce)
+} catch SecureEnclaveError.missingEntitlements(let detail) {
+    // Log to analytics, prompt user to reinstall
+    print("Entitlements error: \(detail)")
+    showReinstallPrompt()
+} catch {
+    print("Unexpected error: \(error)")
+}
+```
 
-**Cause:** Device locked or keychain access restricted
+### 4. Test on Multiple Device Models
 
-**Solution:**
-- Unlock device before launching app
-- Ensure keychain access entitlement is present (already configured)
+Secure Enclave behavior can vary across:
+- iPhone models (5s, 6, 7, 8, X, 11, 12, 13, 14, 15)
+- iPad models (iPad Pro, iPad Air with A12+)
+- iOS versions (13, 14, 15, 16, 17)
 
----
+### 5. Monitor Key Lifecycle
 
-## Deployment Notes
+```swift
+// Log key operations for diagnostics
+let keyManager = SecureEnclaveKeyManager(keyTag: keyTag)
+do {
+    let quote = try keyManager.signNonce(nonce)
+    print("✅ Key \(quote.keyTag) signed successfully")
+} catch {
+    print("❌ Key \(keyTag) signing failed: \(error)")
+    // Send telemetry to backend
+}
+```
 
-### Device-Only Deployment
+## References
 
-- **Simulator is explicitly unsupported** due to lack of Secure Enclave
-- All testing must occur on physical iOS devices
-- Simulator deployment will trigger fatal error with diagnostic message
-
-### Mac Catalyst
-
-- **Mac Catalyst is disabled** (`SUPPORTS_MACCATALYST = NO`)
-- AetherCore iOS client is iOS-exclusive
-- For macOS, use the Tauri-based desktop app (see `packages/dashboard/`)
-
-### Minimum Device Requirements
-
-| Device Family | Minimum Model | Secure Enclave | iOS Version |
-|---------------|---------------|----------------|-------------|
-| iPhone | iPhone 5s | ✅ | iOS 17+ |
-| iPad | iPad Air 2 | ✅ | iOS 17+ |
-| iPad Pro | All models | ✅ | iOS 17+ |
-
----
-
-## Next Steps
-
-- **Security Policy:** See [SECURE_ENCLAVE.md](SECURE_ENCLAVE.md) for key management details
-- **Integration:** Future gateway connectivity (not yet implemented)
-- **Attestation:** DeviceCheck integration (placeholder currently)
-
----
+- [Apple Code Signing Guide](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/Introduction/Introduction.html)
+- [Xcode Build Settings Reference](https://developer.apple.com/documentation/xcode/build-settings-reference)
+- [Secure Enclave Documentation](docs/ios/SECURE_ENCLAVE.md)
+- [iOS Provisioning Guide](https://developer.apple.com/documentation/xcode/preparing-your-app-for-distribution)
 
 ## Support
 
 For build issues:
-1. Check Xcode version: `xcodebuild -version`
-2. Verify device connection: `xcrun xctrace list devices`
-3. Review CI logs: `.github/workflows/ios-client.yml`
-4. Consult AetherCore monorepo docs: `/docs/`
+1. Check Xcode console for detailed error messages
+2. Review entitlements with `codesign -d --entitlements`
+3. Validate provisioning profile in Xcode settings
+4. Consult `docs/ios/SECURE_ENCLAVE.md` for troubleshooting

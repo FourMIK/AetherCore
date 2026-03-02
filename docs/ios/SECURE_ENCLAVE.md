@@ -1,395 +1,406 @@
-# iOS Secure Enclave Security Policy
-
-**Classification:** CRITICAL  
-**Purpose:** Secure Enclave key management policy for AetherCore iOS client  
-**Last Updated:** 2026-03-02
-
----
+# iOS Secure Enclave Integration
 
 ## Overview
 
-AetherCore iOS Messenger implements hardware-rooted trust using Apple's Secure Enclave, a dedicated security coprocessor providing cryptographic operations with hardware-isolated key storage.
+AetherCore's iOS identity backend uses the **Secure Enclave Processor (SEP)** for hardware-rooted attestation. This document details the entitlements requirements, key policy, fallback behavior, and cryptographic divergence from the standard AetherCore architecture.
 
-**Core Principles:**
-- **No private key export:** Private keys never leave Secure Enclave
-- **No backup:** Keys are device-specific and non-extractable
-- **Fail-Visible:** Security failures halt operations explicitly
-- **Hardware-rooted identity:** Cryptographic certainty replaces "Trust by Policy"
+## Architecture
 
----
+### Alignment with Rust Implementation
 
-## Secure Enclave Architecture
+The iOS Secure Enclave backend (`packages/ios-secure-enclave`) mirrors the macOS implementation in `crates/identity/src/secure_enclave.rs`:
 
-### Hardware Isolation
+- **Deterministic Key Tags**: Stable keychain identifiers enable key lifecycle management
+- **Persistent Keys First**: Prefer keychain-backed SEP keys over ephemeral keys
+- **Fail-Visible Errors**: Explicit diagnostics on entitlement, simulator, or key generation failures
+- **Algorithm Support Check**: Validate P-256 ECDSA support before signing operations
+- **Non-Exportable Private Keys**: Keys never leave the Secure Enclave
+- **Public Key Export Only**: Only public keys are exported in SEC1 DER format
 
-```
-┌─────────────────────────────────────────┐
-│  Application Process (User Space)      │
-│  ↓ Sign Request (data to sign)         │
-├─────────────────────────────────────────┤
-│  iOS Security Framework (Kernel)       │
-│  ↓ SecKeyCreateSignature               │
-├─────────────────────────────────────────┤
-│  Secure Enclave Processor (SEP)        │
-│  • Private key never exposed           │
-│  • Signing operation in hardware       │
-│  • Returns signature only              │
-└─────────────────────────────────────────┘
-```
+### Nonce-Signing Attestation
 
-**Key Guarantees:**
-1. Private keys are generated and stored in Secure Enclave
-2. Private key material never enters application memory
-3. Signing operations occur within hardware-isolated processor
-4. Keys are bound to specific device (non-transferable)
-
----
-
-## Key Management Policy
-
-### Key Generation
-
-**Method:** `SecureEnclaveKeyManager.generateIfNeeded()`
-
-**Parameters:**
-- **Key Type:** ECC P-256 (NIST secp256r1)
-- **Token:** `kSecAttrTokenIDSecureEnclave` (Secure Enclave storage)
-- **Permanence:** `kSecAttrIsPermanent = true` (persists across app restarts)
-- **Application Tag:** `mil.fourmik.aethercore.secureenclave.key`
-
-**Access Control:**
-```swift
-kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-+ .privateKeyUsage
-```
-
-**Policy Rationale:**
-- `AfterFirstUnlockThisDeviceOnly`: Key available after device boot unlock, but not backed up
-- `.privateKeyUsage`: Key usage requires device authentication (passcode or biometry if enrolled); suitable for unattended operation as biometry is optional
-
-**Code Reference:** `clients/ios/AetherCoreMessenger/AetherCoreMessenger/Security/SecureEnclaveKeyManager.swift:93-118`
-
----
-
-### Key Storage
-
-**Location:** Secure Enclave (hardware-isolated)
-
-**Properties:**
-- ❌ **Not exportable:** Private key cannot be read from Secure Enclave
-- ❌ **Not backed up:** Keys are device-specific (iCloud backup excluded)
-- ❌ **Not in memory:** Private key never touches application RAM
-- ❌ **Not on disk:** No private key files in filesystem
-- ✅ **Device-bound:** Key tied to specific device Secure Enclave
-
-**Verification:**
-```swift
-// Private key is accessed via handle only
-let privateKey: SecKey = /* reference handle, not key material */
-
-// No method exists to export private key bytes
-// SecKeyCopyExternalRepresentation() fails for Secure Enclave keys
-```
-
----
-
-### Signing Operations
-
-**Method:** `SecureEnclaveKeyManager.sign(data:)`
-
-**Algorithm:** ECDSA with SHA-256 (`.ecdsaSignatureMessageX962SHA256`)
-
-**Workflow:**
-1. Application calls `sign(data:)` with plaintext data
-2. Security framework sends data to Secure Enclave
-3. Secure Enclave performs ECDSA signing with private key (internal)
-4. Signature returned to application (DER-encoded X9.62 format)
-
-**Security Properties:**
-- Private key never leaves Secure Enclave
-- No side-channel exposure of key material
-- Signature validity cryptographically provable
-
-**Performance:**
-- Typical latency: <10ms per signature
-- Hardware-accelerated ECC operations
-
-**Code Reference:** `clients/ios/AetherCoreMessenger/AetherCoreMessenger/Security/SecureEnclaveKeyManager.swift:143-177`
-
----
-
-### Public Key Export
-
-**Method:** `SecureEnclaveKeyManager.publicKeyDER()`
-
-**Format:** X.509 SubjectPublicKeyInfo (DER encoding)
-
-**Usage:**
-- Device registration with AetherCore gateway
-- Genesis bundle creation
-- Public key fingerprint computation (SHA-256 hash)
-
-**Security Note:** Public key export is safe and does not compromise private key secrecy.
-
-**Code Reference:** `clients/ios/AetherCoreMessenger/AetherCoreMessenger/Security/SecureEnclaveKeyManager.swift:179-215`
-
----
-
-## Key Lifecycle
-
-### 1. Initial Generation
+The iOS backend produces **SecureEnclaveQuote** structures containing:
 
 ```swift
-// First app launch
-try SecureEnclaveKeyManager.generateIfNeeded()
-// → Generates P-256 key pair in Secure Enclave
-// → Private key stored in hardware (non-exportable)
-// → Public key extractable for registration
-```
-
-### 2. Operational Use
-
-```swift
-// Sign telemetry data
-let data = "Hello AetherCore".data(using: .utf8)!
-let signature = try SecureEnclaveKeyManager.sign(data: data)
-// → Signature computed in Secure Enclave
-// → Private key never exposed
-```
-
-### 3. Key Rotation (Placeholder)
-
-**Status:** Not yet implemented (requires gateway coordination)
-
-**Planned Workflow:**
-1. Generate new key pair in Secure Enclave
-2. Export new public key + rotation certificate
-3. Submit rotation request to AetherCore gateway
-4. Wait for gateway acknowledgment
-5. Delete old key after confirmation
-
-**TODO:** See `SecureEnclaveKeyManager.rotateKey()` stub
-
-**Rotation Trigger Conditions:**
-- Periodic rotation (e.g., every 90 days)
-- Compromise detection (Byzantine fault observed)
-- User-initiated secure reset
-- Policy compliance requirement
-
----
-
-### 4. Key Deletion (Secure Reset)
-
-**Method:** `SecureEnclaveKeyManager.deleteKey()`
-
-**Effect:**
-- Permanent deletion of private key from Secure Enclave
-- Irreversible operation (key cannot be recovered)
-- Device de-registration from AetherCore mesh
-
-**Use Cases:**
-- Device decommissioning
-- Security incident response
-- User account deletion
-- Factory reset preparation
-
-**Code Reference:** `clients/ios/AetherCoreMessenger/AetherCoreMessenger/Security/SecureEnclaveKeyManager.swift:217-234`
-
----
-
-## Attestation (Placeholder)
-
-### Current Status
-
-**Implementation:** Placeholder only (no real attestation)
-
-**Placeholder Value:** `"ATTESTATION_PLACEHOLDER_TODO_DEVICECHECK"`
-
-**Code Location:** `clients/ios/AetherCoreMessenger/AetherCoreMessenger/Genesis/GenesisBundle.swift:43`
-
-### Planned Implementation
-
-**Technology:** Apple DeviceCheck API
-
-**Workflow:**
-1. Gateway generates challenge nonce
-2. iOS app requests attestation token from DeviceCheck
-3. DeviceCheck service validates device authenticity
-4. Attestation token returned (cryptographically signed by Apple)
-5. Token submitted to gateway with public key
-
-**Attestation Properties:**
-- Proves device is genuine Apple hardware
-- Validates iOS version and integrity
-- Cannot be forged or replayed
-- Rate-limited by Apple (anti-abuse)
-
-**TODO:** Implement `AttestationService.requestAttestationToken()`
-
----
-
-## Cryptographic Alignment with AetherCore
-
-### AetherCore Standards (from `SECURITY.md`)
-
-| Standard | Required | iOS Implementation | Status |
-|----------|----------|-------------------|--------|
-| **Hashing** | BLAKE3 | SHA-256 (interim) | ⚠️ Partial |
-| **Signing** | Ed25519 | ECDSA P-256 | ✅ Compatible |
-| **Key Storage** | TPM/Secure Enclave | Secure Enclave | ✅ Compliant |
-| **Transport** | TLS 1.3 | Not yet implemented | ⏳ Pending |
-
-### Notes on BLAKE3
-
-**Current:** iOS CryptoKit does not provide BLAKE3 natively. Using SHA-256 for public key fingerprinting.
-
-**Future:** Integrate third-party BLAKE3 library (ensure MIT/Apache-2.0 license per `deny.toml`).
-
-**Impact:** SHA-256 is cryptographically secure; BLAKE3 is preferred for performance and consistency.
-
-### Notes on P-256 vs Ed25519
-
-**Secure Enclave Constraint:** Apple Secure Enclave only supports P-256 (NIST secp256r1).
-
-**Compatibility:** P-256 provides equivalent security to Ed25519 (128-bit security level).
-
-**Rationale:** Hardware-rooted trust (Secure Enclave) takes precedence over algorithm preference.
-
----
-
-## Security Boundaries
-
-### What Secure Enclave Protects
-
-✅ **Private key confidentiality:** Key never exposed to application or OS  
-✅ **Signing integrity:** Operations performed in hardware-isolated processor  
-✅ **Device binding:** Keys cannot be exported or transferred  
-✅ **Tamper resistance:** Physical attacks mitigated by hardware design  
-
-### What Secure Enclave Does NOT Protect
-
-❌ **Public key confidentiality:** Public keys are inherently shareable  
-❌ **Data confidentiality:** Plaintext data passed to signing operations  
-❌ **Network security:** TLS/transport layer is separate concern  
-❌ **Application logic vulnerabilities:** Code bugs are outside Secure Enclave scope  
-
----
-
-## Fail-Visible Error Handling
-
-Per AetherCore doctrine, security failures are explicit and halt operations.
-
-### Example: Secure Enclave Unavailable
-
-```swift
-// App.swift:27-40
-guard SecureEnclaveKeyManager.isSecureEnclaveAvailable() else {
-    fatalError("""
-        ❌ FAIL-VISIBLE: Secure Enclave unavailable
-        
-        This device does not support Secure Enclave.
-        AetherCore cannot operate without hardware-rooted key storage.
-        """)
+struct SecureEnclaveQuote {
+    let nonce: Data                  // Caller-supplied challenge
+    let signatureDER: Data           // ECDSA P-256 signature (DER-encoded)
+    let publicKeySEC1: Data          // Public key (SEC1 uncompressed format)
+    let keyTag: String               // Keychain identifier
+    let timestampMs: UInt64          // Quote creation time
 }
 ```
 
-### Error Categories
+## Entitlements Requirements
 
-| Error | Severity | Action |
-|-------|----------|--------|
-| Secure Enclave unavailable | CRITICAL | Fatal error, halt app |
-| Key generation failure | CRITICAL | Fatal error, cannot proceed |
-| Signing failure | HIGH | Fail operation, log error |
-| Key not found | MEDIUM | Attempt regeneration |
+### Required Entitlements
 
----
+The following entitlements **must** be present in your app's provisioning profile:
 
-## Simulator Enforcement
-
-**Policy:** Simulator deployment is explicitly prohibited.
-
-**Rationale:** iOS Simulator does not have Secure Enclave, cannot provide hardware-rooted trust.
-
-**Implementation:**
-```swift
-#if targetEnvironment(simulator)
-fatalError("❌ FAIL-VISIBLE: Simulator detected")
-#endif
+#### 1. Application Identifier
+```xml
+<key>com.apple.application-identifier</key>
+<string>$(AppIdentifierPrefix)$(CFBundleIdentifier)</string>
+```
+**or**
+```xml
+<key>application-identifier</key>
+<string>$(AppIdentifierPrefix)$(CFBundleIdentifier)</string>
 ```
 
-**Code Location:** `clients/ios/AetherCoreMessenger/AetherCoreMessenger/App.swift:18-27`
+#### 2. Keychain Access Groups
+```xml
+<key>keychain-access-groups</key>
+<array>
+    <string>$(AppIdentifierPrefix)com.aethercore.*</string>
+</array>
+```
 
----
+#### 3. Team Identifier
+```xml
+<key>com.apple.developer.team-identifier</key>
+<string>$(AppIdentifierPrefix)</string>
+```
 
-## Compliance and Audit
+### Entitlements Preflight
 
-### Key Policy Checklist
+The implementation performs an entitlements preflight check at startup:
 
-- [x] Private keys are non-exportable
-- [x] Private keys never in application memory
-- [x] Private keys not backed up to iCloud
-- [x] Secure Enclave availability enforced at launch
-- [x] Fail-Visible error handling for crypto operations
-- [x] Simulator deployment blocked
-- [x] Device passcode required (enforced by iOS)
-- [ ] Key rotation implemented (TODO)
-- [ ] Real attestation token (TODO)
-- [ ] BLAKE3 integration (TODO)
+```swift
+func preflightSecureEnclaveEntitlements() -> String? {
+    let applicationIdentifier = readEntitlement("com.apple.application-identifier") 
+                             ?? readEntitlement("application-identifier")
+    let keychainGroups = readEntitlement("keychain-access-groups")
+    let teamIdentifier = readEntitlement("com.apple.developer.team-identifier")
+    
+    if applicationIdentifier == nil && keychainGroups == nil {
+        return "missing keychain signing entitlements"
+    }
+    
+    if teamIdentifier == nil {
+        return "missing team-identifier entitlement"
+    }
+    
+    return nil
+}
+```
 
-### Audit Trail
+**Fail-Fast Behavior**: If entitlements are missing, the error is surfaced in:
+- Application launch logs
+- SecureEnclaveError diagnostic messages
+- Key generation failure context
 
-All cryptographic operations log success/failure:
-- Key generation: `✅ Secure Enclave key generated successfully`
-- Key existence: `ℹ️ Secure Enclave key already exists`
-- Signing operations: Logged in application context
-- Key deletion: `✅ Secure Enclave key deleted successfully`
+### Provisioning Profile Setup
 
-**Log Level:** INFO for success, ERROR for failures
+1. **Development Profile**:
+   - Enable "App Groups" capability (for keychain-access-groups)
+   - Ensure team identifier is present
+   - Sign with development certificate
 
----
+2. **Distribution Profile**:
+   - Same entitlements as development
+   - Sign with distribution certificate
 
-## Risk Mitigation
+3. **Validate Entitlements**:
+   ```bash
+   codesign -d --entitlements :- YourApp.app
+   ```
 
-### Risk: Simulator Bypass
+## Key Policy
 
-**Threat:** Developer disables simulator guard to test on simulator
+### Key Generation Parameters
 
-**Mitigation:**
-- CI enforces build for `generic/platform=iOS` (device architecture)
-- Runtime guard fails-fast with diagnostic message
-- Code review enforces policy
+#### Persistent Keys (Preferred)
+```swift
+let attributes: [String: Any] = [
+    kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,  // P-256
+    kSecAttrKeySizeInBits: 256,
+    kSecAttrTokenID: kSecAttrTokenIDSecureEnclave,     // Bind to SEP
+    kSecPrivateKeyAttrs: [
+        kSecAttrIsPermanent: true,                     // Store in keychain
+        kSecAttrApplicationTag: tagData,               // Deterministic tag
+        kSecAttrAccessControl: accessControl           // Device unlock required
+    ]
+]
+```
 
-### Risk: Access Control Downgrade
+#### Access Control Policy
+```swift
+let accessControl = SecAccessControlCreateWithFlags(
+    nil,
+    kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,  // Preferred
+    .privateKeyUsage,                                   // Require auth for signing
+    nil
+)
+```
 
-**Threat:** Developer weakens access control to bypass device authentication
+**Accessibility Levels Tried** (in order):
+1. `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` (preferred)
+2. `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` (fallback)
 
-**Mitigation:**
-- Access control flags are compile-time constants
-- Code review checks `SecAccessControlCreateWithFlags` parameters
-- Policy documented and versioned
+### Key Lookup
 
-### Risk: Key Export Attempt
+Before creating a new key, the implementation searches keychain for existing keys:
 
-**Threat:** Attacker attempts to export private key via API
+```swift
+let query: [String: Any] = [
+    kSecClass: kSecClassKey,
+    kSecAttrApplicationTag: tagData,
+    kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
+    kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+    kSecMatchLimit: kSecMatchLimitOne,
+    kSecReturnRef: true
+]
+```
 
-**Mitigation:**
-- Secure Enclave hardware prevents export (enforced by iOS)
-- No API exists to extract private key material
-- `SecKeyCopyExternalRepresentation()` returns error for Secure Enclave keys
+This enables:
+- **Key Reuse**: Same key across app restarts
+- **Rotation**: Delete old tag, create new key
+- **Diagnostics**: Detect orphaned or stale keys
 
----
+### Non-Exportable Private Keys
+
+Private keys bound to the Secure Enclave **cannot be exported**. Any attempt to export private key material will fail with `errSecItemNotFound`.
+
+Only **public keys** can be exported:
+```swift
+let publicKey = SecKeyCopyPublicKey(privateKey)
+let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, nil)
+// Output: 65-byte SEC1 uncompressed format (0x04 || X || Y)
+```
+
+## Fallback Policy
+
+### Fallback Hierarchy
+
+When persistent key creation fails, the implementation attempts:
+
+1. **Ephemeral SEP Key** (if `AETHERCORE_SEP_ALLOW_EPHEMERAL=true`)
+   - Non-permanent key (no keychain storage)
+   - Still bound to Secure Enclave
+   - Lost on app termination
+   - **Key tag modified**: Appends `-ephemeral` suffix to distinguish from persistent keys
+
+2. **Alternative Accessibility Level**
+   - Try `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
+   - Requires device unlock before use
+
+3. **Fatal Error**
+   - If all attempts fail, return `SecureEnclaveError.secureEnclaveUnavailable`
+   - Error includes diagnostic context from all failed attempts
+
+### Environment Variable
+
+```bash
+# Disable ephemeral fallback (default - fail-visible)
+# No environment variable needed - this is the default behavior
+
+# Enable ephemeral fallback (explicit opt-in)
+export AETHERCORE_SEP_ALLOW_EPHEMERAL=true
+```
+
+**Rationale for Default `false`**:
+- **Fail-Visible Doctrine**: Persistent key creation failure is a security event requiring explicit acknowledgment
+- **Cryptographic Certainty**: Ephemeral keys degrade from persistent hardware-rooted identity
+- **Explicit Opt-In**: Operators must consciously enable fallback behavior
+
+**When to Enable**:
+- Development/testing environments where key persistence is not critical
+- Temporary workaround for CryptoTokenKit instability on specific iOS builds
+- Scenarios where transient signing capability is acceptable
+
+**When to Keep Disabled** (default):
+- Production deployments requiring persistent identity
+- Environments where key lifecycle management is critical
+- Any deployment where silent degradation is unacceptable
+
+### Diagnostic Errors
+
+All fallback attempts are logged in the error context:
+
+```swift
+SecureEnclaveError.secureEnclaveUnavailable(
+    "generation_errors=entitlements_preflight: diagnostic check skipped | " +
+    "persistent_key_lookup_status=-25300 | " +
+    "ephemeral_sec_enclave_key_failed: key creation failed | " +
+    "persistent_key_creation_failed[AfterFirstUnlock]: errSecItemNotFound"
+)
+```
+
+**Note on Entitlements Preflight**: The preflight check is currently a placeholder. Actual entitlement validation occurs at the Security framework level during key operations. Future implementations may add programmatic entitlement checking via `SecTaskCopyValueForEntitlement`.
+
+## Cryptographic Curve Rationale
+
+### P-256 vs Ed25519 Divergence
+
+**Standard AetherCore Architecture**:
+- **Primary**: Ed25519 signatures (Twisted Edwards curve)
+- **Rationale**: Modern, fast, simple, side-channel resistant
+
+**iOS Secure Enclave Constraint**:
+- **Required**: ECDSA P-256 (secp256r1 / NIST P-256)
+- **Reason**: iOS SEP hardware only supports P-256
+
+### Why P-256?
+
+1. **Hardware Support**: iOS Secure Enclave exclusively supports P-256
+2. **Apple Silicon Acceleration**: Hardware-accelerated ECDSA operations
+3. **Alignment with macOS**: Same curve as `crates/identity/src/secure_enclave.rs`
+4. **Industry Standard**: NIST P-256 widely deployed in enterprise PKI
+
+### Security Considerations
+
+**P-256 Security Properties**:
+- 128-bit security level (equivalent to AES-128)
+- Mature curve with extensive cryptanalysis
+- No known practical attacks against properly implemented ECDSA P-256
+
+**Divergence Risks**:
+- ⚠️ **Mixed Signature Verification**: Trust mesh must support both Ed25519 and P-256
+- ⚠️ **Key Agreement Incompatibility**: Ed25519 and P-256 keys cannot be mixed in DH
+- ⚠️ **Signature Length**: P-256 signatures (64-72 bytes DER) vs Ed25519 (64 bytes)
+
+### Mitigation Strategy
+
+1. **Protocol-Level Tagging**: `Attestation::SecureEnclave` variant identifies P-256 signatures
+2. **Verification Routing**: Trust mesh routes to appropriate verifier based on attestation type
+3. **Transparent to Applications**: Upper layers abstract curve details
+4. **Documentation**: This divergence is tracked in architecture docs
+
+### Future Work
+
+- **Evaluate StrongBox Keymaster** on Android (also P-256)
+- **Unified P-256 Verification Path** for mobile platforms
+- **Performance Benchmarks**: P-256 vs Ed25519 on mobile hardware
+
+## Simulator Rejection
+
+### Explicit Rejection
+
+The Secure Enclave is **not available** on iOS Simulator. The implementation explicitly rejects simulator builds:
+
+```swift
+public static func isSupported() -> Bool {
+    #if targetEnvironment(simulator)
+    return false
+    #else
+    return SecureEnclave.isAvailable
+    #endif
+}
+
+public func signNonce(_ nonce: Data) throws -> SecureEnclaveQuote {
+    #if targetEnvironment(simulator)
+    throw SecureEnclaveError.simulatorNotSupported
+    #endif
+    // ...
+}
+```
+
+**Error Message**:
+```
+Secure Enclave is not available on iOS Simulator. 
+This is a fatal error - device-only builds required.
+```
+
+### Build Configuration
+
+To enforce device-only builds, set in Xcode:
+
+**Build Settings → Supported Platforms**:
+```
+SUPPORTED_PLATFORMS = iphoneos
+```
+
+Or in `project.pbxproj`:
+```
+SUPPORTED_PLATFORMS = "iphoneos";
+```
+
+### CI Considerations
+
+CI builds using `CODE_SIGNING_ALLOWED=NO` will:
+- ✅ Compile successfully
+- ✅ Pass unit tests (simulator rejection is expected)
+- ❌ Cannot exercise Secure Enclave operations
+
+**Local Device Testing Required** for:
+- Key generation validation
+- Signing operation verification
+- Entitlements compliance testing
+
+## Validation
+
+### Compilation Checks
+
+```bash
+# Build for iOS device
+xcodebuild -scheme SecureEnclaveKeyManager \
+    -destination 'generic/platform=iOS' \
+    -configuration Release \
+    CODE_SIGNING_ALLOWED=NO \
+    build
+```
+
+Expected: Build succeeds without code signing
+
+### Entitlements Validation
+
+```bash
+# Extract entitlements from built app
+codesign -d --entitlements :- AetherCore.app
+
+# Verify keychain-access-groups is present
+# Verify team-identifier is present
+# Verify application-identifier is present
+```
+
+### Device Testing
+
+```swift
+// In app delegate or entry point
+func validateSecureEnclave() {
+    guard SecureEnclaveKeyManager.isSupported() else {
+        fatalError("Secure Enclave not available")
+    }
+    
+    let manager = SecureEnclaveKeyManager(keyTag: "com.4mik.aethercore.sep")
+    let nonce = Data("test-nonce".utf8)
+    
+    do {
+        let quote = try manager.signNonce(nonce)
+        print("✅ Secure Enclave operational")
+        print("   Key Tag: \(quote.keyTag)")
+        print("   Public Key Length: \(quote.publicKeySEC1.count) bytes")
+    } catch {
+        fatalError("Secure Enclave validation failed: \(error)")
+    }
+}
+```
+
+## Troubleshooting
+
+### "Simulator Not Supported" Error
+✅ **Expected on Simulator**: Deploy to physical device
+
+### "Missing Entitlements" Error
+1. Check provisioning profile includes required entitlements
+2. Verify code signing identity is correct
+3. Rebuild with `xcodebuild -showBuildSettings` to inspect entitlements
+
+### "Key Generation Failed" Error
+1. Ensure device is unlocked (for `AfterFirstUnlock` accessibility)
+2. Check if another app is using the same key tag
+3. Enable `AETHERCORE_SEP_ALLOW_EPHEMERAL=true` as temporary fallback
+4. Inspect error context for specific failure reasons
+
+### "Algorithm Not Supported" Error
+❌ **Fatal**: Device Secure Enclave does not support P-256 (extremely rare)
+- Likely indicates compromised device or jailbreak
+- Fail-fast is correct behavior
 
 ## References
 
-- **Apple Documentation:** [Storing Keys in the Secure Enclave](https://developer.apple.com/documentation/security/certificate_key_and_trust_services/keys/storing_keys_in_the_secure_enclave)
-- **DeviceCheck API:** [Validating Apps with DeviceCheck](https://developer.apple.com/documentation/devicecheck)
-- **AetherCore Security Standards:** `/SECURITY.md`
-- **iOS Build Guide:** [BUILD.md](BUILD.md)
-
----
-
-## Changelog
-
-| Date | Version | Change |
-|------|---------|--------|
-| 2026-03-02 | 0.1.0 | Initial Secure Enclave policy documentation |
+- Apple Technical Note TN2250: [Secure Enclave](https://developer.apple.com/documentation/security/certificate_key_and_trust_services/keys/protecting_keys_with_the_secure_enclave)
+- NIST SP 800-186: [Recommendations for Discrete Logarithm-based Cryptography: Elliptic Curve Domain Parameters](https://csrc.nist.gov/publications/detail/sp/800-186/final)
+- Rust implementation: `crates/identity/src/secure_enclave.rs`
+- iOS build guide: `docs/ios/BUILD.md`
