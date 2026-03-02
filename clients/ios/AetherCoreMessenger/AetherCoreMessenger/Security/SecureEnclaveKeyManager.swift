@@ -181,7 +181,11 @@ class SecureEnclaveKeyManager {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         
-        guard status == errSecSuccess, let privateKey = item as! SecKey? else {
+        guard status == errSecSuccess else {
+            throw SecureEnclaveError.keyNotFound
+        }
+        
+        guard let privateKey = item as? SecKey else {
             throw SecureEnclaveError.keyNotFound
         }
         
@@ -224,7 +228,11 @@ class SecureEnclaveKeyManager {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         
-        guard status == errSecSuccess, let privateKey = item as! SecKey? else {
+        guard status == errSecSuccess else {
+            throw SecureEnclaveError.keyNotFound
+        }
+        
+        guard let privateKey = item as? SecKey else {
             throw SecureEnclaveError.keyNotFound
         }
         

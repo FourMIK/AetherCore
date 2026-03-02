@@ -65,7 +65,7 @@ kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
 **Policy Rationale:**
 - `AfterFirstUnlockThisDeviceOnly`: Key available after device boot unlock, but not backed up
-- `.privateKeyUsage`: Require device authentication for private key operations (no biometry for unattended mode)
+- `.privateKeyUsage`: Key usage requires device authentication (passcode or biometry if enrolled); suitable for unattended operation as biometry is optional
 
 **Code Reference:** `clients/ios/AetherCoreMessenger/AetherCoreMessenger/Security/SecureEnclaveKeyManager.swift:93-118`
 

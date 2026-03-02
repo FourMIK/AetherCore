@@ -253,7 +253,6 @@ CI automatically runs SwiftLint if available (non-blocking).
 | iPhone | iPhone 5s | ✅ | iOS 17+ |
 | iPad | iPad Air 2 | ✅ | iOS 17+ |
 | iPad Pro | All models | ✅ | iOS 17+ |
-| iPod touch | 7th gen | ✅ | iOS 17 (if supported) |
 
 ---
 

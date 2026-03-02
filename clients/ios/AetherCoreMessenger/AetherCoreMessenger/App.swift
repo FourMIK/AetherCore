@@ -40,7 +40,6 @@ struct AetherCoreMessengerApp: App {
                 Requirements:
                 - iOS device with Secure Enclave (iPhone 5s+, iPad Air 2+)
                 - Device passcode must be set
-                - Biometric authentication enabled (recommended)
                 """)
         }
         
