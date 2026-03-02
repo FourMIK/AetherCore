@@ -25,6 +25,20 @@ export interface TacticalNode {
   deploymentPid?: number; // Process ID if deployed locally
   deploymentStatus?: string; // Deployment status: Running, Stopped, Failed
   deploymentPort?: number; // Listen port if deployed locally
+  videoStream?: VideoStream; // Optional video stream for ISR-capable nodes
+}
+
+// Video Stream interface for ISR feeds
+export interface VideoStream {
+  url: string;
+  format: 'hls' | 'webrtc' | 'mjpeg' | 'mock-flir';
+  status: 'live' | 'offline' | 'connecting';
+  resolution?: string;
+  metadata?: {
+    fps?: number;
+    bitrate?: number;
+    codec?: string;
+  };
 }
 
 // Track Types
