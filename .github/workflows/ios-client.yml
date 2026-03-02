@@ -17,6 +17,10 @@ concurrency:
   group: ios-client-${{ github.ref }}
   cancel-in-progress: true
 
+# Minimal permissions for security
+permissions:
+  contents: read
+
 jobs:
   build-ios:
     name: Build iOS Client (Xcode)
