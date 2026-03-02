@@ -75,9 +75,19 @@ pub async fn authenticate(flir_ip: &str, user: &str, pass: &str) -> Result<Strin
     info!("[FLIR CGI] Initiating authentication to {}", flir_ip);
     
     // Construct authentication URL
+    // NOTE: Using HTTP for compatibility with legacy FLIR devices in disconnected/contested environments
+    // PRODUCTION REQUIREMENT: Set environment variable FLIR_ENFORCE_TLS=true to mandate HTTPS
+    let scheme = if std::env::var("FLIR_ENFORCE_TLS").is_ok() {
+        warn!("[FLIR CGI] TLS enforcement enabled - using HTTPS");
+        "https"
+    } else {
+        warn!("[FLIR CGI] TLS not enforced - using HTTP (insecure). Set FLIR_ENFORCE_TLS=true for production.");
+        "http"
+    };
+    
     let auth_url = format!(
-        "http://{}/Nexus.cgi?action=SERVERAuthInitialize&username={}&password={}",
-        flir_ip, user, pass
+        "{}://{}/Nexus.cgi?action=SERVERAuthInitialize&username={}&password={}",
+        scheme, flir_ip, user, pass
     );
     
     // Create HTTP client with reasonable timeouts for tactical environments
@@ -159,10 +169,16 @@ pub async fn bind_udp_telemetry(
         edge_node_ip, port, flir_ip
     );
     
-    // Construct UDP registration URL
+    // Construct UDP registration URL with TLS awareness
+    let scheme = if std::env::var("FLIR_ENFORCE_TLS").is_ok() {
+        "https"
+    } else {
+        "http"
+    };
+    
     let register_url = format!(
-        "http://{}/Nexus.cgi?session={}&action=SERVERUDPClientRegister&ip={}&port={}&type=ALL",
-        flir_ip, session_id, edge_node_ip, port
+        "{}://{}/Nexus.cgi?session={}&action=SERVERUDPClientRegister&ip={}&port={}&type=ALL",
+        scheme, flir_ip, session_id, edge_node_ip, port
     );
     
     // Create HTTP client

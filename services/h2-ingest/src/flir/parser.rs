@@ -119,28 +119,19 @@ fn parse_coordinate(coord_str: &str, direction: &str) -> Option<f64> {
     // Parse the coordinate string as a float
     let coord_val = coord_str.parse::<f64>().ok()?;
     
-    // Determine degrees based on coordinate length
-    // Latitude: DDMM.MM (2 digit degrees)
-    // Longitude: DDDMM.MM (3 digit degrees)
-    let (degrees, minutes) = if coord_str.len() >= 7 && coord_str.contains('.') {
-        // Longitude format: DDDMM.MM
-        if coord_val >= 10000.0 {
-            let deg = (coord_val / 100.0).floor();
-            let min = coord_val - (deg * 100.0);
-            (deg, min)
-        } else {
-            // Latitude format: DDMM.MM
-            let deg = (coord_val / 100.0).floor();
-            let min = coord_val - (deg * 100.0);
-            (deg, min)
-        }
-    } else {
+    // Validate coordinate format
+    if coord_str.len() < 7 || !coord_str.contains('.') {
         warn!("Invalid coordinate format: {}", coord_str);
         return None;
-    };
+    }
+    
+    // Extract degrees and minutes
+    // Format is either DDMM.MM (latitude) or DDDMM.MM (longitude)
+    let deg = (coord_val / 100.0).floor();
+    let min = coord_val - (deg * 100.0);
     
     // Convert to decimal degrees
-    let mut decimal_degrees = degrees + (minutes / 60.0);
+    let mut decimal_degrees = deg + (min / 60.0);
     
     // Apply direction (negative for South and West)
     if direction == "S" || direction == "W" {

@@ -26,18 +26,19 @@ const MAX_DATAGRAM_SIZE: usize = 2048;
 /// Channel buffer size for parsed tracks awaiting dispatch
 const TRACK_CHANNEL_SIZE: usize = 100;
 
-/// Start listening for FLIR UDP telemetry on the specified port
+/// Start listening for FLIR UDP telemetry on the specified bind address and port
 ///
 /// This function creates a UDP socket and continuously receives telemetry datagrams
 /// from FLIR devices. Valid track messages are parsed and sent to the provided channel
 /// for cryptographic processing and mesh distribution.
 ///
 /// # Arguments
+/// * `bind_address` - IP address to bind (e.g., "0.0.0.0" for all interfaces, or specific IP for isolation)
 /// * `port` - UDP port to bind (typically 5000 for FLIR telemetry)
 /// * `track_tx` - Channel sender for forwarding parsed tracks
 ///
 /// # Behavior
-/// - Binds to 0.0.0.0:<port> to accept from any network interface
+/// - Binds to <bind_address>:<port> to control interface exposure
 /// - Runs indefinitely until the channel is closed or a fatal error occurs
 /// - Invalid/corrupt datagrams are logged and discarded (Fail-Visible)
 /// - Non-TRACK NMEA messages are ignored
@@ -49,13 +50,14 @@ const TRACK_CHANNEL_SIZE: usize = 100;
 /// # Example
 /// ```ignore
 /// let (tx, rx) = mpsc::channel(100);
-/// tokio::spawn(start_listening(5000, tx));
+/// tokio::spawn(start_listening("0.0.0.0", 5000, tx));
 /// ```
 pub async fn start_listening(
+    bind_address: &str,
     port: u16,
     track_tx: mpsc::Sender<FlirTrack>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let bind_addr = format!("0.0.0.0:{}", port);
+    let bind_addr = format!("{}:{}", bind_address, port);
     
     info!("[FLIR UDP] Binding listener to {}", bind_addr);
     
@@ -133,16 +135,18 @@ pub async fn start_listening(
 /// Useful for simple integrations that don't require explicit channel management.
 ///
 /// # Arguments
+/// * `bind_address` - IP address to bind
 /// * `port` - UDP port to bind
 /// * `handler` - Async callback invoked for each successfully parsed track
 ///
 /// # Example
 /// ```ignore
-/// start_listening_with_handler(5000, |track| async move {
+/// start_listening_with_handler("0.0.0.0", 5000, |track| async move {
 ///     println!("Track: {}", track.target_id);
 /// }).await?;
 /// ```
 pub async fn start_listening_with_handler<F, Fut>(
+    bind_address: &str,
     port: u16,
     handler: F,
 ) -> Result<(), Box<dyn std::error::Error>>
@@ -152,9 +156,10 @@ where
 {
     let (tx, mut rx) = mpsc::channel(TRACK_CHANNEL_SIZE);
     
+    let bind_address = bind_address.to_string();
     // Spawn listener task
     let listener_handle = tokio::spawn(async move {
-        if let Err(e) = start_listening(port, tx).await {
+        if let Err(e) = start_listening(&bind_address, port, tx).await {
             error!("[FLIR UDP] Listener task failed: {}", e);
         }
     });

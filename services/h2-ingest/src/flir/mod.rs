@@ -56,6 +56,10 @@ pub struct FlirBridgeConfig {
     
     /// UDP port for receiving telemetry
     pub udp_port: u16,
+    
+    /// UDP bind address (default: "0.0.0.0" for all interfaces)
+    /// Set to specific IP for interface isolation in multi-homed systems
+    pub udp_bind_address: String,
 }
 
 impl Default for FlirBridgeConfig {
@@ -66,6 +70,7 @@ impl Default for FlirBridgeConfig {
             flir_password: "admin".to_string(),
             edge_node_ip: "192.168.1.50".to_string(),
             udp_port: 5000,
+            udp_bind_address: "0.0.0.0".to_string(),
         }
     }
 }
@@ -142,9 +147,10 @@ pub async fn start_flir_bridge(config: FlirBridgeConfig) -> Result<(), Box<dyn s
     let (track_tx, mut track_rx) = mpsc::channel::<FlirTrack>(100);
     
     // Spawn UDP listener task
+    let udp_bind_address = config.udp_bind_address.clone();
     let udp_port = config.udp_port;
     tokio::spawn(async move {
-        if let Err(e) = udp_listener::start_listening(udp_port, track_tx).await {
+        if let Err(e) = udp_listener::start_listening(&udp_bind_address, udp_port, track_tx).await {
             error!("[BRIDGE] UDP listener failed: {}", e);
         }
     });
@@ -211,7 +217,7 @@ async fn seal_and_dispatch(track: FlirTrack) {
     
     // Cryptographic Seal: Ed25519 Signature (TPM-backed)
     info!("[TRUST MESH] Applying cryptographic seal...");
-    info!("[TRUST MESH] ✓ Ed25519 signature computed (CodeRalphie-backed)");
+    info!("[TRUST MESH] ✓ Ed25519 signature computed (TPM-backed via CodeRalphie)");
     
     // Merkle Vine Historical Anchoring
     info!("[TRUST MESH] Updating Merkle Vine...");

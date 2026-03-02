@@ -8,7 +8,7 @@ The FLIR Trust Bridge integrates Teledyne FLIR Nexus camera telemetry into the A
 
 ```
 FLIR Nexus Camera
-    ↓ (HTTP/CGI Control)
+    ↓ (HTTP/CGI Control - ⚠️ INSECURE without TLS)
 CGI Client (Authentication & Registration)
     ↓
 UDP Listener (Port 5000)
@@ -21,6 +21,8 @@ AetherCore Trust Mesh
     ↓
 C2 Router → ATAK Bridge → Tactical Glass
 ```
+
+**⚠️ SECURITY WARNING**: The default configuration uses HTTP (not HTTPS) for FLIR CGI communication to support legacy devices in disconnected/contested environments. **Production deployments MUST enforce TLS** by setting the `FLIR_ENFORCE_TLS=true` environment variable. Transmitting credentials over HTTP violates the TLS 1.3 requirement in SECURITY.md.
 
 ## Components
 
@@ -70,6 +72,8 @@ For production deployments, configure via:
 - `FLIR_PASSWORD`: Authentication password (use secrets vault)
 - `EDGE_NODE_IP`: IP address of this edge node
 - `FLIR_UDP_PORT`: UDP port for telemetry (default: 5000)
+- `FLIR_UDP_BIND_ADDRESS`: Bind address for UDP (default: "0.0.0.0", use specific IP for interface isolation)
+- **`FLIR_ENFORCE_TLS=true`**: **REQUIRED for production** - Enforces HTTPS for all FLIR CGI communication
 
 ## Usage
 
