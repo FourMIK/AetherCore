@@ -572,3 +572,30 @@ jobs:
             cat test_output.log
             exit 1
           fi
+
+  ios-identity-compile:
+    name: iOS Identity Crate Compile Check
+    runs-on: macos-latest
+    needs: [network-prerequisites]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      
+      - name: Add iOS simulator target
+        run: rustup target add aarch64-apple-ios-sim
+      
+      - name: Compile identity crate for iOS simulator (check only)
+        run: |
+          cd crates/identity
+          cargo check --target aarch64-apple-ios-sim --no-default-features
+          echo "✅ iOS simulator compile check passed"
+      
+      - name: Compile identity crate for iOS device (check only)
+        run: |
+          rustup target add aarch64-apple-ios
+          cd crates/identity
+          cargo check --target aarch64-apple-ios --no-default-features
+          echo "✅ iOS device compile check passed"
