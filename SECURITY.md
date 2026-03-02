@@ -86,13 +86,14 @@ AetherCore implements multi-layered security:
 - ❌ **MD5**: Prohibited; immediate security failure
 
 **Signing:**
-- ✅ **Ed25519**: All digital signatures (TPM-backed in production)
+- ✅ **Ed25519**: All digital signatures for TPM-backed identities (TPM 2.0 production)
+- ✅ **ECDSA P-256**: Secure Enclave-backed identities only (iOS/macOS with kSecAttrTokenIDSecureEnclave)
 - ❌ **RSA**: Not used; key size and performance concerns
-- ❌ **ECDSA**: Not used; complexity and side-channel risks
+- ❌ **ECDSA** (general): Not used except for Secure Enclave; complexity and side-channel risks
 
 **Key Storage:**
-- ✅ **TPM 2.0**: Hardware-backed private key storage (production)
-- ✅ **Secure Enclave**: Apple Silicon/Intel SGX (production)
+- ✅ **TPM 2.0**: Hardware-backed private key storage (production, Ed25519)
+- ✅ **Secure Enclave**: Apple platforms (iOS/macOS production, P-256 only)
 - ❌ **System Memory**: Prohibited; private keys never in RAM
 - ❌ **Disk Storage**: Prohibited; no private keys in files
 
@@ -108,7 +109,8 @@ AetherCore implements multi-layered security:
 ```rust
 // MANDATORY: Use approved cryptographic crates
 use blake3;           // Hashing
-use ed25519_dalek;    // Signing
+use ed25519_dalek;    // Signing (TPM-backed identities)
+use p256;             // Signing (Secure Enclave-backed identities, iOS/macOS only)
 use tpm2_tss;         // TPM integration (CodeRalphie)
 
 // PROHIBITED: Do not use these
@@ -126,11 +128,11 @@ import * as ed from '@noble/ed25519';
 // import sha256 from 'crypto-js/sha256';  // Deprecated
 ```
 
-### CodeRalphie: TPM Integration
+### CodeRalphie: Hardware-Backed Identity
 
-**Production Requirement:** All private key operations MUST use TPM 2.0.
+**Production Requirement:** All private key operations MUST use TPM 2.0 (Ed25519) or Secure Enclave (P-256, Apple platforms only).
 
-**Implementation:**
+**TPM Implementation (Linux/Windows):**
 ```rust
 use tpm2_tss::{TpmContext, TpmSigningKey};
 use crate::error::CryptoError;
@@ -144,20 +146,38 @@ pub fn sign_with_tpm(message: &[u8]) -> Result<Vec<u8>, CryptoError> {
     
     Ok(signature)
 }
+```
+
+**Secure Enclave Implementation (iOS/macOS):**
+```rust
+use aethercore_identity::SecureEnclaveAttestor;
+
+pub fn sign_with_secure_enclave(nonce: &[u8]) -> Result<Vec<u8>, CryptoError> {
+    let attestor = SecureEnclaveAttestor::new("com.4mik.aethercore.identity");
+    
+    // Private P-256 key remains in Secure Enclave
+    let quote = attestor.sign_nonce(nonce)?;
+    
+    Ok(quote.signature_der)
+}
+```
+
+**Key Generation:**
+```rust
+// TPM: Generate Ed25519 key INSIDE TPM
+let tpm_key = TpmContext::generate_ed25519_key()?;
+let public_key = tpm_key.export_public_key()?; // Safe to export
+// Private key remains in TPM, never exported
+
+// Secure Enclave: Generate P-256 key INSIDE Secure Enclave
+// Keys are automatically bound to kSecAttrTokenIDSecureEnclave
+// Private key remains in SEP, never exported
+```
 
 // PROHIBITED: Never do this in production
 // fn sign_with_memory_key(message: &[u8], private_key: &[u8]) -> Signature {
 //     // This exposes private keys in memory - security violation
 // }
-```
-
-**Key Generation:**
-```rust
-// Generate key INSIDE TPM
-let tpm_key = TpmContext::generate_ed25519_key()?;
-let public_key = tpm_key.export_public_key()?; // Safe to export
-// Private key remains in TPM, never exported
-```
 
 ### Key Rotation Policy
 
@@ -191,7 +211,8 @@ let public_key = tpm_key.export_public_key()?; // Safe to export
 ### Operator Identity Requirements
 
 **Production Operator Accounts:**
-- TPM-backed Ed25519 key pair
+- TPM-backed Ed25519 key pair (Linux/Windows) OR
+- Secure Enclave-backed P-256 key pair (iOS/macOS)
 - Multi-factor authentication (MFA) mandatory
 - Biometric verification recommended
 - Regular re-authentication (24-hour sessions)
@@ -204,22 +225,23 @@ let public_key = tpm_key.export_public_key()?; // Safe to export
 ### Unit Identity (IoT Devices)
 
 **Zero-Touch Enrollment:**
-1. Operator generates Genesis Bundle (signed with TPM key)
+1. Operator generates Genesis Bundle (signed with TPM Ed25519 or Secure Enclave P-256 key)
 2. QR code contains:
-   - Operator public key
+   - Operator public key (Ed25519 or P-256)
    - Squad assignment
    - Enrollment timestamp
    - BLAKE3 hash of bundle
-   - Ed25519 signature
+   - Digital signature (Ed25519 or ECDSA P-256)
 3. Unit scans QR, verifies signature
-4. Unit generates own TPM-backed key pair
+4. Unit generates own hardware-backed key pair (TPM Ed25519 or Secure Enclave P-256)
 5. Unit registers with mesh using Genesis Bundle proof
 
 **Identity Verification:**
 ```rust
 pub fn verify_genesis_bundle(bundle: &GenesisBundleQR) -> Result<(), SecurityError> {
     // 1. Verify signature using operator's public key
-    let signature_valid = verify_ed25519(
+    // Supports both Ed25519 (TPM) and P-256 (Secure Enclave) signatures
+    let signature_valid = verify_signature(
         &bundle.operator_public_key,
         &bundle.payload,
         &bundle.signature,

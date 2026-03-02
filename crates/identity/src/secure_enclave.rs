@@ -1,4 +1,4 @@
-//! Secure Enclave attestation backend for Apple platforms.
+//! Secure Enclave attestation backend for Apple platforms (macOS and iOS).
 //!
 //! This backend signs caller-provided nonces with an ECDSA P-256 private key
 //! bound to the Secure Enclave and stored in keychain.
@@ -35,9 +35,9 @@ impl SecureEnclaveAttestor {
         }
     }
 
-    /// Returns true when the current target is macOS.
+    /// Returns true when the current target is macOS or iOS.
     pub fn is_supported() -> bool {
-        cfg!(target_os = "macos")
+        cfg!(any(target_os = "macos", target_os = "ios"))
     }
 
     /// Sign a nonce using a Secure Enclave-backed key.
@@ -48,16 +48,16 @@ impl SecureEnclaveAttestor {
             ));
         }
 
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
-            return self.sign_nonce_macos(nonce);
+            return self.sign_nonce_apple(nonce);
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {
             let _ = nonce;
             Err(crate::Error::Identity(
-                "Secure Enclave attestation is only supported on macOS".to_string(),
+                "Secure Enclave attestation is only supported on macOS and iOS".to_string(),
             ))
         }
     }
@@ -107,14 +107,14 @@ impl SecureEnclaveAttestor {
         }
     }
 
-    #[cfg(target_os = "macos")]
-    fn sign_nonce_macos(&self, nonce: &[u8]) -> crate::Result<SecureEnclaveQuote> {
-        macos_backend::sign_nonce(&self.key_tag, nonce)
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    fn sign_nonce_apple(&self, nonce: &[u8]) -> crate::Result<SecureEnclaveQuote> {
+        apple_backend::sign_nonce(&self.key_tag, nonce)
     }
 }
 
-#[cfg(target_os = "macos")]
-mod macos_backend {
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+mod apple_backend {
     use super::{current_timestamp_ms, SecureEnclaveQuote};
     use std::ffi::{c_void, CString};
     use std::os::raw::c_char;
@@ -554,12 +554,45 @@ mod macos_backend {
             .ok()
             .map(|value| {
                 let normalized = value.trim().to_ascii_lowercase();
-                !(normalized == "0" || normalized == "false" || normalized == "no")
+                normalized == "1" || normalized == "true" || normalized == "yes"
             })
-            .unwrap_or(true)
+            .unwrap_or(false)
     }
 
     unsafe fn preflight_secure_enclave_entitlements() -> Result<(), String> {
+        // iOS and macOS have different entitlement requirements
+        #[cfg(target_os = "ios")]
+        {
+            preflight_ios_entitlements()
+        }
+        
+        #[cfg(target_os = "macos")]
+        {
+            preflight_macos_entitlements()
+        }
+    }
+
+    #[cfg(target_os = "ios")]
+    unsafe fn preflight_ios_entitlements() -> Result<(), String> {
+        let application_identifier = read_entitlement("application-identifier")?;
+        let keychain_groups = read_entitlement("keychain-access-groups")?;
+        let team_identifier = read_entitlement("com.apple.developer.team-identifier")?;
+
+        if application_identifier.is_none() && keychain_groups.is_none() {
+            return Err(
+                "missing iOS keychain signing entitlements (application-identifier or keychain-access-groups)".to_string(),
+            );
+        }
+
+        if team_identifier.is_none() {
+            return Err("missing com.apple.developer.team-identifier entitlement".to_string());
+        }
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    unsafe fn preflight_macos_entitlements() -> Result<(), String> {
         let application_identifier = read_entitlement("com.apple.application-identifier")?
             .or(read_entitlement("application-identifier")?);
         let keychain_groups = read_entitlement("keychain-access-groups")?;
@@ -567,7 +600,7 @@ mod macos_backend {
 
         if application_identifier.is_none() && keychain_groups.is_none() {
             return Err(
-                "missing keychain signing entitlements (com.apple.application-identifier or keychain-access-groups)".to_string(),
+                "missing macOS keychain signing entitlements (com.apple.application-identifier or keychain-access-groups)".to_string(),
             );
         }
 
@@ -771,8 +804,8 @@ mod tests {
     }
 
     #[test]
-    fn non_macos_sign_nonce_is_rejected() {
-        if cfg!(target_os = "macos") {
+    fn non_apple_sign_nonce_is_rejected() {
+        if cfg!(any(target_os = "macos", target_os = "ios")) {
             return;
         }
 
