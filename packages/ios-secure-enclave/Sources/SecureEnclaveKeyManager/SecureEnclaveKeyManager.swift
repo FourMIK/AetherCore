@@ -199,11 +199,12 @@ public class SecureEnclaveKeyManager {
                         // Use ephemeral key for public key export
                         let publicKey = try exportPublicKey(from: ephemeralKey)
                         let timestamp = currentTimestampMs()
+                        // Note: Using modified key tag to indicate ephemeral key usage
                         return SecureEnclaveQuote(
                             nonce: nonce,
                             signatureDER: retrySignature,
                             publicKeySEC1: publicKey,
-                            keyTag: keyTag,
+                            keyTag: "\(keyTag)-ephemeral",
                             timestampMs: timestamp
                         )
                     } else {
@@ -335,28 +336,15 @@ public class SecureEnclaveKeyManager {
     // MARK: - Entitlements Preflight
     
     private func preflightSecureEnclaveEntitlements() -> String? {
-        let applicationIdentifier = readEntitlement("com.apple.application-identifier") ?? readEntitlement("application-identifier")
-        let keychainGroups = readEntitlement("keychain-access-groups")
-        let teamIdentifier = readEntitlement("com.apple.developer.team-identifier")
-        
-        if applicationIdentifier == nil && keychainGroups == nil {
-            return "missing keychain signing entitlements (com.apple.application-identifier or keychain-access-groups)"
-        }
-        
-        if teamIdentifier == nil {
-            return "missing com.apple.developer.team-identifier entitlement"
-        }
-        
-        return nil
-    }
-    
-    private func readEntitlement(_ key: String) -> String? {
-        // Note: Entitlement reading from SecTask may not work reliably in all contexts
-        // (e.g., during CI builds, early app lifecycle). This is a diagnostic-only check.
-        // The actual entitlement validation happens at the Security framework level when
-        // key operations are attempted. Returning nil here means "unable to verify" rather
-        // than "entitlement missing". Key operations will fail-visible if entitlements are
-        // actually missing.
+        // Note: Actual entitlement validation occurs at the Security framework level when
+        // key operations are attempted. This function is a placeholder for future
+        // implementation of programmatic entitlement checking via SecTaskCopyValueForEntitlement.
+        // 
+        // Current behavior: Returns nil (unable to verify), allowing key operations to
+        // proceed. If entitlements are actually missing, key creation will fail with
+        // explicit Security framework errors.
+        //
+        // Future: Implement SecTaskCopyValueForEntitlement for diagnostic purposes.
         return nil
     }
     

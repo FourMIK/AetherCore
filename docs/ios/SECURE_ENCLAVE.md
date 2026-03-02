@@ -179,6 +179,7 @@ When persistent key creation fails, the implementation attempts:
    - Non-permanent key (no keychain storage)
    - Still bound to Secure Enclave
    - Lost on app termination
+   - **Key tag modified**: Appends `-ephemeral` suffix to distinguish from persistent keys
 
 2. **Alternative Accessibility Level**
    - Try `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
@@ -219,12 +220,14 @@ All fallback attempts are logged in the error context:
 
 ```swift
 SecureEnclaveError.secureEnclaveUnavailable(
-    "generation_errors=entitlements_preflight: missing team-identifier | " +
+    "generation_errors=entitlements_preflight: diagnostic check skipped | " +
     "persistent_key_lookup_status=-25300 | " +
     "ephemeral_sec_enclave_key_failed: key creation failed | " +
     "persistent_key_creation_failed[AfterFirstUnlock]: errSecItemNotFound"
 )
 ```
+
+**Note on Entitlements Preflight**: The preflight check is currently a placeholder. Actual entitlement validation occurs at the Security framework level during key operations. Future implementations may add programmatic entitlement checking via `SecTaskCopyValueForEntitlement`.
 
 ## Cryptographic Curve Rationale
 

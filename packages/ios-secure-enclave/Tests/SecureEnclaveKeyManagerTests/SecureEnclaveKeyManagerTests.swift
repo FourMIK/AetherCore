@@ -138,12 +138,19 @@ final class SecureEnclaveKeyManagerTests: XCTestCase {
         // Use deterministic key tag with cleanup
         let keyTag = "com.test.sep.integration"
         
-        // Cleanup: Delete any existing test key
+        // Setup cleanup query immediately
         let tagData = keyTag.data(using: .utf8)!
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tagData
         ]
+        
+        // Register cleanup early to ensure it runs even if test fails
+        addTeardownBlock {
+            SecItemDelete(deleteQuery as CFDictionary)
+        }
+        
+        // Delete any existing test key before starting
         SecItemDelete(deleteQuery as CFDictionary)
         
         let keyManager = SecureEnclaveKeyManager(keyTag: keyTag)
@@ -169,11 +176,6 @@ final class SecureEnclaveKeyManagerTests: XCTestCase {
         print("   Signature Length: \(quote.signatureDER.count) bytes")
         print("   Public Key Length: \(quote.publicKeySEC1.count) bytes")
         print("   Timestamp: \(quote.timestampMs)")
-        
-        // Cleanup after test
-        addTeardownBlock {
-            SecItemDelete(deleteQuery as CFDictionary)
-        }
         #else
         XCTSkip("This test requires a physical iOS device")
         #endif
@@ -188,12 +190,19 @@ final class SecureEnclaveKeyManagerTests: XCTestCase {
         // Use deterministic key tag with cleanup
         let keyTag = "com.test.sep.persistent"
         
-        // Cleanup: Delete any existing test key
+        // Setup cleanup query immediately
         let tagData = keyTag.data(using: .utf8)!
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tagData
         ]
+        
+        // Register cleanup early to ensure it runs even if test fails
+        addTeardownBlock {
+            SecItemDelete(deleteQuery as CFDictionary)
+        }
+        
+        // Delete any existing test key before starting
         SecItemDelete(deleteQuery as CFDictionary)
         
         let keyManager = SecureEnclaveKeyManager(keyTag: keyTag)
@@ -213,11 +222,6 @@ final class SecureEnclaveKeyManagerTests: XCTestCase {
         
         print("✅ Persistent key reuse validated")
         print("   Same public key: \(quote1.publicKeySEC1 == quote2.publicKeySEC1)")
-        
-        // Cleanup after test
-        addTeardownBlock {
-            SecItemDelete(deleteQuery as CFDictionary)
-        }
         #else
         XCTSkip("This test requires a physical iOS device")
         #endif
