@@ -231,7 +231,9 @@ struct ContentView: View {
                 let gatewayClient = GatewayClient()
                 if gatewayClient.getAccessToken() != nil {
                     print("ℹ️ Device already enrolled - access token found")
-                    // Note: Would need to fetch enrollment details from server
+                    // NOTE: Enrollment details (nodeID, trust score) not persisted locally
+                    // UI shows "Not Enrolled" until user re-enrolls or implementation fetches from server
+                    // This is a known limitation documented in IMPLEMENTATION.md
                 }
             } catch {
                 // Fail-Visible: Display error prominently

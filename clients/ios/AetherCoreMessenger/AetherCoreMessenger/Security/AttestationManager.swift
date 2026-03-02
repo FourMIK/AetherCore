@@ -15,7 +15,11 @@
 // Alignment with AetherCore SECURITY.md:
 // ✅ Hardware attestation mandatory for production
 // ✅ Fail-Visible on missing attestation capability
-// ✅ SHA-256 challenge for P-256 Secure Enclave alignment
+// ⚠️ SHA-256 exception: iOS platform constraint
+//    - DCAppAttestService requires SHA-256 for clientDataHash (API requirement)
+//    - Secure Enclave P-256 ecosystem uses SHA-256 by convention
+//    - This is a documented exception to AetherCore's BLAKE3 standard
+//    - See: https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity
 
 import Foundation
 import DeviceCheck
@@ -111,6 +115,10 @@ class AttestationManager {
         // Step 2: Prepare challenge (SHA-256 of device fingerprint)
         // Use device fingerprint directly as challenge data
         // This binds the attestation to the Secure Enclave key identity
+        // 
+        // NOTE: SHA-256 usage is mandated by DCAppAttestService API
+        // This is an iOS platform constraint exception to AetherCore's BLAKE3 standard
+        // See: https://developer.apple.com/documentation/devicecheck/dcappattestservice/3573911-attestkey
         let challengeData = Data(deviceFingerprint.utf8)
         let challenge = SHA256.hash(data: challengeData)
         let challengeBytes = Data(challenge)
@@ -147,7 +155,8 @@ class AttestationManager {
     /// - Returns: Base64-encoded assertion object
     /// - Throws: AttestationError if assertion fails
     func generateAssertion(keyID: String, clientData: Data) async throws -> String {
-        // Hash client data (SHA-256 required by App Attest)
+        // Hash client data (SHA-256 required by DCAppAttestService API)
+        // NOTE: iOS platform constraint - SHA-256 mandated by Apple
         let clientDataHash = SHA256.hash(data: clientData)
         let clientDataHashBytes = Data(clientDataHash)
         

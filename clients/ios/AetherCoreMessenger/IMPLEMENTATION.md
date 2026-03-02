@@ -56,7 +56,13 @@ All security-critical failures trigger `fatalError` with descriptive messages:
 
 - **Key Generation**: P-256 (Secure Enclave requirement)
 - **Signing**: ECDSA with SHA-256 (`.ecdsaSignatureMessageX962SHA256`)
-- **Hashing**: SHA-256 for fingerprints (iOS ecosystem convention)
+- **Hashing**: SHA-256 for fingerprints and attestation (iOS ecosystem requirement)
+  - **⚠️ EXCEPTION TO AETHERCORE STANDARD**: AetherCore mandates BLAKE3 for all hashing per SECURITY.md
+  - **Justification**: iOS platform constraints
+    - DCAppAttestService API requires SHA-256 for `clientDataHash` parameter
+    - Secure Enclave P-256 ecosystem conventions use SHA-256
+    - This is a documented iOS-specific exception to the BLAKE3 standard
+    - See: https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity
 - **Attestation**: DCAppAttestService CBOR attestation objects
 
 ### Data Flow
@@ -173,6 +179,11 @@ To test fail-visible conditions:
 2. **iOS 14.0+ only**: App Attest API introduced in iOS 14
 3. **Single device only**: Access tokens not synced via iCloud Keychain
 4. **No offline mode**: Enrollment and telemetry require network connectivity
+5. **Enrollment state persistence**: UI does not restore enrollment status on app restart
+   - Access token is stored securely in Keychain
+   - However, enrollment details (nodeID, trust score) are not persisted locally
+   - On app restart, device appears "Not Enrolled" until re-enrollment or server fetch
+   - Future enhancement: Cache enrollment details in UserDefaults or fetch from gateway
 
 ## Future Enhancements
 

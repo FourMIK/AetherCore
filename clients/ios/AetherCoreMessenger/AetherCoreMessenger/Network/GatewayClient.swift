@@ -268,6 +268,16 @@ class GatewayClient {
     /// - Parameter token: Access token to store
     /// - Throws: GatewayError.keychainStoreFailed if storage fails
     private func storeAccessToken(_ token: String) throws {
+        guard let tokenData = token.data(using: .utf8) else {
+            fatalError("""
+                ❌ FAIL-VISIBLE: UTF-8 encoding failed
+                
+                Failed to encode access token to UTF-8.
+                This indicates corrupted token data from gateway.
+                Enrollment cannot complete without valid token.
+                """)
+        }
+        
         // Keychain attributes for access token
         // - Generic password item
         // - accessibleAfterFirstUnlockThisDeviceOnly (secure, non-synced)
@@ -276,7 +286,7 @@ class GatewayClient {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.keychainService,
             kSecAttrAccount as String: Self.keychainAccount,
-            kSecValueData as String: token.data(using: .utf8)!,
+            kSecValueData as String: tokenData,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
             kSecAttrSynchronizable as String: false  // Explicitly disable iCloud sync
         ]

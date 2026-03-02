@@ -184,6 +184,8 @@ class NodeTelemetryDaemon {
     
     /// Send telemetry heartbeat to C2 router
     /// - Throws: TelemetryError if transmission fails
+    /// - Note: Network/HTTP errors are logged but non-fatal (allow retry)
+    ///         Signature failures are fatal per fail-visible doctrine
     private func sendTelemetry() async throws {
         // Step 1: Verify enrollment (access token present)
         guard let accessToken = gatewayClient.getAccessToken() else {
@@ -197,7 +199,14 @@ class NodeTelemetryDaemon {
         
         // Step 3: Create signature over (timestamp || fingerprint)
         // Concatenate timestamp and fingerprint for signing
-        let signatureData = "\(timestamp)||\(deviceFingerprint)".data(using: .utf8)!
+        guard let signatureData = "\(timestamp)||\(deviceFingerprint)".data(using: .utf8) else {
+            fatalError("""
+                ❌ FAIL-VISIBLE: UTF-8 encoding failed
+                
+                Failed to encode telemetry signature data to UTF-8.
+                This indicates a critical data corruption issue.
+                """)
+        }
         
         let signature: Data
         do {
@@ -251,7 +260,8 @@ class NodeTelemetryDaemon {
             throw TelemetryError.invalidResponse
         }
         
-        // Fail-Visible: HTTP errors are logged but don't crash (allow retry)
+        // Network/HTTP errors are logged but non-fatal (allow retry on next interval)
+        // Signature failures (handled above) are fatal per fail-visible doctrine
         guard httpResponse.statusCode == 200 else {
             let errorMessage = String(data: data, encoding: .utf8)
             throw TelemetryError.httpError(statusCode: httpResponse.statusCode, message: errorMessage)
