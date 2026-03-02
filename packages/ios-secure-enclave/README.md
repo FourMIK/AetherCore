@@ -112,12 +112,22 @@ If persistent key creation fails, the implementation attempts:
 
 ### Environment Variable
 ```bash
-# Enable ephemeral fallback (default)
-AETHERCORE_SEP_ALLOW_EPHEMERAL=true
+# Disable ephemeral fallback (default - fail-visible)
+# No environment variable needed
 
-# Disable ephemeral fallback (strict mode)
-AETHERCORE_SEP_ALLOW_EPHEMERAL=false
+# Enable ephemeral fallback (explicit opt-in)
+AETHERCORE_SEP_ALLOW_EPHEMERAL=true
 ```
+
+**Default Behavior (`false`)**:
+- Persistent key creation failure results in `SecureEnclaveError.secureEnclaveUnavailable`
+- Fail-visible: No silent degradation to ephemeral keys
+- Cryptographic certainty: Key lifecycle is explicit and traceable
+
+**When to Enable (`true`)**:
+- Development/testing environments
+- Temporary workaround for CryptoTokenKit instability
+- Scenarios where transient signing is acceptable
 
 ## Build Configuration
 

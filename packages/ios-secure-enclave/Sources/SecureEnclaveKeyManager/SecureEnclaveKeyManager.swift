@@ -254,7 +254,11 @@ public class SecureEnclaveKeyManager {
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         
-        if status == errSecSuccess, let key = item as! SecKey? {
+        if status == errSecSuccess {
+            // Fail-visible: Validate type instead of force-casting
+            guard let key = item as? SecKey else {
+                return (nil, status)
+            }
             return (key, status)
         } else {
             return (nil, status)
@@ -347,12 +351,12 @@ public class SecureEnclaveKeyManager {
     }
     
     private func readEntitlement(_ key: String) -> String? {
-        // Note: Entitlement reading from SecTask is complex and may not work in all contexts.
-        // This is a best-effort diagnostic check.
-        // In production, entitlement validation happens at the Security framework level.
-        
-        // For now, return nil to indicate we can't reliably read entitlements programmatically
-        // The actual check happens when key operations are attempted
+        // Note: Entitlement reading from SecTask may not work reliably in all contexts
+        // (e.g., during CI builds, early app lifecycle). This is a diagnostic-only check.
+        // The actual entitlement validation happens at the Security framework level when
+        // key operations are attempted. Returning nil here means "unable to verify" rather
+        // than "entitlement missing". Key operations will fail-visible if entitlements are
+        // actually missing.
         return nil
     }
     
@@ -360,11 +364,11 @@ public class SecureEnclaveKeyManager {
     
     private func allowEphemeralSEPFallback() -> Bool {
         guard let value = ProcessInfo.processInfo.environment["AETHERCORE_SEP_ALLOW_EPHEMERAL"] else {
-            return true // Default to allowing fallback
+            return false // Fail-visible: Default to disabling fallback (explicit opt-in required)
         }
         
         let normalized = value.trimmingCharacters(in: .whitespaces).lowercased()
-        return !(normalized == "0" || normalized == "false" || normalized == "no")
+        return normalized == "1" || normalized == "true" || normalized == "yes"
     }
     
     private func currentTimestampMs() -> UInt64 {

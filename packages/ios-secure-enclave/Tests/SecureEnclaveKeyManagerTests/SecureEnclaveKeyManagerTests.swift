@@ -135,7 +135,17 @@ final class SecureEnclaveKeyManagerTests: XCTestCase {
             XCTSkip("Secure Enclave not available on this device")
         }
         
-        let keyTag = "com.test.sep.integration.\(UUID().uuidString)"
+        // Use deterministic key tag with cleanup
+        let keyTag = "com.test.sep.integration"
+        
+        // Cleanup: Delete any existing test key
+        let tagData = keyTag.data(using: .utf8)!
+        let deleteQuery: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: tagData
+        ]
+        SecItemDelete(deleteQuery as CFDictionary)
+        
         let keyManager = SecureEnclaveKeyManager(keyTag: keyTag)
         let nonce = Data("aethercore-test-nonce".utf8)
         
@@ -159,6 +169,11 @@ final class SecureEnclaveKeyManagerTests: XCTestCase {
         print("   Signature Length: \(quote.signatureDER.count) bytes")
         print("   Public Key Length: \(quote.publicKeySEC1.count) bytes")
         print("   Timestamp: \(quote.timestampMs)")
+        
+        // Cleanup after test
+        addTeardownBlock {
+            SecItemDelete(deleteQuery as CFDictionary)
+        }
         #else
         XCTSkip("This test requires a physical iOS device")
         #endif
@@ -170,7 +185,17 @@ final class SecureEnclaveKeyManagerTests: XCTestCase {
             XCTSkip("Secure Enclave not available on this device")
         }
         
-        let keyTag = "com.test.sep.persistent.\(UUID().uuidString)"
+        // Use deterministic key tag with cleanup
+        let keyTag = "com.test.sep.persistent"
+        
+        // Cleanup: Delete any existing test key
+        let tagData = keyTag.data(using: .utf8)!
+        let deleteQuery: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: tagData
+        ]
+        SecItemDelete(deleteQuery as CFDictionary)
+        
         let keyManager = SecureEnclaveKeyManager(keyTag: keyTag)
         let nonce1 = Data("nonce-1".utf8)
         let nonce2 = Data("nonce-2".utf8)
@@ -188,6 +213,11 @@ final class SecureEnclaveKeyManagerTests: XCTestCase {
         
         print("✅ Persistent key reuse validated")
         print("   Same public key: \(quote1.publicKeySEC1 == quote2.publicKeySEC1)")
+        
+        // Cleanup after test
+        addTeardownBlock {
+            SecItemDelete(deleteQuery as CFDictionary)
+        }
         #else
         XCTSkip("This test requires a physical iOS device")
         #endif

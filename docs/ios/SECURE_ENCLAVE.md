@@ -191,22 +191,27 @@ When persistent key creation fails, the implementation attempts:
 ### Environment Variable
 
 ```bash
-# Enable ephemeral fallback (default)
-export AETHERCORE_SEP_ALLOW_EPHEMERAL=true
+# Disable ephemeral fallback (default - fail-visible)
+# No environment variable needed - this is the default behavior
 
-# Disable ephemeral fallback (strict mode)
-export AETHERCORE_SEP_ALLOW_EPHEMERAL=false
+# Enable ephemeral fallback (explicit opt-in)
+export AETHERCORE_SEP_ALLOW_EPHEMERAL=true
 ```
 
-**Rationale for Default `true`**:
-- Persistent SEP key creation can fail on some iOS builds due to CryptoTokenKit instability
-- Ephemeral keys still provide hardware-rooted signing (keys never leave SEP)
-- Fallback ensures attestation remains available during app startup
+**Rationale for Default `false`**:
+- **Fail-Visible Doctrine**: Persistent key creation failure is a security event requiring explicit acknowledgment
+- **Cryptographic Certainty**: Ephemeral keys degrade from persistent hardware-rooted identity
+- **Explicit Opt-In**: Operators must consciously enable fallback behavior
 
-**When to Disable**:
+**When to Enable**:
+- Development/testing environments where key persistence is not critical
+- Temporary workaround for CryptoTokenKit instability on specific iOS builds
+- Scenarios where transient signing capability is acceptable
+
+**When to Keep Disabled** (default):
 - Production deployments requiring persistent identity
-- Environments where transient keys are unacceptable
-- Debugging key lifecycle issues
+- Environments where key lifecycle management is critical
+- Any deployment where silent degradation is unacceptable
 
 ### Diagnostic Errors
 
