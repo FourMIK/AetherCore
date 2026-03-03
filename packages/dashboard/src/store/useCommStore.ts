@@ -204,6 +204,7 @@ interface CommState {
   c2State: C2State; // C2 client state
   backendCoreStatus: BackendCoreStatus; // Gateway -> core backend health
   c2Client: C2Client | null; // C2 client instance
+  revokedNodes: Set<string>; // Great Gospel: Revoked nodes (Byzantine/compromised)
 
   // Actions
   setCurrentOperator: (operator: Operator) => void;
@@ -224,6 +225,9 @@ interface CommState {
   connectC2: () => Promise<void>;
   disconnectC2: () => void;
   getC2Status: () => C2ClientStatus | null;
+  // Great Gospel: Revocation actions
+  revokeNode: (nodeId: string, reason: string) => void;
+  isNodeRevoked: (nodeId: string) => boolean;
 }
 
 export const useCommStore = create<CommState>((set, get) => ({
@@ -240,6 +244,7 @@ export const useCommStore = create<CommState>((set, get) => ({
   c2State: 'IDLE',
   backendCoreStatus: 'unknown',
   c2Client: null,
+  revokedNodes: new Set(),
 
   setCurrentOperator: (operator) => set({ currentOperator: operator }),
 
@@ -792,5 +797,61 @@ export const useCommStore = create<CommState>((set, get) => ({
     const state = get();
     if (!state.c2Client) return null;
     return state.c2Client.getStatus();
+  },
+
+  // Great Gospel: Revoke a node and terminate all sessions
+  revokeNode: (nodeId: string, reason: string) => {
+    console.warn(`[GREAT GOSPEL] Revoking node ${nodeId}: ${reason}`);
+    
+    set((state) => {
+      const revokedNodes = new Set(state.revokedNodes);
+      revokedNodes.add(nodeId);
+      
+      // Remove operator from list
+      const operators = new Map(state.operators);
+      operators.delete(nodeId);
+      
+      // Clear conversations with revoked node
+      const conversations = new Map(state.conversations);
+      conversations.delete(nodeId);
+      
+      // Terminate active call if participant is revoked
+      let activeCall = state.activeCall;
+      let incomingCall = state.incomingCall;
+      
+      if (activeCall && activeCall.participants.includes(nodeId)) {
+        console.error('[GREAT GOSPEL] Terminating active call - participant revoked');
+        // Clean up peer connection
+        if (activePeerConnection) {
+          activePeerConnection.close();
+          activePeerConnection = null;
+        }
+        // Stop media streams
+        if (state.localStream) {
+          state.localStream.getTracks().forEach(track => track.stop());
+        }
+        activeCall = null;
+      }
+      
+      if (incomingCall && incomingCall.participants.includes(nodeId)) {
+        console.warn('[GREAT GOSPEL] Rejecting incoming call - participant revoked');
+        incomingCall = null;
+      }
+      
+      return {
+        revokedNodes,
+        operators,
+        conversations,
+        activeCall,
+        incomingCall,
+        localStream: activeCall ? null : state.localStream,
+        remoteStream: activeCall ? null : state.remoteStream,
+      };
+    });
+  },
+
+  // Check if node is revoked
+  isNodeRevoked: (nodeId: string) => {
+    return get().revokedNodes.has(nodeId);
   },
 }));
