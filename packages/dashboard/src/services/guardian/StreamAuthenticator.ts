@@ -20,6 +20,7 @@ import {
   IntegrityStatus,
 } from '@aethercore/shared';
 import { CanonicalEvent } from '../operator/P2PMessagingClient';
+import { createSigningClient, SigningClient } from '../identity';
 
 /**
  * Frame Hash Payload - Content for FRAME_HASH type events
@@ -91,6 +92,9 @@ export interface StreamAuthenticatorConfig {
   
   /** Callback when chain broken (Byzantine detection) */
   onChainBroken?: (nodeId: NodeID, reason: string) => void;
+  
+  /** Signing service endpoint (default: http://localhost:50053) */
+  signingServiceEndpoint?: string;
 }
 
 /**
@@ -118,9 +122,13 @@ export class StreamAuthenticator {
   private frameCount: number = 0;
   private status: IntegrityStatus;
   private pendingFrameHashes: Map<number, CanonicalEvent> = new Map();
+  private signingClient: SigningClient;
 
   constructor(config: StreamAuthenticatorConfig) {
-    this.config = config;
+    this.config = {
+      signingServiceEndpoint: 'http://localhost:50053',
+      ...config,
+    };
     
     // Initialize local chain state
     this.localChain = {
@@ -139,6 +147,15 @@ export class StreamAuthenticator {
       lastCheckTimestamp: Date.now(),
       showAlert: false,
     };
+    
+    // Initialize signing client for hardware-backed signatures
+    this.signingClient = createSigningClient(
+      this.config.signingServiceEndpoint,
+      { 
+        enableLogging: true,
+        enablePerformanceMonitoring: true,
+      }
+    );
 
     this.setupDataChannel();
   }
@@ -480,19 +497,21 @@ export class StreamAuthenticator {
   /**
    * Sign event hash with Ed25519
    * 
-   * TODO: Replace with gRPC call to crates/crypto in production
+   * Uses SigningClient for hardware-backed TPM signature generation.
+   * Private keys NEVER leave the TPM.
    */
   private async signEventHash(hash: string): Promise<string> {
     try {
-      const crypto = await import('crypto');
       const encoder = new TextEncoder();
-      const data = encoder.encode(hash);
+      const hashBytes = encoder.encode(hash);
       
-      const hmac = crypto.createHmac('sha256', this.config.privateKey);
-      hmac.update(data);
-      const signature = hmac.digest('hex');
+      // Use signing client for hardware-backed signature
+      const result = await this.signingClient.signMessage(
+        this.config.localNodeId,
+        hashBytes
+      );
       
-      return signature.padEnd(128, '0');
+      return result.signature_hex;
     } catch (error) {
       console.error('[StreamAuthenticator] Error signing hash:', error);
       throw error;
@@ -502,7 +521,8 @@ export class StreamAuthenticator {
   /**
    * Verify Ed25519 signature
    * 
-   * TODO: Replace with gRPC call to crates/identity in production
+   * Uses SigningClient for cryptographic verification via hardware-backed service.
+   * Fail-Visible: Invalid signatures are logged and rejected.
    */
   private async verifySignature(
     hash: string,
@@ -511,15 +531,37 @@ export class StreamAuthenticator {
   ): Promise<boolean> {
     // Basic validation
     if (!signature || signature.length !== 128) {
+      console.error('[StreamAuthenticator] Invalid signature format');
       return false;
     }
     
     if (!hash || hash.length !== 64) {
+      console.error('[StreamAuthenticator] Invalid hash format');
       return false;
     }
     
-    // In dev mode, trust signatures
-    return true;
+    if (!publicKey || publicKey.length !== 64) {
+      console.error('[StreamAuthenticator] Invalid public key format');
+      return false;
+    }
+    
+    try {
+      // Convert hash to bytes for verification
+      const encoder = new TextEncoder();
+      const hashBytes = encoder.encode(hash);
+      
+      // Use signing client for cryptographic verification
+      const result = await this.signingClient.verifySignature(
+        publicKey,
+        hashBytes,
+        signature
+      );
+      
+      return result.is_valid;
+    } catch (error) {
+      console.error('[StreamAuthenticator] Signature verification error:', error);
+      return false;
+    }
   }
 
   /**
@@ -588,6 +630,19 @@ export class StreamAuthenticator {
     this.pendingFrameHashes.clear();
     if (this.config.dataChannel) {
       this.config.dataChannel.close();
+    }
+    
+    // Cleanup signing client
+    this.signingClient.close();
+    
+    // Log performance metrics if available
+    const metrics = this.signingClient.getMetrics();
+    if (metrics) {
+      console.log('[StreamAuthenticator] Performance metrics:');
+      console.log(`  Total sign operations: ${metrics.totalSignOperations}`);
+      console.log(`  Average latency: ${metrics.averageLatencyUs.toFixed(2)}µs`);
+      console.log(`  Min latency: ${metrics.minLatencyUs}µs`);
+      console.log(`  Max latency: ${metrics.maxLatencyUs}µs`);
     }
   }
 }
