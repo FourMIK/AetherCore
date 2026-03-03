@@ -1,0 +1,95 @@
+{
+  "aethercore": {
+    "version": "0.2.0",
+    "environment": "field-test",
+    "node_type": "tactical_edge",
+    "hardware_security": "android_strongbox"
+  },
+  "network": {
+    "backend_host": "10.0.0.22",
+    "c2_router": {
+      "host": "10.0.0.22",
+      "port": 50051,
+      "protocol": "grpc",
+      "tls": false,
+      "description": "C2 Router for command and control"
+    },
+    "gateway": {
+      "host": "10.0.0.22",
+      "port": 3000,
+      "protocol": "http",
+      "base_url": "http://10.0.0.22:3000",
+      "description": "Gateway API for REST endpoints"
+    },
+    "auth": {
+      "host": "10.0.0.22",
+      "port": 3001,
+      "protocol": "http",
+      "base_url": "http://10.0.0.22:3001",
+      "description": "Authentication service"
+    },
+    "collaboration": {
+      "host": "10.0.0.22",
+      "port": 8080,
+      "protocol": "websocket",
+      "ws_url": "ws://10.0.0.22:8080",
+      "description": "Real-time collaboration and mesh updates"
+    },
+    "mesh": {
+      "discovery_multicast": "239.2.3.1",
+      "discovery_port": 6969,
+      "gossip_port": 7777,
+      "udp_enabled": true
+    }
+  },
+  "identity": {
+    "storage_path": "/data/data/com.aethercore.atak.trustoverlay/files/identity",
+    "keystore_type": "android_strongbox",
+    "key_algorithm": "ed25519",
+    "attestation_required": true
+  },
+  "crypto": {
+    "hash_algorithm": "blake3",
+    "signature_algorithm": "ed25519",
+    "encryption_algorithm": "chacha20poly1305",
+    "tls_version": "1.3"
+  },
+  "trust_mesh": {
+    "enabled": true,
+    "byzantine_detection": true,
+    "aetheric_sweep_enabled": true,
+    "trust_score_threshold": 50,
+    "quarantine_duration_seconds": 3600
+  },
+  "merkle_vine": {
+    "enabled": true,
+    "chain_verification": true,
+    "ancestor_hash_algorithm": "blake3",
+    "max_chain_gap": 10
+  },
+  "telemetry": {
+    "enabled": true,
+    "batch_size": 100,
+    "flush_interval_ms": 5000,
+    "endpoint": "http://10.0.0.22:3000/api/telemetry"
+  },
+  "logging": {
+    "level": "info",
+    "console_enabled": true,
+    "file_enabled": true,
+    "file_path": "/data/data/com.aethercore.atak.trustoverlay/files/logs"
+  },
+  "atak_integration": {
+    "cot_listener_enabled": true,
+    "cot_signature_required": true,
+    "broadcast_trust_scores": true,
+    "inject_trust_metadata": true
+  },
+  "fail_visible": {
+    "enabled": true,
+    "halt_on_crypto_failure": true,
+    "halt_on_signature_failure": true,
+    "log_all_failures": true
+  }
+}
+

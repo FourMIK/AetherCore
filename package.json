@@ -20,6 +20,7 @@
     "lint:check": "eslint . --ext .ts,.tsx",
     "clean": "pnpm run clean --recursive --filter=\"./packages/*\" --filter=\"./services/*\"",
     "clean:atak": "rimraf plugins/atak-trust-overlay/build dist/atak",
+    "check:android": "powershell -ExecutionPolicy Bypass -File scripts/check-android-se-readiness.ps1",
     "verify:atak": "node scripts/verify-atak-build.js",
     "deploy:atak": "node scripts/deploy-atak-plugin.js",
     "setup:emulator": "node scripts/setup-atak-emulator.js",

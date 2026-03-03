@@ -26,8 +26,11 @@ export const CommView: React.FC = () => {
     operators,
     conversations,
     activeCall,
+    incomingCall,
     sendMessage,
     initiateCall,
+    acceptCall,
+    rejectCall,
     endCall,
     getConversation,
   } = useCommStore();
@@ -182,7 +185,7 @@ export const CommView: React.FC = () => {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => initiateCall(selectedOperator.id)}
+                    onClick={() => initiateCall(selectedOperator.id, { video: true, audio: true })}
                     disabled={!!activeCall}
                     className="p-2 rounded-lg bg-overmatch/10 hover:bg-overmatch/20 text-overmatch transition-colors disabled:opacity-50"
                     title="Start video call"
@@ -190,7 +193,7 @@ export const CommView: React.FC = () => {
                     <Video size={20} />
                   </button>
                   <button
-                    onClick={() => initiateCall(selectedOperator.id)}
+                    onClick={() => initiateCall(selectedOperator.id, { video: false, audio: true })}
                     disabled={!!activeCall}
                     className="p-2 rounded-lg bg-verified-green/10 hover:bg-verified-green/20 text-verified-green transition-colors disabled:opacity-50"
                     title="Start voice call"
@@ -199,6 +202,36 @@ export const CommView: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {incomingCall && (
+                <div className="p-4 border-b border-jamming/30 bg-jamming/10 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle size={18} className="text-jamming" />
+                    <div>
+                      <div className="text-sm text-tungsten font-semibold">
+                        Incoming call from {operators.get(incomingCall.initiator)?.name || incomingCall.initiator}
+                      </div>
+                      <div className="text-xs text-tungsten/50">
+                        {incomingCall.media?.video ? 'Video + Audio' : 'Audio only'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => acceptCall(incomingCall.id)}
+                      className="px-3 py-2 rounded-lg bg-verified-green/20 text-verified-green hover:bg-verified-green/30 transition-colors"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => rejectCall(incomingCall.id)}
+                      className="px-3 py-2 rounded-lg bg-jamming/20 text-jamming hover:bg-jamming/30 transition-colors"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Messages */}
               <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">

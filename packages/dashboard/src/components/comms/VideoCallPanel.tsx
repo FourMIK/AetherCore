@@ -23,7 +23,7 @@ interface VideoCallPanelProps {
 }
 
 export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
-  const { operators, endCall } = useCommStore();
+  const { operators, endCall, localStream, remoteStream } = useCommStore();
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -47,32 +47,16 @@ export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
   }, [call.status, call.startTime]);
 
   useEffect(() => {
-    // Initialize local media stream
-    const initMediaStream = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = localStream ?? null;
+    }
+  }, [localStream]);
 
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-        }
-      } catch (err) {
-        console.error('Failed to access media devices:', err);
-      }
-    };
-
-    initMediaStream();
-
-    return () => {
-      // Cleanup streams
-      if (localVideoRef.current?.srcObject) {
-        const stream = localVideoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, []);
+  useEffect(() => {
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream ?? null;
+    }
+  }, [remoteStream]);
 
   const toggleVideo = () => {
     if (localVideoRef.current?.srcObject) {

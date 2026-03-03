@@ -130,7 +130,7 @@ class AtakCotBus(
 
     private fun CotEvent.toEnvelope(): CotEventEnvelope {
         val detailMap = linkedMapOf<String, String>()
-        runCatching { detail }.getOrNull()?.let { detailXml ->
+        runCatching { detail?.toString() }.getOrNull()?.let { detailXml ->
             detailMap["detail"] = detailXml
         }
         runCatching { how }.getOrNull()?.takeIf { it.isNotBlank() }?.let { detailMap["source"] = it }

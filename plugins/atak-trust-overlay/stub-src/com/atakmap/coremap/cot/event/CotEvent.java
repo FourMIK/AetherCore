@@ -11,7 +11,7 @@ public class CotEvent {
     public String getUID() {
         return null;
     }
-
+    
     public String getHow() {
         return null;
     }
@@ -35,7 +35,13 @@ public class CotEvent {
     public CotPoint getPoint() {
         return null;
     }
+    
+    // Added for Tactical Glass plugin compatibility
+    public CotPoint getGeoPoint() {
+        return null;
+    }
 
+    @Override
     public String toString() {
         return "";
     }
