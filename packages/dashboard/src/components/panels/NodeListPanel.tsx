@@ -1,21 +1,30 @@
 /**
  * NodeListPanel
  * Sortable/filterable node list with domain and status filters
+ *
+ * Design Doctrine:
+ * - Fail-Visible attestation rendering (red UNVERIFIED/SPOOFED for crypto failures)
+ * - The Great Gospel kill-switch (hardware-signed revocations)
+ * - Byzantine nodes visually quarantined (glaring red state)
  */
 
 import React, { useState, useMemo } from 'react';
-import { Search, Filter } from 'lucide-react';
+import { Search, Filter, ShieldX, AlertTriangle, Shield } from 'lucide-react';
 import { GlassPanel } from '../hud/GlassPanel';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { IdentityClient } from '../../services/identity/identityClient';
 
 export const NodeListPanel: React.FC = () => {
   const nodes = useTacticalStore((s) => s.nodes) || new Map();
   const selectedNodeId = useTacticalStore((s) => s.selectedNodeId);
   const selectNode = useTacticalStore((s) => s.selectNode);
+  const markNodeAsRevoked = useTacticalStore((s) => s.markNodeAsRevoked);
+  const recordRevocation = useTacticalStore((s) => s.recordRevocation);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'degraded'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'degraded' | 'compromised' | 'revoked'>('all');
   const [domainFilter, setDomainFilter] = useState('');
+  const [revokingNodeId, setRevokingNodeId] = useState<string | null>(null);
 
   const filteredNodes = useMemo(() => {
     let filtered = Array.from(nodes.values());
@@ -44,13 +53,79 @@ export const NodeListPanel: React.FC = () => {
     return filtered;
   }, [nodes, searchTerm, statusFilter, domainFilter]);
 
-  const getStatusBadge = (status: string) => {
-    const badges = {
-      online: 'badge-success',
-      offline: 'badge-danger',
-      degraded: 'badge-warning',
-    };
-    return badges[status as keyof typeof badges] || 'badge-info';
+  /**
+   * Get status badge with fail-visible rendering
+   * - Compromised nodes: RED UNVERIFIED
+   * - Revoked nodes: GHOST REVOKED
+   * - TPM attestation failure: RED SPOOFED
+   */
+  const getStatusBadge = (node: typeof filteredNodes[0]) => {
+    if (node.revoked) {
+      return { className: 'badge-danger', label: 'REVOKED' };
+    }
+    if (node.byzantineDetected) {
+      return { className: 'badge-danger', label: 'BYZANTINE' };
+    }
+    if (node.tpmAttestationValid === false) {
+      return { className: 'badge-danger', label: 'SPOOFED' };
+    }
+    if (!node.verified || node.integrityCompromised) {
+      return { className: 'badge-danger', label: 'UNVERIFIED' };
+    }
+    if (node.status === 'online') {
+      return { className: 'badge-success', label: 'ONLINE' };
+    }
+    if (node.status === 'degraded') {
+      return { className: 'badge-warning', label: 'DEGRADED' };
+    }
+    if (node.status === 'compromised') {
+      return { className: 'badge-danger', label: 'COMPROMISED' };
+    }
+    return { className: 'badge-info', label: 'OFFLINE' };
+  };
+
+  /**
+   * The Great Gospel Kill-Switch
+   *
+   * Executes sovereign revocation with hardware-signed CanonicalEvent:
+   * 1. Prompts user for revocation reason
+   * 2. Invokes commander's IdentitySlot for Ed25519 signature
+   * 3. Broadcasts CanonicalEvent to mesh ledger
+   * 4. Triggers Aetheric Sweep visualization
+   */
+  const handleRevokeNode = async (nodeId: string) => {
+    if (!confirm(`⚠️  SOVEREIGN REVOCATION\n\nYou are about to revoke node: ${nodeId}\n\nThis action:\n- Broadcasts a signed CanonicalEvent to The Great Gospel\n- Requires your hardware IdentitySlot signature\n- Is IRREVERSIBLE and logged in the mesh ledger\n\nProceed?`)) {
+      return;
+    }
+
+    const reason = prompt('Enter revocation reason (will be permanently recorded):');
+    if (!reason || reason.trim() === '') {
+      alert('Revocation cancelled: reason is required');
+      return;
+    }
+
+    setRevokingNodeId(nodeId);
+
+    try {
+      console.log(`[GOSPEL] Initiating sovereign revocation for node: ${nodeId}`);
+
+      // Step 1: Request hardware-signed revocation certificate
+      const certificate = await IdentityClient.revokeNodeIdentity(nodeId, reason.trim());
+
+      // Step 2: Update local state (Aetheric Sweep triggers here)
+      markNodeAsRevoked(nodeId, reason.trim());
+
+      // Step 3: Record in local revocation history
+      recordRevocation(certificate);
+
+      console.log(`[GOSPEL] ✅ Node ${nodeId} revoked successfully`);
+      alert(`✅ Node revoked successfully\n\nNode: ${nodeId}\nSignature: ${certificate.signature.substring(0, 16)}...\nMerkle Root: ${certificate.merkle_root.substring(0, 16)}...`);
+    } catch (error) {
+      console.error(`[GOSPEL] ❌ Revocation failed:`, error);
+      alert(`❌ Revocation failed\n\n${error}\n\nEnsure your IdentitySlot is available and you have admin privileges.`);
+    } finally {
+      setRevokingNodeId(null);
+    }
   };
 
   return (
@@ -58,7 +133,7 @@ export const NodeListPanel: React.FC = () => {
       {/* Header */}
       <div className="p-4 border-b border-tungsten/10">
         <h3 className="font-display text-lg font-semibold text-tungsten mb-4">
-          Node List
+          Fleet Node Registry
         </h3>
 
         {/* Search */}
@@ -87,6 +162,8 @@ export const NodeListPanel: React.FC = () => {
             <option value="online">Online</option>
             <option value="offline">Offline</option>
             <option value="degraded">Degraded</option>
+            <option value="compromised">Compromised</option>
+            <option value="revoked">Revoked</option>
           </select>
 
           <input
@@ -107,38 +184,119 @@ export const NodeListPanel: React.FC = () => {
             <p className="text-sm">No nodes found</p>
           </div>
         ) : (
-          filteredNodes.map((node) => (
-            <GlassPanel
-              key={node.id}
-              variant="light"
-              className={`p-3 cursor-pointer transition-all hover:border-tungsten/40 ${selectedNodeId === node.id ? 'border-overmatch ring-1 ring-overmatch/30' : ''
+          filteredNodes.map((node) => {
+            const statusBadge = getStatusBadge(node);
+            const isCritical = node.byzantineDetected || node.revoked || !node.verified || node.integrityCompromised;
+
+            return (
+              <GlassPanel
+                key={node.id}
+                variant="light"
+                className={`p-3 cursor-pointer transition-all ${
+                  selectedNodeId === node.id
+                    ? 'border-overmatch ring-1 ring-overmatch/30'
+                    : isCritical
+                    ? 'border-red-400/50 bg-red-900/10'
+                    : 'hover:border-tungsten/40'
                 }`}
-              onClick={() => selectNode(node.id)}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-mono text-sm text-tungsten truncate mr-2">{node.id}</span>
-                <span className={`${getStatusBadge(node.status)} text-xs flex-shrink-0`}>
-                  {node.status.toUpperCase()}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-xs text-tungsten/70">
-                <span className="truncate mr-2">{node.domain}</span>
-                <span className={`flex-shrink-0 ${node.verified ? 'text-verified-green' : 'text-ghost'
-                  }`}>
-                  {node.verified ? 'Verified' : 'Unverified'}
-                </span>
-              </div>
-              <div className="mt-2">
-                <div className="trust-gauge">
-                  <div
-                    className={`trust-gauge-fill ${node.trustScore >= 80 ? 'high' : node.trustScore >= 50 ? 'medium' : 'low'
-                      }`}
-                    style={{ width: `${node.trustScore}%` }}
-                  />
+                onClick={() => selectNode(node.id)}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    {node.byzantineDetected && <AlertTriangle size={14} className="text-red-400" />}
+                    {node.revoked && <ShieldX size={14} className="text-ghost" />}
+                    {!node.revoked && node.verified && node.tpmAttestationValid && (
+                      <Shield size={14} className="text-verified-green" />
+                    )}
+                    <span className="font-mono text-sm text-tungsten truncate">{node.id}</span>
+                  </div>
+                  <span className={`${statusBadge.className} text-xs flex-shrink-0`}>
+                    {statusBadge.label}
+                  </span>
                 </div>
-              </div>
-            </GlassPanel>
-          ))
+
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <span className="text-tungsten/70 truncate mr-2">{node.domain}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {node.tpmAttestationValid === false && (
+                      <span className="text-red-400">TPM FAIL</span>
+                    )}
+                    {node.integrityCompromised && (
+                      <span className="text-yellow-400">CHAIN BREAK</span>
+                    )}
+                    {node.verified && node.tpmAttestationValid !== false && (
+                      <span className="text-verified-green">VERIFIED</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Trust Score Gauge */}
+                <div className="mb-2">
+                  <div className="trust-gauge">
+                    <div
+                      className={`trust-gauge-fill ${
+                        node.trustScore >= 80
+                          ? 'high'
+                          : node.trustScore >= 50
+                          ? 'medium'
+                          : 'low'
+                      }`}
+                      style={{ width: `${node.trustScore}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <span className="text-xs text-tungsten/50">Trust Score</span>
+                    <span className={`text-xs font-mono ${
+                      node.trustScore >= 80
+                        ? 'text-verified-green'
+                        : node.trustScore >= 50
+                        ? 'text-yellow-400'
+                        : 'text-red-400'
+                    }`}>
+                      {Math.round(node.trustScore)}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Revocation Reason */}
+                {node.revoked && node.revocationReason && (
+                  <div className="text-xs text-red-400 bg-red-900/20 border border-red-400/30 rounded p-2 mb-2">
+                    <div className="font-semibold">REVOKED</div>
+                    <div className="text-tungsten/70 mt-1">{node.revocationReason}</div>
+                  </div>
+                )}
+
+                {/* Byzantine Alert */}
+                {node.byzantineDetected && (
+                  <div className="text-xs text-red-400 bg-red-900/20 border border-red-400/30 rounded p-2 mb-2">
+                    <div className="font-semibold">BYZANTINE DETECTED</div>
+                    <div className="text-tungsten/70 mt-1">Node flagged for cryptographic audit failure</div>
+                  </div>
+                )}
+
+                {/* The Great Gospel Kill-Switch */}
+                {!node.revoked && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRevokeNode(node.id);
+                    }}
+                    disabled={revokingNodeId === node.id}
+                    className="w-full mt-2 px-3 py-1.5 rounded text-xs font-semibold bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-400/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {revokingNodeId === node.id ? (
+                      <>Signing revocation...</>
+                    ) : (
+                      <>
+                        <ShieldX size={12} />
+                        Revoke Identity (Gospel)
+                      </>
+                    )}
+                  </button>
+                )}
+              </GlassPanel>
+            );
+          })
         )}
       </div>
     </GlassPanel>

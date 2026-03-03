@@ -8,6 +8,7 @@ import { persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import { GeoPosition, ViewMode, MapProviderType } from '../map-engine/types';
 import { getRuntimeConfig } from '../config/runtime';
+import type { NodeAttestationState, RevocationCertificate } from '../services/identity/identityClient';
 
 // Node Types
 export interface TacticalNode {
@@ -18,9 +19,13 @@ export interface TacticalNode {
   verified: boolean;
   attestationHash?: string;
   lastSeen: Date;
-  status: 'online' | 'offline' | 'degraded';
+  status: 'online' | 'offline' | 'degraded' | 'compromised' | 'revoked';
   firmwareVersion?: string;
   integrityCompromised?: boolean; // Merkle-Vine chain integrity status
+  byzantineDetected?: boolean; // Byzantine fault detection flag
+  revoked?: boolean; // Great Gospel revocation flag
+  revocationReason?: string; // Human-readable revocation reason
+  tpmAttestationValid?: boolean; // TPM 2.0 hardware attestation status
   deployedLocally?: boolean; // Whether this node is deployed locally
   deploymentPid?: number; // Process ID if deployed locally
   deploymentStatus?: string; // Deployment status: Running, Stopped, Failed
@@ -88,6 +93,11 @@ interface TacticalStore {
   byzantineAlert: ByzantineAlert | null;
   verificationFailure: VerificationFailure | null;
 
+  // Fleet Attestation State (Admin Module)
+  fleetAttestationState: NodeAttestationState[];
+  lastAttestationUpdate: number;
+  revocationHistory: RevocationCertificate[];
+
   // UI Actions
   setTheme: (theme: 'light' | 'dark') => void;
   setViewMode: (mode: ViewMode) => void;
@@ -118,6 +128,12 @@ interface TacticalStore {
   triggerVerificationFailure: (failure: VerificationFailure) => void;
   clearVerificationFailure: () => void;
 
+  // Fleet Attestation & Revocation Actions (Admin)
+  updateFleetAttestationState: (states: NodeAttestationState[]) => void;
+  recordRevocation: (certificate: RevocationCertificate) => void;
+  markNodeAsRevoked: (nodeId: string, reason: string) => void;
+  markNodeAsCompromised: (nodeId: string, reason: string) => void;
+
   // Tauri Bridge Actions
   connectToMesh: () => Promise<{ success: boolean; nodeId: string }>;
   generateGenesisBundle: () => Promise<{ bundleHash: string; timestamp: number }>;
@@ -142,6 +158,11 @@ export const useTacticalStore = create<TacticalStore>()(
       selectedNodeId: null,
       byzantineAlert: null,
       verificationFailure: null,
+
+      // Fleet Attestation State (Admin Module)
+      fleetAttestationState: [],
+      lastAttestationUpdate: 0,
+      revocationHistory: [],
 
       // UI Actions
       setTheme: (theme) => set({ theme }),
@@ -216,6 +237,98 @@ export const useTacticalStore = create<TacticalStore>()(
       clearByzantineAlert: () => set({ byzantineAlert: null }),
       triggerVerificationFailure: (verificationFailure) => set({ verificationFailure }),
       clearVerificationFailure: () => set({ verificationFailure: null }),
+
+      // Fleet Attestation & Revocation Actions (Admin)
+      updateFleetAttestationState: (fleetAttestationState) => {
+        set({
+          fleetAttestationState,
+          lastAttestationUpdate: Date.now(),
+        });
+
+        // Sync attestation state to nodes map
+        const nodes = new Map(get().nodes);
+        fleetAttestationState.forEach((attestation) => {
+          const node = nodes.get(attestation.node_id);
+          if (node) {
+            nodes.set(attestation.node_id, {
+              ...node,
+              tpmAttestationValid: attestation.tpm_attestation_valid,
+              trustScore: attestation.trust_score,
+              verified: attestation.hardware_backed && attestation.tpm_attestation_valid,
+              integrityCompromised: !attestation.merkle_vine_synced,
+              byzantineDetected: attestation.byzantine_detected,
+              revoked: attestation.revoked,
+              revocationReason: attestation.revocation_reason,
+              status: attestation.revoked
+                ? 'revoked'
+                : attestation.byzantine_detected
+                ? 'compromised'
+                : node.status,
+            });
+          }
+        });
+
+        set({ nodes });
+      },
+
+      recordRevocation: (certificate) =>
+        set((state) => ({
+          revocationHistory: [certificate, ...state.revocationHistory],
+        })),
+
+      markNodeAsRevoked: (nodeId, reason) => {
+        const nodes = new Map(get().nodes);
+        const node = nodes.get(nodeId);
+        if (node) {
+          nodes.set(nodeId, {
+            ...node,
+            revoked: true,
+            revocationReason: reason,
+            status: 'revoked',
+            trustScore: 0,
+          });
+          set({ nodes });
+
+          // Add security event
+          get().addEvent({
+            id: `revoke-${nodeId}-${Date.now()}`,
+            nodeId,
+            type: 'verification_failed',
+            timestamp: new Date(),
+            details: `Node revoked: ${reason}`,
+          });
+        }
+      },
+
+      markNodeAsCompromised: (nodeId, reason) => {
+        const nodes = new Map(get().nodes);
+        const node = nodes.get(nodeId);
+        if (node) {
+          nodes.set(nodeId, {
+            ...node,
+            byzantineDetected: true,
+            integrityCompromised: true,
+            status: 'compromised',
+          });
+          set({ nodes });
+
+          // Trigger Byzantine alert
+          get().triggerByzantineAlert({
+            nodeId,
+            reason,
+            timestamp: Date.now(),
+          });
+
+          // Add security event
+          get().addEvent({
+            id: `byzantine-${nodeId}-${Date.now()}`,
+            nodeId,
+            type: 'byzantine_detected',
+            timestamp: new Date(),
+            details: reason,
+          });
+        }
+      },
 
       // Tauri Bridge Actions
       // PRODUCTION: Connect to authenticated C2 mesh with hardware-rooted trust

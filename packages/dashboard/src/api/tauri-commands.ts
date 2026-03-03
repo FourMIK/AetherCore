@@ -249,11 +249,20 @@ export interface AppConfig {
   };
 }
 
+export interface StartupProbe {
+  policy_mode: 'required' | 'optional' | 'disabled';
+  selected_backend: string;
+  security_level: string;
+  status: 'healthy' | 'degraded' | 'error';
+  failure_reason: string | null;
+}
+
 export interface SentinelTrustStatus {
   trust_level: string;
   reduced_trust: boolean;
   headline: string;
   detail: string;
+  startup_probe?: StartupProbe;
 }
 
 export interface GenesisBundle {

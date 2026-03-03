@@ -10,7 +10,7 @@
  * Security: All connections use WSS (WebSocket Secure) for authenticated pathways.
  */
 
-import { test, expect, testEndpoints } from '../fixtures';
+import { test, expect, testEndpoints } from './fixtures';
 
 test.describe('Testnet Connection Flow', () => {
   test.beforeEach(async ({ page, waitForAppReady }) => {

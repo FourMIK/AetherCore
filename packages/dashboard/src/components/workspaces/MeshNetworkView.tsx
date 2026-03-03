@@ -46,7 +46,7 @@ export const MeshNetworkView: React.FC = () => {
           domain: string;
           trustScore: number;
           verified: boolean;
-          status: 'online' | 'offline' | 'degraded';
+          status: 'online' | 'offline' | 'degraded' | 'compromised' | 'revoked';
           phase: number;
         }>,
       };
@@ -158,11 +158,15 @@ export const MeshNetworkView: React.FC = () => {
   };
 
   const getNodeStrokeColor = (
-    status: 'online' | 'offline' | 'degraded',
+    status: 'online' | 'offline' | 'degraded' | 'compromised' | 'revoked',
     trustScore: number,
     verified: boolean
   ): string => {
+    // Fail-Visible: Compromised and revoked nodes get explicit red/gray colors
+    if (status === 'revoked') return '#808080'; // Ghost gray
+    if (status === 'compromised') return '#dc2626'; // Red for Byzantine
     if (status === 'offline') return '#6b7280';
+    if (status === 'degraded') return '#f59e0b';
     if (!verified) return '#f59e0b';
     if (trustScore >= 80) return '#22c55e';
     if (trustScore >= 50) return '#eab308';
