@@ -11,12 +11,19 @@
  * 
  * ARCHITECTURAL INVARIANTS:
  * - NO GRACEFUL DEGRADATION: Revoked nodes are adversaries
- * - Trust score >= 70% required for communication
+ * - Trust score >= MIN_TRUST_SCORE_THRESHOLD required for communication
  * - Hardware attestation verified = true
  */
 
 import React from 'react';
 import { User, Shield, ShieldAlert, ShieldOff, MessageSquare } from 'lucide-react';
+
+/**
+ * Minimum trust score threshold for secure communication
+ * This is a critical security boundary - operators below this threshold
+ * cannot be trusted for cryptographic operations
+ */
+const MIN_TRUST_SCORE_THRESHOLD = 70;
 
 /**
  * Operator data structure
@@ -75,7 +82,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
    * CRITICAL: Only show operators that:
    * - Are NOT revoked by Great Gospel (isRevoked !== true)
    * - Have active hardware attestation (verified === true)
-   * - Have trust score >= 70%
+   * - Have trust score >= MIN_TRUST_SCORE_THRESHOLD
    * - Are not the current user
    * - Are not offline
    */
@@ -83,7 +90,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
     (op) =>
       !op.isRevoked &&
       op.verified &&
-      op.trustScore >= 70 &&
+      op.trustScore >= MIN_TRUST_SCORE_THRESHOLD &&
       op.id !== currentOperatorId &&
       op.status !== 'offline'
   );

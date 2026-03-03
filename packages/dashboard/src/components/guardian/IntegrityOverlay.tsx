@@ -23,6 +23,11 @@ import { AlertTriangle, ShieldOff } from 'lucide-react';
 import { IntegrityStatus } from '@aethercore/shared';
 
 /**
+ * Display configuration
+ */
+const HASH_DISPLAY_LENGTH = 8;
+
+/**
  * IntegrityOverlay Props
  */
 export interface IntegrityOverlayProps {
@@ -50,10 +55,10 @@ export const IntegrityOverlay: React.FC<IntegrityOverlayProps> = ({
     ? Math.round((status.invalidFrames / status.totalFrames) * 100)
     : 0;
 
-  // Format hashes for display (first 8 characters, monospace)
+  // Format hashes for display (first HASH_DISPLAY_LENGTH characters, monospace)
   const formatHash = (hash: string | null | undefined): string => {
     if (!hash) return 'N/A';
-    return hash.substring(0, 8).toUpperCase();
+    return hash.substring(0, HASH_DISPLAY_LENGTH).toUpperCase();
   };
 
   const displayExpectedHash = formatHash(expectedHash);

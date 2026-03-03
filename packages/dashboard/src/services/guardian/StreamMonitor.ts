@@ -149,15 +149,20 @@ export class StreamMonitor {
     }
   }
 
-  /**
-   * Process incoming video frame (Receiver side)
-   * 
-   * PHASE 3: Merkle Vine Validation
-   * - Verifies prev_hash matches last_verified_hash
-   * - Validates TPM signature via identityClient
-   * - Computes hash and compares with received hash
-   * - Fail-Visible: Broken chain or invalid signature = SPOOFED
-   */
+/**
+ * Hash display configuration
+ */
+const HASH_DISPLAY_LENGTH = 8;
+
+/**
+ * Process incoming video frame (Receiver side)
+ * 
+ * PHASE 3: Merkle Vine Validation
+ * - Verifies prev_hash matches last_verified_hash
+ * - Validates TPM signature via identityClient
+ * - Computes hash and compares with received hash
+ * - Fail-Visible: Broken chain or invalid signature = SPOOFED
+ */
   async processIncomingFrame(frame: FrameData): Promise<void> {
     try {
       this.status.totalFrames++;
@@ -176,6 +181,9 @@ export class StreamMonitor {
         return;
       }
 
+      // Store expected hash before validation for fail-visible display
+      this.expectedHash = integrityHash.hash;
+
       // PHASE 3: Merkle Vine prev_hash validation
       // First frame in chain (no previous hash to validate)
       if (this.lastVerifiedHash === null && frame.sequence === 0) {
@@ -183,58 +191,55 @@ export class StreamMonitor {
         console.log('[StreamMonitor] Initializing Merkle Vine chain');
       } else if (this.lastVerifiedHash !== null) {
         // Validate Merkle Vine linkage
-        // Note: For video frames, prev_hash would be included in the StreamIntegrityHash
+        // Note: In production, StreamIntegrityHash would include prev_hash field
         // For now, we validate the sequence continuity as a simplified Merkle Vine
-        const expectedSequence = (this.frameSequence - 1);
-        if (frame.sequence !== expectedSequence && frame.sequence > 0) {
+        if (frame.sequence !== this.frameSequence) {
           this.handleIntegrityViolation(
             frame,
             integrityHash.hash,
             'BROKEN_CHAIN',
-            `Frame sequence mismatch: expected ${expectedSequence}, got ${frame.sequence}`
+            `Frame sequence mismatch: expected ${this.frameSequence}, got ${frame.sequence}`
           );
           return;
         }
       }
 
       // PHASE 3: TPM Signature Verification
-      // Verify the signature of the hash envelope via identityClient
-      try {
-        // Create verification request
-        const verifyRequest: IdentityVerifySignatureRequest = {
-          node_id: integrityHash.nodeId,
-          payload: new TextEncoder().encode(integrityHash.hash),
-          signature_hex: integrityHash.hash, // In real implementation, this would be a separate signature field
-          timestamp_ms: integrityHash.timestamp,
-          nonce_hex: this.generateNonce(),
-        };
-
-        // Skip actual signature verification if signature field not available
-        // In production, StreamIntegrityHash would include signature field
-        // const verifyResponse = await this.config.identityClient.verifySignature(verifyRequest);
-        // if (!verifyResponse.is_valid) {
-        //   this.handleIntegrityViolation(
-        //     frame,
-        //     integrityHash.hash,
-        //     'INVALID_SIGNATURE',
-        //     verifyResponse.failure_reason || 'Signature verification failed'
-        //   );
-        //   return;
-        // }
-      } catch (error) {
-        console.error('[StreamMonitor] Signature verification error:', error);
-        this.handleIntegrityViolation(
-          frame,
-          integrityHash.hash,
-          'SIGNATURE_ERROR',
-          error instanceof Error ? error.message : 'Unknown error'
-        );
-        return;
-      }
+      // NOTE: Signature verification is currently disabled because StreamIntegrityHash
+      // doesn't yet include a signature field. In production, this MUST be enabled.
+      // TODO: Add signature field to StreamIntegrityHash and enable verification
+      // try {
+      //   const verifyRequest: IdentityVerifySignatureRequest = {
+      //     node_id: integrityHash.nodeId,
+      //     payload: new TextEncoder().encode(integrityHash.hash),
+      //     signature_hex: integrityHash.signature, // Field to be added
+      //     timestamp_ms: integrityHash.timestamp,
+      //     nonce_hex: this.generateNonce(),
+      //   };
+      //
+      //   const verifyResponse = await this.config.identityClient.verifySignature(verifyRequest);
+      //   if (!verifyResponse.is_valid) {
+      //     this.handleIntegrityViolation(
+      //       frame,
+      //       integrityHash.hash,
+      //       'INVALID_SIGNATURE',
+      //       verifyResponse.failure_reason || 'Signature verification failed'
+      //     );
+      //     return;
+      //   }
+      // } catch (error) {
+      //   console.error('[StreamMonitor] Signature verification error:', error);
+      //   this.handleIntegrityViolation(
+      //     frame,
+      //     integrityHash.hash,
+      //     'SIGNATURE_ERROR',
+      //     error instanceof Error ? error.message : 'Unknown error'
+      //   );
+      //   return;
+      // }
 
       // Compute hash of received frame
       const computedHash = await this.computeBlake3Hash(frame.data);
-      this.expectedHash = integrityHash.hash;
 
       // Compare computed hash with received hash
       if (computedHash === integrityHash.hash) {
@@ -243,9 +248,10 @@ export class StreamMonitor {
         this.status.isValid = true;
         this.status.verificationStatus = 'VERIFIED' as VerificationStatus;
         this.lastVerifiedHash = computedHash; // Update chain state
+        this.frameSequence++; // Increment expected sequence
         
         console.log(
-          `[StreamMonitor] Frame ${frame.sequence} integrity verified ✓ (hash: ${computedHash.substring(0, 8)}...)`,
+          `[StreamMonitor] Frame ${frame.sequence} integrity verified ✓ (hash: ${computedHash.substring(0, HASH_DISPLAY_LENGTH)}...)`,
         );
       } else {
         // Hash mismatch - Fail-Visible Design

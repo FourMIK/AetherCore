@@ -21,6 +21,12 @@ import React, { useState, useRef } from 'react';
 import { Send, Shield, Loader2 } from 'lucide-react';
 import type { CanonicalEvent, MessagePayload, EventType } from '@aethercore/canonical-schema';
 import { SigningClient } from '../../services/identity/signingClient';
+import { hash as blake3Hash } from 'blake3';
+
+/**
+ * Message constraints
+ */
+const MAX_MESSAGE_LENGTH = 2000;
 
 /**
  * MessageInput Props
@@ -82,15 +88,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 
   /**
    * Compute BLAKE3 hash of canonical JSON
-   * 
-   * NOTE: In production, this would use the blake3 npm package.
-   * For now, we use a placeholder that would be replaced with actual BLAKE3.
    */
   async function computeBlake3Hash(data: string): Promise<string> {
     try {
-      // Use BLAKE3 for production hashing
-      const { hash } = await import('blake3');
-      const hashResult = hash(Buffer.from(data, 'utf-8')).toString('hex');
+      const hashResult = blake3Hash(Buffer.from(data, 'utf-8')).toString('hex');
       return hashResult;
     } catch (error) {
       console.error('[MessageInput] Error computing BLAKE3 hash:', error);
@@ -183,9 +184,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   }
 
   /**
-   * Handle Enter key to send message
+   * Handle key down to send message
    */
-  function handleKeyPress(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -214,12 +215,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             ref={textareaRef}
             value={messageText}
             onChange={handleTextareaChange}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             placeholder={placeholder}
             disabled={disabled || isSending}
             className="w-full bg-carbon border border-tungsten/20 rounded-lg px-4 py-3 text-tungsten placeholder-tungsten/30 resize-none focus:outline-none focus:border-overmatch/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             rows={2}
-            maxLength={2000}
+            maxLength={MAX_MESSAGE_LENGTH}
           />
           
           {/* Status Footer */}
@@ -232,7 +233,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             
             {/* Character Count */}
             <span className="text-xs text-tungsten/50 font-mono">
-              {messageText.length}/2000
+              {messageText.length}/{MAX_MESSAGE_LENGTH}
             </span>
           </div>
 
