@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AetherCore ISR Console</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #0a0e27;
+            color: #00ff88;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .container { display: grid; grid-template-columns: 1fr 300px; grid-template-rows: 60px 1fr; height: 100vh; }
+        header {
+            grid-column: 1/-1;
+            background: #1a2749;
+            border-bottom: 3px solid #00ff88;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .title { font-size: 16px; font-weight: bold; letter-spacing: 2px; }
+        .status-badges { display: flex; gap: 10px; }
+        .badge { background: rgba(0,255,136,0.1); border: 1px solid #00ff88; padding: 5px 10px; border-radius: 3px; font-size: 11px; }
+        .video { grid-column: 1; grid-row: 2; background: #000; position: relative; display: flex; align-items: center; justify-content: center; }
+        .thermal { width: 100%; height: 100%; position: relative; background: linear-gradient(45deg, #0a0a0a, #1a1a1a); }
+        .scanlines { position: absolute; width: 100%; height: 100%; background: repeating-linear-gradient(0deg, rgba(50,200,100,0.05) 0px, rgba(50,200,100,0.05) 1px, transparent 1px, transparent 2px); z-index: 5; }
+        .crosshair { position: absolute; width: 100px; height: 100px; border: 2px solid #00ff88; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 3; }
+        .crosshair::before { content: ''; position: absolute; width: 100%; height: 1px; background: #00ff88; top: 50%; left: 0; }
+        .crosshair::after { content: ''; position: absolute; width: 1px; height: 100%; background: #00ff88; left: 50%; top: 0; }
+        .overlay-text { position: absolute; top: 20px; left: 20px; background: rgba(0,30,80,0.7); border: 1px solid #00ff88; padding: 10px; border-radius: 3px; z-index: 10; font-size: 11px; }
+        .live-indicator { position: absolute; top: 20px; right: 20px; z-index: 10; color: #ff3333; font-weight: bold; display: flex; align-items: center; gap: 8px; }
+        .live-dot { width: 8px; height: 8px; background: #ff3333; border-radius: 50%; animation: blink 1s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .trust-badge { position: absolute; bottom: 20px; right: 20px; background: rgba(0,80,40,0.8); border: 2px solid #00ff88; padding: 12px; border-radius: 3px; z-index: 10; font-size: 10px; max-width: 250px; }
+        .panel { grid-column: 2; grid-row: 2; background: #16213e; border-left: 3px solid #00ff88; overflow-y: auto; padding: 15px; }
+        .section { margin-bottom: 15px; }
+        .section-title { color: #00ff88; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .data-row { display: flex; justify-content: space-between; font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(0,255,136,0.1); color: #00cc66; }
+        .label { color: #00ff88; }
+        .value { font-weight: bold; }
+        .camera-card { background: rgba(0,255,136,0.05); border: 1px solid #00ff88; padding: 8px; margin-bottom: 8px; border-radius: 3px; cursor: pointer; font-size: 10px; }
+        .camera-card.active { background: rgba(0,255,136,0.15); }
+        .dot { display: inline-block; width: 5px; height: 5px; background: #00ff88; border-radius: 50%; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="title">⚡ AETHERCORE ISR CONSOLE</div>
+            <div class="status-badges">
+                <div class="badge"><span class="dot"></span> Gateway: ONLINE</div>
+                <div class="badge"><span class="dot"></span> Mesh: ACTIVE</div>
+                <div class="badge"><span class="dot"></span> Trust: 95%</div>
+            </div>
+        </header>
+
+        <div class="video">
+            <div class="thermal">
+                <div class="scanlines"></div>
+                <div class="crosshair"></div>
+                <div class="overlay-text">
+                    <div style="color: #00ff88; font-weight: bold;">TELEDYNE RANGER HD</div>
+                    <div>flir-alpha-01</div>
+                    <div style="margin-top: 4px; font-size: 9px;">1080p • H.264 • 30fps</div>
+                </div>
+                <div class="live-indicator">
+                    <div class="live-dot"></div>
+                    LIVE
+                </div>
+                <div class="trust-badge">
+                    <div style="color: #00ff88; font-weight: bold; margin-bottom: 6px;">✓ VERIFIED [SECURE]</div>
+                    <div style="color: #00cc66;">AETHERCORE TRUST MESH</div>
+                    <div style="margin-top: 6px;">
+                        <div>Trust: <span style="color: #00ff88;">95%</span></div>
+                        <div>Ed25519: <span style="color: #00ff88;">✓ VALID</span></div>
+                        <div>Merkle: <span style="color: #00ff88;">✓ VERIFIED</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="section">
+                <div class="section-title">🎥 Cameras</div>
+                <div class="camera-card active">
+                    <div style="color: #00ff88; font-weight: bold;">flir-alpha-01</div>
+                    <div style="color: #00cc66; font-size: 9px; margin-top: 3px;">
+                        <span class="dot"></span> LIVE (95%)
+                    </div>
+                </div>
+                <div class="camera-card">
+                    <div style="color: #00ff88; font-weight: bold;">thermal-demo-03</div>
+                    <div style="color: #00cc66; font-size: 9px; margin-top: 3px;">
+                        <span class="dot"></span> READY (90%)
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">📊 Telemetry</div>
+                <div class="data-row">
+                    <span class="label">Frames:</span>
+                    <span class="value" id="frames">1247</span>
+                </div>
+                <div class="data-row">
+                    <span class="label">Bitrate:</span>
+                    <span class="value">12.5 Mbps</span>
+                </div>
+                <div class="data-row">
+                    <span class="label">Latency:</span>
+                    <span class="value">48ms</span>
+                </div>
+                <div class="data-row">
+                    <span class="label">Uptime:</span>
+                    <span class="value" id="uptime">00:00:00</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">🔐 Verification</div>
+                <div class="data-row">
+                    <span class="label">Trust:</span>
+                    <span class="value">95%</span>
+                </div>
+                <div class="data-row">
+                    <span class="label">Ed25519:</span>
+                    <span class="value">✓ VALID</span>
+                </div>
+                <div class="data-row">
+                    <span class="label">Merkle:</span>
+                    <span class="value">✓ VERIFIED</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">🌐 Connections</div>
+                <div style="font-size: 10px; color: #00cc66;">
+                    <div><span class="dot"></span> Gateway:3000</div>
+                    <div><span class="dot"></span> Collab:8080</div>
+                    <div><span class="dot"></span> C2:50051</div>
+                    <div><span class="dot"></span> DB:5432</div>
+                    <div><span class="dot"></span> Cache:6379</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let frames = 1247;
+        let seconds = 0;
+        setInterval(() => {
+            frames++;
+            seconds++;
+            document.getElementById('frames').textContent = frames;
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            document.getElementById('uptime').textContent =
+                String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+        }, 1000);
+    </script>
+</body>
+</html>
+

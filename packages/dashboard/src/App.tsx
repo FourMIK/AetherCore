@@ -17,6 +17,7 @@ import {
   BootstrapOnboarding,
   shouldRunBootstrapOnboarding,
 } from './components/onboarding/BootstrapOnboarding';
+import { startTelemetryPolling, simulateATAKDevice } from './services/telemetryService';
 import './index.css';
 
 interface StackStatus {
@@ -156,8 +157,13 @@ export const App: React.FC = () => {
 
       const { wsUrl } = getRuntimeConfig();
       const gatewayUrl = wsUrl;
+
+      // Set connecting status
+      const commStore = useCommStore.getState();
+      commStore.setConnectionStatus('connecting');
+      commStore.setConnectionState('intermittent');
+
       try {
-        const commStore = useCommStore.getState();
         const clientId = commStore.currentOperator?.id || 'operator-local';
         commStore.initC2Client(gatewayUrl, clientId);
         commStore.connectC2().catch((err) => {
@@ -167,6 +173,51 @@ export const App: React.FC = () => {
       } catch (err) {
         console.error('[AETHERIC LINK] Failed to initialize C2 client:', err);
       }
+
+      // Start telemetry polling to fetch real devices
+      console.log('[TELEMETRY] Starting telemetry service for node discovery');
+
+      // TEMPORARY WORKAROUND: Inject RalphieNode directly until gateway /api/nodes works
+      const tacticalStore = useTacticalStore.getState();
+      const ralphieNode = {
+        id: 'ralphie-local-desktop',
+        domain: 'ralphie',
+        position: {
+          latitude: 37.7749 + ((Math.random() - 0.5) * 0.01),
+          longitude: -122.4194 + ((Math.random() - 0.5) * 0.01),
+          altitude: 10,
+        },
+        trustScore: 95,
+        verified: false, // False because it's dev mode (no TPM)
+        attestationHash: 'ralphie-local',
+        lastSeen: new Date(),
+        status: 'online' as const,
+        firmwareVersion: 'Desktop v1.0',
+        integrityCompromised: false,
+      };
+      tacticalStore.addNode(ralphieNode);
+      console.log('[TELEMETRY] ✓ Injected RalphieNode directly (workaround until gateway /api/nodes works)');
+
+      const stopPolling = startTelemetryPolling((nodes) => {
+        // Update nodes in store
+        nodes.forEach((node) => {
+          tacticalStore.addNode(node);
+        });
+
+        console.log(`[TELEMETRY] Updated ${nodes.size} nodes from telemetry`);
+
+        // Set connection status to connected when we have telemetry data
+        const commStore = useCommStore.getState();
+        if (nodes.size > 0 && commStore.connectionStatus === 'disconnected') {
+          commStore.setConnectionStatus('connected');
+          commStore.setConnectionState('connected');
+        }
+      }, 5000); // Poll every 5 seconds
+
+
+      return () => {
+        stopPolling();
+      };
     }, 100);
 
     return () => {

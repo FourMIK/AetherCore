@@ -193,13 +193,14 @@ class TrustDetailPanelController(
         var onDismissCallback: (() -> Unit)? = null
 
         override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-            val title = requireArguments().getString(ARG_TITLE).orEmpty()
-            val body = requireArguments().getString(ARG_BODY).orEmpty()
+            val args = arguments ?: Bundle()
+            val title = args.getString(ARG_TITLE).orEmpty()
+            val body = args.getString(ARG_BODY).orEmpty()
             isCancelable = true
             return AlertDialog.Builder(activity)
                 .setTitle("Trust Detail • $title")
-                .setMessage(body)
-                .setPositiveButton("Close") { _, _ -> dismissAllowingStateLoss() }
+                .setMessage(body as CharSequence)
+                .setPositiveButton("Close" as CharSequence) { _, _ -> dismissAllowingStateLoss() }
                 .create()
         }
 

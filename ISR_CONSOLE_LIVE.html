@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AetherCore ISR Console - Live Tactical Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'IBM Plex Mono', 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0e27 0%, #16213e 100%);
+            color: #e0e0e0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .tactical-grid {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            grid-template-rows: 70px 1fr;
+            height: 100vh;
+            gap: 0;
+        }
+
+        /* HEADER */
+        header {
+            grid-column: 1 / -1;
+            background: linear-gradient(90deg, #0a0e27 0%, #1a2749 100%);
+            border-bottom: 3px solid #00ff88;
+            padding: 0 25px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .status-pulse {
+            width: 12px;
+            height: 12px;
+            background: #00ff88;
+            border-radius: 50%;
+            animation: pulse-anim 1.5s infinite;
+            box-shadow: 0 0 10px #00ff88;
+        }
+
+        @keyframes pulse-anim {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .title-text {
+            font-size: 18px;
+            font-weight: bold;
+            color: #00ff88;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        .header-right {
+            display: flex;
+            gap: 12px;
+        }
+
+        .status-chip {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid #00ff88;
+            border-radius: 3px;
+            padding: 5px 12px;
+            font-size: 11px;
+            color: #00ff88;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .chip-dot {
+            width: 6px;
+            height: 6px;
+            background: #00ff88;
+            border-radius: 50%;
+        }
+
+        /* MAIN VIDEO AREA */
+        .video-pane {
+            grid-column: 1;
+            grid-row: 2;
+            position: relative;
+            background: #000;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .video-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            background: linear-gradient(45deg, #0a0a0a 0%, #1a1a1a 100%);
+        }
+
+        /* THERMAL VIDEO EFFECT */
+        .thermal-display {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            background: radial-gradient(circle at center, rgba(30, 200, 100, 0.1), transparent);
+        }
+
+        .scanline-overlay {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(50, 200, 100, 0.05) 0px,
+                rgba(50, 200, 100, 0.05) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 5;
+            animation: scanline-shift 8s linear infinite;
+        }
+
+        @keyframes scanline-shift {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(4px); }
+        }
+
+        /* TACTICAL CROSSHAIR */
+        .crosshair-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3;
+        }
+
+        svg {
+            filter: drop-shadow(0 0 10px rgba(0, 255, 136, 0.5));
+        }
+
+        /* VIDEO OVERLAYS */
+        .video-overlay-top-left {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(0, 30, 80, 0.7);
+            border: 2px solid #00ff88;
+            border-radius: 4px;
+            padding: 12px 16px;
+            backdrop-filter: blur(5px);
+        }
+
+        .camera-title {
+            color: #00ff88;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+        .camera-meta {
+            font-size: 10px;
+            color: #00cc66;
+            margin-top: 4px;
+        }
+
+        .video-overlay-top-right {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ff3333;
+            font-size: 14px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(255, 51, 51, 0.8);
+            animation: live-blink 1s infinite;
+        }
+
+        @keyframes live-blink {
+            0%, 49%, 100% { opacity: 1; }
+            50%, 99% { opacity: 0.3; }
+        }
+
+        .live-dot {
+            width: 10px;
+            height: 10px;
+            background: #ff3333;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #ff3333;
+        }
+
+        /* TRUST BADGE */
+        .trust-badge {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 10;
+            background: rgba(0, 80, 40, 0.85);
+            border: 2px solid #00ff88;
+            border-radius: 4px;
+            padding: 14px 18px;
+            backdrop-filter: blur(5px);
+            max-width: 280px;
+        }
+
+        .badge-title {
+            color: #00ff88;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 6px;
+        }
+
+        .badge-content {
+            font-size: 10px;
+            color: #00cc66;
+            line-height: 1.6;
+        }
+
+        .badge-value {
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        /* SIDEBAR */
+        .control-panel {
+            grid-column: 2;
+            grid-row: 2;
+            background: linear-gradient(180deg, #0a0e27 0%, #16213e 100%);
+            border-left: 3px solid #00ff88;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            overflow-x: hidden;
+            box-shadow: inset 2px 0 20px rgba(0, 255, 136, 0.1);
+        }
+
+        .panel-section {
+            border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+            padding: 14px;
+        }
+
+        .section-title {
+            color: #00ff88;
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 5px rgba(0, 255, 136, 0.3);
+        }
+
+        /* CAMERA LIST */
+        .camera-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .camera-card {
+            background: rgba(0, 255, 136, 0.05);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: 4px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 10px;
+        }
+
+        .camera-card:hover {
+            background: rgba(0, 255, 136, 0.1);
+            border-color: #00ff88;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+        }
+
+        .camera-card.active {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: #00ff88;
+            box-shadow: inset 0 0 10px rgba(0, 255, 136, 0.2);
+        }
+
+        .camera-name {
+            color: #00ff88;
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+
+        .camera-stat {
+            color: #00cc66;
+            display: flex;
+            justify-content: space-between;
+            margin: 2px 0;
+        }
+
+        /* DATA PANEL */
+        .data-display {
+            font-size: 9px;
+            color: #00cc66;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(0, 255, 136, 0.1);
+        }
+
+        .data-label {
+            color: #00ff88;
+            font-weight: bold;
+        }
+
+        .data-value {
+            color: #00cc66;
+            text-align: right;
+            font-weight: bold;
+        }
+
+        /* NETWORK STATUS */
+        .network-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 6px;
+            font-size: 9px;
+        }
+
+        .network-item {
+            background: rgba(0, 100, 50, 0.1);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 3px;
+            padding: 5px 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #00cc66;
+        }
+
+        .network-dot {
+            width: 5px;
+            height: 5px;
+            background: #00ff88;
+            border-radius: 50%;
+            animation: pulse-anim 1.5s infinite;
+        }
+
+        /* SCROLLBAR STYLING */
+        .control-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .control-panel::-webkit-scrollbar-track {
+            background: rgba(0, 255, 136, 0.05);
+        }
+
+        .control-panel::-webkit-scrollbar-thumb {
+            background: #00ff88;
+            border-radius: 3px;
+        }
+
+        .control-panel::-webkit-scrollbar-thumb:hover {
+            background: #00cc66;
+        }
+
+        /* ANIMATIONS */
+        .data-update {
+            animation: data-flash 0.5s ease;
+        }
+
+        @keyframes data-flash {
+            0% { background: rgba(0, 255, 136, 0.3); }
+            100% { background: transparent; }
+        }
+    </style>
+</head>
+<body>
+    <div class="tactical-grid">
+        <!-- HEADER -->
+        <header>
+            <div class="header-left">
+                <div class="status-pulse"></div>
+                <div class="title-text">AETHERCORE ISR CONSOLE</div>
+            </div>
+            <div class="header-right">
+                <div class="status-chip">
+                    <div class="chip-dot"></div>
+                    Gateway: ONLINE
+                </div>
+                <div class="status-chip">
+                    <div class="chip-dot"></div>
+                    Mesh: ACTIVE
+                </div>
+                <div class="status-chip">
+                    <div class="chip-dot"></div>
+                    Trust: 95%
+                </div>
+            </div>
+        </header>
+
+        <!-- VIDEO PANE -->
+        <div class="video-pane">
+            <div class="video-container">
+                <div class="thermal-display">
+                    <div class="scanline-overlay"></div>
+
+                    <!-- TACTICAL CROSSHAIR -->
+                    <div class="crosshair-container">
+                        <svg width="120" height="120" viewBox="0 0 120 120">
+                            <!-- Outer circle -->
+                            <circle cx="60" cy="60" r="45" fill="none" stroke="#00ff88" stroke-width="2"/>
+                            <!-- Horizontal line -->
+                            <line x1="20" y1="60" x2="100" y2="60" stroke="#00ff88" stroke-width="1" opacity="0.6"/>
+                            <!-- Vertical line -->
+                            <line x1="60" y1="20" x2="60" y2="100" stroke="#00ff88" stroke-width="1" opacity="0.6"/>
+                            <!-- Corner markers -->
+                            <line x1="35" y1="55" x2="35" y2="65" stroke="#00ff88" stroke-width="2"/>
+                            <line x1="30" y1="60" x2="40" y2="60" stroke="#00ff88" stroke-width="2"/>
+                            <line x1="85" y1="55" x2="85" y2="65" stroke="#00ff88" stroke-width="2"/>
+                            <line x1="80" y1="60" x2="90" y2="60" stroke="#00ff88" stroke-width="2"/>
+                            <line x1="60" y1="35" x2="65" y2="35" stroke="#00ff88" stroke-width="2"/>
+                            <line x1="60" y1="30" x2="60" y2="40" stroke="#00ff88" stroke-width="2"/>
+                            <line x1="60" y1="85" x2="65" y2="85" stroke="#00ff88" stroke-width="2"/>
+                            <line x1="60" y1="80" x2="60" y2="90" stroke="#00ff88" stroke-width="2"/>
+                        </svg>
+                    </div>
+
+                    <!-- TOP LEFT CAMERA INFO -->
+                    <div class="video-overlay-top-left">
+                        <div class="camera-title">TELEDYNE RANGER HD</div>
+                        <div class="camera-meta">flir-alpha-01 • 1080p</div>
+                        <div class="camera-meta">H.264 @ 30fps</div>
+                    </div>
+
+                    <!-- TOP RIGHT LIVE INDICATOR -->
+                    <div class="video-overlay-top-right">
+                        <div class="live-dot"></div>
+                        LIVE
+                    </div>
+
+                    <!-- BOTTOM RIGHT TRUST BADGE -->
+                    <div class="trust-badge">
+                        <div class="badge-title">✓ VERIFIED [SECURE]</div>
+                        <div class="badge-content">
+                            <div>AETHERCORE TRUST MESH</div>
+                            <div style="margin-top: 5px;">
+                                Trust: <span class="badge-value" id="trustScore">95%</span>
+                            </div>
+                            <div>
+                                Ed25519: <span class="badge-value">VALID</span>
+                            </div>
+                            <div>
+                                Merkle: <span class="badge-value">VERIFIED</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CONTROL PANEL (SIDEBAR) -->
+        <div class="control-panel">
+            <!-- CAMERAS SECTION -->
+            <div class="panel-section">
+                <div class="section-title">🎥 Cameras</div>
+                <div class="camera-list">
+                    <div class="camera-card active" onclick="selectCamera(this, 'flir-alpha-01')">
+                        <div class="camera-name">flir-alpha-01</div>
+                        <div class="camera-stat">
+                            <span>Status:</span>
+                            <span style="color: #00ff88;">LIVE</span>
+                        </div>
+                        <div class="camera-stat">
+                            <span>Trust:</span>
+                            <span style="color: #00ff88;">95%</span>
+                        </div>
+                    </div>
+                    <div class="camera-card" onclick="selectCamera(this, 'thermal-02')">
+                        <div class="camera-name">thermal-demo-03</div>
+                        <div class="camera-stat">
+                            <span>Status:</span>
+                            <span style="color: #00cc66;">READY</span>
+                        </div>
+                        <div class="camera-stat">
+                            <span>Trust:</span>
+                            <span style="color: #00cc66;">90%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TELEMETRY SECTION -->
+            <div class="panel-section">
+                <div class="section-title">📊 Live Telemetry</div>
+                <div class="data-display">
+                    <div class="data-row">
+                        <span class="data-label">Frames:</span>
+                        <span class="data-value" id="frameCount">1,247</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Bitrate:</span>
+                        <span class="data-value">12.5 Mbps</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Latency:</span>
+                        <span class="data-value">48ms</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">FPS:</span>
+                        <span class="data-value">30</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Uptime:</span>
+                        <span class="data-value" id="uptime">00:00:00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VERIFICATION SECTION -->
+            <div class="panel-section">
+                <div class="section-title">🔐 Verification</div>
+                <div class="data-display">
+                    <div class="data-row">
+                        <span class="data-label">Trust:</span>
+                        <span class="data-value">95%</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Ed25519:</span>
+                        <span class="data-value">✓</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Merkle:</span>
+                        <span class="data-value">✓</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Hash:</span>
+                        <span class="data-value" style="font-size: 8px;">blake3:..a4f2</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NETWORK STATUS SECTION -->
+            <div class="panel-section">
+                <div class="section-title">🌐 Connections</div>
+                <div class="network-grid">
+                    <div class="network-item">
+                        <div class="network-dot"></div>
+                        Gateway:3000
+                    </div>
+                    <div class="network-item">
+                        <div class="network-dot"></div>
+                        Collab:8080
+                    </div>
+                    <div class="network-item">
+                        <div class="network-dot"></div>
+                        C2:50051
+                    </div>
+                    <div class="network-item">
+                        <div class="network-dot"></div>
+                        DB:5432
+                    </div>
+                    <div class="network-item">
+                        <div class="network-dot"></div>
+                        Cache:6379
+                    </div>
+                </div>
+            </div>
+
+            <!-- API STATUS SECTION -->
+            <div class="panel-section">
+                <div class="section-title">⚡ API Status</div>
+                <div class="data-display">
+                    <div class="data-row">
+                        <span class="data-label">/health:</span>
+                        <span class="data-value">200 OK</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">/video:</span>
+                        <span class="data-value">READY</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">/telemetry:</span>
+                        <span class="data-value">LIVE</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Live telemetry simulation
+        let frameCount = 1247;
+        let uptimeSeconds = 0;
+
+        setInterval(() => {
+            frameCount += Math.floor(Math.random() * 5);
+            uptimeSeconds++;
+
+            // Update frame count with animation
+            const fc = document.getElementById('frameCount');
+            fc.textContent = frameCount.toLocaleString();
+            fc.classList.add('data-update');
+            setTimeout(() => fc.classList.remove('data-update'), 500);
+
+            // Update uptime
+            const h = Math.floor(uptimeSeconds / 3600);
+            const m = Math.floor((uptimeSeconds % 3600) / 60);
+            const s = uptimeSeconds % 60;
+            document.getElementById('uptime').textContent =
+                `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+            // Simulate trust score slight variation
+            let trust = 95 + (Math.random() - 0.5) * 2;
+            document.getElementById('trustScore').textContent = Math.round(trust) + '%';
+        }, 1000);
+
+        function selectCamera(element, cameraId) {
+            document.querySelectorAll('.camera-card').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+        }
+
+        // Check backend connectivity on load
+        window.addEventListener('load', async () => {
+            try {
+                const res = await fetch('http://localhost:3000/health', { timeout: 2000 });
+                console.log('✓ Backend connected:', res.status);
+            } catch (e) {
+                console.log('⚠ Backend check:', e.message);
+            }
+        });
+    </script>
+</body>
+</html>
+

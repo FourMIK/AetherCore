@@ -1,225 +1,395 @@
 /**
- * Identity Client - Hardware-Rooted Administrative Actions
- *
- * This service provides cryptographically-signed administrative operations
- * bound to physical silicon (TPM 2.0 / Secure Enclave).
- *
- * Design Doctrine:
- * - All revocations are CanonicalEvents signed by the commander's IdentitySlot
- * - Attestation failures MUST be fail-visible
- * - Byzantine nodes are quarantined, not silently ignored
+ * Identity Registry Client - Hardware-Rooted Trust Verification
+ * 
+ * Bridges TypeScript dashboard to Rust Identity Registry Service (crates/identity).
+ * All node enrollment and trust verification flows MUST go through this client.
+ * 
+ * gRPC Service: aethercore.identity.IdentityRegistry
+ * Proto: crates/identity/proto/identity_registry.proto
+ * 
+ * Security Model:
+ * - NO GRACEFUL DEGRADATION: If hardware attestation fails, node is Byzantine
+ * - All queries complete within timeout windows (contested/congested aware)
+ * - Fail-Visible: Verification failures are explicit, never hidden
+ * 
+ * CRITICAL: This replaces all MockIdentityRegistry usage in the codebase.
  */
-
-import { invoke } from '@tauri-apps/api/core';
 
 /**
- * Node attestation state from TPM 2.0 verification
+ * NodeID type (64-character hex string - BLAKE3 hash of public key)
  */
-export interface NodeAttestationState {
-  node_id: string;
-  tpm_attestation_valid: boolean;
-  hardware_backed: boolean;
-  trust_score: number;
-  last_attestation_ts: number;
-  merkle_vine_synced: boolean;
-  byzantine_detected: boolean;
-  revoked: boolean;
-  revocation_reason?: string;
+export type NodeID = string;
+
+/**
+ * Ed25519 public key (32 bytes, hex-encoded)
+ */
+export type PublicKeyHex = string;
+
+/**
+ * Identity Registry Client Configuration
+ */
+export interface IdentityClientConfig {
+  /** gRPC service endpoint (default: localhost:50052) */
+  endpoint: string;
+  
+  /** Request timeout in milliseconds (default: 5000) */
+  timeoutMs?: number;
+  
+  /** Enable request/response logging */
+  enableLogging?: boolean;
 }
 
 /**
- * Fleet-wide attestation report
+ * Request to get a node's public key
  */
-export interface FleetAttestationReport {
-  schema_version: number;
-  timestamp: number;
-  nodes: NodeAttestationState[];
-  total_nodes: number;
-  verified_nodes: number;
-  compromised_nodes: number;
-  revoked_nodes: number;
+export interface GetPublicKeyRequest {
+  node_id: NodeID;
 }
 
 /**
- * Revocation request payload
- * Must be signed by commander's IdentitySlot
+ * Response containing the public key
  */
-export interface RevocationRequest {
-  node_id: string;
-  reason: string;
-  commander_id: string;
-  timestamp: number;
+export interface GetPublicKeyResponse {
+  success: boolean;
+  public_key_hex: PublicKeyHex;
+  error_message?: string;
+  timestamp_ms: number;
 }
 
 /**
- * Signed revocation certificate (CanonicalEvent)
+ * Request to check if a node is enrolled
  */
-export interface RevocationCertificate {
-  node_id: string;
-  reason: string;
-  commander_id: string;
-  timestamp: number;
-  signature: string; // Ed25519 signature from commander's IdentitySlot
-  merkle_root: string; // BLAKE3 hash for ledger chaining
+export interface IsNodeEnrolledRequest {
+  node_id: NodeID;
 }
 
 /**
- * Identity Client for administrative operations
+ * Response indicating enrollment status
+ */
+export interface IsNodeEnrolledResponse {
+  success: boolean;
+  is_enrolled: boolean;
+  error_message?: string;
+  timestamp_ms: number;
+}
+
+/**
+ * Request to verify a signature
+ */
+export interface VerifySignatureRequest {
+  node_id: NodeID;
+  payload: Uint8Array;
+  signature_hex: string;
+  timestamp_ms: number;
+  nonce_hex: string;
+}
+
+/**
+ * Response from signature verification
+ */
+export interface VerifySignatureResponse {
+  is_valid: boolean;
+  failure_reason?: string;
+  timestamp_ms: number;
+  security_event_type?: string;
+}
+
+/**
+ * Identity Registry Client Error
+ */
+export class IdentityClientError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly details?: any
+  ) {
+    super(message);
+    this.name = 'IdentityClientError';
+  }
+}
+
+/**
+ * Identity Registry Client
+ * 
+ * Provides access to hardware-rooted identity verification services.
+ * All methods throw IdentityClientError on failure (Fail-Visible).
  */
 export class IdentityClient {
-  /**
-   * Fetch fleet-wide attestation state
-   *
-   * Queries the C2 mesh for real-time TPM 2.0 attestation status
-   * of all registered nodes.
-   *
-   * @returns Fleet attestation report
-   * @throws If backend is unreachable or attestation service fails
-   */
-  static async getFleetAttestationState(): Promise<FleetAttestationReport> {
-    try {
-      const report = await invoke<FleetAttestationReport>('get_fleet_attestation_state');
+  private config: Required<IdentityClientConfig>;
+  private controller: AbortController | null = null;
 
-      console.log(`[IDENTITY] Fleet attestation: ${report.verified_nodes}/${report.total_nodes} verified`);
+  constructor(config: IdentityClientConfig) {
+    this.config = {
+      endpoint: config.endpoint,
+      timeoutMs: config.timeoutMs ?? 5000,
+      enableLogging: config.enableLogging ?? false,
+    };
 
-      if (report.compromised_nodes > 0) {
-        console.warn(`[IDENTITY] ⚠️  ${report.compromised_nodes} nodes compromised - Byzantine detection active`);
-      }
+    // Normalize endpoint (remove trailing slash)
+    if (this.config.endpoint.endsWith('/')) {
+      this.config.endpoint = this.config.endpoint.slice(0, -1);
+    }
 
-      return report;
-    } catch (error) {
-      console.error('[IDENTITY] Failed to fetch fleet attestation:', error);
-
-      // Fail-Visible: Return empty report with error indicator
-      return {
-        schema_version: 1,
-        timestamp: Date.now(),
-        nodes: [],
-        total_nodes: 0,
-        verified_nodes: 0,
-        compromised_nodes: 0,
-        revoked_nodes: 0,
-      };
+    if (this.config.enableLogging) {
+      console.log('[IdentityClient] Initialized with endpoint:', this.config.endpoint);
     }
   }
 
   /**
-   * Revoke node identity (The Great Gospel kill-switch)
-   *
-   * This is a SOVEREIGN REVOCATION - not a simple state toggle.
-   * Steps:
-   * 1. Create RevocationRequest payload
-   * 2. Request commander's IdentitySlot signature (TPM/Secure Enclave)
-   * 3. Broadcast CanonicalEvent to The Great Gospel ledger
-   * 4. Trigger Aetheric Sweep visualization
-   *
-   * @param nodeId Node to revoke
-   * @param reason Human-readable revocation reason
-   * @returns Signed revocation certificate
-   * @throws If signature fails or ledger broadcast fails
+   * Get public key for a NodeID
+   * 
+   * @param nodeId NodeID (64-character hex string)
+   * @returns Public key response
+   * @throws IdentityClientError if request fails or node not found
    */
-  static async revokeNodeIdentity(
-    nodeId: string,
-    reason: string
-  ): Promise<RevocationCertificate> {
-    try {
-      console.log(`[IDENTITY] Initiating sovereign revocation for node: ${nodeId}`);
-      console.log(`[IDENTITY] Reason: ${reason}`);
+  async getPublicKey(nodeId: NodeID): Promise<GetPublicKeyResponse> {
+    this.validateNodeId(nodeId);
 
-      // Step 1: Request commander's IdentitySlot signature
-      // This will prompt the local TPM/Secure Enclave for cryptographic proof
-      const certificate = await invoke<RevocationCertificate>('revoke_node_identity', {
-        nodeId,
-        reason,
-        timestamp: Date.now(),
+    const request: GetPublicKeyRequest = { node_id: nodeId };
+    const response = await this.callRpc<GetPublicKeyRequest, GetPublicKeyResponse>(
+      'GetPublicKey',
+      request
+    );
+
+    if (!response.success) {
+      throw new IdentityClientError(
+        response.error_message || 'Failed to get public key',
+        'GET_PUBLIC_KEY_FAILED',
+        { nodeId }
+      );
+    }
+
+    if (this.config.enableLogging) {
+      console.log(`[IdentityClient] GetPublicKey(${nodeId}) -> ${response.public_key_hex.slice(0, 16)}...`);
+    }
+
+    return response;
+  }
+
+  /**
+   * Check if a node is enrolled in the Trust Fabric
+   * 
+   * CRITICAL: This MUST be called before accepting any telemetry or commands
+   * from a node. Unenrolled nodes are Byzantine by definition.
+   * 
+   * @param nodeId NodeID to check
+   * @returns Enrollment status
+   * @throws IdentityClientError if request fails
+   */
+  async isNodeEnrolled(nodeId: NodeID): Promise<boolean> {
+    this.validateNodeId(nodeId);
+
+    const request: IsNodeEnrolledRequest = { node_id: nodeId };
+    const response = await this.callRpc<IsNodeEnrolledRequest, IsNodeEnrolledResponse>(
+      'IsNodeEnrolled',
+      request
+    );
+
+    if (!response.success) {
+      throw new IdentityClientError(
+        response.error_message || 'Failed to check enrollment',
+        'ENROLLMENT_CHECK_FAILED',
+        { nodeId }
+      );
+    }
+
+    if (this.config.enableLogging) {
+      console.log(`[IdentityClient] IsNodeEnrolled(${nodeId}) -> ${response.is_enrolled}`);
+    }
+
+    // Fail-Visible: Log Byzantine detection
+    if (!response.is_enrolled) {
+      console.warn(`[IdentityClient] BYZANTINE NODE DETECTED: ${nodeId} is not enrolled`);
+    }
+
+    return response.is_enrolled;
+  }
+
+  /**
+   * Verify a signed envelope
+   * 
+   * Performs full verification including:
+   * - Ed25519 signature validation
+   * - Timestamp freshness (replay attack detection)
+   * - Nonce uniqueness
+   * 
+   * @param request Verification request
+   * @returns Verification result
+   * @throws IdentityClientError if request fails
+   */
+  async verifySignature(request: VerifySignatureRequest): Promise<VerifySignatureResponse> {
+    this.validateNodeId(request.node_id);
+
+    if (!request.signature_hex || request.signature_hex.length !== 128) {
+      throw new IdentityClientError(
+        'Invalid signature format (must be 128 hex characters)',
+        'INVALID_SIGNATURE_FORMAT',
+        { signature: request.signature_hex }
+      );
+    }
+
+    const response = await this.callRpc<VerifySignatureRequest, VerifySignatureResponse>(
+      'VerifySignature',
+      {
+        node_id: request.node_id,
+        payload: request.payload,
+        signature_hex: request.signature_hex,
+        timestamp_ms: request.timestamp_ms,
+        nonce_hex: request.nonce_hex,
+      }
+    );
+
+    if (this.config.enableLogging) {
+      console.log(
+        `[IdentityClient] VerifySignature(${request.node_id}) -> ${response.is_valid ? 'VALID' : 'INVALID'}`
+      );
+    }
+
+    // Fail-Visible: Log signature verification failures
+    if (!response.is_valid) {
+      console.error(`[IdentityClient] SIGNATURE VERIFICATION FAILED`);
+      console.error(`  NodeID: ${request.node_id}`);
+      console.error(`  Reason: ${response.failure_reason || 'Unknown'}`);
+      console.error(`  Security Event: ${response.security_event_type || 'None'}`);
+    }
+
+    return response;
+  }
+
+  /**
+   * Call gRPC method via gRPC-JSON gateway
+   * 
+   * @param method Method name (e.g., 'IsNodeEnrolled')
+   * @param request Request payload
+   * @returns Response payload
+   * @throws IdentityClientError if request fails
+   */
+  private async callRpc<TRequest, TResponse>(
+    method: string,
+    request: TRequest
+  ): Promise<TResponse> {
+    const url = `${this.config.endpoint}/aethercore.identity.IdentityRegistry/${method}`;
+
+    // Create abort controller for timeout
+    this.controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      this.controller?.abort();
+    }, this.config.timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+        signal: this.controller.signal,
       });
 
-      console.log(`[IDENTITY] ✅ Revocation signed by commander's IdentitySlot`);
-      console.log(`[IDENTITY] Certificate signature: ${certificate.signature.substring(0, 16)}...`);
-      console.log(`[IDENTITY] Merkle root: ${certificate.merkle_root.substring(0, 16)}...`);
+      clearTimeout(timeoutId);
 
-      // Step 2: Broadcast to The Great Gospel ledger (handled by Rust backend)
-      console.log(`[IDENTITY] Broadcasting revocation event to mesh...`);
+      if (!response.ok) {
+        throw new IdentityClientError(
+          `gRPC call failed: ${response.statusText}`,
+          'RPC_FAILED',
+          {
+            method,
+            status: response.status,
+            statusText: response.statusText,
+          }
+        );
+      }
 
-      return certificate;
+      const data = await response.json();
+      return data as TResponse;
     } catch (error) {
-      console.error(`[IDENTITY] ❌ Revocation failed for ${nodeId}:`, error);
-      throw new Error(`Failed to revoke node ${nodeId}: ${error}`);
+      clearTimeout(timeoutId);
+
+      if (error instanceof IdentityClientError) {
+        throw error;
+      }
+
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new IdentityClientError(
+            `Request timeout after ${this.config.timeoutMs}ms`,
+            'TIMEOUT',
+            { method }
+          );
+        }
+
+        throw new IdentityClientError(
+          `Network error: ${error.message}`,
+          'NETWORK_ERROR',
+          { method, error: error.message }
+        );
+      }
+
+      throw new IdentityClientError(
+        'Unknown error during RPC call',
+        'UNKNOWN_ERROR',
+        { method }
+      );
     }
   }
 
   /**
-   * Verify node's current attestation status
-   *
-   * Queries the identity registry for a single node's TPM attestation.
-   *
-   * @param nodeId Node to verify
-   * @returns Attestation state
+   * Validate NodeID format
    */
-  static async verifyNodeAttestation(nodeId: string): Promise<NodeAttestationState | null> {
-    try {
-      const state = await invoke<NodeAttestationState>('verify_node_attestation', {
-        nodeId,
-      });
+  private validateNodeId(nodeId: NodeID): void {
+    if (!nodeId || typeof nodeId !== 'string') {
+      throw new IdentityClientError(
+        'Invalid NodeID: must be a non-empty string',
+        'INVALID_NODE_ID',
+        { nodeId }
+      );
+    }
 
-      if (!state.tpm_attestation_valid) {
-        console.warn(`[IDENTITY] ⚠️  Node ${nodeId} failed TPM attestation`);
-      }
+    if (nodeId.length !== 64) {
+      throw new IdentityClientError(
+        'Invalid NodeID: must be 64 hex characters',
+        'INVALID_NODE_ID',
+        { nodeId, length: nodeId.length }
+      );
+    }
 
-      if (state.byzantine_detected) {
-        console.error(`[IDENTITY] 🚨 Node ${nodeId} flagged as Byzantine - QUARANTINE`);
-      }
-
-      return state;
-    } catch (error) {
-      console.error(`[IDENTITY] Failed to verify attestation for ${nodeId}:`, error);
-      return null;
+    if (!/^[0-9a-fA-F]{64}$/.test(nodeId)) {
+      throw new IdentityClientError(
+        'Invalid NodeID: must contain only hex characters',
+        'INVALID_NODE_ID',
+        { nodeId }
+      );
     }
   }
 
   /**
-   * Get revocation history from The Great Gospel
-   *
-   * Returns the ledger of all revocation events with cryptographic proof.
-   *
-   * @param limit Maximum number of events to return
-   * @returns Array of revocation certificates
+   * Close client and cleanup resources
    */
-  static async getRevocationHistory(limit: number = 50): Promise<RevocationCertificate[]> {
-    try {
-      const history = await invoke<RevocationCertificate[]>('get_revocation_history', {
-        limit,
-      });
-
-      console.log(`[IDENTITY] Retrieved ${history.length} revocation events from Gospel`);
-
-      return history;
-    } catch (error) {
-      console.error('[IDENTITY] Failed to fetch revocation history:', error);
-      return [];
+  close(): void {
+    if (this.controller) {
+      this.controller.abort();
+      this.controller = null;
     }
-  }
 
-  /**
-   * Check if current operator has admin privileges
-   *
-   * Verifies if the local IdentitySlot is authorized for administrative actions.
-   *
-   * @returns True if authorized for revocations
-   */
-  static async hasAdminPrivileges(): Promise<boolean> {
-    try {
-      const authorized = await invoke<boolean>('check_admin_privileges');
-
-      if (!authorized) {
-        console.warn('[IDENTITY] Current operator lacks admin privileges');
-      }
-
-      return authorized;
-    } catch (error) {
-      console.error('[IDENTITY] Failed to check admin privileges:', error);
-      return false;
+    if (this.config.enableLogging) {
+      console.log('[IdentityClient] Closed');
     }
   }
 }
 
+/**
+ * Create a new Identity Registry Client
+ * 
+ * @param endpoint gRPC service endpoint (default: http://localhost:50052)
+ * @param options Optional configuration
+ * @returns Identity client instance
+ */
+export function createIdentityClient(
+  endpoint = 'http://localhost:50052',
+  options?: Partial<IdentityClientConfig>
+): IdentityClient {
+  return new IdentityClient({
+    endpoint,
+    ...options,
+  });
+}
