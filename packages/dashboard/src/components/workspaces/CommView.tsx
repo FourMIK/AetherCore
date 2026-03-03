@@ -44,7 +44,8 @@ export const CommView: React.FC = () => {
 
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState('');
-  const [viewMode, setViewMode] = useState<'messages' | 'video'>('messages');
+  // Note: viewMode could be controlled by UI toggle in future enhancement
+  const viewMode: 'messages' | 'video' = 'messages';
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const operatorList = Array.from(operators.values()).filter(

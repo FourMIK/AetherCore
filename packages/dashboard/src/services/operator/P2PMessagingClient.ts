@@ -672,13 +672,16 @@ export function initializeBackgroundMessaging(
       console.error('[BackgroundMessaging] Verification failure:', reason);
       console.error('[BackgroundMessaging] This indicates active Byzantine behavior or MitM attack');
       
+      // Extract message payload with type safety
+      const payload = event.payload as MessagePayload | undefined;
+      
       // Still push to store, but marked as unverified
       // This will increment unverifiedIntercepts counter
       const message = {
         id: event.event_id,
         from: event.device_id,
-        to: (event.payload as any).recipient_id || 'unknown',
-        content: (event.payload as any).content || '<unverified>',
+        to: payload?.recipient_id || 'unknown',
+        content: payload?.content || '<unverified>',
         timestamp: new Date(event.timestamp),
         signature: event.signature,
         verified: false,
