@@ -36,7 +36,7 @@ impl SentinelHardwareBackend {
 }
 
 fn sentinel_hardware_backend() -> SentinelHardwareBackend {
-    if cfg!(target_os = "macos") {
+    if cfg!(any(target_os = "macos", target_os = "ios")) {
         SentinelHardwareBackend::SecureEnclave
     } else {
         SentinelHardwareBackend::Tpm
@@ -218,8 +218,8 @@ fn sentinel_boot() -> Result<(), String> {
                             "HARDWARE LOCKOUT",
                             "Secure Enclave is unavailable or inaccessible.",
                             "STEP 1: Restart the device and unlock the login keychain.\n\
-                             STEP 2: Verify this Mac supports Secure Enclave and is not restricted by policy.\n\
-                             STEP 3: Ensure macOS is up to date.\n\
+                             STEP 2: Verify this device supports Secure Enclave and is not restricted by policy.\n\
+                             STEP 3: Ensure the OS is up to date.\n\
                              STEP 4: Retry startup and capture logs if it fails again.",
                         )
                     } else if error_msg.contains("quote verification failed")
@@ -346,7 +346,8 @@ fn evaluate_sentinel_startup(
 }
 
 fn should_skip_sentinel_boot(policy: SentinelBootPolicy) -> bool {
-    if !cfg!(target_os = "macos") {
+    // On Apple platforms (macOS/iOS), allow skipping Sentinel boot when not required
+    if !cfg!(any(target_os = "macos", target_os = "ios")) {
         return false;
     }
 

@@ -293,3 +293,4 @@ export const ISRConsoleView: React.FC = () => {
     </div>
   );
 };
+
