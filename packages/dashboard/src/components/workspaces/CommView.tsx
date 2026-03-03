@@ -2,6 +2,11 @@
  * CommView
  * Secure console-to-console communications workspace
  * Supports text messaging and video calls between verified operators
+ * 
+ * PHASE 5: Workspace Integration
+ * - Integrates MessagePanel from Phase 4
+ * - Tracks active conversation for notification clearing
+ * - Auto-clears unread counts when viewing conversations
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -19,6 +24,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useCommStore } from '../../store/useCommStore';
+import { MessagingPanel } from '../messaging/MessagingPanel';
 
 export const CommView: React.FC = () => {
   const {
@@ -33,10 +39,13 @@ export const CommView: React.FC = () => {
     rejectCall,
     endCall,
     getConversation,
+    setActiveConversation,
   } = useCommStore();
 
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState('');
+  // Note: viewMode could be controlled by UI toggle in future enhancement
+  const viewMode: 'messages' | 'video' = 'messages';
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const operatorList = Array.from(operators.values()).filter(
@@ -44,6 +53,18 @@ export const CommView: React.FC = () => {
   );
   const selectedOperator = selectedOperatorId ? operators.get(selectedOperatorId) : null;
   const conversation = selectedOperatorId ? getConversation(selectedOperatorId) : [];
+
+  // PHASE 5: Track active conversation for notification clearing
+  useEffect(() => {
+    if (selectedOperatorId) {
+      setActiveConversation(selectedOperatorId);
+    }
+    
+    return () => {
+      // Clear active conversation on unmount or selection change
+      setActiveConversation(null);
+    };
+  }, [selectedOperatorId, setActiveConversation]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -82,7 +103,12 @@ export const CommView: React.FC = () => {
 
   return (
     <div className="h-full overflow-hidden">
-      <div className="h-full flex">
+      {/* PHASE 5: Use MessagingPanel from Phase 4 for enhanced messaging */}
+      {viewMode === 'messages' ? (
+        <MessagingPanel />
+      ) : (
+        // Original video call UI
+        <div className="h-full flex">
         {/* Operator Roster */}
         <div className="w-80 flex-shrink-0 border-r border-tungsten/10 flex flex-col">
           <div className="p-4 border-b border-tungsten/10 flex-shrink-0">
@@ -316,6 +342,7 @@ export const CommView: React.FC = () => {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 };

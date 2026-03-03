@@ -1,6 +1,10 @@
 /**
  * NavigationMenu
  * Main navigation for switching between dashboard workspaces
+ * 
+ * PHASE 5: Tactical Notifications
+ * - Displays notification badges on Communications workspace
+ * - Fail-Visible: Cyan/Green for verified traffic, Red/Amber for EW/spoofing
  */
 
 import React from 'react';
@@ -13,9 +17,11 @@ import {
   Database,
   Settings,
   ChevronDown,
-  Zap
+  Zap,
+  AlertTriangle,
 } from 'lucide-react';
 import { GlassPanel } from './GlassPanel';
+import { useCommStore } from '../../store/useCommStore';
 
 export type WorkspaceView = 'tactical' | 'fleet' | 'isr' | 'comms' | 'guardian' | 'mesh' | 'admin' | 'deployments' | 'provisioning' | 'settings';
 
@@ -87,6 +93,46 @@ const workspaceItems = [
   },
 ];
 
+/**
+ * CommNotificationBadge - Fail-Visible notification indicator
+ * 
+ * Displays:
+ * - Cyan/Green pulsing indicator for verified unread messages
+ * - Red/Amber glitching triangle for unverified intercepts (active EW attack)
+ */
+const CommNotificationBadge: React.FC = () => {
+  const unreadCount = useCommStore((state) => state.getTotalUnreadCount());
+  const unverifiedIntercepts = useCommStore((state) => state.getUnverifiedInterceptsCount());
+
+  // FAIL-VISIBLE: Unverified intercepts override standard notifications
+  if (unverifiedIntercepts > 0) {
+    return (
+      <div className="absolute -top-1 -right-1 flex items-center justify-center">
+        {/* Glitching background animation */}
+        <div className="absolute inset-0 animate-pulse bg-jamming/60 rounded-full blur-sm" />
+        <div className="relative flex items-center justify-center w-5 h-5 bg-jamming rounded-full border-2 border-carbon shadow-lg">
+          <AlertTriangle size={12} className="text-white animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
+  // Verified unread messages
+  if (unreadCount > 0) {
+    return (
+      <div className="absolute -top-1 -right-1 flex items-center justify-center">
+        {/* Pulsing glow */}
+        <div className="absolute inset-0 animate-pulse bg-verified-green/40 rounded-full blur-sm" />
+        <div className="relative flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-verified-green rounded-full border-2 border-carbon text-[10px] font-bold text-carbon">
+          {unreadCount > 99 ? '99+' : unreadCount}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
 export const NavigationMenu: React.FC<NavigationMenuProps> = ({ currentView, onViewChange }) => {
   const [isOpen, setIsOpen] = React.useState(false);
 
@@ -136,10 +182,14 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({ currentView, onV
                         : 'hover:bg-tungsten/10 border border-transparent'
                       }`}
                   >
-                    <Icon
-                      size={20}
-                      className={isActive ? 'text-overmatch' : 'text-tungsten/70'}
-                    />
+                    <div className="relative">
+                      <Icon
+                        size={20}
+                        className={isActive ? 'text-overmatch' : 'text-tungsten/70'}
+                      />
+                      {/* PHASE 5: Show notification badge on Communications workspace */}
+                      {item.id === 'comms' && <CommNotificationBadge />}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className={`font-display font-semibold text-sm ${isActive ? 'text-overmatch' : 'text-tungsten'
                         }`}>

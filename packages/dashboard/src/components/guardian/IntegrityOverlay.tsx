@@ -7,7 +7,15 @@
  * FAIL-VISIBLE DESIGN:
  * - Immediately overlays video on integrity violation
  * - Shows frame statistics (valid/invalid/total)
+ * - Displays expected vs received hash comparison (first 8 chars, monospace)
+ * - Blurs underlying video feed
+ * - Marks node as "SPOOFED" with explicit warning
  * - Provides termination option for Byzantine streams
+ * 
+ * PHASE 3 ENHANCEMENTS:
+ * - Hash comparison display (expected vs received)
+ * - Explicit "SPOOFED" status marking
+ * - Enhanced visual indicators for broken Merkle Vine
  */
 
 import React from 'react';
@@ -15,10 +23,17 @@ import { AlertTriangle, ShieldOff } from 'lucide-react';
 import { IntegrityStatus } from '@aethercore/shared';
 
 /**
+ * Display configuration
+ */
+const HASH_DISPLAY_LENGTH = 8;
+
+/**
  * IntegrityOverlay Props
  */
 export interface IntegrityOverlayProps {
   status: IntegrityStatus;
+  expectedHash?: string | null;
+  receivedHash?: string | null;
   onDismiss?: () => void;
   onTerminate?: () => void;
 }
@@ -28,6 +43,8 @@ export interface IntegrityOverlayProps {
  */
 export const IntegrityOverlay: React.FC<IntegrityOverlayProps> = ({
   status,
+  expectedHash,
+  receivedHash,
   onDismiss,
   onTerminate,
 }) => {
@@ -37,6 +54,16 @@ export const IntegrityOverlay: React.FC<IntegrityOverlayProps> = ({
   const compromiseRate = status.totalFrames > 0
     ? Math.round((status.invalidFrames / status.totalFrames) * 100)
     : 0;
+
+  // Format hashes for display (first HASH_DISPLAY_LENGTH characters, uppercase for readability)
+  // NOTE: Display-only transformation. BLAKE3 hashes are stored as lowercase hex.
+  const formatHash = (hash: string | null | undefined): string => {
+    if (!hash) return 'N/A';
+    return hash.substring(0, HASH_DISPLAY_LENGTH).toUpperCase();
+  };
+
+  const displayExpectedHash = formatHash(expectedHash);
+  const displayReceivedHash = formatHash(receivedHash);
 
   return (
     <div
@@ -115,6 +142,49 @@ export const IntegrityOverlay: React.FC<IntegrityOverlayProps> = ({
           </div>
           <div className="text-2xl font-black font-display text-white">
             {status.verificationStatus}
+          </div>
+        </div>
+
+        {/* PHASE 3: Hash Comparison Display (Fail-Visible) */}
+        {(expectedHash || receivedHash) && (
+          <div className="mb-8 p-6 bg-jamming/30 rounded-lg border-2 border-jamming">
+            <div className="text-sm font-bold text-white uppercase tracking-wider mb-4">
+              Cryptographic Failure: Hash Mismatch
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-white/70 uppercase tracking-wider mb-2">
+                  Expected Hash
+                </span>
+                <span className="text-3xl font-mono font-black text-verified-green">
+                  {displayExpectedHash}
+                </span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-white/70 uppercase tracking-wider mb-2">
+                  Received Hash
+                </span>
+                <span className="text-3xl font-mono font-black text-jamming">
+                  {displayReceivedHash}
+                </span>
+              </div>
+            </div>
+            <div className="mt-4 p-3 bg-black/40 rounded border border-jamming/50">
+              <p className="text-xs text-white/90 font-mono leading-relaxed">
+                <strong>MERKLE VINE BROKEN:</strong> The hash chain has been compromised.
+                This indicates Byzantine behavior, potential deepfake injection, or man-in-the-middle attack.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Node Status Badge */}
+        <div className="mb-8 p-4 bg-jamming/20 rounded-lg border border-jamming">
+          <div className="flex items-center justify-center gap-3">
+            <ShieldOff size={24} className="text-white" />
+            <span className="text-xl font-black font-display text-white uppercase tracking-wider">
+              NODE STATUS: SPOOFED
+            </span>
           </div>
         </div>
 

@@ -629,3 +629,80 @@ export class P2PMessagingClient {
     return this.remoteChains.get(nodeId) || null;
   }
 }
+
+/**
+ * PHASE 5: Integration with useCommStore
+ * 
+ * Creates P2PMessagingClient and wires it to push messages to useCommStore.
+ * Runs in background regardless of which React component is mounted.
+ * 
+ * This is the background daemon that:
+ * - Listens to WebSocket/WebRTC data channels
+ * - Validates signatures via identityClient
+ * - Validates Merkle Vine chain
+ * - Pushes verified/unverified messages to store
+ */
+export function initializeBackgroundMessaging(
+  config: P2PMessagingClientConfig,
+  useCommStore: any // Zustand store instance
+): P2PMessagingClient {
+  const client = new P2PMessagingClient({
+    ...config,
+    onMessageReceived: (verifiedMessage: VerifiedMessage) => {
+      // Convert VerifiedMessage to store Message format
+      const message = {
+        id: verifiedMessage.event.event_id,
+        from: verifiedMessage.event.device_id,
+        to: verifiedMessage.message.recipient_id,
+        content: verifiedMessage.message.content,
+        timestamp: new Date(verifiedMessage.event.timestamp),
+        signature: verifiedMessage.event.signature,
+        verified: verifiedMessage.verification_status === 'VERIFIED',
+        encrypted: verifiedMessage.message.encrypted,
+      };
+
+      // Push to store - will trigger notification logic
+      useCommStore.getState().receiveMessage(message);
+
+      console.log(
+        `[BackgroundMessaging] Message pushed to store (verified: ${message.verified})`
+      );
+    },
+    onVerificationFailure: (event: CanonicalEvent, reason: string) => {
+      console.error('[BackgroundMessaging] Verification failure:', reason);
+      console.error('[BackgroundMessaging] This indicates active Byzantine behavior or MitM attack');
+      
+      // Extract message payload with type safety
+      const payload = event.payload as MessagePayload | undefined;
+      
+      // Still push to store, but marked as unverified
+      // This will increment unverifiedIntercepts counter
+      const message = {
+        id: event.event_id,
+        from: event.device_id,
+        to: payload?.recipient_id || 'unknown',
+        content: payload?.content || '<unverified>',
+        timestamp: new Date(event.timestamp),
+        signature: event.signature,
+        verified: false,
+        encrypted: false,
+      };
+
+      useCommStore.getState().receiveMessage(message);
+    },
+    onChainBroken: (nodeId: NodeID, reason: string) => {
+      console.error(`[BackgroundMessaging] Chain broken for ${nodeId}: ${reason}`);
+      console.error('[BackgroundMessaging] Great Gospel: Consider revoking this node');
+      
+      // Could trigger automatic revocation via Great Gospel
+      // useCommStore.getState().revokeNode(nodeId, reason);
+    },
+  });
+
+  // Connect to transport
+  client.connect().catch((error) => {
+    console.error('[BackgroundMessaging] Failed to connect:', error);
+  });
+
+  return client;
+}
