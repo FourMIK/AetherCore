@@ -122,9 +122,15 @@ class TrustOverlayLifecycle(
     override fun onConfigurationChanged(newConfig: Configuration?) = Unit
 
     private object AndroidLogger : Logger {
-        override fun d(message: String) = Log.d(TAG, message)
-        override fun w(message: String) = Log.w(TAG, message)
-        override fun e(message: String, throwable: Throwable?) = Log.e(TAG, message, throwable)
+        override fun d(message: String) {
+            Log.d(TAG, message)
+        }
+        override fun w(message: String) {
+            Log.w(TAG, message)
+        }
+        override fun e(message: String, throwable: Throwable?) {
+            Log.e(TAG, message, throwable)
+        }
     }
 
     private class SharedPreferencesPluginSettings(

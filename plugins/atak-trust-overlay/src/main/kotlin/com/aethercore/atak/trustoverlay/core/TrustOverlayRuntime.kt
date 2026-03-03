@@ -16,9 +16,9 @@ object TrustOverlayRuntime {
             return
         }
 
-        lifecycle = TrustOverlayLifecycle(appContext, mapView).also {
+        lifecycle = TrustOverlayLifecycle().also {
             Log.i(TAG, "Starting trust overlay runtime")
-            it.onCreate()
+            it.onCreate(null)
             it.onStart()
         }
     }

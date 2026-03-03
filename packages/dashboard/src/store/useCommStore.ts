@@ -16,6 +16,8 @@ import {
 import { isEnvelopeVerified, type MessageEnvelope } from '@aethercore/shared';
 import { useTacticalStore } from './useTacticalStore';
 
+let activePeerConnection: RTCPeerConnection | null = null;
+
 export type OperatorRole = 'operator' | 'commander' | 'admin';
 export type ConnectionStatus =
   | 'disconnected'
@@ -55,6 +57,9 @@ export interface VideoCall {
   status: 'ringing' | 'active' | 'ended';
   startTime?: Date;
   endTime?: Date;
+  sdpOffer?: string;
+  sdpAnswer?: string;
+  media?: { video: boolean; audio: boolean };
 }
 
 function clampTrustScorePercent(score: number | undefined, fallback = 50): number {
@@ -191,6 +196,9 @@ interface CommState {
   conversations: Map<string, Message[]>;
   activeCall: VideoCall | null;
   incomingCall: VideoCall | null;
+  localStream: MediaStream | null;
+  remoteStream: MediaStream | null;
+  callError: string | null;
   connectionStatus: ConnectionStatus;
   connectionState: ConnectionState; // For UI degradation (Heartbeat Sentinel)
   c2State: C2State; // C2 client state
@@ -204,7 +212,7 @@ interface CommState {
   updateOperatorStatus: (operatorId: string, status: Operator['status']) => void;
   sendMessage: (to: string, content: string) => Promise<void>;
   receiveMessage: (message: Message) => void;
-  initiateCall: (operatorId: string) => Promise<void>;
+  initiateCall: (operatorId: string, media?: { video: boolean; audio: boolean }) => Promise<void>;
   acceptCall: (callId: string) => void;
   rejectCall: (callId: string) => void;
   endCall: () => void;
@@ -224,6 +232,9 @@ export const useCommStore = create<CommState>((set, get) => ({
   conversations: new Map(),
   activeCall: null,
   incomingCall: null,
+  localStream: null,
+  remoteStream: null,
+  callError: null,
   connectionStatus: 'disconnected',
   connectionState: 'disconnected',
   c2State: 'IDLE',
@@ -324,7 +335,7 @@ export const useCommStore = create<CommState>((set, get) => ({
       return { conversations };
     }),
 
-  initiateCall: async (operatorId) => {
+  initiateCall: async (operatorId, media = { video: true, audio: true }) => {
     const state = get();
     if (!state.currentOperator) return;
 
@@ -333,19 +344,56 @@ export const useCommStore = create<CommState>((set, get) => ({
       participants: [state.currentOperator.id, operatorId],
       initiator: state.currentOperator.id,
       status: 'ringing',
+      media,
     };
 
     set({ activeCall: call });
 
-    // Send call invitation via C2
+    // Send call invitation via C2 (SDP offer will be attached after ICE completes)
     if (state.c2Client && state.c2State === 'CONNECTED') {
       try {
+        const localStream = await navigator.mediaDevices.getUserMedia(media);
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+        });
+        localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+        set({ localStream, callError: null });
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        await new Promise<void>((resolve) => {
+          if (pc.iceGatheringState === 'complete') {
+            resolve();
+            return;
+          }
+          const handleStateChange = () => {
+            if (pc.iceGatheringState === 'complete') {
+              pc.removeEventListener('icegatheringstatechange', handleStateChange);
+              resolve();
+            }
+          };
+          pc.addEventListener('icegatheringstatechange', handleStateChange);
+        });
+
+        pc.ontrack = (event) => {
+          const [remoteStream] = event.streams;
+          if (remoteStream) {
+            set({ remoteStream });
+          }
+        };
+
         await state.c2Client.sendMessage('call_invite', {
           callId: call.id,
           recipientId: operatorId,
+          sdpOffer: pc.localDescription?.sdp,
         });
+
+        set({ activeCall: call });
+        activePeerConnection = pc;
       } catch (error) {
         console.error('[COMM] Failed to send call invitation:', error);
+        set({ callError: 'Failed to initiate call', activeCall: null });
       }
     } else {
       console.warn('[COMM] C2 not connected, call invitation not sent');
@@ -355,10 +403,67 @@ export const useCommStore = create<CommState>((set, get) => ({
   acceptCall: (callId) => {
     const state = get();
     if (state.incomingCall?.id === callId) {
-      set({
-        activeCall: { ...state.incomingCall, status: 'active', startTime: new Date() },
-        incomingCall: null,
-      });
+      const call = state.incomingCall;
+      set({ incomingCall: null });
+
+      if (!call.sdpOffer) {
+        set({ callError: 'Missing SDP offer for incoming call' });
+        return;
+      }
+
+      const inferredVideo = call.sdpOffer ? call.sdpOffer.includes('m=video') : true;
+      const media = call.media ?? { video: inferredVideo, audio: true };
+      navigator.mediaDevices
+        .getUserMedia(media)
+        .then(async (localStream) => {
+          const pc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+          });
+          localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+          pc.ontrack = (event) => {
+            const [remoteStream] = event.streams;
+            if (remoteStream) {
+              set({ remoteStream });
+            }
+          };
+
+          await pc.setRemoteDescription({ type: 'offer', sdp: call.sdpOffer });
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          await new Promise<void>((resolve) => {
+            if (pc.iceGatheringState === 'complete') {
+              resolve();
+              return;
+            }
+            const handleStateChange = () => {
+              if (pc.iceGatheringState === 'complete') {
+                pc.removeEventListener('icegatheringstatechange', handleStateChange);
+                resolve();
+              }
+            };
+            pc.addEventListener('icegatheringstatechange', handleStateChange);
+          });
+
+          set({
+            localStream,
+            activeCall: { ...call, status: 'active', startTime: new Date() },
+            callError: null,
+          });
+          activePeerConnection = pc;
+
+          if (state.c2Client && state.c2State === 'CONNECTED') {
+            await state.c2Client.sendMessage('call_accept', {
+              callId: call.id,
+              recipientId: call.initiator,
+              sdpAnswer: pc.localDescription?.sdp,
+            });
+          }
+        })
+        .catch((error) => {
+          console.error('[COMM] Failed to accept call:', error);
+          set({ callError: 'Failed to access media devices' });
+        });
 
       // Send acceptance via C2
       if (state.c2Client && state.c2State === 'CONNECTED') {
@@ -395,6 +500,14 @@ export const useCommStore = create<CommState>((set, get) => ({
       set({
         activeCall: { ...state.activeCall, status: 'ended', endTime: new Date() },
       });
+
+      if (activePeerConnection) {
+        activePeerConnection.close();
+        activePeerConnection = null;
+      }
+      state.localStream?.getTracks().forEach((track) => track.stop());
+      state.remoteStream?.getTracks().forEach((track) => track.stop());
+      set({ localStream: null, remoteStream: null });
 
       // Send end via C2
       if (state.c2Client && state.c2State === 'CONNECTED') {
@@ -548,14 +661,61 @@ export const useCommStore = create<CommState>((set, get) => ({
             lastSeen: new Date(envelope.timestamp),
           });
         } else if (envelope.type === 'call_invite' && typeof envelope.payload === 'object' && envelope.payload !== null) {
-          const payload = envelope.payload as { callId?: string; recipientId?: string };
+          const payload = envelope.payload as { callId?: string; recipientId?: string; sdpOffer?: string };
+          if (payload.recipientId && payload.recipientId !== clientId) {
+            return;
+          }
           const call: VideoCall = {
             id: payload.callId || `call-${Date.now()}`,
             participants: [envelope.from, clientId],
             initiator: envelope.from,
             status: 'ringing',
+            sdpOffer: payload.sdpOffer,
+            media: { video: true, audio: true },
           };
           set({ incomingCall: call });
+        } else if (envelope.type === 'call_accept' && typeof envelope.payload === 'object' && envelope.payload !== null) {
+          const payload = envelope.payload as { callId?: string; sdpAnswer?: string };
+          const activeCall = get().activeCall;
+          if (!activeCall || activeCall.id !== payload.callId || !payload.sdpAnswer) {
+            return;
+          }
+          if (!activePeerConnection) {
+            console.error('[COMM] Missing peer connection for call accept');
+            return;
+          }
+          activePeerConnection.setRemoteDescription({ type: 'answer', sdp: payload.sdpAnswer })
+            .then(() => {
+              set({ activeCall: { ...activeCall, status: 'active', startTime: new Date() } });
+            })
+            .catch((error) => {
+              console.error('[COMM] Failed to apply call answer:', error);
+              set({ callError: 'Failed to apply call answer' });
+            });
+        } else if (envelope.type === 'call_reject' && typeof envelope.payload === 'object' && envelope.payload !== null) {
+          const payload = envelope.payload as { callId?: string };
+          const activeCall = get().activeCall;
+          if (activeCall && payload.callId === activeCall.id) {
+            set({ activeCall: { ...activeCall, status: 'ended', endTime: new Date() } });
+            if (activePeerConnection) {
+              activePeerConnection.close();
+              activePeerConnection = null;
+            }
+            set({ localStream: null, remoteStream: null });
+          }
+        } else if (envelope.type === 'call_end' && typeof envelope.payload === 'object' && envelope.payload !== null) {
+          const payload = envelope.payload as { callId?: string };
+          const activeCall = get().activeCall;
+          if (activeCall && payload.callId === activeCall.id) {
+            set({ activeCall: { ...activeCall, status: 'ended', endTime: new Date() } });
+            if (activePeerConnection) {
+              activePeerConnection.close();
+              activePeerConnection = null;
+            }
+            get().localStream?.getTracks().forEach((track) => track.stop());
+            get().remoteStream?.getTracks().forEach((track) => track.stop());
+            set({ localStream: null, remoteStream: null });
+          }
         }
       },
       onRalphiePresence: (frame) => {

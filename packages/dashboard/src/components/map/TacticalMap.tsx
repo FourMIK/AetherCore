@@ -287,16 +287,43 @@ export const TacticalMap: React.FC = () => {
   const renderedNodes = useMemo<RenderedNode[]>(() => {
     if (nodes.length === 0) return [];
 
+    // Check if all nodes are at origin (0,0,0) - typical for simulated nodes
+    const allAtOrigin = nodes.every((node) => {
+      const pos = node.position;
+      const lat = (pos as any).latitude ?? (pos as any).lat ?? 0;
+      const lon = (pos as any).longitude ?? (pos as any).lng ?? 0;
+      return Math.abs(lat) < 0.0001 && Math.abs(lon) < 0.0001;
+    });
+
     const projected = nodes.map((node, index) => {
-      const raw = CoordinatesAdapter.geoToThree(node.position, origin);
+      let raw: { x: number; y: number; z: number };
+
+      if (allAtOrigin) {
+        // Spread nodes in a circle pattern when all are at origin
+        const angle = (index / nodes.length) * Math.PI * 2;
+        const radius = 25 + (index % 3) * 12; // Vary radius slightly for depth
+        raw = {
+          x: Math.cos(angle) * radius,
+          y: 0,
+          z: Math.sin(angle) * radius,
+        };
+      } else {
+        // Use actual geographic coordinates
+        raw = CoordinatesAdapter.geoToThree(node.position, origin);
+      }
+
       return { node, index, raw };
     });
 
-    const maxDistance = projected.reduce((max, entry) => {
-      const distance = Math.hypot(entry.raw.x, entry.raw.z);
-      return Math.max(max, distance);
-    }, 1);
-    const fitScale = maxDistance > NODE_FIT_RADIUS ? NODE_FIT_RADIUS / maxDistance : 1;
+    // Calculate bounds for auto-fit (but only if not all at origin - we handled that case)
+    let fitScale = 1;
+    if (!allAtOrigin) {
+      const maxDistance = projected.reduce((max, entry) => {
+        const distance = Math.hypot(entry.raw.x, entry.raw.z);
+        return Math.max(max, distance);
+      }, 1);
+      fitScale = maxDistance > NODE_FIT_RADIUS ? NODE_FIT_RADIUS / maxDistance : 1;
+    }
 
     return projected.map(({ node, index, raw }) => ({
       id: node.id,
@@ -316,11 +343,27 @@ export const TacticalMap: React.FC = () => {
 
   const activeNodes = renderedNodes.filter((node) => node.status !== 'offline');
 
+  // Calculate optimal camera distance based on node spread
+  const cameraDistance = useMemo(() => {
+    if (renderedNodes.length === 0) return 112;
+
+    // Find the maximum distance from center
+    const maxDist = renderedNodes.reduce((max, node) => {
+      const dist = Math.hypot(node.position[0], node.position[2]);
+      return Math.max(max, dist);
+    }, 30);
+
+    // Calculate camera distance to fit all nodes with padding
+    // Formula: distance = maxDist * 2.5 to ensure good viewing angle
+    const calculatedDist = Math.max(80, Math.min(300, maxDist * 2.5 + 40));
+    return calculatedDist;
+  }, [renderedNodes]);
+
   return (
     <div className="w-full h-full bg-carbon relative">
       <Canvas
         camera={{
-          position: [0, 100, 112],
+          position: [0, 100, cameraDistance],
           fov: 62,
           near: 0.1,
           far: 4000,

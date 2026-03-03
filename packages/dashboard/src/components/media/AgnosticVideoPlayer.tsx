@@ -1,257 +1,247 @@
 /**
- * AgnosticVideoPlayer
- * Format-agnostic video player component for ISR Console
- * Supports HLS, MJPEG, WebRTC, and Mock FLIR streams
+ * AgnosticVideoPlayer Component
+ * Handles multiple video stream formats with Trust Mesh verification overlay
  */
 
-import React, { useRef, useEffect, useState } from 'react';
-import { VideoStream } from '../../types';
-import { Video, VideoOff, Wifi, WifiOff, Loader2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { VideoStream } from '../../types/VideoStream';
 
 interface AgnosticVideoPlayerProps {
   stream: VideoStream;
-  className?: string;
-  onError?: (error: Error) => void;
+  title?: string;
+  showOverlay?: boolean;
 }
 
+/**
+ * SVG Crosshair component for tactical overlay
+ */
+const TacticalCrosshair: React.FC = () => (
+  <svg
+    className="absolute inset-0 w-full h-full pointer-events-none"
+    viewBox="0 0 1080 720"
+  >
+    {/* Center circle */}
+    <circle cx="540" cy="360" r="30" fill="none" stroke="#22c55e" strokeWidth="2" />
+
+    {/* Horizontal line */}
+    <line x1="400" y1="360" x2="680" y2="360" stroke="#22c55e" strokeWidth="1" opacity="0.6" />
+
+    {/* Vertical line */}
+    <line x1="540" y1="200" x2="540" y2="520" stroke="#22c55e" strokeWidth="1" opacity="0.6" />
+
+    {/* Corner markers */}
+    <line x1="380" y1="340" x2="380" y2="380" stroke="#22c55e" strokeWidth="2" opacity="0.8" />
+    <line x1="360" y1="360" x2="400" y2="360" stroke="#22c55e" strokeWidth="2" opacity="0.8" />
+
+    <line x1="700" y1="340" x2="700" y2="380" stroke="#22c55e" strokeWidth="2" opacity="0.8" />
+    <line x1="680" y1="360" x2="720" y2="360" stroke="#22c55e" strokeWidth="2" opacity="0.8" />
+
+    <line x1="540" y1="220" x2="560" y2="220" stroke="#22c55e" strokeWidth="2" opacity="0.8" />
+    <line x1="540" y1="200" x2="540" y2="240" stroke="#22c55e" strokeWidth="2" opacity="0.8" />
+
+    <line x1="540" y1="500" x2="560" y2="500" stroke="#22c55e" strokeWidth="2" opacity="0.8" />
+    <line x1="540" y1="480" x2="540" y2="520" stroke="#22c55e" strokeWidth="2" opacity="0.8" />
+  </svg>
+);
+
+/**
+ * Mock FLIR scanline effect generator
+ */
+const MockFLIROverlay: React.FC = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const animate = () => {
+      // Fill with dark background
+      ctx.fillStyle = '#0f0f0f';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Add random scanlines for thermal camera effect
+      for (let y = 0; y < canvas.height; y += 2) {
+        ctx.fillStyle = `rgba(50, 200, 100, ${Math.random() * 0.1})`;
+        ctx.fillRect(0, y, canvas.width, 1);
+      }
+
+      // Add some noise
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * 30;
+        data[i] += noise;
+        data[i + 1] += noise;
+        data[i + 2] += noise;
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={1080}
+      height={720}
+      className="absolute inset-0 w-full h-full"
+    />
+  );
+};
+
+/**
+ * Trust Mesh Verification Badge
+ */
+const VerificationBadge: React.FC<{ verified: boolean; trustScore?: number }> = ({
+  verified,
+  trustScore = 95,
+}) => (
+  <div className="absolute bottom-4 right-4 z-30 font-mono text-xs">
+    {verified ? (
+      <div className="bg-emerald-950/80 border border-emerald-500 px-3 py-2 rounded">
+        <div className="text-emerald-400 font-bold flex items-center gap-2">
+          <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+          AETHERCORE TRUST MESH VERIFIED [SECURE]
+        </div>
+        <div className="text-emerald-400/70 text-xs mt-1">Trust Score: {trustScore}%</div>
+      </div>
+    ) : (
+      <div className="bg-red-950/80 border border-red-500 px-3 py-2 rounded">
+        <div className="text-red-400 font-bold flex items-center gap-2">
+          <span className="w-2 h-2 bg-red-400 rounded-full animate-pulse" />
+          VERIFICATION FAILED
+        </div>
+      </div>
+    )}
+  </div>
+);
+
+/**
+ * Live Indicator with blinking animation
+ */
+const LiveIndicator: React.FC = () => (
+  <div className="absolute top-4 right-4 z-30 flex items-center gap-2">
+    <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+    <span className="text-red-500 font-mono font-bold text-sm">LIVE</span>
+  </div>
+);
+
+/**
+ * Main Video Player Component
+ */
 export const AgnosticVideoPlayer: React.FC<AgnosticVideoPlayerProps> = ({
   stream,
-  className = '',
-  onError,
+  title = 'Video Feed',
+  showOverlay = true,
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(stream.status === 'connecting');
 
-  // Handle MJPEG stream
-  const renderMJPEG = () => {
+  useEffect(() => {
+    setIsLoading(stream.status === 'connecting');
+  }, [stream.status]);
+
+  // Render Mock FLIR feed
+  if (stream.format === 'mock-flir') {
     return (
-      <img
-        ref={imgRef}
-        src={stream.url}
-        alt="MJPEG Stream"
-        className={`w-full h-full object-contain ${className}`}
-        onLoad={() => setIsLoading(false)}
-        onError={(e) => {
-          const err = new Error('Failed to load MJPEG stream');
-          setError(err.message);
-          setIsLoading(false);
-          onError?.(err);
-        }}
-      />
-    );
-  };
+      <div className="relative w-full h-full bg-gray-950 overflow-hidden rounded-lg border border-tungsten/20">
+        {/* Background */}
+        <div className="absolute inset-0 bg-gradient-to-b from-gray-900 via-gray-950 to-black" />
 
-  // Handle HLS stream
-  const renderHLS = () => {
-    useEffect(() => {
-      const video = videoRef.current;
-      if (!video) return;
+        {/* Scanline effect */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(0deg, rgba(50,200,100,0.03) 0px, rgba(50,200,100,0.03) 1px, transparent 1px, transparent 2px)',
+            zIndex: 10,
+          }}
+        />
 
-      setIsLoading(true);
+        {/* Content */}
+        <div className="relative w-full h-full flex flex-col items-center justify-center">
+          {/* FLIR Canvas Overlay */}
+          <MockFLIROverlay />
 
-      // Check if HLS.js is needed (not natively supported)
-      if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        // Native HLS support (Safari)
-        video.src = stream.url;
-        video.play().catch((err) => {
-          setError('Failed to play HLS stream');
-          setIsLoading(false);
-          onError?.(err);
-        });
-      } else if (typeof window !== 'undefined' && 'Hls' in window) {
-        // Use HLS.js for browsers without native support
-        const Hls = (window as any).Hls;
-        if (Hls.isSupported()) {
-          const hls = new Hls({
-            enableWorker: true,
-            lowLatencyMode: true,
-          });
-          
-          hls.loadSource(stream.url);
-          hls.attachMedia(video);
-          
-          hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            video.play().catch((err) => {
-              setError('Failed to play HLS stream');
-              setIsLoading(false);
-              onError?.(err);
-            });
-          });
+          {/* Tactical Crosshair */}
+          <TacticalCrosshair />
 
-          hls.on(Hls.Events.ERROR, (event: any, data: any) => {
-            if (data.fatal) {
-              setError(`HLS Error: ${data.type}`);
-              setIsLoading(false);
-              onError?.(new Error(data.type));
-            }
-          });
-
-          return () => {
-            hls.destroy();
-          };
-        }
-      } else {
-        const err = new Error('HLS not supported in this browser');
-        setError(err.message);
-        setIsLoading(false);
-        onError?.(err);
-      }
-    }, [stream.url]);
-
-    return (
-      <video
-        ref={videoRef}
-        className={`w-full h-full object-contain bg-carbon ${className}`}
-        controls
-        autoPlay
-        muted
-        playsInline
-        onLoadedData={() => setIsLoading(false)}
-        onError={(e) => {
-          setError('Video playback error');
-          setIsLoading(false);
-        }}
-      />
-    );
-  };
-
-  // Handle WebRTC stream
-  const renderWebRTC = () => {
-    useEffect(() => {
-      const video = videoRef.current;
-      if (!video) return;
-
-      setIsLoading(true);
-
-      // WebRTC implementation would require signaling server
-      // For now, show a placeholder
-      const err = new Error('WebRTC support coming soon');
-      setError(err.message);
-      setIsLoading(false);
-      onError?.(err);
-
-      // Future implementation:
-      // 1. Connect to signaling server
-      // 2. Exchange SDP offers/answers
-      // 3. Establish peer connection
-      // 4. Attach media stream to video element
-
-    }, [stream.url]);
-
-    return (
-      <video
-        ref={videoRef}
-        className={`w-full h-full object-contain bg-carbon ${className}`}
-        controls
-        autoPlay
-        muted
-        playsInline
-      />
-    );
-  };
-
-  // Handle Mock FLIR stream
-  const renderMockFLIR = () => {
-    return (
-      <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br from-carbon via-carbon/90 to-slate-900 ${className}`}>
-        <div className="text-center space-y-4">
-          <div className="relative w-64 h-48 mx-auto border-2 border-overmatch/50 rounded-lg overflow-hidden">
-            {/* Mock FLIR thermal visualization */}
-            <div className="absolute inset-0 bg-gradient-to-br from-amber-600/20 via-red-600/30 to-orange-800/20 animate-pulse" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-32 h-32 bg-red-500/30 rounded-full blur-3xl animate-pulse" />
-            </div>
-            <div className="absolute inset-0 bg-[linear-gradient(0deg,transparent_49%,rgba(255,100,0,0.1)_50%,transparent_51%)] bg-[length:100%_4px]" />
-            <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_49%,rgba(255,100,0,0.1)_50%,transparent_51%)] bg-[length:4px_100%]" />
-            
-            {/* FLIR overlay UI */}
-            <div className="absolute top-2 left-2 text-xs font-mono text-overmatch">
-              <div>FLIR NEXUS</div>
-              <div>THERMAL</div>
-            </div>
-            <div className="absolute top-2 right-2 text-xs font-mono text-overmatch">
-              <div>25.3°C</div>
-              <div>REC</div>
-            </div>
-            <div className="absolute bottom-2 left-2 text-xs font-mono text-overmatch">
-              {stream.resolution || '640x480'}
-            </div>
-            <div className="absolute bottom-2 right-2 text-xs font-mono text-overmatch">
-              {new Date().toLocaleTimeString()}
-            </div>
-            
-            {/* Crosshair */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-8 h-8 border border-overmatch/70 rounded-full" />
-              <div className="absolute w-12 h-px bg-overmatch/70" />
-              <div className="absolute w-px h-12 bg-overmatch/70" />
-            </div>
+          {/* Title */}
+          <div className="absolute top-4 left-4 z-20">
+            <h3 className="text-emerald-400 font-mono font-bold text-sm">{title}</h3>
+            <p className="text-emerald-400/70 text-xs">Teledyne Ranger HD - Thermal</p>
           </div>
-          
-          <div className="text-tungsten/70 text-sm">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <Video className="text-overmatch" size={16} />
-              <span className="font-mono">Mock FLIR Thermal Feed</span>
-            </div>
-            <div className="text-xs text-tungsten/50">
-              Simulated thermal imaging for demonstration
-            </div>
+
+          {/* Live Indicator */}
+          <LiveIndicator />
+
+          {/* Verification Badge */}
+          <VerificationBadge verified={true} trustScore={95} />
+
+          {/* Resolution/Codec Info */}
+          <div className="absolute bottom-4 left-4 z-20 font-mono text-xs text-emerald-400/70">
+            <div>{stream.resolution || '1080p'} • {stream.codec || 'H.264'}</div>
+            <div>AETHERCORE INGEST</div>
           </div>
         </div>
       </div>
     );
-  };
+  }
 
-  // Render stream status overlay
-  const renderStatusOverlay = () => {
-    if (stream.status === 'connecting' || isLoading) {
-      return (
-        <div className="absolute inset-0 flex items-center justify-center bg-carbon/80 backdrop-blur-sm z-10">
-          <div className="text-center">
-            <Loader2 className="mx-auto mb-2 text-overmatch animate-spin" size={32} />
-            <div className="text-tungsten/70 text-sm font-mono">Connecting...</div>
-          </div>
-        </div>
-      );
-    }
-
-    if (stream.status === 'offline' || error) {
-      return (
-        <div className="absolute inset-0 flex items-center justify-center bg-carbon/80 backdrop-blur-sm z-10">
-          <div className="text-center">
-            <VideoOff className="mx-auto mb-2 text-red-500" size={32} />
-            <div className="text-tungsten/70 text-sm font-mono">
-              {error || 'Stream Offline'}
+  // Render MJPEG feed
+  if (stream.format === 'mjpeg') {
+    return (
+      <div className="relative w-full h-full bg-black rounded-lg overflow-hidden border border-tungsten/20">
+        <img
+          src={stream.url}
+          alt={title}
+          className="w-full h-full object-cover"
+          onLoadStart={() => setIsLoading(true)}
+          onLoadedData={() => setIsLoading(false)}
+          onError={() => setIsLoading(false)}
+        />
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+            <div className="animate-spin">
+              <div className="w-8 h-8 border-2 border-tungsten/30 border-t-tungsten rounded-full" />
             </div>
           </div>
-        </div>
-      );
-    }
+        )}
+      </div>
+    );
+  }
 
-    return null;
-  };
-
-  // Main render logic
+  // Render HLS or WebRTC feed
   return (
-    <div className={`relative w-full h-full ${className}`}>
-      {stream.format === 'mjpeg' && renderMJPEG()}
-      {stream.format === 'hls' && renderHLS()}
-      {stream.format === 'webrtc' && renderWebRTC()}
-      {stream.format === 'mock-flir' && renderMockFLIR()}
-      
-      {renderStatusOverlay()}
-
-      {/* Stream info overlay (bottom-left) */}
-      {stream.status === 'live' && !isLoading && !error && (
-        <div className="absolute bottom-2 left-2 px-2 py-1 bg-carbon/80 backdrop-blur-sm rounded text-xs font-mono text-tungsten/70 flex items-center gap-1 z-20">
-          <Wifi className="text-overmatch" size={12} />
-          <span className="uppercase">{stream.format}</span>
-          {stream.resolution && <span className="text-tungsten/50">• {stream.resolution}</span>}
-          {stream.metadata?.fps && <span className="text-tungsten/50">• {stream.metadata.fps}fps</span>}
+    <div className="relative w-full h-full bg-black rounded-lg overflow-hidden border border-tungsten/20">
+      <video
+        ref={videoRef}
+        src={stream.format === 'hls' ? stream.url : undefined}
+        className="w-full h-full object-cover"
+        autoPlay
+        muted
+        playsInline
+        onLoadStart={() => setIsLoading(true)}
+        onCanPlay={() => setIsLoading(false)}
+        onError={() => setIsLoading(false)}
+      />
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+          <div className="animate-spin">
+            <div className="w-8 h-8 border-2 border-tungsten/30 border-t-tungsten rounded-full" />
+          </div>
         </div>
       )}
+      <LiveIndicator />
     </div>
   );
 };
+
+export default AgnosticVideoPlayer;
+

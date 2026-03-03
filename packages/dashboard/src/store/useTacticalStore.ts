@@ -8,6 +8,7 @@ import { persist } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import { GeoPosition, ViewMode, MapProviderType } from '../map-engine/types';
 import { getRuntimeConfig } from '../config/runtime';
+import { VideoStream } from '../types/VideoStream';
 
 // Node Types
 export interface TacticalNode {
@@ -25,20 +26,7 @@ export interface TacticalNode {
   deploymentPid?: number; // Process ID if deployed locally
   deploymentStatus?: string; // Deployment status: Running, Stopped, Failed
   deploymentPort?: number; // Listen port if deployed locally
-  videoStream?: VideoStream; // Optional video stream for ISR-capable nodes
-}
-
-// Video Stream interface for ISR feeds
-export interface VideoStream {
-  url: string;
-  format: 'hls' | 'webrtc' | 'mjpeg' | 'mock-flir';
-  status: 'live' | 'offline' | 'connecting';
-  resolution?: string;
-  metadata?: {
-    fps?: number;
-    bitrate?: number;
-    codec?: string;
-  };
+  videoStream?: VideoStream; // Optional video feed from ISR sensors
 }
 
 // Track Types
@@ -140,152 +128,204 @@ interface TacticalStore {
 
 export const useTacticalStore = create<TacticalStore>()(
   persist(
-    (set, get) => ({
-      // Initial UI State
-      theme: 'dark',
-      viewMode: '3d-local',
-      mapProvider: 'three',
-      workspaceMode: 'commander',
-      sidebarOpen: true,
-      rightPanelWidth: 400,
+    (set, get) => {
+      // Initialize with mock FLIR node
+      const initialNodes = new Map<string, TacticalNode>();
+      initialNodes.set('flir-alpha-01', {
+        id: 'flir-alpha-01',
+        domain: 'sensor',
+        position: {
+          latitude: 40.7128,
+          longitude: -74.0060,
+          altitude: 50,
+        },
+        trustScore: 95,
+        verified: true,
+        attestationHash: 'blake3:flir-alpha-01-genesis',
+        lastSeen: new Date(),
+        status: 'online',
+        firmwareVersion: 'Teledyne Ranger HD v2.1',
+        integrityCompromised: false,
+        videoStream: {
+          url: 'mock://teledyne-flir-alpha-01',
+          format: 'mock-flir' as const,
+          status: 'live' as const,
+          resolution: '1080p',
+          codec: 'H.264',
+        },
+      });
 
-      // Initial Operational Data
-      nodes: new Map(),
-      tracks: [],
-      events: [],
-      selectedNodeId: null,
-      byzantineAlert: null,
-      verificationFailure: null,
+      initialNodes.set('thermal-demo-03', {
+        id: 'thermal-demo-03',
+        domain: 'sensor',
+        position: {
+          latitude: 40.7580,
+          longitude: -73.9855,
+          altitude: 65,
+        },
+        trustScore: 90,
+        verified: true,
+        attestationHash: 'blake3:thermal-demo-03-genesis',
+        lastSeen: new Date(),
+        status: 'online',
+        firmwareVersion: 'Teledyne Ranger HD v2.0',
+        integrityCompromised: false,
+        videoStream: {
+          url: 'mock://teledyne-flir-thermal-03',
+          format: 'mock-flir' as const,
+          status: 'live' as const,
+          resolution: '1080p',
+          codec: 'H.264',
+        },
+      });
 
-      // UI Actions
-      setTheme: (theme) => set({ theme }),
-      setViewMode: (viewMode) => set({ viewMode }),
-      setMapProvider: (mapProvider) => set({ mapProvider }),
-      setWorkspaceMode: (workspaceMode) => set({ workspaceMode }),
-      setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
-      setRightPanelWidth: (rightPanelWidth) => set({ rightPanelWidth }),
+      return {
+        // Initial UI State
+        theme: 'dark',
+        viewMode: '3d-local',
+        mapProvider: 'three',
+        workspaceMode: 'commander',
+        sidebarOpen: true,
+        rightPanelWidth: 400,
 
-      // Node Actions
-      addNode: (node) =>
-        set((state) => {
-          const nodes = new Map(state.nodes);
-          nodes.set(node.id, node);
-          return { nodes };
-        }),
+        // Initial Operational Data
+        nodes: initialNodes,
+        tracks: [],
+        events: [],
+        selectedNodeId: 'thermal-demo-03',
+        byzantineAlert: null,
+        verificationFailure: null,
 
-      updateNode: (id, updates) =>
-        set((state) => {
-          const nodes = new Map(state.nodes);
-          const node = nodes.get(id);
-          if (node) {
-            nodes.set(id, { ...node, ...updates });
+        // UI Actions
+        setTheme: (theme) => set({ theme }),
+        setViewMode: (viewMode) => set({ viewMode }),
+        setMapProvider: (mapProvider) => set({ mapProvider }),
+        setWorkspaceMode: (workspaceMode) => set({ workspaceMode }),
+        setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
+        setRightPanelWidth: (rightPanelWidth) => set({ rightPanelWidth }),
+
+        // Node Actions
+        addNode: (node) =>
+          set((state) => {
+            const nodes = new Map(state.nodes);
+            nodes.set(node.id, node);
+            return { nodes };
+          }),
+
+        updateNode: (id, updates) =>
+          set((state) => {
+            const nodes = new Map(state.nodes);
+            const node = nodes.get(id);
+            if (node) {
+              nodes.set(id, { ...node, ...updates });
+            }
+            return { nodes };
+          }),
+
+        removeNode: (id) =>
+          set((state) => {
+            const nodes = new Map(state.nodes);
+            nodes.delete(id);
+            return { nodes };
+          }),
+
+        selectNode: (selectedNodeId) => set({ selectedNodeId }),
+
+        clearNodes: () => set({ nodes: new Map() }),
+
+        updateDeploymentStatus: (id, status) =>
+          set((state) => {
+            const nodes = new Map(state.nodes);
+            const node = nodes.get(id);
+            if (node) {
+              nodes.set(id, {
+                ...node,
+                deploymentPid: status.pid ?? node.deploymentPid,
+                deploymentPort: status.port ?? node.deploymentPort,
+                deploymentStatus: status.status ?? node.deploymentStatus,
+              });
+            }
+            return { nodes };
+          }),
+
+        // Track Actions
+        addTrack: (track) =>
+          set((state) => ({
+            tracks: [...state.tracks, track],
+          })),
+
+        clearTracks: () => set({ tracks: [] }),
+
+        // Event Actions
+        addEvent: (event) =>
+          set((state) => ({
+            events: [...state.events, event],
+          })),
+
+        clearEvents: () => set({ events: [] }),
+
+        // Security Actions
+        triggerByzantineAlert: (byzantineAlert) => set({ byzantineAlert }),
+        clearByzantineAlert: () => set({ byzantineAlert: null }),
+        triggerVerificationFailure: (verificationFailure) => set({ verificationFailure }),
+        clearVerificationFailure: () => set({ verificationFailure: null }),
+
+        // Tauri Bridge Actions
+        // PRODUCTION: Connect to authenticated C2 mesh with hardware-rooted trust
+        // This replaces the previous testnet connection with production-grade
+        // WebSocket connection using TLS 1.3 and mutual TPM attestation.
+        connectToMesh: async () => {
+          try {
+            const { wsUrl } = getRuntimeConfig();
+            const result = await invoke<string>('connect_to_mesh', { endpoint: wsUrl });
+            return { success: true, nodeId: result };
+          } catch (error) {
+            console.error('Failed to connect to C2 mesh:', error);
+            return { success: false, nodeId: '' };
           }
-          return { nodes };
-        }),
+        },
 
-      removeNode: (id) =>
-        set((state) => {
-          const nodes = new Map(state.nodes);
-          nodes.delete(id);
-          return { nodes };
-        }),
-
-      selectNode: (selectedNodeId) => set({ selectedNodeId }),
-
-      clearNodes: () => set({ nodes: new Map() }),
-
-      updateDeploymentStatus: (id, status) =>
-        set((state) => {
-          const nodes = new Map(state.nodes);
-          const node = nodes.get(id);
-          if (node) {
-            nodes.set(id, {
-              ...node,
-              deploymentPid: status.pid ?? node.deploymentPid,
-              deploymentPort: status.port ?? node.deploymentPort,
-              deploymentStatus: status.status ?? node.deploymentStatus,
+        generateGenesisBundle: async () => {
+          try {
+            const result = await invoke<any>('generate_genesis_bundle', {
+              userIdentity: 'operator',
+              squadId: 'alpha',
             });
+            return { bundleHash: result.signature, timestamp: result.timestamp };
+          } catch (error) {
+            console.error('Failed to generate genesis bundle:', error);
+            return { bundleHash: '', timestamp: 0 };
           }
-          return { nodes };
-        }),
+        },
 
-      // Track Actions
-      addTrack: (track) =>
-        set((state) => ({
-          tracks: [...state.tracks, track],
-        })),
-
-      clearTracks: () => set({ tracks: [] }),
-
-      // Event Actions
-      addEvent: (event) =>
-        set((state) => ({
-          events: [...state.events, event],
-        })),
-
-      clearEvents: () => set({ events: [] }),
-
-      // Security Actions
-      triggerByzantineAlert: (byzantineAlert) => set({ byzantineAlert }),
-      clearByzantineAlert: () => set({ byzantineAlert: null }),
-      triggerVerificationFailure: (verificationFailure) => set({ verificationFailure }),
-      clearVerificationFailure: () => set({ verificationFailure: null }),
-
-      // Tauri Bridge Actions
-      // PRODUCTION: Connect to authenticated C2 mesh with hardware-rooted trust
-      // This replaces the previous testnet connection with production-grade
-      // WebSocket connection using TLS 1.3 and mutual TPM attestation.
-      connectToMesh: async () => {
-        try {
-          const { wsUrl } = getRuntimeConfig();
-          const result = await invoke<string>('connect_to_mesh', { endpoint: wsUrl });
-          return { success: true, nodeId: result };
-        } catch (error) {
-          console.error('Failed to connect to C2 mesh:', error);
-          return { success: false, nodeId: '' };
-        }
-      },
-
-      generateGenesisBundle: async () => {
-        try {
-          const result = await invoke<any>('generate_genesis_bundle', {
-            userIdentity: 'operator',
-            squadId: 'alpha',
-          });
-          return { bundleHash: result.signature, timestamp: result.timestamp };
-        } catch (error) {
-          console.error('Failed to generate genesis bundle:', error);
-          return { bundleHash: '', timestamp: 0 };
-        }
-      },
-
-      verifyTelemetrySignature: async (payload: TelemetryPayload) => {
-        try {
-          const verified = await invoke<boolean>('verify_telemetry_signature', { payload });
-          if (!verified) {
-            // Trigger verification failure
+        verifyTelemetrySignature: async (payload: TelemetryPayload) => {
+          try {
+            const verified = await invoke<boolean>('verify_telemetry_signature', { payload });
+            if (!verified) {
+              // Trigger verification failure
+              set({
+                verificationFailure: {
+                  nodeId: payload.nodeId,
+                  reason: 'Signature verification failed',
+                  timestamp: Date.now(),
+                },
+              });
+            }
+            return verified;
+          } catch (error) {
+            console.error('Failed to verify telemetry signature:', error);
             set({
               verificationFailure: {
                 nodeId: payload.nodeId,
-                reason: 'Signature verification failed',
+                reason: `Verification error: ${error}`,
                 timestamp: Date.now(),
               },
             });
+            return false;
           }
-          return verified;
-        } catch (error) {
-          console.error('Failed to verify telemetry signature:', error);
-          set({
-            verificationFailure: {
-              nodeId: payload.nodeId,
-              reason: `Verification error: ${error}`,
-              timestamp: Date.now(),
-            },
-          });
-          return false;
-        }
-      },
-    }),
+        },
+      };
+    },
     {
       name: 'tactical-store',
       // Only persist UI preferences, not operational data

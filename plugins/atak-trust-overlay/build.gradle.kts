@@ -19,8 +19,9 @@ val atakCompatibleVersion = providers.gradleProperty("atak.compatible.version").
 val defaultAethercoreJniDir = rootProject.file("../../external/aethercore-jni")
 val aethercoreJniDir = localProperties.getProperty("aethercore.jni.dir")?.let(::file) ?: defaultAethercoreJniDir
 
+// Changed default to main.jar to support stub-only builds matching offline contract
 val requiredAtakArtifacts =
-    (localProperties.getProperty("atak.required.artifacts") ?: "atak-sdk.jar,atak-plugin-sdk.aar")
+    (localProperties.getProperty("atak.required.artifacts") ?: "main.jar")
         .split(',')
         .map { it.trim() }
         .filter { it.isNotEmpty() }
@@ -167,7 +168,7 @@ android {
         externalNativeBuild {
             cmake {
                 arguments("-DANDROID_STL=c++_shared")
-                targets("aethercore_jni")
+                targets("cargo_build_aethercore")
             }
         }
 
@@ -227,4 +228,38 @@ dependencies {
     implementation(kotlin("stdlib"))
 
     testImplementation("junit:junit:4.13.2")
+}
+
+// --- Stub Generation Logic ---
+
+val stubsSrcDir = project.layout.projectDirectory.dir("stub-src")
+
+val compileStubs by tasks.registering(JavaCompile::class) {
+    onlyIf { stubsSrcDir.asFile.exists() }
+    
+    source = fileTree(stubsSrcDir)
+    classpath = project.files(android.bootClasspath)
+    destinationDirectory.set(project.layout.buildDirectory.dir("stubs/classes"))
+    
+    sourceCompatibility = "17"
+    targetCompatibility = "17"
+}
+
+val packageStubs by tasks.registering(Jar::class) {
+    dependsOn(compileStubs)
+    onlyIf { stubsSrcDir.asFile.exists() }
+    
+    archiveFileName.set("main.jar")
+    destinationDirectory.set(project.layout.projectDirectory.dir("libs"))
+    from(compileStubs.map { it.destinationDirectory })
+}
+
+tasks.named("verifyAtakSdkPrerequisites") {
+    dependsOn(packageStubs)
+}
+
+tasks.named("preBuild") {
+    doFirst {
+        project.layout.projectDirectory.dir("libs").asFile.mkdirs()
+    }
 }

@@ -411,7 +411,10 @@ pub fn run() {
                 })
             } else {
                 let sentinel_result = if should_skip_sentinel_boot(sentinel_policy) {
-                    Err("Secure Enclave startup attestation skipped on Apple platforms in non-required mode".to_string())
+                    Err(
+                        "Secure Enclave startup attestation skipped on macOS in non-required mode"
+                            .to_string(),
+                    )
                 } else {
                     sentinel_boot()
                 };
