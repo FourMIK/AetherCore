@@ -8,10 +8,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { TauriCommands, SentinelTrustStatus } from './api/tauri-commands';
 import { MapProvider } from './map-engine/MapContext';
 import { DashboardLayout } from './components/layout/DashboardLayout';
-import { useTacticalStore } from './store/useTacticalStore';
+import { useTacticalStore, type TacticalNode } from './store/useTacticalStore';
 import { useCommStore } from './store/useCommStore';
 import { initializeComms } from './store/initComms';
 import { getRuntimeConfig, loadUnifiedRuntimeConfig, setRuntimeConfig } from './config/runtime';
+import { fetchTelemetry, subscribeToTelemetry } from './services/telemetryService';
 import {
   BootstrapOnboarding,
   shouldRunBootstrapOnboarding,
@@ -224,6 +225,73 @@ export const App: React.FC = () => {
         useCommStore.getState().disconnectC2();
       } catch {
         // Ignore errors during cleanup
+      }
+    };
+  }, [bootstrapCheckComplete, bootstrapReady, stackCheckComplete, stackReady]);
+
+  // Initialize telemetry service for TeleDyne/FLIR feeds
+  useEffect(() => {
+    if (!bootstrapCheckComplete || !bootstrapReady || !stackCheckComplete || !stackReady) {
+      return;
+    }
+
+    let mounted = true;
+    const tacticalStore = useTacticalStore.getState();
+    let unsubscribeTelemetry: (() => void) | null = null;
+
+    // Initial telemetry fetch
+    fetchTelemetry()
+      .then((nodes) => {
+        if (!mounted) return;
+        nodes.forEach((node, nodeId) => {
+          tacticalStore.addNode(node);
+        });
+        console.log(`[TELEMETRY] Loaded ${nodes.size} nodes from gateway`);
+      })
+      .catch((err) => {
+        console.warn('[TELEMETRY] Initial fetch failed:', err);
+      });
+
+    // Subscribe to live telemetry updates (for TeleDyne FLIR feeds)
+    try {
+      unsubscribeTelemetry = subscribeToTelemetry((telemetry) => {
+        if (!mounted) return;
+
+        // Update existing node or add new one
+        const existingNode = tacticalStore.nodes.get(telemetry.node_id);
+        if (existingNode) {
+          tacticalStore.updateNode(telemetry.node_id, {
+            lastSeen: new Date(telemetry.timestamp),
+            trustScore: telemetry.trust?.self_score || 0,
+            verified: telemetry.security?.hardware_backed || false,
+            status: telemetry.network?.backend_reachable ? 'online' : 'offline',
+          });
+        } else {
+          // Create new node from telemetry
+          const newNode: TacticalNode = {
+            id: telemetry.node_id,
+            domain: telemetry.node_type || 'edge',
+            position: { latitude: 0, longitude: 0, altitude: 0 },
+            trustScore: telemetry.trust?.self_score || 0,
+            verified: telemetry.security?.hardware_backed || false,
+            attestationHash: telemetry.node_id.substring(0, 16),
+            lastSeen: new Date(telemetry.timestamp),
+            status: telemetry.network?.backend_reachable ? 'online' : 'offline',
+            firmwareVersion: telemetry.hardware?.android_version || telemetry.platform || 'unknown',
+            integrityCompromised: !telemetry.trust?.merkle_vine_synced,
+          };
+          tacticalStore.addNode(newNode);
+        }
+      });
+      console.log('[TELEMETRY] Subscribed to live telemetry updates');
+    } catch (err) {
+      console.warn('[TELEMETRY] WebSocket subscription not available:', err);
+    }
+
+    return () => {
+      mounted = false;
+      if (unsubscribeTelemetry) {
+        unsubscribeTelemetry();
       }
     };
   }, [bootstrapCheckComplete, bootstrapReady, stackCheckComplete, stackReady]);

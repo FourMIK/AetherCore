@@ -10,7 +10,7 @@
  * Security: Commands must only execute on verified nodes with sufficient trust.
  */
 
-import { test, expect, testDevices } from '../fixtures';
+import { test, expect, testDevices } from './fixtures';
 
 test.describe('C2 (Command & Control) UI Flows', () => {
   test.beforeEach(async ({ page, waitForAppReady }) => {

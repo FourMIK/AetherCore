@@ -273,11 +273,21 @@ enum SentinelBootPolicy {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StartupProbe {
+    pub policy_mode: String,
+    pub selected_backend: String,
+    pub security_level: String,
+    pub status: String,
+    pub failure_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SentinelTrustStatus {
     pub trust_level: String,
     pub reduced_trust: bool,
     pub headline: String,
     pub detail: String,
+    pub startup_probe: Option<StartupProbe>,
 }
 
 impl Default for SentinelTrustStatus {
@@ -287,6 +297,7 @@ impl Default for SentinelTrustStatus {
             reduced_trust: false,
             headline: "Hardware trust attested".to_string(),
             detail: "Hardware attestation verified at startup.".to_string(),
+            startup_probe: None,
         }
     }
 }

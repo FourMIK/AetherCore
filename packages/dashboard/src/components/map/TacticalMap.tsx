@@ -17,7 +17,7 @@ interface RenderedNode {
   trustScore: number;
   verified: boolean;
   integrityCompromised?: boolean;
-  status: 'online' | 'offline' | 'degraded';
+  status: 'online' | 'offline' | 'degraded' | 'compromised' | 'revoked';
   position: [number, number, number];
   phase: number;
 }
@@ -37,12 +37,14 @@ const NodeMesh: React.FC<NodeMeshProps> = ({ node, selected, onClick }) => {
   const ringRef = useRef<THREE.Mesh>(null);
 
   const color = useMemo(() => {
-    if (node.integrityCompromised) return '#ff2a2a';
+    // Fail-Visible: Byzantine/compromised nodes are RED
+    if (node.status === 'revoked') return '#808080'; // Ghost gray for revoked
+    if (node.status === 'compromised' || node.integrityCompromised) return '#ff2a2a'; // Red for Byzantine
     if (node.status === 'offline') return '#64748b';
     if (node.trustScore >= 80) return '#39ff14';
     if (node.trustScore >= 50) return '#ffae00';
     return '#ff6b00';
-  }, [node.integrityCompromised, node.status, node.trustScore]);
+  }, [node.status, node.integrityCompromised, node.trustScore]);
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime() + node.phase;

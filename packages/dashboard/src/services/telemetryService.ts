@@ -44,6 +44,12 @@ export interface TelemetryData {
     jni_loaded: boolean;
     architecture: string;
   };
+  isr?: {
+    camera_active: boolean;
+    frame_count: number;
+    last_frame_ts?: number;
+    resolution?: string;
+  };
 }
 
 // In-memory cache of telemetry data
@@ -54,7 +60,7 @@ const CACHE_DURATION_MS = 3000; // 3 seconds
 /**
  * Convert telemetry data to a TacticalNode
  */
-function telemetryToNode(telemetry: TelemetryData): TacticalNode {
+export function telemetryToNode(telemetry: TelemetryData): TacticalNode {
   return {
     id: telemetry.node_id,
     domain: telemetry.node_type || 'edge',
@@ -74,7 +80,7 @@ function telemetryToNode(telemetry: TelemetryData): TacticalNode {
 }
 
 /**
- * Fetch telemetry from multiple sources
+ * Fetch telemetry from multiple sources (Gateway + Teledyne)
  */
 export async function fetchTelemetry(): Promise<Map<string, TacticalNode>> {
   const now = Date.now();
@@ -110,7 +116,7 @@ export async function fetchTelemetry(): Promise<Map<string, TacticalNode>> {
         });
 
         if (data.nodes.length > 0) {
-          console.log(`[TELEMETRY] ✓ Fetched ${data.nodes.length} nodes from backend`);
+          console.log(`[TELEMETRY] Fetched ${data.nodes.length} nodes from backend`);
         } else {
           console.log('[TELEMETRY] Gateway responded but no nodes available yet');
           console.log('[TELEMETRY] Waiting for devices to send telemetry to http://localhost:3000/api/telemetry');

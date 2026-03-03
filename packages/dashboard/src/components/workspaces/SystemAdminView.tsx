@@ -1,6 +1,11 @@
 /**
  * SystemAdminView
  * Configuration and system management workspace
+ *
+ * Design Doctrine:
+ * - All administrative actions bound to physical silicon (TPM 2.0 / Secure Enclave)
+ * - Byzantine nodes MUST be fail-visible (quarantine UI state)
+ * - Revocations are CanonicalEvents broadcast to The Great Gospel ledger
  */
 
 import React, { useEffect, useState } from 'react';
@@ -15,6 +20,8 @@ import {
   RotateCcw,
   Archive,
   ShieldAlert,
+  Shield,
+  AlertTriangle,
 } from 'lucide-react';
 import { getRuntimeConfig } from '../../config/runtime';
 import {
@@ -22,13 +29,24 @@ import {
   SupportBundleSummary,
   TauriCommands,
 } from '../../api/tauri-commands';
+import { IdentityClient } from '../../services/identity/identityClient';
+import { useTacticalStore } from '../../store/useTacticalStore';
+import { NodeListPanel } from '../panels/NodeListPanel';
+import { AuditLogViewer } from '../compliance/AuditLogViewer';
 
 export const SystemAdminView: React.FC = () => {
   const { tpmEnabled } = getRuntimeConfig();
   const [diagnostics, setDiagnostics] = useState<DiagnosticsReport | null>(null);
   const [bundle, setBundle] = useState<SupportBundleSummary | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [hasAdminPrivileges, setHasAdminPrivileges] = useState(false);
 
+  const fleetAttestationState = useTacticalStore((s) => s.fleetAttestationState);
+  const lastAttestationUpdate = useTacticalStore((s) => s.lastAttestationUpdate);
+  const revocationHistory = useTacticalStore((s) => s.revocationHistory);
+  const updateFleetAttestationState = useTacticalStore((s) => s.updateFleetAttestationState);
+
+  // Fetch diagnostics on mount
   useEffect(() => {
     (async () => {
       const result = await TauriCommands.diagnosticsReport();
@@ -37,6 +55,34 @@ export const SystemAdminView: React.FC = () => {
       }
     })();
   }, []);
+
+  // Check admin privileges
+  useEffect(() => {
+    (async () => {
+      const authorized = await IdentityClient.hasAdminPrivileges();
+      setHasAdminPrivileges(authorized);
+    })();
+  }, []);
+
+  // Fetch fleet attestation state every 5 seconds
+  useEffect(() => {
+    const fetchAttestation = async () => {
+      try {
+        const report = await IdentityClient.getFleetAttestationState();
+        updateFleetAttestationState(report.nodes);
+      } catch (error) {
+        console.error('[ADMIN] Failed to fetch fleet attestation:', error);
+      }
+    };
+
+    // Initial fetch
+    fetchAttestation();
+
+    // Poll every 5 seconds
+    const interval = setInterval(fetchAttestation, 5000);
+
+    return () => clearInterval(interval);
+  }, [updateFleetAttestationState]);
 
   const runAction = async (name: string, action: () => Promise<unknown>) => {
     setBusyAction(name);
@@ -48,12 +94,26 @@ export const SystemAdminView: React.FC = () => {
     setBusyAction(null);
   };
 
+  // Calculate fleet health metrics from attestation state
+  const totalNodes = fleetAttestationState.length;
+  const verifiedNodes = fleetAttestationState.filter(n => n.tpm_attestation_valid).length;
+  const compromisedNodes = fleetAttestationState.filter(n => n.byzantine_detected).length;
+  const revokedNodes = fleetAttestationState.filter(n => n.revoked).length;
+
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden">
       <div className="max-w-7xl mx-auto p-4 space-y-4 pb-8">
-        <h1 className="font-display text-3xl font-bold text-tungsten mb-2">
-          System Administration
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-display text-3xl font-bold text-tungsten mb-2">
+            System Administration
+          </h1>
+          {!hasAdminPrivileges && (
+            <div className="flex items-center gap-2 text-yellow-400 text-sm">
+              <AlertTriangle size={16} />
+              <span>Limited privileges - read-only mode</span>
+            </div>
+          )}
+        </div>
 
         {/* System Resources */}
         <div className="grid grid-cols-4 gap-4">
@@ -244,31 +304,102 @@ export const SystemAdminView: React.FC = () => {
         {/* Gospel & Revocation */}
         <GlassPanel variant="light" className="p-6">
           <div className="flex items-center gap-3 mb-4">
-            <Server className="text-overmatch" size={24} />
-            <h2 className="font-display text-xl font-semibold text-tungsten">
-              The Great Gospel
-            </h2>
+            <Shield className="text-overmatch" size={24} />
+            <div className="flex-1">
+              <h2 className="font-display text-xl font-semibold text-tungsten">
+                The Great Gospel
+              </h2>
+              <p className="text-xs text-tungsten/60">
+                System-wide ledger of sovereign revocation and Byzantine detection events
+              </p>
+            </div>
+            <div className="text-xs text-tungsten/50">
+              Last update: {lastAttestationUpdate > 0 ? new Date(lastAttestationUpdate).toLocaleTimeString() : 'Never'}
+            </div>
           </div>
+
+          <div className="bg-carbon/50 border border-tungsten/10 rounded-lg p-4 mb-4">
+            <div className="grid grid-cols-4 gap-4">
+              <div className="text-center">
+                <div className="font-display text-2xl font-bold text-tungsten">{totalNodes}</div>
+                <div className="text-xs text-tungsten/50 mt-1">Total Nodes</div>
+              </div>
+              <div className="text-center">
+                <div className="font-display text-2xl font-bold text-verified-green">{verifiedNodes}</div>
+                <div className="text-xs text-tungsten/50 mt-1">Verified</div>
+              </div>
+              <div className="text-center">
+                <div className={`font-display text-2xl font-bold ${compromisedNodes > 0 ? 'text-red-400' : 'text-tungsten'}`}>
+                  {compromisedNodes}
+                </div>
+                <div className="text-xs text-tungsten/50 mt-1">Compromised</div>
+              </div>
+              <div className="text-center">
+                <div className={`font-display text-2xl font-bold ${revokedNodes > 0 ? 'text-ghost' : 'text-tungsten'}`}>
+                  {revokedNodes}
+                </div>
+                <div className="text-xs text-tungsten/50 mt-1">Revoked</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Fleet Integrity Score */}
           <div className="bg-carbon/50 border border-tungsten/10 rounded-lg p-4">
-            <div className="text-sm text-tungsten/70 mb-3">
-              System-wide ledger of sovereign revocation and trust events
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-tungsten/70">Fleet Integrity</span>
+              <span className={`font-display text-lg font-bold ${
+                totalNodes > 0 && (verifiedNodes / totalNodes) >= 0.9
+                  ? 'text-verified-green'
+                  : totalNodes > 0 && (verifiedNodes / totalNodes) >= 0.7
+                  ? 'text-yellow-400'
+                  : 'text-red-400'
+              }`}>
+                {totalNodes > 0 ? Math.round((verifiedNodes / totalNodes) * 100) : 0}%
+              </span>
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center">
-                <div className="font-display text-2xl font-bold text-tungsten">0</div>
-                <div className="text-xs text-tungsten/50 mt-1">Revocations</div>
-              </div>
-              <div className="text-center">
-                <div className="font-display text-2xl font-bold text-tungsten">0</div>
-                <div className="text-xs text-tungsten/50 mt-1">Sweeps</div>
-              </div>
-              <div className="text-center">
-                <div className="font-display text-2xl font-bold text-verified-green">100%</div>
-                <div className="text-xs text-tungsten/50 mt-1">Integrity</div>
-              </div>
+            <div className="trust-gauge">
+              <div
+                className={`trust-gauge-fill ${
+                  totalNodes > 0 && (verifiedNodes / totalNodes) >= 0.9
+                    ? 'high'
+                    : totalNodes > 0 && (verifiedNodes / totalNodes) >= 0.7
+                    ? 'medium'
+                    : 'low'
+                }`}
+                style={{ width: `${totalNodes > 0 ? (verifiedNodes / totalNodes) * 100 : 0}%` }}
+              />
             </div>
           </div>
+
+          {/* Recent Revocations */}
+          {revocationHistory.length > 0 && (
+            <div className="mt-4">
+              <div className="text-sm font-semibold text-tungsten mb-2">Recent Revocations</div>
+              <div className="space-y-2">
+                {revocationHistory.slice(0, 3).map((cert, idx) => (
+                  <div key={idx} className="bg-carbon/50 border border-red-400/20 rounded p-2 text-xs">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-mono text-tungsten">{cert.node_id}</span>
+                      <span className="text-tungsten/50">
+                        {new Date(cert.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="text-tungsten/70">{cert.reason}</div>
+                    <div className="text-tungsten/50 mt-1">
+                      Signature: {cert.signature.substring(0, 16)}...
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </GlassPanel>
+
+        {/* Node List Panel with Attestation Status */}
+        <NodeListPanel />
+
+        {/* Merkle Vine Audit Trail */}
+        <AuditLogViewer maxEvents={20} />
       </div>
     </div>
   );
