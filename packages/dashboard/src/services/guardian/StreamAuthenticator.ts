@@ -126,8 +126,8 @@ export class StreamAuthenticator {
 
   constructor(config: StreamAuthenticatorConfig) {
     this.config = {
-      signingServiceEndpoint: 'http://localhost:50053',
       ...config,
+      signingServiceEndpoint: config.signingServiceEndpoint ?? 'http://localhost:50053',
     };
     
     // Initialize local chain state

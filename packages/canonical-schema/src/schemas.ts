@@ -28,6 +28,11 @@ export type PublicKey = string;
 
 /**
  * Canonical event types
+ * 
+ * Note: VideoFramePayload is used within CUSTOM or specialized event types
+ * for Mission Guardian video streaming. It's not a top-level EventType
+ * because video frame hashes are metadata events attached to video streams,
+ * not standalone domain events like GPS or MESSAGE.
  */
 export enum EventType {
   AIS = 'AIS',

@@ -87,7 +87,7 @@ export class CallManager {
     
     // Initialize identity client for hardware-rooted trust verification
     this.identityClient = createIdentityClient(
-      this.config.identityServiceEndpoint!,
+      this.config.identityServiceEndpoint ?? 'http://localhost:50052',
       { enableLogging: true }
     );
   }
