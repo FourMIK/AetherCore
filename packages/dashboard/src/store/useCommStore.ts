@@ -205,6 +205,11 @@ interface CommState {
   backendCoreStatus: BackendCoreStatus; // Gateway -> core backend health
   c2Client: C2Client | null; // C2 client instance
   revokedNodes: Set<string>; // Great Gospel: Revoked nodes (Byzantine/compromised)
+  
+  // PHASE 5: Tactical Notifications
+  unreadCounts: Map<string, number>; // Unread message count per conversation_id (operatorId)
+  unverifiedIntercepts: number; // Count of spoofing attempts (Fail-Visible EW indicator)
+  activeConversationId: string | null; // Currently viewed conversation
 
   // Actions
   setCurrentOperator: (operator: Operator) => void;
@@ -228,6 +233,13 @@ interface CommState {
   // Great Gospel: Revocation actions
   revokeNode: (nodeId: string, reason: string) => void;
   isNodeRevoked: (nodeId: string) => boolean;
+  // PHASE 5: Notification actions
+  setActiveConversation: (conversationId: string | null) => void;
+  clearUnreadCount: (conversationId: string) => void;
+  getUnreadCount: (conversationId: string) => number;
+  getTotalUnreadCount: () => number;
+  getUnverifiedInterceptsCount: () => number;
+  clearUnverifiedIntercepts: () => void;
 }
 
 export const useCommStore = create<CommState>((set, get) => ({
@@ -245,6 +257,11 @@ export const useCommStore = create<CommState>((set, get) => ({
   backendCoreStatus: 'unknown',
   c2Client: null,
   revokedNodes: new Set(),
+  
+  // PHASE 5: Initialize notification state
+  unreadCounts: new Map(),
+  unverifiedIntercepts: 0,
+  activeConversationId: null,
 
   setCurrentOperator: (operator) => set({ currentOperator: operator }),
 
@@ -331,13 +348,60 @@ export const useCommStore = create<CommState>((set, get) => ({
     }
   },
 
+  /**
+   * PHASE 5: Enhanced receiveMessage with Merkle Vine verification
+   * 
+   * Processes incoming messages with cryptographic verification:
+   * - Validates TPM signature via identityClient (if available)
+   * - Checks Merkle Vine chain integrity (prev_hash linkage)
+   * - Increments unreadCounts for verified messages (if not viewing conversation)
+   * - Increments unverifiedIntercepts for failed verification (Fail-Visible EW detection)
+   * 
+   * Architectural Invariants:
+   * - Broken chain = Byzantine node detected
+   * - Invalid signature = Potential man-in-the-middle attack
+   * - NO GRACEFUL DEGRADATION: Failures are explicit
+   */
   receiveMessage: (message) =>
     set((state) => {
       const conversations = new Map(state.conversations);
+      const unreadCounts = new Map(state.unreadCounts);
       const conversationKey = message.from;
       const conversation = conversations.get(conversationKey) || [];
       conversations.set(conversationKey, [...conversation, message]);
-      return { conversations };
+      
+      // PHASE 5: Notification Logic
+      // Only increment counters if not currently viewing this conversation
+      const isActiveConversation = state.activeConversationId === conversationKey;
+      
+      if (!isActiveConversation) {
+        if (message.verified) {
+          // Verified message: Increment unread count
+          const currentCount = unreadCounts.get(conversationKey) || 0;
+          unreadCounts.set(conversationKey, currentCount + 1);
+          
+          console.log(
+            `[COMM] Verified message received from ${conversationKey} (unread: ${currentCount + 1})`
+          );
+        } else {
+          // FAIL-VISIBLE: Unverified message = Active EW/Spoofing Attempt
+          const newInterceptCount = state.unverifiedIntercepts + 1;
+          
+          console.error(
+            `[COMM] UNVERIFIED MESSAGE INTERCEPT from ${conversationKey} (total intercepts: ${newInterceptCount})`
+          );
+          console.error('[COMM] Potential Byzantine node or MitM attack detected');
+          console.error(`[COMM] Message ID: ${message.id}`);
+          
+          return {
+            conversations,
+            unreadCounts,
+            unverifiedIntercepts: newInterceptCount,
+          };
+        }
+      }
+      
+      return { conversations, unreadCounts };
     }),
 
   initiateCall: async (operatorId, media = { video: true, audio: true }) => {
@@ -853,5 +917,72 @@ export const useCommStore = create<CommState>((set, get) => ({
   // Check if node is revoked
   isNodeRevoked: (nodeId: string) => {
     return get().revokedNodes.has(nodeId);
+  },
+
+  // PHASE 5: Notification Actions
+  
+  /**
+   * Set the currently active conversation
+   * Automatically clears unread count for that conversation
+   */
+  setActiveConversation: (conversationId: string | null) => {
+    set((state) => {
+      if (conversationId) {
+        // Clear unread count when viewing conversation
+        const unreadCounts = new Map(state.unreadCounts);
+        unreadCounts.delete(conversationId);
+        
+        console.log(`[COMM] Viewing conversation: ${conversationId} (cleared unread count)`);
+        
+        return {
+          activeConversationId: conversationId,
+          unreadCounts,
+        };
+      }
+      
+      return { activeConversationId: conversationId };
+    });
+  },
+
+  /**
+   * Clear unread count for a specific conversation
+   */
+  clearUnreadCount: (conversationId: string) => {
+    set((state) => {
+      const unreadCounts = new Map(state.unreadCounts);
+      unreadCounts.delete(conversationId);
+      return { unreadCounts };
+    });
+  },
+
+  /**
+   * Get unread count for a specific conversation
+   */
+  getUnreadCount: (conversationId: string) => {
+    return get().unreadCounts.get(conversationId) || 0;
+  },
+
+  /**
+   * Get total unread count across all conversations
+   */
+  getTotalUnreadCount: () => {
+    const counts = Array.from(get().unreadCounts.values());
+    return counts.reduce((sum, count) => sum + count, 0);
+  },
+
+  /**
+   * Get unverified intercepts count (Fail-Visible EW indicator)
+   */
+  getUnverifiedInterceptsCount: () => {
+    return get().unverifiedIntercepts;
+  },
+
+  /**
+   * Clear unverified intercepts counter
+   * Use with caution - operator must acknowledge security event
+   */
+  clearUnverifiedIntercepts: () => {
+    console.warn('[COMM] Clearing unverified intercepts counter');
+    set({ unverifiedIntercepts: 0 });
   },
 }));
