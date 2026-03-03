@@ -55,7 +55,8 @@ export const IntegrityOverlay: React.FC<IntegrityOverlayProps> = ({
     ? Math.round((status.invalidFrames / status.totalFrames) * 100)
     : 0;
 
-  // Format hashes for display (first HASH_DISPLAY_LENGTH characters, monospace)
+  // Format hashes for display (first HASH_DISPLAY_LENGTH characters, uppercase for readability)
+  // NOTE: Display-only transformation. BLAKE3 hashes are stored as lowercase hex.
   const formatHash = (hash: string | null | undefined): string => {
     if (!hash) return 'N/A';
     return hash.substring(0, HASH_DISPLAY_LENGTH).toUpperCase();

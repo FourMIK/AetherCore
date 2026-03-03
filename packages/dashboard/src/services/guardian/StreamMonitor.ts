@@ -76,6 +76,8 @@ export interface StreamMonitorConfig {
 export class StreamMonitor {
   private config: StreamMonitorConfig;
   private frameSequence: number = 0;
+  // Store complete StreamIntegrityHash objects (not just hash strings)
+  // to enable signature verification when StreamIntegrityHash includes signature field
   private pendingHashes: Map<number, StreamIntegrityHash> = new Map();
   private status: IntegrityStatus;
   private lastVerifiedHash: string | null = null; // Merkle Vine state
@@ -304,13 +306,23 @@ const HASH_DISPLAY_LENGTH = 8;
 
   /**
    * Generate random nonce for signature verification
+   * 
+   * NOTE: Uses Web Crypto API (crypto.getRandomValues).
+   * In Node.js environments, use crypto.randomBytes instead.
    */
   private generateNonce(): string {
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes)
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
+    // Browser environment
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
+    
+    // Node.js fallback (if crypto.randomBytes is available)
+    // In practice, this code runs in browser context only
+    throw new Error('crypto.getRandomValues not available');
   }
 
   /**

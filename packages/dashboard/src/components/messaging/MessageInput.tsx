@@ -268,6 +268,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
  * 
  * This must match the Rust implementation's to_canonical_json_for_signing()
  * to ensure hash compatibility across language boundaries.
+ * 
+ * NOTE: JavaScript's JSON.stringify() doesn't guarantee property order for nested objects.
+ * The Rust implementation must also use the same serialization order.
+ * For production, consider using a deterministic JSON library if nested objects need sorting.
  */
 function toCanonicalJsonForSigning(event: CanonicalEvent): string {
   // Create object with sorted keys

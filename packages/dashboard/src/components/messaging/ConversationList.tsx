@@ -84,7 +84,11 @@ export const ConversationList: React.FC<ConversationListProps> = ({
    * - Have active hardware attestation (verified === true)
    * - Have trust score >= MIN_TRUST_SCORE_THRESHOLD
    * - Are not the current user
-   * - Are not offline
+   * - Are not offline (offline operators cannot receive messages in real-time)
+   * 
+   * NOTE: Offline status is excluded for UX reasons (cannot send messages to offline nodes).
+   * Operators who go offline temporarily will reappear when they come back online
+   * if they still maintain valid hardware attestation.
    */
   const verifiedOperators = operators.filter(
     (op) =>
