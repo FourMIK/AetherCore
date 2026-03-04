@@ -22,6 +22,21 @@ export const FullscreenSidebarPanel: React.FC<FullscreenSidebarPanelProps> = ({
   children,
   className = '',
 }) => {
+  React.useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (

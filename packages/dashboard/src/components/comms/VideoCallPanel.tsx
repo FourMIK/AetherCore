@@ -120,6 +120,17 @@ export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
     }));
   };
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        handleEndCall();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -135,7 +146,7 @@ export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
         onDismiss={handleDismissIntegrityAlert}
       />
       
-      <div className={`fixed inset-0 z-50 bg-carbon/95 backdrop-blur-sm ${isFullscreen ? '' : 'p-8'
+      <div className={`fixed inset-0 z-50 bg-carbon/95 backdrop-blur-sm ${isFullscreen ? '' : 'p-4 sm:p-8'
         }`}>
         <GlassPanel variant="heavy" className={`${isFullscreen ? 'h-full' : 'h-full max-w-6xl mx-auto'
           } flex flex-col`}>
@@ -220,7 +231,7 @@ export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
               </div>
 
               {/* Local Video - Picture in Picture */}
-              <div className="absolute bottom-4 right-4 w-64 h-48 bg-carbon rounded-lg overflow-hidden border-2 border-tungsten/30 shadow-lg">
+              <div className="absolute bottom-4 right-4 w-40 h-28 sm:w-64 sm:h-48 bg-carbon rounded-lg overflow-hidden border-2 border-tungsten/30 shadow-lg">
                 <video
                   ref={localVideoRef}
                   autoPlay
@@ -245,32 +256,32 @@ export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
         <div className="p-4 border-t border-tungsten/10 flex justify-center gap-3 flex-shrink-0">
           <button
             onClick={toggleVideo}
-            className={`p-4 rounded-full transition-colors ${isVideoEnabled
+            className={`p-3 sm:p-4 rounded-full transition-colors ${isVideoEnabled
                 ? 'bg-tungsten/10 hover:bg-tungsten/20 text-tungsten'
                 : 'bg-jamming/20 hover:bg-jamming/30 text-jamming'
               }`}
             title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
           >
-            {isVideoEnabled ? <Video size={24} /> : <VideoOff size={24} />}
+            {isVideoEnabled ? <Video size={20} /> : <VideoOff size={20} />}
           </button>
 
           <button
             onClick={toggleAudio}
-            className={`p-4 rounded-full transition-colors ${isAudioEnabled
+            className={`p-3 sm:p-4 rounded-full transition-colors ${isAudioEnabled
                 ? 'bg-tungsten/10 hover:bg-tungsten/20 text-tungsten'
                 : 'bg-jamming/20 hover:bg-jamming/30 text-jamming'
               }`}
             title={isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'}
           >
-            {isAudioEnabled ? <Mic size={24} /> : <MicOff size={24} />}
+            {isAudioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
           </button>
 
           <button
             onClick={handleEndCall}
-            className="p-4 rounded-full bg-jamming/20 hover:bg-jamming/30 text-jamming transition-colors"
+            className="p-3 sm:p-4 rounded-full bg-jamming/20 hover:bg-jamming/30 text-jamming transition-colors"
             title="End call"
           >
-            <PhoneOff size={24} />
+            <PhoneOff size={20} />
           </button>
         </div>
       </GlassPanel>

@@ -372,6 +372,17 @@ code, pre {
   }
 }
 
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
 @keyframes pulse-glow {
   0%, 100% {
     box-shadow: 0 0 10px rgba(0, 212, 255, 0.4);
@@ -422,6 +433,10 @@ code, pre {
   animation: slideInUp 0.3s ease-out;
 }
 
+.animate-slideInRight {
+  animation: slideInRight 0.3s ease-out;
+}
+
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
@@ -432,6 +447,14 @@ code, pre {
 
 .animate-blink {
   animation: status-blink 1s ease-in-out infinite;
+}
+
+.animation-delay-150 {
+  animation-delay: 150ms;
+}
+
+.animation-delay-300 {
+  animation-delay: 300ms;
 }
 
 /* Target Lock Animation */

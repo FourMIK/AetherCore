@@ -32,8 +32,14 @@ export const NodeDetailPanel: React.FC = () => {
   if (!node) {
     return (
       <GlassPanel variant="default" className="h-full flex items-center justify-center">
-        <div className="text-center text-tungsten/50">
+        <div className="text-center text-tungsten/50 space-y-3 px-4">
           <p className="text-sm">Node not found</p>
+          <button
+            onClick={() => selectNode(null)}
+            className="px-3 py-2 rounded-lg bg-tungsten/10 hover:bg-tungsten/20 text-tungsten/80 text-xs font-semibold transition-colors"
+          >
+            Clear Selection
+          </button>
         </div>
       </GlassPanel>
     );

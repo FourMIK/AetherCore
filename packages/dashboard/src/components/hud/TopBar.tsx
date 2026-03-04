@@ -89,27 +89,27 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <GlassPanel
       variant="heavy"
-      className={`flex items-center justify-between px-4 py-2 ${className}`}
+      className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2 ${className}`}
       hover={false}
     >
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-3 min-w-0">
         <div className="flex items-center gap-2">
           <Shield className="text-overmatch flex-shrink-0" size={20} />
           <span className="font-display text-lg font-semibold text-overmatch whitespace-nowrap">
             AETHERCORE
           </span>
         </div>
-        <div className="h-6 w-px bg-tungsten/20 flex-shrink-0" />
+        <div className="hidden h-6 w-px bg-tungsten/20 flex-shrink-0 md:block" />
         <div className="flex items-center gap-2">
           <Activity className={statusColor} size={16} />
           <span className={`${statusBadge} whitespace-nowrap`}>{systemStatus.toUpperCase()}</span>
         </div>
-        <span className="badge-info whitespace-nowrap" aria-label="Supported operator mode">
+        <span className="hidden badge-info whitespace-nowrap md:inline-flex" aria-label="Supported operator mode">
           Commander Edition
         </span>
       </div>
 
-      <div className="flex items-center gap-4 ml-4">
+      <div className="flex flex-wrap items-center justify-end gap-3 ml-auto min-w-0">
         {/* Aetheric Link Status */}
         <ConnectionIndicator />
         <div className="hidden 2xl:flex items-center gap-2">
@@ -120,17 +120,17 @@ export const TopBar: React.FC<TopBarProps> = ({
             BACKEND CORE {backendStatus.label}
           </div>
         </div>
-        <div className="h-6 w-px bg-tungsten/20 flex-shrink-0" />
+        <div className="hidden h-6 w-px bg-tungsten/20 flex-shrink-0 lg:block" />
         <div className="text-sm text-tungsten/70 whitespace-nowrap">
           <span className="font-semibold text-verified-green">{verifiedNodes}</span>
           <span className="mx-1">/</span>
           <span>{totalNodes}</span>
-          <span className="ml-1 hidden sm:inline">Verified Nodes</span>
+          <span className="ml-1 hidden lg:inline">Verified Nodes</span>
         </div>
-        <div className="h-6 w-px bg-tungsten/20 flex-shrink-0" />
+        <div className="hidden h-6 w-px bg-tungsten/20 flex-shrink-0 md:block" />
         <div className="flex items-center gap-2 font-mono text-sm text-tungsten/70 whitespace-nowrap">
           <Clock size={16} className="flex-shrink-0" />
-          <span className="hidden md:inline">{utcTime}</span>
+          <span className="hidden xl:inline">{utcTime}</span>
         </div>
       </div>
     </GlassPanel>

@@ -10,7 +10,7 @@
  * 3. Success: Green shield, callsign display, auto-add to map
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { GlassPanel } from '../hud/GlassPanel';
 import { useTacticalStore } from '../../store/useTacticalStore';
@@ -21,6 +21,8 @@ interface CandidateNode {
   type: string;
   id: string;
   label: string;
+  transport?: 'usb-serial' | 'usb-mass-storage' | 'network' | 'bluetooth-serial';
+  hardware_profile?: string;
 }
 
 interface GenesisIdentity {
@@ -40,19 +42,32 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
   
   const addNode = useTacticalStore((s) => s.addNode);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   const handleActivate = (asset: CandidateNode) => {
     setSelectedAsset(asset);
     setView('activation');
   };
 
   const handleSuccess = (identity: GenesisIdentity) => {
-    // Generate a node ID from the callsign
-    const nodeId = identity.callsign.toLowerCase().replace(/\s+/g, '-');
+    // Generate a stable, readable node ID and avoid collisions from repeated callsigns
+    const callsignBase = identity.callsign.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const hashSuffix = identity.root_hash.slice(0, 8).toLowerCase();
+    const nodeId = `${callsignBase || 'ralphienode'}-${hashSuffix}`;
     
     // Add the node to the tactical store
     addNode({
       id: nodeId,
-      domain: 'default-squad', // Could be derived from identity in production
+      domain: 'ralphienode',
       position: { latitude: 0, longitude: 0, altitude: 0 }, // Default position
       trustScore: 100,
       verified: true,
@@ -86,10 +101,18 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-carbon/80 backdrop-blur-sm p-4 animate-fadeIn">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-carbon/80 backdrop-blur-sm p-4 animate-fadeIn"
+      data-testid="add-node-wizard"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add RalphieNode Wizard"
+    >
+      <div className="absolute inset-0" onClick={onClose} />
+      <div className="relative w-full max-w-3xl max-h-[90vh]" onClick={(event) => event.stopPropagation()}>
       <GlassPanel
         variant="heavy"
-        className="w-full max-w-3xl max-h-[90vh] flex flex-col animate-slideInUp"
+        className="w-full max-h-[90vh] flex flex-col animate-slideInUp"
       >
         {/* Header */}
         <div className="p-6 border-b border-tungsten/10 flex-shrink-0">
@@ -99,13 +122,14 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
                 Add Node to Mesh
               </h2>
               <p className="text-sm text-tungsten/60 mt-1">
-                One Interaction • Zero Configuration • Full Trust
+                RalphieNode Onboarding • One Interaction • Full Trust
               </p>
             </div>
             <button
               onClick={onClose}
-              disabled={scanning}
-              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-tungsten/10 transition-colors text-tungsten/70 hover:text-tungsten disabled:opacity-50 disabled:cursor-not-allowed"
+              data-testid="wizard-close-button"
+              className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-tungsten/10 transition-colors text-tungsten/70 hover:text-tungsten"
+              aria-label={scanning ? 'Close wizard and cancel active scan' : 'Close wizard'}
             >
               <X size={24} />
             </button>
@@ -127,7 +151,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-6">
+        <div className="flex-1 min-h-0 overflow-y-auto p-6" data-testid="wizard-content">
           {view === 'radar' && (
             <AssetRadar
               onActivate={handleActivate}
@@ -157,6 +181,7 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
           </div>
         </div>
       </GlassPanel>
+      </div>
     </div>
   );
 };

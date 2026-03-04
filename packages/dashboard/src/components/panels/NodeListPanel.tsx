@@ -192,7 +192,7 @@ export const NodeListPanel: React.FC = () => {
         </div>
 
         {/* Filters */}
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}

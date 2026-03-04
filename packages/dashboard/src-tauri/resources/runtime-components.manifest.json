@@ -43,6 +43,39 @@
       }
     },
     {
+      "id": "firmware-esp32-generic-bin",
+      "kind": "firmware",
+      "description": "Bundled ESP32 generic onboarding firmware used for USB serial provisioning.",
+      "required": false,
+      "platform_paths": {
+        "linux": "firmware/ralphienode-esp32-generic.bin",
+        "macos": "firmware/ralphienode-esp32-generic.bin",
+        "windows": "firmware/ralphienode-esp32-generic.bin"
+      }
+    },
+    {
+      "id": "firmware-heltec-v3-bin",
+      "kind": "firmware",
+      "description": "Bundled Heltec V3 onboarding firmware used for USB serial provisioning.",
+      "required": false,
+      "platform_paths": {
+        "linux": "firmware/ralphienode-heltec-v3.bin",
+        "macos": "firmware/ralphienode-heltec-v3.bin",
+        "windows": "firmware/ralphienode-heltec-v3.bin"
+      }
+    },
+    {
+      "id": "firmware-rp2040-uf2",
+      "kind": "firmware",
+      "description": "Bundled RP2040 UF2 onboarding firmware used for USB mass-storage provisioning.",
+      "required": false,
+      "platform_paths": {
+        "linux": "firmware/ralphienode-rp2040.uf2",
+        "macos": "firmware/ralphienode-rp2040.uf2",
+        "windows": "firmware/ralphienode-rp2040.uf2"
+      }
+    },
+    {
       "id": "runtime-config-template",
       "kind": "config_template",
       "description": "Install-time runtime configuration template used by first-launch bootstrap validation.",
