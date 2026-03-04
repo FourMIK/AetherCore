@@ -5,6 +5,7 @@ import android.app.AlertDialog
 import android.app.Dialog
 import android.app.DialogFragment
 import android.app.FragmentManager
+import android.content.DialogInterface
 import android.os.Bundle
 import com.aethercore.atak.trustoverlay.BuildConfig
 import com.aethercore.atak.trustoverlay.atak.Logger
@@ -193,13 +194,16 @@ class TrustDetailPanelController(
         var onDismissCallback: (() -> Unit)? = null
 
         override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
-            val title = requireArguments().getString(ARG_TITLE).orEmpty()
-            val body = requireArguments().getString(ARG_BODY).orEmpty()
+            val args = arguments
+            val title = args?.getString(ARG_TITLE).orEmpty()
+            val body = args?.getString(ARG_BODY).orEmpty()
             isCancelable = true
             return AlertDialog.Builder(activity)
                 .setTitle("Trust Detail • $title")
                 .setMessage(body)
-                .setPositiveButton("Close") { _, _ -> dismissAllowingStateLoss() }
+                .setPositiveButton("Close") { _: DialogInterface, _: Int ->
+                    dismissAllowingStateLoss()
+                }
                 .create()
         }
 

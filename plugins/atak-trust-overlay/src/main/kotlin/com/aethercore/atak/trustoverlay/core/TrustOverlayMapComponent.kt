@@ -1,7 +1,5 @@
 package com.aethercore.atak.trustoverlay.core
 
-import android.content.Context
-import android.content.Intent
 import com.aethercore.atak.trustoverlay.atak.AtakMapComponent
 import com.aethercore.atak.trustoverlay.atak.PluginContext
 import com.aethercore.atak.trustoverlay.atak.Subscription
@@ -9,7 +7,10 @@ import com.aethercore.atak.trustoverlay.cot.TrustCoTSubscriber
 import com.aethercore.atak.trustoverlay.map.TrustMarkerRenderer
 import com.aethercore.atak.trustoverlay.ui.TrustDetailPanelController
 import com.aethercore.atak.trustoverlay.widget.TrustFeedHealthWidgetController
-import com.atakmap.android.maps.MapView
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 class TrustOverlayMapComponent : AtakMapComponent {
     private var cotSubscriber: TrustCoTSubscriber? = null
@@ -21,6 +22,9 @@ class TrustOverlayMapComponent : AtakMapComponent {
     private var mapArtifacts: UiArtifactCache? = null
     private var widgetArtifacts: UiArtifactCache? = null
     private var configuredTtlSeconds: Long = TrustStateStore.DEFAULT_TTL_SECONDS
+    private val stateLock = Any()
+    private var feedRefreshExecutor: ScheduledExecutorService? = null
+    private var feedRefreshTask: ScheduledFuture<*>? = null
 
     override fun onCreate(context: PluginContext) {
         context.logger.d("TrustOverlayMapComponent.onCreate")
@@ -52,36 +56,42 @@ class TrustOverlayMapComponent : AtakMapComponent {
             detailPanel?.onMarkerTapped(markerHandle.id)
         }
 
+        startFeedRefreshLoop(context)
+
         cotSubscriber?.start(
             onTrustEvent = { trustEvent ->
                 val markerId = "trust:${trustEvent.uid}"
-                val store = stateStore ?: return@start
-                store.record(trustEvent)
-                val feedStatus = store.feedStatus()
-                val resolvedState = store.resolve(trustEvent.uid)
-                markerRenderer?.setFeedStatus(feedStatus)
+                val stateUpdate: StateUpdate = synchronized(stateLock) {
+                    val store = stateStore ?: return@synchronized null
+                    store.record(trustEvent)
+                    StateUpdate(
+                        feedStatus = store.feedStatus(),
+                        resolvedState = store.resolve(trustEvent.uid),
+                        staleStates = store.allResolved().filter { it.stale },
+                    )
+                } ?: return@start
+                markerRenderer?.setFeedStatus(stateUpdate.feedStatus)
 
-                markerRenderer?.render(resolvedState)
-                detailPanel?.onTrustEvent(markerId, resolvedState)
+                markerRenderer?.render(stateUpdate.resolvedState)
+                detailPanel?.onTrustEvent(markerId, stateUpdate.resolvedState)
                 widgetController?.onTrustEvent(trustEvent)
 
-                for (state in store.allResolved()) {
-                    if (state.stale) {
-                        markerRenderer?.render(state)
-                    }
+                for (state in stateUpdate.staleStates) {
+                    markerRenderer?.render(state)
                 }
 
                 widgetController?.onFeedStatus(
-                    status = feedStatus,
+                    status = stateUpdate.feedStatus,
                     ttlSeconds = configuredTtlSeconds,
                 )
             },
             onMalformedEvent = { count, reason ->
                 context.logger.w("Trust feed malformed event count=$count reason=${reason ?: "unknown"}")
                 widgetController?.onMalformedEvent(count, reason)
-                markerRenderer?.setFeedStatus(stateStore?.feedStatus() ?: TrustFeedStatus.DEGRADED)
+                val feedStatus = currentFeedStatus()
+                markerRenderer?.setFeedStatus(feedStatus)
                 widgetController?.onFeedStatus(
-                    status = stateStore?.feedStatus() ?: TrustFeedStatus.DEGRADED,
+                    status = feedStatus,
                     ttlSeconds = configuredTtlSeconds,
                 )
             },
@@ -89,6 +99,11 @@ class TrustOverlayMapComponent : AtakMapComponent {
     }
 
     override fun onDestroy() {
+        feedRefreshTask?.cancel(false)
+        feedRefreshTask = null
+        feedRefreshExecutor?.shutdownNow()
+        feedRefreshExecutor = null
+
         cotSubscriber?.stop()
         markerTapSubscription?.dispose()
         markerTapSubscription = null
@@ -110,4 +125,50 @@ class TrustOverlayMapComponent : AtakMapComponent {
     companion object {
         const val SETTINGS_TTL_SECONDS = "trust.state.ttl.seconds"
     }
+
+    private fun startFeedRefreshLoop(context: PluginContext) {
+        feedRefreshExecutor?.shutdownNow()
+        feedRefreshExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
+            Thread(runnable, "trust-feed-refresh").apply { isDaemon = true }
+        }
+        val refreshIntervalSeconds = ((configuredTtlSeconds / 4L).coerceAtLeast(5L)).coerceAtMost(30L)
+        feedRefreshTask = feedRefreshExecutor?.scheduleAtFixedRate(
+            {
+                refreshUiForCurrentState(context)
+            },
+            refreshIntervalSeconds,
+            refreshIntervalSeconds,
+            TimeUnit.SECONDS,
+        )
+    }
+
+    private fun refreshUiForCurrentState(context: PluginContext) {
+        val snapshot: List<ResolvedTrustState>
+        val feedStatus: TrustFeedStatus
+        synchronized(stateLock) {
+            val store = stateStore ?: return
+            feedStatus = store.feedStatus()
+            snapshot = store.allResolved()
+        }
+
+        markerRenderer?.setFeedStatus(feedStatus)
+        snapshot.forEach { markerRenderer?.render(it) }
+        widgetController?.onFeedStatus(
+            status = feedStatus,
+            ttlSeconds = configuredTtlSeconds,
+        )
+        context.logger.d(
+            "Trust feed refresh tick status=${feedStatus.name} nodes=${snapshot.size} ttl=${configuredTtlSeconds}s",
+        )
+    }
+
+    private fun currentFeedStatus(): TrustFeedStatus = synchronized(stateLock) {
+        stateStore?.feedStatus() ?: TrustFeedStatus.DEGRADED
+    }
+
+    private data class StateUpdate(
+        val feedStatus: TrustFeedStatus,
+        val resolvedState: ResolvedTrustState,
+        val staleStates: List<ResolvedTrustState>,
+    )
 }
