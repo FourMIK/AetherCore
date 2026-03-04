@@ -7,9 +7,19 @@ public class CotPoint {
     public double getLat() {
         return 0.0;
     }
+    
+    // Added for Tactical Glass plugin compatibility
+    public double getLatitude() {
+        return getLat();
+    }
 
     public double getLon() {
         return 0.0;
+    }
+    
+    // Added for Tactical Glass plugin compatibility
+    public double getLongitude() {
+        return getLon();
     }
 
     public double getHae() {

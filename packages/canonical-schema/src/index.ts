@@ -2,6 +2,10 @@
  * AetherCore Canonical Schema
  */
 
+// Export all canonical event types and utilities
+export * from './schemas';
+
+// Legacy schema validator (kept for backwards compatibility)
 export interface Schema {
   name: string;
   version: string;

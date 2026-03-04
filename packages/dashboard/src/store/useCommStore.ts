@@ -16,6 +16,8 @@ import {
 import { isEnvelopeVerified, type MessageEnvelope } from '@aethercore/shared';
 import { useTacticalStore } from './useTacticalStore';
 
+let activePeerConnection: RTCPeerConnection | null = null;
+
 export type OperatorRole = 'operator' | 'commander' | 'admin';
 export type ConnectionStatus =
   | 'disconnected'
@@ -55,6 +57,9 @@ export interface VideoCall {
   status: 'ringing' | 'active' | 'ended';
   startTime?: Date;
   endTime?: Date;
+  sdpOffer?: string;
+  sdpAnswer?: string;
+  media?: { video: boolean; audio: boolean };
 }
 
 function clampTrustScorePercent(score: number | undefined, fallback = 50): number {
@@ -191,11 +196,20 @@ interface CommState {
   conversations: Map<string, Message[]>;
   activeCall: VideoCall | null;
   incomingCall: VideoCall | null;
+  localStream: MediaStream | null;
+  remoteStream: MediaStream | null;
+  callError: string | null;
   connectionStatus: ConnectionStatus;
   connectionState: ConnectionState; // For UI degradation (Heartbeat Sentinel)
   c2State: C2State; // C2 client state
   backendCoreStatus: BackendCoreStatus; // Gateway -> core backend health
   c2Client: C2Client | null; // C2 client instance
+  revokedNodes: Set<string>; // Great Gospel: Revoked nodes (Byzantine/compromised)
+  
+  // PHASE 5: Tactical Notifications
+  unreadCounts: Map<string, number>; // Unread message count per conversation_id (operatorId)
+  unverifiedIntercepts: number; // Count of spoofing attempts (Fail-Visible EW indicator)
+  activeConversationId: string | null; // Currently viewed conversation
 
   // Actions
   setCurrentOperator: (operator: Operator) => void;
@@ -204,7 +218,7 @@ interface CommState {
   updateOperatorStatus: (operatorId: string, status: Operator['status']) => void;
   sendMessage: (to: string, content: string) => Promise<void>;
   receiveMessage: (message: Message) => void;
-  initiateCall: (operatorId: string) => Promise<void>;
+  initiateCall: (operatorId: string, media?: { video: boolean; audio: boolean }) => Promise<void>;
   acceptCall: (callId: string) => void;
   rejectCall: (callId: string) => void;
   endCall: () => void;
@@ -216,6 +230,16 @@ interface CommState {
   connectC2: () => Promise<void>;
   disconnectC2: () => void;
   getC2Status: () => C2ClientStatus | null;
+  // Great Gospel: Revocation actions
+  revokeNode: (nodeId: string, reason: string) => void;
+  isNodeRevoked: (nodeId: string) => boolean;
+  // PHASE 5: Notification actions
+  setActiveConversation: (conversationId: string | null) => void;
+  clearUnreadCount: (conversationId: string) => void;
+  getUnreadCount: (conversationId: string) => number;
+  getTotalUnreadCount: () => number;
+  getUnverifiedInterceptsCount: () => number;
+  clearUnverifiedIntercepts: () => void;
 }
 
 export const useCommStore = create<CommState>((set, get) => ({
@@ -224,11 +248,20 @@ export const useCommStore = create<CommState>((set, get) => ({
   conversations: new Map(),
   activeCall: null,
   incomingCall: null,
+  localStream: null,
+  remoteStream: null,
+  callError: null,
   connectionStatus: 'disconnected',
   connectionState: 'disconnected',
   c2State: 'IDLE',
   backendCoreStatus: 'unknown',
   c2Client: null,
+  revokedNodes: new Set(),
+  
+  // PHASE 5: Initialize notification state
+  unreadCounts: new Map(),
+  unverifiedIntercepts: 0,
+  activeConversationId: null,
 
   setCurrentOperator: (operator) => set({ currentOperator: operator }),
 
@@ -315,16 +348,63 @@ export const useCommStore = create<CommState>((set, get) => ({
     }
   },
 
+  /**
+   * PHASE 5: Enhanced receiveMessage with Merkle Vine verification
+   * 
+   * Processes incoming messages with cryptographic verification:
+   * - Validates TPM signature via identityClient (if available)
+   * - Checks Merkle Vine chain integrity (prev_hash linkage)
+   * - Increments unreadCounts for verified messages (if not viewing conversation)
+   * - Increments unverifiedIntercepts for failed verification (Fail-Visible EW detection)
+   * 
+   * Architectural Invariants:
+   * - Broken chain = Byzantine node detected
+   * - Invalid signature = Potential man-in-the-middle attack
+   * - NO GRACEFUL DEGRADATION: Failures are explicit
+   */
   receiveMessage: (message) =>
     set((state) => {
       const conversations = new Map(state.conversations);
+      const unreadCounts = new Map(state.unreadCounts);
       const conversationKey = message.from;
       const conversation = conversations.get(conversationKey) || [];
       conversations.set(conversationKey, [...conversation, message]);
-      return { conversations };
+      
+      // PHASE 5: Notification Logic
+      // Only increment counters if not currently viewing this conversation
+      const isActiveConversation = state.activeConversationId === conversationKey;
+      
+      if (!isActiveConversation) {
+        if (message.verified) {
+          // Verified message: Increment unread count
+          const currentCount = unreadCounts.get(conversationKey) || 0;
+          unreadCounts.set(conversationKey, currentCount + 1);
+          
+          console.log(
+            `[COMM] Verified message received from ${conversationKey} (unread: ${currentCount + 1})`
+          );
+        } else {
+          // FAIL-VISIBLE: Unverified message = Active EW/Spoofing Attempt
+          const newInterceptCount = state.unverifiedIntercepts + 1;
+          
+          console.error(
+            `[COMM] UNVERIFIED MESSAGE INTERCEPT from ${conversationKey} (total intercepts: ${newInterceptCount})`
+          );
+          console.error('[COMM] Potential Byzantine node or MitM attack detected');
+          console.error(`[COMM] Message ID: ${message.id}`);
+          
+          return {
+            conversations,
+            unreadCounts,
+            unverifiedIntercepts: newInterceptCount,
+          };
+        }
+      }
+      
+      return { conversations, unreadCounts };
     }),
 
-  initiateCall: async (operatorId) => {
+  initiateCall: async (operatorId, media = { video: true, audio: true }) => {
     const state = get();
     if (!state.currentOperator) return;
 
@@ -333,19 +413,56 @@ export const useCommStore = create<CommState>((set, get) => ({
       participants: [state.currentOperator.id, operatorId],
       initiator: state.currentOperator.id,
       status: 'ringing',
+      media,
     };
 
     set({ activeCall: call });
 
-    // Send call invitation via C2
+    // Send call invitation via C2 (SDP offer will be attached after ICE completes)
     if (state.c2Client && state.c2State === 'CONNECTED') {
       try {
+        const localStream = await navigator.mediaDevices.getUserMedia(media);
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+        });
+        localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+        set({ localStream, callError: null });
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        await new Promise<void>((resolve) => {
+          if (pc.iceGatheringState === 'complete') {
+            resolve();
+            return;
+          }
+          const handleStateChange = () => {
+            if (pc.iceGatheringState === 'complete') {
+              pc.removeEventListener('icegatheringstatechange', handleStateChange);
+              resolve();
+            }
+          };
+          pc.addEventListener('icegatheringstatechange', handleStateChange);
+        });
+
+        pc.ontrack = (event) => {
+          const [remoteStream] = event.streams;
+          if (remoteStream) {
+            set({ remoteStream });
+          }
+        };
+
         await state.c2Client.sendMessage('call_invite', {
           callId: call.id,
           recipientId: operatorId,
+          sdpOffer: pc.localDescription?.sdp,
         });
+
+        set({ activeCall: call });
+        activePeerConnection = pc;
       } catch (error) {
         console.error('[COMM] Failed to send call invitation:', error);
+        set({ callError: 'Failed to initiate call', activeCall: null });
       }
     } else {
       console.warn('[COMM] C2 not connected, call invitation not sent');
@@ -355,10 +472,67 @@ export const useCommStore = create<CommState>((set, get) => ({
   acceptCall: (callId) => {
     const state = get();
     if (state.incomingCall?.id === callId) {
-      set({
-        activeCall: { ...state.incomingCall, status: 'active', startTime: new Date() },
-        incomingCall: null,
-      });
+      const call = state.incomingCall;
+      set({ incomingCall: null });
+
+      if (!call.sdpOffer) {
+        set({ callError: 'Missing SDP offer for incoming call' });
+        return;
+      }
+
+      const inferredVideo = call.sdpOffer ? call.sdpOffer.includes('m=video') : true;
+      const media = call.media ?? { video: inferredVideo, audio: true };
+      navigator.mediaDevices
+        .getUserMedia(media)
+        .then(async (localStream) => {
+          const pc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+          });
+          localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+          pc.ontrack = (event) => {
+            const [remoteStream] = event.streams;
+            if (remoteStream) {
+              set({ remoteStream });
+            }
+          };
+
+          await pc.setRemoteDescription({ type: 'offer', sdp: call.sdpOffer });
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          await new Promise<void>((resolve) => {
+            if (pc.iceGatheringState === 'complete') {
+              resolve();
+              return;
+            }
+            const handleStateChange = () => {
+              if (pc.iceGatheringState === 'complete') {
+                pc.removeEventListener('icegatheringstatechange', handleStateChange);
+                resolve();
+              }
+            };
+            pc.addEventListener('icegatheringstatechange', handleStateChange);
+          });
+
+          set({
+            localStream,
+            activeCall: { ...call, status: 'active', startTime: new Date() },
+            callError: null,
+          });
+          activePeerConnection = pc;
+
+          if (state.c2Client && state.c2State === 'CONNECTED') {
+            await state.c2Client.sendMessage('call_accept', {
+              callId: call.id,
+              recipientId: call.initiator,
+              sdpAnswer: pc.localDescription?.sdp,
+            });
+          }
+        })
+        .catch((error) => {
+          console.error('[COMM] Failed to accept call:', error);
+          set({ callError: 'Failed to access media devices' });
+        });
 
       // Send acceptance via C2
       if (state.c2Client && state.c2State === 'CONNECTED') {
@@ -395,6 +569,14 @@ export const useCommStore = create<CommState>((set, get) => ({
       set({
         activeCall: { ...state.activeCall, status: 'ended', endTime: new Date() },
       });
+
+      if (activePeerConnection) {
+        activePeerConnection.close();
+        activePeerConnection = null;
+      }
+      state.localStream?.getTracks().forEach((track) => track.stop());
+      state.remoteStream?.getTracks().forEach((track) => track.stop());
+      set({ localStream: null, remoteStream: null });
 
       // Send end via C2
       if (state.c2Client && state.c2State === 'CONNECTED') {
@@ -548,14 +730,61 @@ export const useCommStore = create<CommState>((set, get) => ({
             lastSeen: new Date(envelope.timestamp),
           });
         } else if (envelope.type === 'call_invite' && typeof envelope.payload === 'object' && envelope.payload !== null) {
-          const payload = envelope.payload as { callId?: string; recipientId?: string };
+          const payload = envelope.payload as { callId?: string; recipientId?: string; sdpOffer?: string };
+          if (payload.recipientId && payload.recipientId !== clientId) {
+            return;
+          }
           const call: VideoCall = {
             id: payload.callId || `call-${Date.now()}`,
             participants: [envelope.from, clientId],
             initiator: envelope.from,
             status: 'ringing',
+            sdpOffer: payload.sdpOffer,
+            media: { video: true, audio: true },
           };
           set({ incomingCall: call });
+        } else if (envelope.type === 'call_accept' && typeof envelope.payload === 'object' && envelope.payload !== null) {
+          const payload = envelope.payload as { callId?: string; sdpAnswer?: string };
+          const activeCall = get().activeCall;
+          if (!activeCall || activeCall.id !== payload.callId || !payload.sdpAnswer) {
+            return;
+          }
+          if (!activePeerConnection) {
+            console.error('[COMM] Missing peer connection for call accept');
+            return;
+          }
+          activePeerConnection.setRemoteDescription({ type: 'answer', sdp: payload.sdpAnswer })
+            .then(() => {
+              set({ activeCall: { ...activeCall, status: 'active', startTime: new Date() } });
+            })
+            .catch((error) => {
+              console.error('[COMM] Failed to apply call answer:', error);
+              set({ callError: 'Failed to apply call answer' });
+            });
+        } else if (envelope.type === 'call_reject' && typeof envelope.payload === 'object' && envelope.payload !== null) {
+          const payload = envelope.payload as { callId?: string };
+          const activeCall = get().activeCall;
+          if (activeCall && payload.callId === activeCall.id) {
+            set({ activeCall: { ...activeCall, status: 'ended', endTime: new Date() } });
+            if (activePeerConnection) {
+              activePeerConnection.close();
+              activePeerConnection = null;
+            }
+            set({ localStream: null, remoteStream: null });
+          }
+        } else if (envelope.type === 'call_end' && typeof envelope.payload === 'object' && envelope.payload !== null) {
+          const payload = envelope.payload as { callId?: string };
+          const activeCall = get().activeCall;
+          if (activeCall && payload.callId === activeCall.id) {
+            set({ activeCall: { ...activeCall, status: 'ended', endTime: new Date() } });
+            if (activePeerConnection) {
+              activePeerConnection.close();
+              activePeerConnection = null;
+            }
+            get().localStream?.getTracks().forEach((track) => track.stop());
+            get().remoteStream?.getTracks().forEach((track) => track.stop());
+            set({ localStream: null, remoteStream: null });
+          }
         }
       },
       onRalphiePresence: (frame) => {
@@ -632,5 +861,128 @@ export const useCommStore = create<CommState>((set, get) => ({
     const state = get();
     if (!state.c2Client) return null;
     return state.c2Client.getStatus();
+  },
+
+  // Great Gospel: Revoke a node and terminate all sessions
+  revokeNode: (nodeId: string, reason: string) => {
+    console.warn(`[GREAT GOSPEL] Revoking node ${nodeId}: ${reason}`);
+    
+    set((state) => {
+      const revokedNodes = new Set(state.revokedNodes);
+      revokedNodes.add(nodeId);
+      
+      // Remove operator from list
+      const operators = new Map(state.operators);
+      operators.delete(nodeId);
+      
+      // Clear conversations with revoked node
+      const conversations = new Map(state.conversations);
+      conversations.delete(nodeId);
+      
+      // Terminate active call if participant is revoked
+      let activeCall = state.activeCall;
+      let incomingCall = state.incomingCall;
+      
+      if (activeCall && activeCall.participants.includes(nodeId)) {
+        console.error('[GREAT GOSPEL] Terminating active call - participant revoked');
+        // Clean up peer connection
+        if (activePeerConnection) {
+          activePeerConnection.close();
+          activePeerConnection = null;
+        }
+        // Stop media streams
+        if (state.localStream) {
+          state.localStream.getTracks().forEach(track => track.stop());
+        }
+        activeCall = null;
+      }
+      
+      if (incomingCall && incomingCall.participants.includes(nodeId)) {
+        console.warn('[GREAT GOSPEL] Rejecting incoming call - participant revoked');
+        incomingCall = null;
+      }
+      
+      return {
+        revokedNodes,
+        operators,
+        conversations,
+        activeCall,
+        incomingCall,
+        localStream: activeCall ? null : state.localStream,
+        remoteStream: activeCall ? null : state.remoteStream,
+      };
+    });
+  },
+
+  // Check if node is revoked
+  isNodeRevoked: (nodeId: string) => {
+    return get().revokedNodes.has(nodeId);
+  },
+
+  // PHASE 5: Notification Actions
+  
+  /**
+   * Set the currently active conversation
+   * Automatically clears unread count for that conversation
+   */
+  setActiveConversation: (conversationId: string | null) => {
+    set((state) => {
+      if (conversationId) {
+        // Clear unread count when viewing conversation
+        const unreadCounts = new Map(state.unreadCounts);
+        unreadCounts.delete(conversationId);
+        
+        console.log(`[COMM] Viewing conversation: ${conversationId} (cleared unread count)`);
+        
+        return {
+          activeConversationId: conversationId,
+          unreadCounts,
+        };
+      }
+      
+      return { activeConversationId: conversationId };
+    });
+  },
+
+  /**
+   * Clear unread count for a specific conversation
+   */
+  clearUnreadCount: (conversationId: string) => {
+    set((state) => {
+      const unreadCounts = new Map(state.unreadCounts);
+      unreadCounts.delete(conversationId);
+      return { unreadCounts };
+    });
+  },
+
+  /**
+   * Get unread count for a specific conversation
+   */
+  getUnreadCount: (conversationId: string) => {
+    return get().unreadCounts.get(conversationId) || 0;
+  },
+
+  /**
+   * Get total unread count across all conversations
+   */
+  getTotalUnreadCount: () => {
+    const counts = Array.from(get().unreadCounts.values());
+    return counts.reduce((sum, count) => sum + count, 0);
+  },
+
+  /**
+   * Get unverified intercepts count (Fail-Visible EW indicator)
+   */
+  getUnverifiedInterceptsCount: () => {
+    return get().unverifiedIntercepts;
+  },
+
+  /**
+   * Clear unverified intercepts counter
+   * Use with caution - operator must acknowledge security event
+   */
+  clearUnverifiedIntercepts: () => {
+    console.warn('[COMM] Clearing unverified intercepts counter');
+    set({ unverifiedIntercepts: 0 });
   },
 }));

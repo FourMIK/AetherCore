@@ -32,8 +32,8 @@ The Rust workspace contains the core system implementation:
 
 - **`core`** - Foundational types, traits, and shared utilities
 - **`domain`** - Domain model, business logic, and error types
-- **`crypto`** - Cryptographic primitives (Ed25519 signing, BLAKE3 hashing)
-- **`identity`** - Identity management and registry
+- **`crypto`** - Cryptographic primitives (Ed25519/P-256 signing, BLAKE3 hashing)
+- **`identity`** - Identity management and hardware-backed attestation (TPM/Secure Enclave)
 
 ### Network and Communication
 
@@ -147,7 +147,8 @@ Trust mesh operates on gossip protocol:
 ### Layered Security Model
 
 1. **Cryptographic Layer**
-   - Ed25519 digital signatures
+   - Ed25519 digital signatures (TPM-backed)
+   - ECDSA P-256 signatures (Secure Enclave-backed, iOS/macOS)
    - BLAKE3 content hashing
    - Merkle Vine integrity chains
 
@@ -175,7 +176,7 @@ Trust mesh operates on gossip protocol:
 - No attestation
 
 **Production** (future):
-- TPM/Secure Enclave integration
+- TPM 2.0 (Ed25519) / Secure Enclave (P-256) integration
 - Hardware-backed signing
 - Remote attestation
 - Network-wide trust anchors

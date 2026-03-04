@@ -11,7 +11,7 @@
  * Security: UI state transitions must preserve security context.
  */
 
-import { test, expect } from '../fixtures';
+import { test, expect } from './fixtures';
 
 test.describe('Dashboard Navigation', () => {
   test.beforeEach(async ({ page, waitForAppReady }) => {

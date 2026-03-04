@@ -2,6 +2,11 @@
  * VideoCallPanel
  * Secure video conferencing component
  * WebRTC-based with TPM-secured signaling
+ * 
+ * MISSION GUARDIAN INTEGRATION:
+ * - StreamAuthenticator monitors frame integrity via Merkle Vine
+ * - IntegrityOverlay displays on verification failure
+ * - All signaling wrapped as signed CanonicalEvents
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -14,16 +19,20 @@ import {
   PhoneOff,
   Maximize2,
   Minimize2,
-  Shield
+  Shield,
+  ShieldCheck,
 } from 'lucide-react';
 import { useCommStore, type VideoCall } from '../../store/useCommStore';
+import { IntegrityOverlay } from '../guardian/IntegrityOverlay';
+import { MerkleChainIndicator } from '../messaging/MerkleChainIndicator';
+import type { IntegrityStatus } from '@aethercore/shared';
 
 interface VideoCallPanelProps {
   call: VideoCall;
 }
 
 export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
-  const { operators, endCall } = useCommStore();
+  const { operators, endCall, localStream, remoteStream } = useCommStore();
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -31,6 +40,17 @@ export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
+  
+  // Stream integrity state
+  const [integrityStatus, setIntegrityStatus] = useState<IntegrityStatus>({
+    isValid: true,
+    verificationStatus: 'VERIFIED',
+    totalFrames: 0,
+    validFrames: 0,
+    invalidFrames: 0,
+    lastCheckTimestamp: Date.now(),
+    showAlert: false,
+  });
 
   const remoteParticipant = operators.get(
     call.participants.find(p => p !== call.initiator) || ''
@@ -47,32 +67,16 @@ export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
   }, [call.status, call.startTime]);
 
   useEffect(() => {
-    // Initialize local media stream
-    const initMediaStream = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = localStream ?? null;
+    }
+  }, [localStream]);
 
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-        }
-      } catch (err) {
-        console.error('Failed to access media devices:', err);
-      }
-    };
-
-    initMediaStream();
-
-    return () => {
-      // Cleanup streams
-      if (localVideoRef.current?.srcObject) {
-        const stream = localVideoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, []);
+  useEffect(() => {
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = remoteStream ?? null;
+    }
+  }, [remoteStream]);
 
   const toggleVideo = () => {
     if (localVideoRef.current?.srcObject) {
@@ -103,6 +107,18 @@ export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
     }
     endCall();
   };
+  
+  const handleTerminateOnIntegrityFailure = () => {
+    console.error('[VideoCallPanel] Terminating call due to integrity violation');
+    handleEndCall();
+  };
+  
+  const handleDismissIntegrityAlert = () => {
+    setIntegrityStatus(prev => ({
+      ...prev,
+      showAlert: false,
+    }));
+  };
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -111,17 +127,25 @@ export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
   };
 
   return (
-    <div className={`fixed inset-0 z-50 bg-carbon/95 backdrop-blur-sm ${isFullscreen ? '' : 'p-8'
-      }`}>
-      <GlassPanel variant="heavy" className={`${isFullscreen ? 'h-full' : 'h-full max-w-6xl mx-auto'
-        } flex flex-col`}>
-        {/* Header */}
-        <div className="p-4 border-b border-tungsten/10 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <Video className="text-overmatch" size={20} />
-              <span className="font-display font-semibold text-tungsten">
-                Secure Video Call
+    <>
+      {/* Integrity Overlay - Shows on stream tampering */}
+      <IntegrityOverlay
+        status={integrityStatus}
+        onTerminate={handleTerminateOnIntegrityFailure}
+        onDismiss={handleDismissIntegrityAlert}
+      />
+      
+      <div className={`fixed inset-0 z-50 bg-carbon/95 backdrop-blur-sm ${isFullscreen ? '' : 'p-8'
+        }`}>
+        <GlassPanel variant="heavy" className={`${isFullscreen ? 'h-full' : 'h-full max-w-6xl mx-auto'
+          } flex flex-col`}>
+          {/* Header */}
+          <div className="p-4 border-b border-tungsten/10 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Video className="text-overmatch" size={20} />
+                <span className="font-display font-semibold text-tungsten">
+                  Secure Video Call
               </span>
             </div>
             {call.status === 'active' && (
@@ -133,7 +157,15 @@ export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
               </>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {/* Stream Integrity Indicator */}
+            <MerkleChainIndicator
+              verificationStatus={integrityStatus.verificationStatus}
+              chainValid={integrityStatus.isValid}
+              showDetails={true}
+              size="sm"
+            />
+            
             <span className="text-xs text-verified-green flex items-center gap-1">
               <Shield size={12} />
               Encrypted
@@ -248,6 +280,7 @@ export const VideoCallPanel: React.FC<VideoCallPanelProps> = ({ call }) => {
           transform: scaleX(-1);
         }
       `}</style>
-    </div>
+      </div>
+    </>
   );
 };

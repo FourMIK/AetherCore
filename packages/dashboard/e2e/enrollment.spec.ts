@@ -10,7 +10,7 @@
  * Security: Genesis Bundle must be signed with Ed25519 (TPM-backed in production).
  */
 
-import { test, expect, testDevices } from '../fixtures';
+import { test, expect, testDevices } from './fixtures';
 
 test.describe('Zero-Touch Enrollment Flow', () => {
   test.beforeEach(async ({ page, waitForAppReady }) => {

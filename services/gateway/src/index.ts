@@ -252,9 +252,90 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// In-memory telemetry storage (last 30 seconds of data per node)
+const telemetryStore = new Map<string, { data: any; timestamp: number }>();
+const TELEMETRY_TTL_MS = 30000; // 30 seconds
+
+// Clean up old telemetry periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [nodeId, entry] of telemetryStore.entries()) {
+    if (now - entry.timestamp > TELEMETRY_TTL_MS) {
+      telemetryStore.delete(nodeId);
+      logger.debug({ node_id: nodeId }, 'Telemetry expired');
+    }
+  }
+}, 10000); // Clean every 10 seconds
+
 // Health check endpoint for Docker/Kubernetes readiness probes
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
+});
+
+// GET endpoint to retrieve current nodes
+app.get('/api/nodes', (req, res) => {
+  try {
+    const nodes = Array.from(telemetryStore.entries()).map(([nodeId, entry]) => ({
+      node_id: nodeId,
+      ...entry.data,
+      last_seen: entry.timestamp,
+      age_ms: Date.now() - entry.timestamp,
+    }));
+
+    res.status(200).json({
+      status: 'ok',
+      count: nodes.length,
+      nodes: nodes,
+      timestamp: Date.now(),
+    });
+  } catch (error) {
+    logger.error({ error }, 'Failed to retrieve nodes');
+    res.status(500).json({ status: 'error', message: 'Failed to retrieve nodes' });
+  }
+});
+
+// Telemetry endpoint for edge devices
+app.post('/api/telemetry', (req, res) => {
+  try {
+    const telemetry = req.body;
+    const nodeId = req.headers['x-node-id'] || telemetry.node_id || 'unknown';
+
+    // Store telemetry
+    telemetryStore.set(nodeId, {
+      data: telemetry,
+      timestamp: Date.now(),
+    });
+
+    logger.info({
+      node_id: nodeId,
+      platform: req.headers['x-platform'] || telemetry.platform,
+      node_type: telemetry.node_type,
+      timestamp: telemetry.timestamp,
+      trust_score: telemetry.trust?.self_score,
+      hardware: telemetry.hardware?.model,
+    }, 'Telemetry received from edge node');
+
+    // Broadcast to WebSocket clients if any
+    wss.clients.forEach((client) => {
+      if (client.readyState === 1) { // WebSocket.OPEN
+        client.send(JSON.stringify({
+          type: 'telemetry',
+          payload: telemetry,
+          timestamp: Date.now(),
+        }));
+      }
+    });
+
+    res.status(200).json({
+      status: 'accepted',
+      node_id: nodeId,
+      timestamp: Date.now(),
+      message: 'Telemetry received by AetherCore Gateway'
+    });
+  } catch (error) {
+    logger.error({ error }, 'Failed to process telemetry');
+    res.status(400).json({ status: 'error', message: 'Invalid telemetry payload' });
+  }
 });
 
 app.post('/ralphie/presence', (req, res) => {

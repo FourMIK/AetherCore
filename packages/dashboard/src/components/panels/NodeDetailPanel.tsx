@@ -91,10 +91,10 @@ export const NodeDetailPanel: React.FC = () => {
             Position
           </div>
           <div className="font-mono text-xs text-tungsten/70 space-y-1">
-            <div>Lat: {node.position.latitude.toFixed(6)}°</div>
-            <div>Lon: {node.position.longitude.toFixed(6)}°</div>
-            {node.position.altitude && (
-              <div>Alt: {node.position.altitude.toFixed(0)}m</div>
+            <div>Lat: {((node.position as any).latitude ?? (node.position as any).lat ?? 0).toFixed(6)}°</div>
+            <div>Lon: {((node.position as any).longitude ?? (node.position as any).lng ?? 0).toFixed(6)}°</div>
+            {((node.position as any).altitude ?? (node.position as any).alt) && (
+              <div>Alt: {((node.position as any).altitude ?? (node.position as any).alt).toFixed(0)}m</div>
             )}
           </div>
         </div>

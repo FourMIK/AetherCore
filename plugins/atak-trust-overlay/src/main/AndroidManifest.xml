@@ -3,9 +3,22 @@
 
     <application
         android:allowBackup="false"
-        android:label="AetherCore Trust Overlay"
+        android:label="AetherCore Trust Monitor"
+        android:icon="@android:drawable/ic_dialog_info"
         android:supportsRtl="true">
 
+        <!-- Standalone launcher activity - makes app visible in app drawer -->
+        <activity
+            android:name=".TrustMonitorActivity"
+            android:label="AetherCore Trust Monitor"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ATAK plugin meta-data (for ATAK-MIL or certified versions) -->
         <meta-data
             android:name="com.atakmap.android.plugin"
             android:resource="@xml/trust_overlay_plugin" />
