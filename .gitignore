@@ -92,7 +92,7 @@ dist/atak/
 # Android Build Artifacts
 .gradle/
 .cxx/
-# local.properties  <-- Commented out to allow creation
+plugins/atak-trust-overlay/local.properties
 *.apk
 *.ap_
 *.aab

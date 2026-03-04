@@ -39,14 +39,14 @@ Provide ATAK SDK dependencies using **one** of the following approaches:
 
 1. Local binaries in `libs/` (default path):
    - `plugins/atak-trust-overlay/libs/atak-sdk.jar`
-   - `plugins/atak-trust-overlay/libs/atak-plugin-sdk.aar`
+   - optional additional ATAK SDK artifacts if your distribution requires them
 2. Private Maven repo (optional): define the following in `local.properties`:
    - `atak.maven.url=https://<your-private-repo>`
    - `atak.maven.artifacts=group:artifact:version,group:artifact:version`
 
 You can override local artifact names (comma-separated) with:
 
-- `atak.required.artifacts=atak-sdk.jar,atak-plugin-sdk.aar`
+- `atak.required.artifacts=atak-sdk.jar`
 
 Gradle preflight now fails early when required ATAK artifacts are not available and when compatibility values drift between `build.gradle.kts` defaults and `src/main/assets/plugin.xml`.
 
@@ -62,26 +62,27 @@ ATAK loads this plugin through metadata in `AndroidManifest.xml`, then resolves 
 
 This plugin compiles against ATAK SDK jar artifacts in `plugins/atak-trust-overlay/libs`.
 
-- Default required set: `main.jar`
+- Default required set: `atak-sdk.jar`
 - Gradle property: `atak.required.artifacts` (comma-separated filenames)
-- Default contract: `atak.required.artifacts=main.jar`
+- Default contract: `atak.required.artifacts=atak-sdk.jar`
+- Optional local-only stub mode: `atak.use.stub.artifacts=true` (switches default contract to `main.jar`)
 
 ### 1) Copy ATAK SDK artifacts into `libs/`
 
 ```bash
 mkdir -p plugins/atak-trust-overlay/libs
-cp atak/ATAK/app/build/libs/main.jar plugins/atak-trust-overlay/libs/main.jar
+cp /path/to/atak-sdk.jar plugins/atak-trust-overlay/libs/atak-sdk.jar
 ```
 
 If your environment uses different names, either rename files in `libs/` or override the required set with Gradle:
 
 ```bash
-./gradlew -Patak.required.artifacts=main.jar,<additional>.jar :plugins:atak-trust-overlay:preBuild
+./gradlew -Patak.required.artifacts=atak-sdk.jar,<additional>.jar preBuild
 ```
 
 ### 2) Preflight guards
 
-`preBuild` runs `verifyAtakSdkArtifacts` and fails fast when any required SDK filename from `atak.required.artifacts` is missing from `libs/`.
+`preBuild` runs `verifyAtakSdkPrerequisites` and fails fast when any required SDK filename from `atak.required.artifacts` is missing from `libs/`.
 
 See `plugins/atak-trust-overlay/libs/README.md` for the offline contract and examples.
 
@@ -102,6 +103,7 @@ Required local files/properties before sync/build:
 
 - `local.properties` at project root with standard Android SDK path:
   - `sdk.dir=/absolute/path/to/Android/Sdk`
+  - Start from `plugins/atak-trust-overlay/local.properties.example` (this file is intentionally local-only and ignored by git)
 - JNI override (if JNI crate is not at `../../external/aethercore-jni` relative to this module root):
   - `aethercore.jni.dir=/absolute/path/to/aethercore-jni`
 - Release signing (only needed for `release` builds/signing):
@@ -112,15 +114,15 @@ Required local files/properties before sync/build:
 
 Expected successful outcomes:
 
-- Gradle Sync completes without `verifyAethercoreJniCrate`/`verifyAtakSdkArtifacts` task errors.
-- `:preBuild` passes after SDK jars exist under `plugins/atak-trust-overlay/libs` (default requires `main.jar`).
+- Gradle Sync completes without `verifyAethercoreJniCrate`/`verifyAtakSdkPrerequisites` task errors.
+- `:preBuild` passes after SDK jars exist under `plugins/atak-trust-overlay/libs` (default requires `atak-sdk.jar`).
 - `:assembleDebug` produces a debug APK with JNI targets for `armeabi-v7a` and `arm64-v8a`.
 
 Common failure signatures:
 
 - `AetherCore JNI crate not found at '...'` → set `aethercore.jni.dir` or checkout `external/aethercore-jni`.
 - `AetherCore JNI crate is missing Cargo.toml at '...'` → point `aethercore.jni.dir` at the crate root.
-- `Missing ATAK SDK artifacts in '.../libs': ...` → copy `main.jar` (and any configured `atak.required.artifacts`) into `libs/`.
+- `ATAK SDK prerequisites are missing` → copy required SDK files into `libs/` (or configure `atak.maven.url` and `atak.maven.artifacts`).
 - Java/Kotlin compatibility errors during sync/compile (class file target mismatch) → confirm Android Studio/Gradle is running on JDK 17.
 
 > Note: this module currently does **not** ship a committed Gradle wrapper. To reduce environment drift, use the AGP/Kotlin/Gradle versions above when importing into an existing Android workspace.

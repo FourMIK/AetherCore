@@ -90,14 +90,21 @@ if ($armv7 -and $arm64) {
 # ============================================================================
 # CHECK 6: ATAK SDK
 # ============================================================================
-Write-Host "[6/$totalChecks] ATAK SDK (main.jar)" -ForegroundColor Yellow -NoNewline
-$atakSdk = "$PSScriptRoot\libs\main.jar"
-if (Test-Path $atakSdk) {
-    $size = [math]::Round((Get-Item $atakSdk).Length / 1MB, 2)
-    Write-Host " ✅ $size MB" -ForegroundColor Green
+Write-Host "[6/$totalChecks] ATAK SDK Artifacts" -ForegroundColor Yellow -NoNewline
+$atakSdkJar = "$PSScriptRoot\libs\atak-sdk.jar"
+$atakMainJar = "$PSScriptRoot\libs\main.jar"
+$hasDefaultContract = Test-Path $atakSdkJar
+$hasStubContract = Test-Path $atakMainJar
+if ($hasDefaultContract) {
+    $sdkSize = [math]::Round((Get-Item $atakSdkJar).Length / 1MB, 2)
+    Write-Host " ✅ atak-sdk.jar=$sdkSize MB" -ForegroundColor Green
+    $successCount++
+} elseif ($hasStubContract) {
+    $mainSize = [math]::Round((Get-Item $atakMainJar).Length / 1MB, 2)
+    Write-Host " ✅ main.jar=$mainSize MB (stub/offline mode)" -ForegroundColor Green
     $successCount++
 } else {
-    Write-Host " ❌ Not found in libs/" -ForegroundColor Red
+    Write-Host " ❌ Missing atak-sdk.jar (or main.jar in stub mode)" -ForegroundColor Red
 }
 
 # ============================================================================

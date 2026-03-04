@@ -184,7 +184,14 @@ Place ATAK SDK artifacts in `plugins/atak-trust-overlay/libs/`:
 
 ```bash
 mkdir -p plugins/atak-trust-overlay/libs
-cp atak/ATAK/app/build/libs/main.jar plugins/atak-trust-overlay/libs/main.jar
+cp /path/to/atak-sdk.jar plugins/atak-trust-overlay/libs/atak-sdk.jar
+```
+
+Optional local-only stub mode:
+
+```properties
+atak.use.stub.artifacts=true
+atak.required.artifacts=main.jar
 ```
 
 ### JNI Crate Location
@@ -202,6 +209,8 @@ Configure Android SDK path in `local.properties`:
 ```properties
 sdk.dir=/absolute/path/to/Android/Sdk
 ```
+
+Use `plugins/atak-trust-overlay/local.properties.example` as a template. `local.properties` is local-machine config and should not be committed.
 
 ## Deployment
 

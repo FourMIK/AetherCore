@@ -19,9 +19,21 @@ val atakCompatibleVersion = providers.gradleProperty("atak.compatible.version").
 val defaultAethercoreJniDir = rootProject.file("../../external/aethercore-jni")
 val aethercoreJniDir = localProperties.getProperty("aethercore.jni.dir")?.let(::file) ?: defaultAethercoreJniDir
 
-// Changed default to main.jar to support stub-only builds matching offline contract
+val useStubArtifacts =
+    localProperties.getProperty("atak.use.stub.artifacts")
+        ?.trim()
+        ?.lowercase()
+        ?.let { it == "1" || it == "true" || it == "yes" || it == "on" }
+        ?: false
+
+val defaultRequiredAtakArtifacts = if (useStubArtifacts) {
+    "main.jar"
+} else {
+    "atak-sdk.jar"
+}
+
 val requiredAtakArtifacts =
-    (localProperties.getProperty("atak.required.artifacts") ?: "main.jar")
+    (localProperties.getProperty("atak.required.artifacts") ?: defaultRequiredAtakArtifacts)
         .split(',')
         .map { it.trim() }
         .filter { it.isNotEmpty() }
@@ -119,6 +131,13 @@ val verifyAtakSdkPrerequisites by tasks.registering {
     dependsOn(verifyAtakCompatibilityContract)
 
     doLast {
+        if (useStubArtifacts) {
+            logger.warn(
+                "ATAK stub artifact mode enabled (atak.use.stub.artifacts=true). " +
+                    "This mode is for local/offline development only."
+            )
+        }
+
         val libsDir = project.layout.projectDirectory.dir("libs").asFile
         val missingArtifacts = requiredAtakArtifacts.filterNot { artifactName ->
             libsDir.resolve(artifactName).exists()
@@ -255,7 +274,9 @@ val packageStubs by tasks.registering(Jar::class) {
 }
 
 tasks.named("verifyAtakSdkPrerequisites") {
-    dependsOn(packageStubs)
+    if (useStubArtifacts) {
+        dependsOn(packageStubs)
+    }
 }
 
 tasks.named("preBuild") {

@@ -1,0 +1,12 @@
+# macOS example:
+# sdk.dir=/Users/<you>/Library/Android/sdk
+# Windows example:
+# sdk.dir=C:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
+sdk.dir=/absolute/path/to/Android/Sdk
+
+# Default production/dev SDK contract:
+atak.required.artifacts=atak-sdk.jar
+
+# Optional local-only offline mode (auto-packages stubs -> libs/main.jar):
+# atak.use.stub.artifacts=true
+# atak.required.artifacts=main.jar
