@@ -8,6 +8,9 @@
 //! occurs during the provisioning protocol.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Unified candidate node representation
@@ -20,6 +23,12 @@ pub struct CandidateNode {
     pub id: String,
     /// Human-readable label for UI display
     pub label: String,
+    /// Transport hint for provisioning router
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<String>, // "usb-serial" | "bluetooth-serial" | "usb-mass-storage" | "network"
+    /// Detected hardware profile used for firmware auto-selection
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hardware_profile: Option<String>, // e.g. "esp32-generic" | "heltec-v3" | "rp2040-uf2"
 }
 
 /// Credentials for network device provisioning
@@ -29,11 +38,13 @@ pub struct Credentials {
     pub password: String,
 }
 
-/// Scan for all provisionable assets (USB and Network)
+/// Scan for all provisionable assets (USB Serial, USB Mass Storage, and Network)
 ///
 /// This function performs parallel discovery of:
 /// 1. USB serial devices (Arduino, Heltec, ESP32)
-/// 2. Network devices via mDNS (Raspberry Pi running aethercore service)
+/// 2. Bluetooth serial endpoints exposed by the host OS
+/// 3. USB mass-storage boot devices (UF2/RP2040 style)
+/// 4. Network devices via mDNS (Raspberry Pi running aethercore service)
 ///
 /// # Returns
 /// Unified list of CandidateNode objects representing all discovered assets
@@ -51,14 +62,14 @@ pub async fn scan_for_assets() -> Result<Vec<CandidateNode>, String> {
 
     let mut candidates = Vec::new();
 
-    // PHASE 1: Scan USB Serial Devices
+    // PHASE 1: Scan USB/Bluetooth Serial Devices
     match scan_usb_devices().await {
         Ok(usb_nodes) => {
-            log::info!("Found {} USB devices", usb_nodes.len());
+            log::info!("Found {} tethered serial devices", usb_nodes.len());
             candidates.extend(usb_nodes);
         }
         Err(e) => {
-            log::warn!("USB scan failed: {}", e);
+            log::warn!("Tethered serial scan failed: {}", e);
             // Non-fatal: continue to network scan
         }
     }
@@ -72,6 +83,18 @@ pub async fn scan_for_assets() -> Result<Vec<CandidateNode>, String> {
         Err(e) => {
             log::warn!("Network scan failed: {}", e);
             // Non-fatal: return USB results if available
+        }
+    }
+
+    // PHASE 3: Scan USB Mass-Storage Devices (UF2 boot drives)
+    match scan_usb_mass_storage_devices().await {
+        Ok(storage_nodes) => {
+            log::info!("Found {} USB mass-storage devices", storage_nodes.len());
+            candidates.extend(storage_nodes);
+        }
+        Err(e) => {
+            log::warn!("USB mass-storage scan failed: {}", e);
+            // Non-fatal: return other results if available
         }
     }
 
@@ -90,7 +113,7 @@ async fn scan_usb_devices() -> Result<Vec<CandidateNode>, String> {
     let mut usb_nodes = Vec::new();
 
     for port in ports {
-        let label = match &port.port_type {
+        let (label, profile, transport) = match &port.port_type {
             SerialPortType::UsbPort(info) => {
                 // Check if it's a likely candidate (ESP, Heltec, Arduino)
                 if let Some(ref mfr) = info.manufacturer {
@@ -102,24 +125,43 @@ async fn scan_usb_devices() -> Result<Vec<CandidateNode>, String> {
                         || mfr_lower.contains("heltec")
                         || mfr_lower.contains("arduino")
                     {
-                        // Create label from manufacturer and product
+                        // Create label from manufacturer and product and derive hardware profile.
                         let product = info.product.as_deref().unwrap_or("Unknown");
-                        format!("{} {}", mfr, product)
+                        (
+                            format!("{} {}", mfr, product),
+                            detect_usb_serial_profile(
+                                info.manufacturer.as_deref(),
+                                info.product.as_deref(),
+                                &port.port_name,
+                            ),
+                            "usb-serial".to_string(),
+                        )
                     } else {
                         continue; // Skip non-target devices
                     }
                 } else {
                     // No manufacturer info, but include as potential candidate
-                    "Unknown USB Device".to_string()
+                    (
+                        "Unknown USB Device".to_string(),
+                        detect_usb_serial_profile(None, None, &port.port_name),
+                        "usb-serial".to_string(),
+                    )
                 }
             }
-            _ => continue, // Skip non-USB ports
+            SerialPortType::BluetoothPort => (
+                format!("Bluetooth Serial ({})", port.port_name),
+                detect_bluetooth_serial_profile(&port.port_name),
+                "bluetooth-serial".to_string(),
+            ),
+            _ => continue, // Skip non-serial and unsupported ports
         };
 
         usb_nodes.push(CandidateNode {
             r#type: "USB".to_string(),
             id: port.port_name.clone(),
             label,
+            transport: Some(transport),
+            hardware_profile: profile,
         });
     }
 
@@ -166,6 +208,8 @@ async fn scan_network_devices() -> Result<Vec<CandidateNode>, String> {
                                 r#type: "NET".to_string(),
                                 id: ip,
                                 label,
+                                transport: Some("network".to_string()),
+                                hardware_profile: Some("raspberry-pi-aethercore".to_string()),
                             });
                         }
                     }
@@ -200,6 +244,162 @@ async fn scan_network_devices() -> Result<Vec<CandidateNode>, String> {
     Ok(net_nodes)
 }
 
+/// Scan for USB mass-storage devices used by UF2 bootloaders.
+///
+/// Fail-visible behavior:
+/// - Only drives that present explicit UF2/RP2040 markers are considered candidates.
+/// - Generic drives are ignored to prevent accidental flashing to non-target media.
+async fn scan_usb_mass_storage_devices() -> Result<Vec<CandidateNode>, String> {
+    let mut nodes: Vec<CandidateNode> = Vec::new();
+    let mut seen_mounts = HashSet::new();
+
+    for mount in candidate_mount_points() {
+        if !mount.is_dir() {
+            continue;
+        }
+
+        let info_uf2_path = mount.join("INFO_UF2.TXT");
+        let info_uf2_contents = fs::read_to_string(&info_uf2_path).ok();
+        let mount_label = mount
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.to_string())
+            .unwrap_or_else(|| mount.to_string_lossy().to_string());
+
+        let profile = detect_mass_storage_profile(&mount_label, info_uf2_contents.as_deref());
+        let Some(profile) = profile else {
+            continue;
+        };
+
+        let mount_id = mount.to_string_lossy().to_string();
+        if !seen_mounts.insert(mount_id.clone()) {
+            continue;
+        }
+
+        nodes.push(CandidateNode {
+            r#type: "USB".to_string(),
+            id: mount_id,
+            label: format!("UF2 Boot Drive ({})", mount_label),
+            transport: Some("usb-mass-storage".to_string()),
+            hardware_profile: Some(profile),
+        });
+    }
+
+    Ok(nodes)
+}
+
+fn candidate_mount_points() -> Vec<PathBuf> {
+    let mut mounts: Vec<PathBuf> = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        for letter in b'A'..=b'Z' {
+            let drive = format!("{}:\\", letter as char);
+            let path = PathBuf::from(drive);
+            if path.exists() {
+                mounts.push(path);
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        mounts.extend(list_directories(Path::new("/Volumes")));
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        mounts.extend(list_directories(Path::new("/media")));
+        mounts.extend(list_directories(Path::new("/mnt")));
+
+        // /run/media often contains /run/media/<user>/<volume>
+        for user_mount in list_directories(Path::new("/run/media")) {
+            mounts.push(user_mount.clone());
+            mounts.extend(list_directories(&user_mount));
+        }
+    }
+
+    mounts
+}
+
+fn list_directories(root: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(root) else {
+        return Vec::new();
+    };
+
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .collect()
+}
+
+fn detect_usb_serial_profile(
+    manufacturer: Option<&str>,
+    product: Option<&str>,
+    port_name: &str,
+) -> Option<String> {
+    let descriptor = format!(
+        "{} {} {}",
+        manufacturer.unwrap_or_default(),
+        product.unwrap_or_default(),
+        port_name
+    )
+    .to_lowercase();
+
+    if descriptor.contains("heltec") {
+        return Some("heltec-v3".to_string());
+    }
+
+    if descriptor.contains("rp2040")
+        || descriptor.contains("pico")
+        || descriptor.contains("raspberry pi pico")
+    {
+        return Some("rp2040-uf2".to_string());
+    }
+
+    if descriptor.contains("esp32")
+        || descriptor.contains("cp210")
+        || descriptor.contains("ftdi")
+        || descriptor.contains("ch340")
+        || descriptor.contains("silicon labs")
+        || descriptor.contains("arduino")
+    {
+        return Some("esp32-generic".to_string());
+    }
+
+    None
+}
+
+fn detect_mass_storage_profile(volume_label: &str, info_uf2: Option<&str>) -> Option<String> {
+    let descriptor = format!("{} {}", volume_label, info_uf2.unwrap_or_default()).to_lowercase();
+
+    if descriptor.contains("uf2")
+        || descriptor.contains("rp2040")
+        || descriptor.contains("pico")
+        || descriptor.contains("ralphie")
+    {
+        return Some("rp2040-uf2".to_string());
+    }
+
+    None
+}
+
+fn detect_bluetooth_serial_profile(port_name: &str) -> Option<String> {
+    let descriptor = port_name.to_lowercase();
+
+    if descriptor.contains("esp32") || descriptor.contains("heltec") || descriptor.contains("ralphie")
+    {
+        return Some("esp32-generic".to_string());
+    }
+
+    if descriptor.contains("rp2040") || descriptor.contains("pico") {
+        return Some("rp2040-uf2".to_string());
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +410,8 @@ mod tests {
             r#type: "USB".to_string(),
             id: "COM3".to_string(),
             label: "Heltec V3".to_string(),
+            transport: Some("usb-serial".to_string()),
+            hardware_profile: Some("heltec-v3".to_string()),
         };
 
         let json = serde_json::to_string(&node).unwrap();
@@ -226,5 +428,36 @@ mod tests {
         assert_eq!(node.r#type, "NET");
         assert_eq!(node.id, "192.168.1.50");
         assert!(node.label.contains("Pi"));
+        assert_eq!(node.transport, None);
+        assert_eq!(node.hardware_profile, None);
+    }
+
+    #[test]
+    fn test_detect_usb_serial_profile() {
+        let profile =
+            detect_usb_serial_profile(Some("Silicon Labs"), Some("CP2102 USB to UART"), "COM7");
+        assert_eq!(profile.as_deref(), Some("esp32-generic"));
+
+        let heltec =
+            detect_usb_serial_profile(Some("Heltec"), Some("WiFi LoRa 32"), "/dev/ttyUSB0");
+        assert_eq!(heltec.as_deref(), Some("heltec-v3"));
+    }
+
+    #[test]
+    fn test_detect_mass_storage_profile() {
+        let profile = detect_mass_storage_profile("RPI-RP2", Some("UF2 Bootloader"));
+        assert_eq!(profile.as_deref(), Some("rp2040-uf2"));
+
+        let no_match = detect_mass_storage_profile("DATA_DRIVE", None);
+        assert_eq!(no_match, None);
+    }
+
+    #[test]
+    fn test_detect_bluetooth_serial_profile() {
+        let esp32 = detect_bluetooth_serial_profile("ESP32-RALPHIE-BT");
+        assert_eq!(esp32.as_deref(), Some("esp32-generic"));
+
+        let unknown = detect_bluetooth_serial_profile("BT-COM5");
+        assert_eq!(unknown, None);
     }
 }

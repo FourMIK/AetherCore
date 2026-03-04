@@ -9,6 +9,8 @@
 use crate::commands::resolve_required_component_path;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -40,6 +42,19 @@ pub struct FlashProgress {
     pub message: String,
     pub progress: f32, // 0.0 to 1.0
 }
+
+const USB_SERIAL_HINTS: &[&str] = &[
+    "ralphie",
+    "heltec",
+    "esp",
+    "cp210",
+    "ftdi",
+    "ch340",
+    "silicon labs",
+    "arduino",
+    "pico",
+    "rp2040",
+];
 
 /// Flash firmware and provision USB device
 ///
@@ -87,6 +102,43 @@ pub async fn flash_and_provision(
     let identity = perform_attestation(&port, genesis).await?;
 
     log::info!("Flash and provision complete for {}", port);
+
+    Ok(identity)
+}
+
+/// Flash UF2 firmware to a USB mass-storage boot drive and continue with serial attestation.
+///
+/// This flow supports bootloader-only onboarding devices (for example RP2040 UF2 mode):
+/// 1. Copy UF2 artifact onto mass-storage mount
+/// 2. Wait for device reboot and serial re-enumeration
+/// 3. Listen for GENESIS and perform challenge-response attestation
+pub async fn flash_mass_storage_and_provision(
+    mount_point: String,
+    firmware_path: String,
+    window: tauri::Window,
+) -> Result<GenesisIdentity, String> {
+    log::info!(
+        "Starting mass-storage flash and provision: mount_point={}, firmware={}",
+        mount_point,
+        firmware_path
+    );
+
+    let baseline_ports = serialport::available_ports()
+        .map_err(|e| format!("FAIL-VISIBLE: Failed to enumerate serial ports: {}", e))?
+        .into_iter()
+        .map(|port| port.port_name)
+        .collect::<HashSet<_>>();
+
+    flash_uf2_mass_storage(&mount_point, &firmware_path, &window).await?;
+
+    let attestation_port = await_attestation_port(&baseline_ports, &window).await?;
+    let genesis = listen_for_genesis(&attestation_port).await?;
+    let identity = perform_attestation(&attestation_port, genesis).await?;
+
+    log::info!(
+        "Mass-storage flash and provision complete via serial port {}",
+        attestation_port
+    );
 
     Ok(identity)
 }
@@ -255,6 +307,181 @@ async fn flash_firmware(
     log::info!("Firmware flash completed successfully for port: {}", port);
 
     Ok(())
+}
+
+async fn flash_uf2_mass_storage(
+    mount_point: &str,
+    firmware_path: &str,
+    window: &tauri::Window,
+) -> Result<(), String> {
+    let mount_path = Path::new(mount_point);
+    if !mount_path.is_dir() {
+        return Err(format!(
+            "FAIL-VISIBLE: USB mass-storage mount point not available: {}",
+            mount_point
+        ));
+    }
+
+    let firmware = Path::new(firmware_path);
+    if !firmware.exists() {
+        return Err(format!(
+            "FAIL-VISIBLE: Firmware file not found: {}",
+            firmware_path
+        ));
+    }
+
+    let extension = firmware
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .unwrap_or_default();
+    if extension != "uf2" {
+        return Err(format!(
+            "FAIL-VISIBLE: Mass-storage provisioning requires a .uf2 artifact, got: {}",
+            firmware_path
+        ));
+    }
+
+    let metadata = fs::metadata(firmware).map_err(|e| {
+        format!(
+            "FAIL-VISIBLE: Unable to read firmware metadata ({}): {}",
+            firmware_path, e
+        )
+    })?;
+    if metadata.len() == 0 {
+        return Err(format!(
+            "FAIL-VISIBLE: Firmware artifact is empty: {}",
+            firmware_path
+        ));
+    }
+
+    let _ = window.emit(
+        "flash_progress",
+        FlashProgress {
+            stage: "initializing".to_string(),
+            message: "Preparing UF2 copy to USB boot drive...".to_string(),
+            progress: 0.0,
+        },
+    );
+
+    let filename = firmware
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("firmware.uf2");
+    let destination = mount_path.join(filename);
+
+    let _ = window.emit(
+        "flash_progress",
+        FlashProgress {
+            stage: "flashing".to_string(),
+            message: format!(
+                "Copying {} to boot drive {}",
+                filename,
+                mount_path.to_string_lossy()
+            ),
+            progress: 0.45,
+        },
+    );
+
+    fs::copy(firmware, &destination).map_err(|e| {
+        format!(
+            "FAIL-VISIBLE: Failed to copy UF2 to boot drive ({}): {}",
+            destination.display(),
+            e
+        )
+    })?;
+
+    let _ = window.emit(
+        "flash_progress",
+        FlashProgress {
+            stage: "flashing".to_string(),
+            message: "UF2 copied successfully. Waiting for reboot and identity handshake..."
+                .to_string(),
+            progress: 0.65,
+        },
+    );
+
+    Ok(())
+}
+
+async fn await_attestation_port(
+    baseline_ports: &HashSet<String>,
+    window: &tauri::Window,
+) -> Result<String, String> {
+    let timeout = Duration::from_secs(45);
+    let interval = Duration::from_millis(1000);
+    let start = std::time::Instant::now();
+
+    loop {
+        if start.elapsed() > timeout {
+            return Err(
+                "FAIL-VISIBLE: Device flashed, but no compatible serial endpoint appeared for \
+                 GENESIS/attestation within 45 seconds. Reconnect device and rescan."
+                    .to_string(),
+            );
+        }
+
+        let ports = serialport::available_ports().map_err(|e| {
+            format!(
+                "FAIL-VISIBLE: Failed to enumerate serial ports after UF2 flash: {}",
+                e
+            )
+        })?;
+
+        if let Some(port_name) = select_attestation_port(baseline_ports, &ports) {
+            let _ = window.emit(
+                "flash_progress",
+                FlashProgress {
+                    stage: "connecting".to_string(),
+                    message: format!(
+                        "Detected provisioned serial endpoint on {}. Establishing trust handshake...",
+                        port_name
+                    ),
+                    progress: 0.8,
+                },
+            );
+            return Ok(port_name);
+        }
+
+        tokio::time::sleep(interval).await;
+    }
+}
+
+fn select_attestation_port(
+    baseline_ports: &HashSet<String>,
+    ports: &[serialport::SerialPortInfo],
+) -> Option<String> {
+    for port in ports {
+        if !baseline_ports.contains(&port.port_name) {
+            return Some(port.port_name.clone());
+        }
+    }
+
+    for port in ports {
+        if is_likely_ralphie_serial_port(port) {
+            return Some(port.port_name.clone());
+        }
+    }
+
+    None
+}
+
+fn is_likely_ralphie_serial_port(port: &serialport::SerialPortInfo) -> bool {
+    let serialport::SerialPortType::UsbPort(info) = &port.port_type else {
+        return false;
+    };
+
+    let descriptor = format!(
+        "{} {} {}",
+        info.manufacturer.as_deref().unwrap_or_default(),
+        info.product.as_deref().unwrap_or_default(),
+        port.port_name
+    )
+    .to_lowercase();
+
+    USB_SERIAL_HINTS
+        .iter()
+        .any(|hint| descriptor.contains(hint))
 }
 
 /// Listen for GENESIS message from newly flashed device
@@ -601,5 +828,37 @@ mod tests {
         let genesis: GenesisMessage = serde_json::from_str(json).unwrap();
         assert_eq!(genesis.r#type, "GENESIS");
         assert_eq!(genesis.root.len(), 64);
+    }
+
+    #[test]
+    fn test_select_attestation_port_prefers_new_port() {
+        use serialport::{SerialPortInfo, SerialPortType, UsbPortInfo};
+
+        let baseline = HashSet::from([String::from("COM3")]);
+        let ports = vec![
+            SerialPortInfo {
+                port_name: "COM3".to_string(),
+                port_type: SerialPortType::UsbPort(UsbPortInfo {
+                    vid: 0x10c4,
+                    pid: 0xea60,
+                    serial_number: None,
+                    manufacturer: Some("Silicon Labs".to_string()),
+                    product: Some("CP2102".to_string()),
+                }),
+            },
+            SerialPortInfo {
+                port_name: "COM7".to_string(),
+                port_type: SerialPortType::UsbPort(UsbPortInfo {
+                    vid: 0x10c4,
+                    pid: 0xea60,
+                    serial_number: None,
+                    manufacturer: Some("Silicon Labs".to_string()),
+                    product: Some("CP2102".to_string()),
+                }),
+            },
+        ];
+
+        let selected = select_attestation_port(&baseline, &ports);
+        assert_eq!(selected.as_deref(), Some("COM7"));
     }
 }

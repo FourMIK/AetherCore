@@ -13,6 +13,8 @@ interface CandidateNode {
   type: string;
   id: string;
   label: string;
+  transport?: 'usb-serial' | 'usb-mass-storage' | 'network' | 'bluetooth-serial';
+  hardware_profile?: string;
 }
 
 interface GenesisIdentity {
@@ -40,6 +42,7 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
 }) => {
   const [stage, setStage] = useState<'input' | 'activating' | 'success' | 'error'>('input');
   const [password, setPassword] = useState('raspberry'); // Default for Pi
+  const [manualFirmwareOverride, setManualFirmwareOverride] = useState(false);
   const [firmwarePath, setFirmwarePath] = useState('');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [progress, setProgress] = useState(0);
@@ -50,6 +53,13 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
   const addLog = (message: string, level: LogEntry['level'] = 'info') => {
     setLogs((prev) => [...prev, { timestamp: Date.now(), message, level }]);
   };
+  const isTetheredDevice = asset.type === 'USB';
+  const deviceClassLabel =
+    asset.transport === 'bluetooth-serial'
+      ? 'Bluetooth Serial RalphieNode Device'
+      : isTetheredDevice
+      ? 'USB RalphieNode Device'
+      : 'Network RalphieNode Device';
 
   // Auto-scroll logs
   useEffect(() => {
@@ -71,14 +81,25 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
       );
     };
 
-    if (asset.type === 'USB') {
+    if (isTetheredDevice) {
       setupListener();
     }
 
     return () => {
       if (unlisten) unlisten();
     };
-  }, [asset.type]);
+  }, [isTetheredDevice]);
+
+  const canActivate =
+    isTetheredDevice
+      ? !manualFirmwareOverride || firmwarePath.trim().length > 0
+      : password.trim().length > 0;
+
+  const handleInputEnterKey = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && canActivate) {
+      void handleActivate();
+    }
+  };
 
   const handleActivate = async () => {
     setStage('activating');
@@ -87,20 +108,28 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
     setProgress(0);
 
     try {
-      if (asset.type === 'USB') {
+      if (isTetheredDevice) {
         // USB Flow
-        if (!firmwarePath) {
-          throw new Error('Firmware path is required for USB devices');
-        }
-        
         addLog('Initializing USB provisioning...', 'info');
         addLog(`Target: ${asset.label} (${asset.id})`, 'info');
+        if (asset.transport === 'bluetooth-serial') {
+          addLog('Transport: Bluetooth serial endpoint', 'info');
+        }
+        if (asset.hardware_profile) {
+          addLog(`Detected hardware profile: ${asset.hardware_profile}`, 'info');
+        }
+        addLog(
+          manualFirmwareOverride
+            ? `Using manual firmware override: ${firmwarePath}`
+            : 'Using auto-selected bundled firmware profile',
+          'info'
+        );
         addLog('Flashing Silicon...', 'info');
 
         const result = await invoke<{ identity: GenesisIdentity }>('provision_target', {
           target: asset,
           credentials: null,
-          firmwarePath,
+          firmwarePath: manualFirmwareOverride ? firmwarePath : null,
         });
 
         addLog('Firmware flashed successfully', 'success');
@@ -157,36 +186,62 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="activation-terminal">
       {/* Header */}
       <div className="text-center">
         <h3 className="font-display text-2xl text-tungsten mb-2">
           Activation Protocol
         </h3>
         <p className="text-tungsten/70">
-          {asset.type === 'USB' ? 'USB Serial Device' : 'Network Device'} • {asset.label}
+          {deviceClassLabel} • {asset.label}
         </p>
         <p className="text-xs text-tungsten/50 font-mono mt-1">{asset.id}</p>
       </div>
 
-      {/* Input Stage (Network only requires password, USB requires firmware path) */}
+      {/* Input Stage */}
       {stage === 'input' && (
         <div className="space-y-4">
-          {asset.type === 'USB' ? (
-            <div>
-              <label className="block text-sm text-tungsten/70 mb-2 font-display">
-                Firmware Binary Path
+          {isTetheredDevice ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-overmatch/10 border border-overmatch/30 rounded-lg">
+                <p className="text-sm text-overmatch font-display">Automatic Firmware Selection Enabled</p>
+                <p className="text-xs text-tungsten/70 mt-1">
+                  Detected profile: <span className="font-mono">{asset.hardware_profile || 'unknown'}</span>
+                </p>
+                <p className="text-xs text-tungsten/60 mt-1">
+                  Transport: <span className="font-mono">{asset.transport || 'usb-serial'}</span>
+                </p>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-tungsten/70">
+                <input
+                  type="checkbox"
+                  checked={manualFirmwareOverride}
+                  onChange={(e) => setManualFirmwareOverride(e.target.checked)}
+                  data-testid="manual-firmware-toggle"
+                />
+                Use manual firmware path override
               </label>
-              <input
-                type="text"
-                value={firmwarePath}
-                onChange={(e) => setFirmwarePath(e.target.value)}
-                placeholder="/path/to/firmware.bin"
-                className="w-full px-4 py-3 bg-carbon/50 border border-tungsten/20 rounded-lg text-tungsten font-mono focus:outline-none focus:border-overmatch"
-              />
-              <p className="text-xs text-tungsten/50 mt-2">
-                Path to the compiled firmware binary for provisioning
-              </p>
+
+              {manualFirmwareOverride && (
+                <div>
+                  <label className="block text-sm text-tungsten/70 mb-2 font-display">
+                    Firmware Binary Path (Override)
+                  </label>
+                  <input
+                    type="text"
+                    value={firmwarePath}
+                    onChange={(e) => setFirmwarePath(e.target.value)}
+                    onKeyDown={handleInputEnterKey}
+                    placeholder="/path/to/firmware.bin or /path/to/firmware.uf2"
+                    data-testid="firmware-path-input"
+                    className="w-full px-4 py-3 bg-carbon/50 border border-tungsten/20 rounded-lg text-tungsten font-mono focus:outline-none focus:border-overmatch"
+                  />
+                  <p className="text-xs text-tungsten/50 mt-2">
+                    Leave override disabled for automatic firmware profile selection.
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             <div>
@@ -197,7 +252,9 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={handleInputEnterKey}
                 placeholder="raspberry"
+                data-testid="node-password-input"
                 className="w-full px-4 py-3 bg-carbon/50 border border-tungsten/20 rounded-lg text-tungsten focus:outline-none focus:border-overmatch"
               />
               <p className="text-xs text-tungsten/50 mt-2">
@@ -209,16 +266,18 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
           <div className="flex gap-3 pt-4">
             <button
               onClick={onCancel}
+              data-testid="activation-cancel-button"
               className="flex-1 px-6 py-3 bg-tungsten/10 hover:bg-tungsten/20 text-tungsten rounded-lg transition-colors font-display"
             >
               Cancel
             </button>
             <button
               onClick={handleActivate}
-              disabled={(asset.type === 'USB' && !firmwarePath) || (asset.type === 'NET' && !password)}
+              disabled={!canActivate}
+              data-testid="initiate-activation-button"
               className="flex-1 px-6 py-3 bg-overmatch hover:bg-overmatch/90 text-carbon rounded-lg transition-colors font-display font-bold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              INITIATE ACTIVATION
+              INITIATE RALPHIENODE ACTIVATION
             </button>
           </div>
         </div>
@@ -244,7 +303,10 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
           )}
 
           {/* Terminal Output */}
-          <div className="bg-carbon/80 border border-tungsten/20 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm">
+          <div
+            className="bg-carbon/80 border border-tungsten/20 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm"
+            data-testid="activation-log"
+          >
             <div className="flex items-center gap-2 mb-3 pb-2 border-b border-tungsten/10">
               <TerminalIcon size={16} className="text-overmatch" />
               <span className="text-tungsten/70 text-xs">ACTIVATION LOG</span>
@@ -277,7 +339,7 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
           {/* Status Icons */}
           <div className="text-center">
             {stage === 'success' && identity && (
-              <div className="space-y-3">
+              <div className="space-y-3" data-testid="activation-success">
                 <div className="flex justify-center">
                   <div className="w-20 h-20 rounded-full bg-verified-green/20 flex items-center justify-center">
                     <Shield size={40} className="text-verified-green" />
@@ -296,7 +358,7 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
             )}
 
             {stage === 'error' && (
-              <div className="space-y-3">
+              <div className="space-y-3" data-testid="activation-error">
                 <div className="flex justify-center">
                   <div className="w-20 h-20 rounded-full bg-jamming/20 flex items-center justify-center">
                     <AlertTriangle size={40} className="text-jamming" />
@@ -310,9 +372,10 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
                 </div>
                 <button
                   onClick={onCancel}
+                  data-testid="activation-back-to-assets"
                   className="px-6 py-2 bg-tungsten/10 hover:bg-tungsten/20 text-tungsten rounded-lg transition-colors font-display"
                 >
-                  Back to Assets
+                  Back to RalphieNode Scan
                 </button>
               </div>
             )}

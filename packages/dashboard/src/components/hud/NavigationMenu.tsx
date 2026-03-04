@@ -139,10 +139,27 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({ currentView, onV
   const currentItem = workspaceItems.find(item => item.id === currentView);
   const CurrentIcon = currentItem?.icon || Map;
 
+  React.useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen]);
+
   return (
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
         className="flex items-center gap-2 px-4 py-2 bg-tungsten/10 hover:bg-tungsten/20 border border-tungsten/20 rounded-lg transition-colors"
       >
         <CurrentIcon size={18} className="text-overmatch" />
@@ -163,7 +180,7 @@ export const NavigationMenu: React.FC<NavigationMenuProps> = ({ currentView, onV
           />
           <GlassPanel
             variant="heavy"
-            className="absolute top-full left-0 mt-2 w-80 z-50"
+            className="absolute top-full left-0 mt-2 w-[min(20rem,calc(100vw-2rem))] max-h-[70vh] overflow-y-auto z-50"
           >
             <div className="p-2">
               {workspaceItems.map((item) => {

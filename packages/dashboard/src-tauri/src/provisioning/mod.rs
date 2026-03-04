@@ -20,9 +20,17 @@ pub mod flasher;
 pub mod injector;
 pub mod scanner;
 
+use crate::commands::resolve_required_component_path;
 pub use injector::GenesisIdentity;
 pub use scanner::{CandidateNode, Credentials};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
+
+const SUPPORTED_FIRMWARE_COMPONENTS: &[(&str, &str)] = &[
+    ("heltec-v3", "firmware-heltec-v3-bin"),
+    ("esp32-generic", "firmware-esp32-generic-bin"),
+    ("rp2040-uf2", "firmware-rp2040-uf2"),
+];
 
 /// Unified provisioning response
 /// This structure is returned regardless of hardware type (USB or Network)
@@ -79,12 +87,8 @@ pub async fn provision_target(
 
     match target.r#type.as_str() {
         "USB" => {
-            // USB device: requires firmware_path
-            let fw_path = firmware_path.ok_or_else(|| {
-                "FAIL-VISIBLE: Missing firmware_path for USB device provisioning".to_string()
-            })?;
-
-            provision_usb_device(&target, &fw_path, window).await
+            // USB device: firmware path is optional when hardware profile can be auto-resolved.
+            provision_usb_device(&app_handle, &target, firmware_path, window).await
         }
         "NET" => {
             // Network device: requires credentials
@@ -104,15 +108,37 @@ pub async fn provision_target(
 
 /// Provision USB device (tethered)
 async fn provision_usb_device(
+    app_handle: &tauri::AppHandle,
     target: &CandidateNode,
-    firmware_path: &str,
+    firmware_path: Option<String>,
     window: tauri::Window,
 ) -> Result<ProvisioningResult, String> {
     log::info!("Provisioning USB device: {} ({})", target.label, target.id);
 
+    let resolved_firmware_path = resolve_firmware_for_target(app_handle, target, firmware_path)?;
+    let transport = target.transport.as_deref().unwrap_or("usb-serial");
+
     // Use flasher module to flash and provision
-    let identity =
-        flasher::flash_and_provision(target.id.clone(), firmware_path.to_string(), window).await?;
+    let identity = match transport {
+        "usb-serial" | "bluetooth-serial" => {
+            flasher::flash_and_provision(target.id.clone(), resolved_firmware_path, window).await?
+        }
+        "usb-mass-storage" => {
+            flasher::flash_mass_storage_and_provision(
+                target.id.clone(),
+                resolved_firmware_path,
+                window,
+            )
+            .await?
+        }
+        unsupported => {
+            return Err(format!(
+                "FAIL-VISIBLE: Unsupported USB transport '{}'. Expected 'usb-serial' or \
+                 'bluetooth-serial' or 'usb-mass-storage'.",
+                unsupported
+            ));
+        }
+    };
 
     // Convert to unified response format
     Ok(ProvisioningResult {
@@ -125,6 +151,71 @@ async fn provision_usb_device(
             device_type: "USB".to_string(),
         },
     })
+}
+
+fn resolve_firmware_for_target(
+    app_handle: &tauri::AppHandle,
+    target: &CandidateNode,
+    firmware_path: Option<String>,
+) -> Result<String, String> {
+    if let Some(manual_path) = firmware_path {
+        let trimmed = manual_path.trim();
+        if !trimmed.is_empty() {
+            if !Path::new(trimmed).exists() {
+                return Err(format!(
+                    "FAIL-VISIBLE: Supplied firmware path does not exist: {}",
+                    trimmed
+                ));
+            }
+            return Ok(trimmed.to_string());
+        }
+    }
+
+    let profile = target.hardware_profile.as_deref().ok_or_else(|| {
+        "FAIL-VISIBLE: Cannot auto-select firmware because device hardware profile is unknown. \
+         Provide firmware path manually or reconnect supported hardware."
+            .to_string()
+    })?;
+
+    let component_id = firmware_component_for_profile(profile).ok_or_else(|| {
+        format!(
+            "FAIL-VISIBLE: No bundled firmware profile for '{}'. Supported profiles: {}",
+            profile,
+            supported_profiles_list()
+        )
+    })?;
+
+    let resolved = resolve_required_component_path(app_handle, component_id).map_err(|e| {
+        format!(
+            "FAIL-VISIBLE: Bundled firmware component '{}' missing or corrupt: {}",
+            component_id, e
+        )
+    })?;
+
+    if !resolved.is_file() {
+        return Err(format!(
+            "FAIL-VISIBLE: Firmware component '{}' is not a file: {}",
+            component_id,
+            resolved.display()
+        ));
+    }
+
+    Ok(resolved.to_string_lossy().to_string())
+}
+
+fn firmware_component_for_profile(profile: &str) -> Option<&'static str> {
+    SUPPORTED_FIRMWARE_COMPONENTS
+        .iter()
+        .find(|(supported_profile, _)| *supported_profile == profile)
+        .map(|(_, component_id)| *component_id)
+}
+
+fn supported_profiles_list() -> String {
+    SUPPORTED_FIRMWARE_COMPONENTS
+        .iter()
+        .map(|(profile, _)| *profile)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Provision network device (remote)
@@ -209,5 +300,22 @@ mod tests {
         let identity: IdentityBlock = serde_json::from_str(json).unwrap();
         assert_eq!(identity.node_id, "node_xyz789");
         assert_eq!(identity.device_type, "NET");
+    }
+
+    #[test]
+    fn test_firmware_component_for_profile() {
+        assert_eq!(
+            firmware_component_for_profile("heltec-v3"),
+            Some("firmware-heltec-v3-bin")
+        );
+        assert_eq!(
+            firmware_component_for_profile("esp32-generic"),
+            Some("firmware-esp32-generic-bin")
+        );
+        assert_eq!(
+            firmware_component_for_profile("rp2040-uf2"),
+            Some("firmware-rp2040-uf2")
+        );
+        assert_eq!(firmware_component_for_profile("unknown-profile"), None);
     }
 }
