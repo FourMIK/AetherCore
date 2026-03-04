@@ -26,7 +26,12 @@ class TrustMarkerRenderer(
                 lon = event.lon,
                 title = event.callsign,
                 subtitle = subtitle,
-                iconKey = iconFor(state.displayLevel, state.stale, event.signatureVerified),
+                iconKey = iconFor(
+                    level = state.displayLevel,
+                    stale = state.stale,
+                    signatureHex = event.signatureHex,
+                    signatureVerified = event.signatureVerified,
+                ),
             ),
         )
     }
@@ -49,8 +54,14 @@ class TrustMarkerRenderer(
         mapView.removeMarker(markerId(uid))
     }
 
-    private fun iconFor(level: TrustLevel, stale: Boolean, signatureVerified: Boolean): String {
-        if (stale || level == TrustLevel.LOW || level == TrustLevel.UNKNOWN || !signatureVerified) {
+    private fun iconFor(
+        level: TrustLevel,
+        stale: Boolean,
+        signatureHex: String?,
+        signatureVerified: Boolean,
+    ): String {
+        val hasUnverifiedSignature = signatureHex != null && !signatureVerified
+        if (stale || level == TrustLevel.LOW || level == TrustLevel.UNKNOWN || hasUnverifiedSignature) {
             return "trust_marker_red"
         }
 

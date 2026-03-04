@@ -10,6 +10,11 @@ export interface VideoStream {
   resolution?: string;
   bitrate?: string;
   codec?: string;
+  metadata?: {
+    fps?: number;
+    bitrate?: number;
+    codec?: string;
+  };
 }
 
 export interface VideoStreamMetadata {

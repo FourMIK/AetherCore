@@ -144,7 +144,7 @@ export const MessagingPanel: React.FC = () => {
         statusColor = 'bg-tungsten/20 text-tungsten';
       } else {
         statusColor = 'bg-jamming/20 text-jamming';
-        statusText = 'contested';
+        statusText = 'offline';
       }
     }
 
@@ -201,7 +201,7 @@ export const MessagingPanel: React.FC = () => {
     <div className="flex h-full gap-4 p-4">
       {/* Left Panel: Conversation List */}
       <div className="w-80 flex-shrink-0">
-        <GlassPanel variant="medium" className="h-full flex flex-col">
+        <GlassPanel variant="default" className="h-full flex flex-col">
           <div className="p-4 border-b border-tungsten/10">
             <div className="flex items-center gap-2 mb-2">
               <MessageSquare className="text-overmatch" size={20} />
@@ -285,7 +285,7 @@ export const MessagingPanel: React.FC = () => {
       {/* Right Panel: Active Conversation */}
       <div className="flex-1 min-w-0">
         {selectedOperator ? (
-          <GlassPanel variant="medium" className="h-full flex flex-col">
+          <GlassPanel variant="default" className="h-full flex flex-col">
             {/* Conversation Header */}
             <div className="p-4 border-b border-tungsten/10">
               <div className="flex items-center justify-between">
@@ -397,7 +397,7 @@ export const MessagingPanel: React.FC = () => {
             </div>
           </GlassPanel>
         ) : (
-          <GlassPanel variant="medium" className="h-full flex items-center justify-center">
+          <GlassPanel variant="default" className="h-full flex items-center justify-center">
             <div className="text-center">
               <MessageSquare size={64} className="mx-auto mb-4 text-tungsten/30" />
               <h3 className="text-lg font-display text-tungsten mb-2">

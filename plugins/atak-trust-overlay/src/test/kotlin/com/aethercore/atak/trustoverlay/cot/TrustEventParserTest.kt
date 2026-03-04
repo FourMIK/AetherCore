@@ -1,6 +1,7 @@
 package com.aethercore.atak.trustoverlay.cot
 
 import com.aethercore.atak.trustoverlay.atak.Logger
+import com.aethercore.atak.trustoverlay.atak.CotEventEnvelope
 import com.aethercore.atak.trustoverlay.core.TrustLevel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -185,6 +186,65 @@ class TrustEventParserTest {
         assertEquals(0.02, event?.metrics?.get("packet_loss"))
         assertEquals("mesh-gw-1", event?.sourceMetadata?.get("gateway"))
         assertTrue(event?.sourceMetadata?.containsKey("cluster") == true)
+    }
+
+    @Test
+    fun `parses trust details from embedded detail XML fallback`() {
+        val parser = parser()
+        val envelope = CotEventEnvelope(
+            uid = "xml-only-node",
+            type = "a-f-AETHERCORE-TRUST",
+            lat = 33.9,
+            lon = -117.1,
+            time = "2026-01-14T10:15:00Z",
+            stale = "2026-01-14T10:20:00Z",
+            detail = mapOf(
+                "detail" to """
+                    <detail>
+                      <trust trust_score="0.91" trust_level="healthy" last_updated="2026-01-14T10:14:55Z" source="aethercore" uid="xml-only-node" />
+                      <contact callsign="XML-NODE" />
+                      <metrics packet_loss="0.03" />
+                      <sourceMeta gateway="gw-xml" />
+                    </detail>
+                """.trimIndent(),
+            ),
+        )
+
+        val parsed = parser.parse(envelope)
+        assertEquals("XML-NODE", parsed?.callsign)
+        assertEquals(TrustLevel.HIGH, parsed?.level)
+        assertEquals(0.03, parsed?.metrics?.get("packet_loss"))
+        assertEquals("gw-xml", parsed?.sourceMetadata?.get("gateway"))
+    }
+
+    @Test
+    fun `signature verification flags are parsed and validated`() {
+        val parser = parser()
+        val base = CotFixtureLoader.load("healthy")
+        val validSigned = parser.parse(
+            base.copy(
+                uid = "signed-node",
+                detail = base.detail + mapOf(
+                    "trust.uid" to "signed-node",
+                    "trust.signature_hex" to "a".repeat(128),
+                    "trust.signature_verified" to "true",
+                ),
+            ),
+        )
+        assertEquals(true, validSigned?.signatureVerified)
+
+        val invalidFlag = parser.parse(
+            base.copy(
+                uid = "invalid-flag-node",
+                detail = base.detail + mapOf(
+                    "trust.uid" to "invalid-flag-node",
+                    "trust.signature_hex" to "a".repeat(128),
+                    "trust.signature_verified" to "definitely",
+                ),
+            ),
+        )
+        assertNull(invalidFlag)
+        assertEquals("invalid_signature_verified", parser.mostRecentBadEventReason())
     }
 
     @Test

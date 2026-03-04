@@ -74,10 +74,12 @@ export interface StreamMonitorConfig {
  * - Validates TPM signatures via identityClient
  */
 export class StreamMonitor {
+  // Hash display configuration
+  private static readonly HASH_DISPLAY_LENGTH = 8;
+
   private config: StreamMonitorConfig;
   private frameSequence: number = 0;
-  // Store complete StreamIntegrityHash objects (not just hash strings)
-  // to enable signature verification when StreamIntegrityHash includes signature field
+  // ...existing code...
   private pendingHashes: Map<number, StreamIntegrityHash> = new Map();
   private status: IntegrityStatus;
   private lastVerifiedHash: string | null = null; // Merkle Vine state
@@ -151,14 +153,9 @@ export class StreamMonitor {
     }
   }
 
-/**
- * Hash display configuration
- */
-const HASH_DISPLAY_LENGTH = 8;
-
-/**
- * Process incoming video frame (Receiver side)
- * 
+  /**
+   * Process incoming video frame (Receiver side)
+ *
  * PHASE 3: Merkle Vine Validation
  * - Verifies prev_hash matches last_verified_hash
  * - Validates TPM signature via identityClient
@@ -253,7 +250,7 @@ const HASH_DISPLAY_LENGTH = 8;
         this.frameSequence++; // Increment expected sequence
         
         console.log(
-          `[StreamMonitor] Frame ${frame.sequence} integrity verified ✓ (hash: ${computedHash.substring(0, HASH_DISPLAY_LENGTH)}...)`,
+          `[StreamMonitor] Frame ${frame.sequence} integrity verified ✓ (hash: ${computedHash.substring(0, StreamMonitor.HASH_DISPLAY_LENGTH)}...)`,
         );
       } else {
         // Hash mismatch - Fail-Visible Design

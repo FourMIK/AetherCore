@@ -12,6 +12,11 @@
 		A1000001000000001000003 /* SecureEnclaveKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001000000000000003 /* SecureEnclaveKeyManager.swift */; };
 		A1000001000000001000004 /* DeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001000000000000004 /* DeviceIdentity.swift */; };
 		A1000001000000001000005 /* GenesisBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001000000000000005 /* GenesisBundle.swift */; };
+		A1000001000000001000006 /* AttestationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001000000000000006 /* AttestationManager.swift */; };
+		A1000001000000001000007 /* GatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001000000000000007 /* GatewayClient.swift */; };
+		A1000001000000001000008 /* NodeTelemetryDaemon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001000000000000008 /* NodeTelemetryDaemon.swift */; };
+		A1000001000000001000009 /* OverlayRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001000000000000009 /* OverlayRuntime.swift */; };
+		A1000001000000001000012 /* OverlaySigningKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000001000000000000012 /* OverlaySigningKeyManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,8 +26,13 @@
 		A1000001000000000000003 /* SecureEnclaveKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureEnclaveKeyManager.swift; sourceTree = "<group>"; };
 		A1000001000000000000004 /* DeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentity.swift; sourceTree = "<group>"; };
 		A1000001000000000000005 /* GenesisBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenesisBundle.swift; sourceTree = "<group>"; };
+		A1000001000000000000006 /* AttestationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttestationManager.swift; sourceTree = "<group>"; };
+		A1000001000000000000007 /* GatewayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayClient.swift; sourceTree = "<group>"; };
+		A1000001000000000000008 /* NodeTelemetryDaemon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeTelemetryDaemon.swift; sourceTree = "<group>"; };
+		A1000001000000000000009 /* OverlayRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayRuntime.swift; sourceTree = "<group>"; };
 		A1000001000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1000001000000000000011 /* AetherCoreMessenger.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AetherCoreMessenger.entitlements; sourceTree = "<group>"; };
+		A1000001000000000000012 /* OverlaySigningKeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlaySigningKeyManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -53,6 +63,7 @@
 				A1000001000000000000002 /* ContentView.swift */,
 				A1000001000000003000002 /* Security */,
 				A1000001000000003000003 /* Genesis */,
+				A1000001000000003000004 /* Network */,
 			);
 			path = AetherCoreMessenger;
 			sourceTree = "<group>";
@@ -62,6 +73,8 @@
 			children = (
 				A1000001000000000000003 /* SecureEnclaveKeyManager.swift */,
 				A1000001000000000000004 /* DeviceIdentity.swift */,
+				A1000001000000000000006 /* AttestationManager.swift */,
+				A1000001000000000000012 /* OverlaySigningKeyManager.swift */,
 			);
 			path = Security;
 			sourceTree = "<group>";
@@ -72,6 +85,16 @@
 				A1000001000000000000005 /* GenesisBundle.swift */,
 			);
 			path = Genesis;
+			sourceTree = "<group>";
+		};
+		A1000001000000003000004 /* Network */ = {
+			isa = PBXGroup;
+			children = (
+				A1000001000000000000007 /* GatewayClient.swift */,
+				A1000001000000000000008 /* NodeTelemetryDaemon.swift */,
+				A1000001000000000000009 /* OverlayRuntime.swift */,
+			);
+			path = Network;
 			sourceTree = "<group>";
 		};
 		A1000001000000003000009 /* Products */ = {
@@ -155,6 +178,11 @@
 				A1000001000000001000003 /* SecureEnclaveKeyManager.swift in Sources */,
 				A1000001000000001000004 /* DeviceIdentity.swift in Sources */,
 				A1000001000000001000005 /* GenesisBundle.swift in Sources */,
+				A1000001000000001000006 /* AttestationManager.swift in Sources */,
+				A1000001000000001000012 /* OverlaySigningKeyManager.swift in Sources */,
+				A1000001000000001000007 /* GatewayClient.swift in Sources */,
+				A1000001000000001000008 /* NodeTelemetryDaemon.swift in Sources */,
+				A1000001000000001000009 /* OverlayRuntime.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

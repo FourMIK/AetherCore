@@ -17,9 +17,38 @@
 
 import React from 'react';
 import { Shield, ShieldAlert, ShieldOff, AlertTriangle } from 'lucide-react';
-import type { CanonicalEvent, MessagePayload } from '@aethercore/canonical-schema';
 import type { VerificationStatus } from '@aethercore/shared';
 import { MerkleChainIndicator } from './MerkleChainIndicator';
+
+/**
+ * Canonical Event type for messages
+ */
+export interface CanonicalEvent {
+  id?: string;
+  event_id?: string;
+  timestamp: number;
+  event_type: string;
+  sender_id?: string;
+  device_id?: string;
+  node_id?: string;
+  payload: any;
+  prev_hash?: string;
+  signature?: string;
+  chain_height?: number;
+  sequence?: number;
+  hash?: string;
+  public_key?: string;
+  metadata?: any;
+}
+
+/**
+ * Message Payload type
+ */
+export interface MessagePayload {
+  text: string;
+  conversation_id: string;
+  recipient_ids: string[];
+}
 
 /**
  * MessageBubble Props
@@ -197,7 +226,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
           {/* Event ID (short) */}
           <span className="font-mono">
-            {event.event_id.substring(0, 8)}
+            {event.event_id?.substring(0, 8) || '???'}
           </span>
 
           {/* Verified Badge for clean messages */}
