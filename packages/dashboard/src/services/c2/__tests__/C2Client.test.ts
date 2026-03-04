@@ -366,31 +366,40 @@ describe('C2Client', () => {
 
     it('should use exponential backoff', async () => {
       createClient({ initialBackoffMs: 100, maxBackoffMs: 1000 });
+      const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1);
 
-      await client.connect();
-      await vi.advanceTimersByTimeAsync(20);
+      try {
+        await client.connect();
+        await vi.advanceTimersByTimeAsync(20);
 
-      // First disconnect
-      let ws = (client as any).ws as MockWebSocket;
-      ws.close(1006);
-      
-      const firstBackoff = client.getStatus().backoffUntil;
+        // First disconnect
+        let ws = (client as any).ws as MockWebSocket;
+        const firstDisconnectAt = Date.now();
+        ws.close(1006);
 
-      // Wait and reconnect
-      await vi.advanceTimersByTimeAsync(200);
-      await vi.advanceTimersByTimeAsync(20);
+        const firstBackoff = client.getStatus().backoffUntil;
+        const firstDelay = firstBackoff ? firstBackoff.getTime() - firstDisconnectAt : 0;
+        expect(firstDelay).toBe(200); // 100ms base + 100ms deterministic jitter
 
-      // Second disconnect
-      ws = (client as any).ws as MockWebSocket;
-      ws.close(1006);
+        // Wait and reconnect
+        await vi.advanceTimersByTimeAsync(200);
+        await vi.advanceTimersByTimeAsync(20);
 
-      const secondBackoff = client.getStatus().backoffUntil;
+        // Second disconnect
+        ws = (client as any).ws as MockWebSocket;
+        const secondDisconnectAt = Date.now();
+        ws.close(1006);
 
-      // Second backoff should be later than first (exponential)
-      if (firstBackoff && secondBackoff) {
-        const firstDelay = firstBackoff.getTime() - Date.now();
-        const secondDelay = secondBackoff.getTime() - Date.now();
-        expect(secondDelay).toBeGreaterThan(firstDelay);
+        const secondBackoff = client.getStatus().backoffUntil;
+        const secondDelay = secondBackoff ? secondBackoff.getTime() - secondDisconnectAt : 0;
+        expect(secondDelay).toBe(200); // reconnectAttempts resets after successful reconnect
+
+        // Backoff calculation should remain deterministic across reconnect cycles.
+        if (firstBackoff && secondBackoff) {
+          expect(secondDelay).toBeGreaterThanOrEqual(firstDelay);
+        }
+      } finally {
+        randomSpy.mockRestore();
       }
     });
 

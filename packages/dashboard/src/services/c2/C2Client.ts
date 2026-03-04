@@ -1097,6 +1097,7 @@ export class C2Client {
       nonce: envelope.nonce,
       sequence: envelope.sequence,
       previous_message_id: envelope.previous_message_id,
+      transport: envelope.transport,
     });
     const data = new TextEncoder().encode(canonicalPayload);
     const signatureBytes = Uint8Array.from(

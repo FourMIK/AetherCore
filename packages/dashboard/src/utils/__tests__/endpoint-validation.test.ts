@@ -68,11 +68,34 @@ describe('Endpoint Validation', () => {
       expect(result.isLocalhost).toBe(true);
     });
 
-    it.skip('should reject ws://localhost without DEV_ALLOW_INSECURE_LOCALHOST', () => {
-      // NOTE: This test requires proper environment isolation.
-      // The import.meta.env might be evaluated at build time rather than test time.
-      // Consider using environment setup in vitest.config.ts instead.
+    it('should reject ws://localhost without DEV_ALLOW_INSECURE_LOCALHOST', () => {
       vi.unstubAllEnvs();
+      runtimeConfig.setRuntimeConfig({
+        schema_version: 3,
+        product_profile: 'commander_edition',
+        profile: 'commander-local',
+        connection: {
+          api_endpoint: 'http://localhost:3000',
+          mesh_endpoint: 'ws://localhost:3000',
+        },
+        tpm_policy: {
+          mode: 'optional',
+          enforce_hardware: false,
+        },
+        ports: {
+          api: 3000,
+          mesh: 3000,
+        },
+        features: {
+          allow_insecure_localhost: false,
+          bootstrap_on_startup: true,
+        },
+        connection_retry: {
+          max_retries: 10,
+          initial_delay_ms: 1000,
+          max_delay_ms: 30000,
+        },
+      });
       const result = validateWebSocketEndpoint('ws://localhost:8080');
       expect(result.valid).toBe(false);
       expect(result.error).toContain('DEV_ALLOW_INSECURE_LOCALHOST');
@@ -108,13 +131,7 @@ describe('Endpoint Validation', () => {
     });
 
     it('should handle IPv6 localhost [::1]', () => {
-      vi.stubGlobal('import', {
-        meta: {
-          env: {
-            VITE_DEV_ALLOW_INSECURE_LOCALHOST: 'yes',
-          },
-        },
-      });
+      vi.stubEnv('VITE_DEV_ALLOW_INSECURE_LOCALHOST', 'yes');
 
       const result = validateWebSocketEndpoint('ws://[::1]:8080');
       expect(result.valid).toBe(true);
@@ -143,10 +160,34 @@ describe('Endpoint Validation', () => {
       expect(result.isLocalhost).toBe(true);
     });
 
-    it.skip('should reject http://localhost without DEV_ALLOW_INSECURE_LOCALHOST', () => {
-      // NOTE: This test requires proper environment isolation.
-      // See corresponding WebSocket test note above.
+    it('should reject http://localhost without DEV_ALLOW_INSECURE_LOCALHOST', () => {
       vi.unstubAllEnvs();
+      runtimeConfig.setRuntimeConfig({
+        schema_version: 3,
+        product_profile: 'commander_edition',
+        profile: 'commander-local',
+        connection: {
+          api_endpoint: 'http://localhost:3000',
+          mesh_endpoint: 'ws://localhost:3000',
+        },
+        tpm_policy: {
+          mode: 'optional',
+          enforce_hardware: false,
+        },
+        ports: {
+          api: 3000,
+          mesh: 3000,
+        },
+        features: {
+          allow_insecure_localhost: false,
+          bootstrap_on_startup: true,
+        },
+        connection_retry: {
+          max_retries: 10,
+          initial_delay_ms: 1000,
+          max_delay_ms: 30000,
+        },
+      });
       const result = validateHttpEndpoint('http://localhost:3000');
       expect(result.valid).toBe(false);
       expect(result.error).toContain('DEV_ALLOW_INSECURE_LOCALHOST');
@@ -176,10 +217,34 @@ describe('Endpoint Validation', () => {
       expect(result.isLocalhost).toBe(false);
     });
 
-    it.skip('should reject localhost gRPC without DEV_ALLOW_INSECURE_LOCALHOST', () => {
-      // NOTE: This test requires proper environment isolation.
-      // See corresponding WebSocket test note above.
+    it('should reject localhost gRPC without DEV_ALLOW_INSECURE_LOCALHOST', () => {
       vi.unstubAllEnvs();
+      runtimeConfig.setRuntimeConfig({
+        schema_version: 3,
+        product_profile: 'commander_edition',
+        profile: 'commander-local',
+        connection: {
+          api_endpoint: 'http://localhost:3000',
+          mesh_endpoint: 'ws://localhost:3000',
+        },
+        tpm_policy: {
+          mode: 'optional',
+          enforce_hardware: false,
+        },
+        ports: {
+          api: 3000,
+          mesh: 3000,
+        },
+        features: {
+          allow_insecure_localhost: false,
+          bootstrap_on_startup: true,
+        },
+        connection_retry: {
+          max_retries: 10,
+          initial_delay_ms: 1000,
+          max_delay_ms: 30000,
+        },
+      });
       const result = validateGrpcEndpoint('localhost:50051');
       expect(result.valid).toBe(false);
       expect(result.error).toContain('DEV_ALLOW_INSECURE_LOCALHOST');
@@ -213,13 +278,7 @@ describe('Endpoint Validation', () => {
     });
 
     it('should accept 127.0.0.1 with DEV_ALLOW_INSECURE_LOCALHOST=true', () => {
-      vi.stubGlobal('import', {
-        meta: {
-          env: {
-            VITE_DEV_ALLOW_INSECURE_LOCALHOST: '1',
-          },
-        },
-      });
+      vi.stubEnv('VITE_DEV_ALLOW_INSECURE_LOCALHOST', '1');
 
       const result = validateGrpcEndpoint('127.0.0.1:50051');
       expect(result.valid).toBe(true);
