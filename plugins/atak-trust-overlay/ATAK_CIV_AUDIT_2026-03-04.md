@@ -46,6 +46,16 @@
 - Gateway integration tests: **passed**.
 - ATAK plugin Gradle tests: **not runnable in this environment** (Gradle wrapper JAR missing; no global Gradle installed).
 
+## Required manual validation artifact for dev merge
+- Store validation evidence in `plugins/atak-trust-overlay/validation/ATAK_CIV_MANUAL_VALIDATION_2026-03-04.md`.
+- Checklist (must be completed by operator/release engineer):
+  - Build plugin in ATAK-Civ-compatible environment (Gradle + signing path available).
+  - Verify plugin load/discovery in ATAK-Civ and component registration.
+  - Verify trust CoT ingestion and marker rendering parity under live feed.
+  - Verify telemetry loop behavior and configurable gateway routing on device.
+  - Attach install/runtime screenshots and signer/build fingerprint metadata.
+- CI remains non-blocking for ATAK plugin checks in this pass; this artifact is the merge gate evidence.
+
 ## References
 - https://github.com/TAK-Product-Center/atak-civ/blob/main/plugin-examples/plugintemplate/app/src/main/AndroidManifest.xml
 - https://github.com/TAK-Product-Center/atak-civ/blob/main/plugin-examples/plugintemplate/app/src/main/assets/plugin.xml

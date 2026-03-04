@@ -6,6 +6,7 @@ import { z } from 'zod';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import pino from 'pino';
+import { blake3 } from 'hash-wasm';
 import { parseTpmEnabled } from './tpm';
 import { createC2RouterClient, dispatchCommand } from './c2-client';
 import {
@@ -74,6 +75,18 @@ function parseBooleanEnv(name: string, defaultValue: boolean): boolean {
   return defaultValue;
 }
 
+function parseDelimitedEnvSet(value: string | undefined): Set<string> {
+  if (!value) {
+    return new Set<string>();
+  }
+  return new Set(
+    value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0),
+  );
+}
+
 function isProductionMode(): boolean {
   const flag = process.env.AETHERCORE_PRODUCTION;
   return process.env.NODE_ENV === 'production' || flag === '1' || flag === 'true';
@@ -87,6 +100,9 @@ const REVOCATION_SOURCE_URL = process.env.AETHERCORE_REVOCATION_SOURCE_URL?.trim
 const REVOCATION_REFRESH_INTERVAL_MS = parsePositiveIntEnv('AETHERCORE_REVOCATION_REFRESH_INTERVAL_MS', 30000);
 const REVOCATION_REQUEST_TIMEOUT_MS = parsePositiveIntEnv('AETHERCORE_REVOCATION_REQUEST_TIMEOUT_MS', 5000);
 const REVOCATION_FAIL_CLOSED = parseBooleanEnv('AETHERCORE_REVOCATION_FAIL_CLOSED', isProductionMode());
+const IDENTITY_REGISTRY_HTTP_ENDPOINT = process.env.IDENTITY_REGISTRY_HTTP_ENDPOINT?.trim() || '';
+const IDENTITY_REGISTRY_TIMEOUT_MS = parsePositiveIntEnv('IDENTITY_REGISTRY_TIMEOUT_MS', 5000);
+const AETHERCORE_ADMIN_NODE_IDS = parseDelimitedEnvSet(process.env.AETHERCORE_ADMIN_NODE_IDS);
 
 function warnOnLocalhostTargetInContainer(target: string, variableName: string): void {
   if (isRunningInContainer() && isLocalhostTarget(target)) {
@@ -104,6 +120,8 @@ logger.info({
   port: PORT,
   c2_target: C2_GRPC_TARGET,
   bunker_endpoint: AETHER_BUNKER_ENDPOINT,
+  identity_registry_http_endpoint: IDENTITY_REGISTRY_HTTP_ENDPOINT || null,
+  configured_admin_node_count: AETHERCORE_ADMIN_NODE_IDS.size,
   tpm_enabled: TPM_ENABLED,
 }, 'Gateway service configuration loaded');
 
@@ -120,6 +138,14 @@ const CommandSchema = z.object({
   target: z.string(),
   payload: z.record(z.string(), z.any()).optional(),
   signature: z.string().min(1, "Operator signature required"), 
+});
+
+const AdminRevocationRequestSchema = z.object({
+  admin_node_id: z.string().min(1),
+  node_id: z.string().min(1),
+  reason: z.string().trim().min(1).max(1024),
+  timestamp_ms: z.number().int().positive(),
+  authority_signature_hex: z.string().regex(/^[0-9a-fA-F]{128}$/),
 });
 
 const RalphieTelemetrySchema = z
@@ -218,6 +244,18 @@ type SenderReplayState = {
   nonceWindow: string[];
 };
 
+type MerkleVineHeadState = {
+  streamId: string;
+  lastLeafHash: string | null;
+  nextLeafIndex: number;
+};
+
+type StoreForwardEntry = {
+  envelope: MessageEnvelope;
+  queued_at_ms: number;
+  expires_at_ms: number;
+};
+
 const client = createC2RouterClient(C2_GRPC_TARGET);
 const ralphiePresenceByNode = new Map<string, RalphiePresenceRecord>();
 const operatorSessionBySocket = new Map<WebSocket, OperatorSession>();
@@ -225,7 +263,12 @@ const socketsByOperatorId = new Map<string, Set<WebSocket>>();
 const operatorPresenceById = new Map<string, MessageEnvelope>();
 const senderPublicKeysById = new Map<string, string>();
 const replayStateBySenderId = new Map<string, SenderReplayState>();
+const merkleVineHeadBySender = new Map<string, MerkleVineHeadState>();
+const storeForwardQueueByRecipient = new Map<string, StoreForwardEntry[]>();
 const MAX_REPLAY_NONCE_WINDOW = 2048;
+const STORE_FORWARD_TTL_MS = parsePositiveIntEnv('AETHERCORE_SMS_STORE_FORWARD_TTL_MS', 4 * 60 * 60 * 1000);
+const STORE_FORWARD_MAX_PER_RECIPIENT = parsePositiveIntEnv('AETHERCORE_SMS_STORE_FORWARD_MAX_PER_RECIPIENT', 256);
+const GOSSIP_MAX_TTL_MS = 300000;
 const revocationRegistry = new DistributedRevocationRegistry({
   sourceUrl: REVOCATION_SOURCE_URL,
   refreshIntervalMs: REVOCATION_REFRESH_INTERVAL_MS,
@@ -242,12 +285,234 @@ type TelemetryStoreEntry = {
   ttl_ms: number;
 };
 
+type NodeAttestationState = {
+  node_id: string;
+  hardware_backed: boolean;
+  tpm_attestation_valid: boolean;
+  merkle_vine_synced: boolean;
+  byzantine_detected: boolean;
+  revoked: boolean;
+  revocation_reason?: string;
+  trust_score: number;
+  timestamp_ms: number;
+};
+
 // In-memory telemetry storage with platform-aware TTL.
 const telemetryStore = new Map<string, TelemetryStoreEntry>();
 const TELEMETRY_TTL_DEFAULT_MS = 30000; // 30 seconds
 const TELEMETRY_TTL_IOS_OVERLAY_MS = 300000; // 5 minutes
 const PRESENCE_TTL_IOS_OVERLAY_MS = 300000; // 5 minutes
 const PRESENCE_STALE_SCAN_INTERVAL_MS = 15000;
+
+function toObjectRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function readBooleanCandidate(...values: unknown[]): boolean | undefined {
+  for (const value of values) {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function readNumberCandidate(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function normalizeTrustScore(value: unknown, fallback: number): number {
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  const percent = numeric <= 1 ? numeric * 100 : numeric;
+  return Math.max(0, Math.min(100, Number(percent.toFixed(2))));
+}
+
+function revocationReasonFromDetails(details: unknown): string | undefined {
+  const record = toObjectRecord(details);
+  if (!record) {
+    return undefined;
+  }
+  const certificate = toObjectRecord(record.certificate);
+  const reason =
+    certificate?.revocation_reason ??
+    certificate?.revocationReason ??
+    record.revocation_reason ??
+    record.revocationReason;
+  return typeof reason === 'string' && reason.trim().length > 0 ? reason.trim() : undefined;
+}
+
+function mergeFleetAttestationState(now: number): NodeAttestationState[] {
+  const nodeIds = new Set<string>();
+  telemetryStore.forEach((_value, nodeId) => nodeIds.add(nodeId));
+  ralphiePresenceByNode.forEach((_value, nodeId) => nodeIds.add(nodeId));
+  operatorPresenceById.forEach((_value, nodeId) => nodeIds.add(nodeId));
+
+  const states: NodeAttestationState[] = [];
+
+  for (const nodeId of nodeIds) {
+    const telemetryEntry = telemetryStore.get(nodeId);
+    const telemetry = toObjectRecord(telemetryEntry?.data);
+    const telemetryTrust = toObjectRecord(telemetry?.trust);
+    const telemetrySecurity = toObjectRecord(telemetry?.security);
+    const telemetryIdentity = toObjectRecord(telemetry?.identity);
+    const telemetryIntegrity = toObjectRecord(telemetry?.integrity);
+
+    const presence = ralphiePresenceByNode.get(nodeId);
+    const revocationGate = evaluateRevocationGate(revocationRegistry, {
+      nodeId,
+      certificateSerial: presence?.identity.certificate_serial,
+      failClosed: REVOCATION_FAIL_CLOSED,
+    });
+    const revoked = !revocationGate.ok && revocationGate.code === 'IDENTITY_REVOKED';
+
+    const hardwareBacked =
+      readBooleanCandidate(
+        telemetrySecurity?.hardware_backed,
+        telemetrySecurity?.tpm_backed,
+        telemetryIdentity?.hardware_backed,
+        telemetryIdentity?.tpm_backed,
+        presence?.identity.tpm_backed,
+      ) ?? false;
+
+    const tpmAttestationValid =
+      readBooleanCandidate(
+        telemetrySecurity?.attestation_valid,
+        telemetrySecurity?.tpm_attestation_valid,
+        telemetrySecurity?.hardware_evidence_valid,
+      ) ?? hardwareBacked;
+
+    const merkleVineSynced =
+      readBooleanCandidate(
+        telemetrySecurity?.merkle_vine_synced,
+        telemetryIntegrity?.merkle_vine_synced,
+        telemetry?.merkle_vine_synced,
+      ) ?? false;
+
+    const byzantineDetected =
+      readBooleanCandidate(
+        telemetryTrust?.byzantine_detected,
+        telemetrySecurity?.byzantine_detected,
+      ) ?? false;
+
+    const trustScore = normalizeTrustScore(
+      readNumberCandidate(
+        telemetryTrust?.self_score,
+        telemetryTrust?.score,
+        telemetry?.trust_score,
+        telemetryIdentity?.trust_score,
+        presence?.identity.trust_score,
+      ),
+      0,
+    );
+
+    const timestampMs = Math.round(
+      readNumberCandidate(
+        telemetryEntry?.timestamp,
+        presence?.received_at,
+        presence?.timestamp,
+      ) ?? now,
+    );
+
+    const state: NodeAttestationState = {
+      node_id: nodeId,
+      hardware_backed: hardwareBacked && tpmAttestationValid,
+      tpm_attestation_valid: tpmAttestationValid,
+      merkle_vine_synced: merkleVineSynced,
+      byzantine_detected: byzantineDetected,
+      revoked,
+      trust_score: revoked ? 0 : trustScore,
+      timestamp_ms: timestampMs,
+    };
+
+    const reason = revocationReasonFromDetails(revocationGate.ok ? undefined : revocationGate.details);
+    if (reason) {
+      state.revocation_reason = reason;
+    }
+
+    states.push(state);
+  }
+
+  states.sort((a, b) => a.node_id.localeCompare(b.node_id));
+  return states;
+}
+
+type IdentityRpcOk<T extends Record<string, unknown>> = {
+  ok: true;
+  data: T;
+};
+
+type IdentityRpcError = {
+  ok: false;
+  code: string;
+  message: string;
+  status?: number;
+  details?: unknown;
+};
+
+type IdentityRpcResult<T extends Record<string, unknown>> = IdentityRpcOk<T> | IdentityRpcError;
+
+async function callIdentityRegistryRpc<TRequest extends Record<string, unknown>, TResponse extends Record<string, unknown>>(
+  method: string,
+  request: TRequest,
+): Promise<IdentityRpcResult<TResponse>> {
+  if (!IDENTITY_REGISTRY_HTTP_ENDPOINT) {
+    return {
+      ok: false,
+      code: 'IDENTITY_REGISTRY_UNCONFIGURED',
+      message: 'Identity registry HTTP endpoint is not configured',
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), IDENTITY_REGISTRY_TIMEOUT_MS);
+  const url = `${IDENTITY_REGISTRY_HTTP_ENDPOINT.replace(/\/$/, '')}/aethercore.identity.IdentityRegistry/${method}`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        code: 'IDENTITY_REGISTRY_RPC_FAILED',
+        message: `Identity registry RPC failed (${response.status})`,
+        status: response.status,
+      };
+    }
+
+    const data = (await response.json()) as TResponse;
+    return { ok: true, data };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        ok: false,
+        code: 'IDENTITY_REGISTRY_TIMEOUT',
+        message: `Identity registry RPC timeout after ${IDENTITY_REGISTRY_TIMEOUT_MS}ms`,
+      };
+    }
+    return {
+      ok: false,
+      code: 'IDENTITY_REGISTRY_UNREACHABLE',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function normalizePlatformHint(value: unknown): string {
   if (Array.isArray(value) && value.length > 0) {
@@ -355,6 +620,242 @@ app.post('/api/telemetry', (req, res) => {
     logger.error({ error }, 'Failed to process telemetry');
     res.status(400).json({ status: 'error', message: 'Invalid telemetry payload' });
   }
+});
+
+app.get('/api/admin/privileges/:nodeId', async (req, res) => {
+  const evaluatedAt = Date.now();
+  const nodeId = typeof req.params.nodeId === 'string' ? req.params.nodeId.trim() : '';
+
+  if (!nodeId) {
+    res.status(400).json({
+      authorized: false,
+      reason: 'invalid_node_id',
+      evaluated_at: evaluatedAt,
+    });
+    return;
+  }
+
+  if (!AETHERCORE_ADMIN_NODE_IDS.has(nodeId)) {
+    res.status(200).json({
+      authorized: false,
+      reason: 'not_in_admin_allowlist',
+      evaluated_at: evaluatedAt,
+    });
+    return;
+  }
+
+  const revocationCheck = verifySenderNotRevoked(nodeId);
+  if (!revocationCheck.ok) {
+    res.status(200).json({
+      authorized: false,
+      reason: 'identity_revoked',
+      evaluated_at: evaluatedAt,
+    });
+    return;
+  }
+
+  const enrollment = await callIdentityRegistryRpc<{ node_id: string }, { success?: unknown; is_enrolled?: unknown; error_message?: unknown }>(
+    'IsNodeEnrolled',
+    { node_id: nodeId },
+  );
+
+  if (!enrollment.ok) {
+    logger.error(
+      {
+        node_id: nodeId,
+        code: enrollment.code,
+        message: enrollment.message,
+        details: enrollment.details,
+      },
+      'Failed to evaluate admin privileges against identity registry',
+    );
+    res.status(503).json({
+      authorized: false,
+      reason: 'identity_backend_unavailable',
+      evaluated_at: evaluatedAt,
+    });
+    return;
+  }
+
+  const rpcSuccess = enrollment.data.success === true;
+  const enrolled = enrollment.data.is_enrolled === true;
+
+  if (!rpcSuccess || !enrolled) {
+    res.status(200).json({
+      authorized: false,
+      reason: rpcSuccess ? 'admin_not_enrolled' : 'identity_registry_rejected',
+      evaluated_at: evaluatedAt,
+    });
+    return;
+  }
+
+  res.status(200).json({
+    authorized: true,
+    evaluated_at: evaluatedAt,
+  });
+});
+
+app.post('/api/admin/revoke', async (req, res) => {
+  const parsed = AdminRevocationRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      status: 'error',
+      code: 'INVALID_REQUEST',
+      message: 'Invalid revocation request payload',
+      details: parsed.error.flatten(),
+    });
+    return;
+  }
+
+  const body = parsed.data;
+
+  if (!AETHERCORE_ADMIN_NODE_IDS.has(body.admin_node_id)) {
+    res.status(403).json({
+      status: 'error',
+      node_id: body.node_id,
+      code: 'ADMIN_UNAUTHORIZED',
+      message: 'Requesting node is not authorized for revocation',
+    });
+    return;
+  }
+
+  const adminRevocation = verifySenderNotRevoked(body.admin_node_id);
+  if (!adminRevocation.ok) {
+    res.status(403).json({
+      status: 'error',
+      node_id: body.node_id,
+      code: adminRevocation.code,
+      message: adminRevocation.message,
+      details: adminRevocation.details,
+    });
+    return;
+  }
+
+  const rpc = await callIdentityRegistryRpc<
+    {
+      node_id: string;
+      reason: string;
+      authority_signature_hex: string;
+      timestamp_ms: number;
+    },
+    { success?: unknown; error_message?: unknown; timestamp_ms?: unknown }
+  >('RevokeNode', {
+    node_id: body.node_id,
+    reason: body.reason,
+    authority_signature_hex: body.authority_signature_hex,
+    timestamp_ms: body.timestamp_ms,
+  });
+
+  if (!rpc.ok) {
+    logger.error(
+      {
+        node_id: body.node_id,
+        admin_node_id: body.admin_node_id,
+        code: rpc.code,
+        message: rpc.message,
+        details: rpc.details,
+      },
+      'Revocation failed: identity registry unavailable',
+    );
+    res.status(503).json({
+      status: 'error',
+      node_id: body.node_id,
+      code: rpc.code,
+      message: 'Identity registry revocation path unavailable',
+    });
+    return;
+  }
+
+  if (rpc.data.success !== true) {
+    const errorMessage =
+      typeof rpc.data.error_message === 'string'
+        ? rpc.data.error_message
+        : 'Identity registry rejected revocation request';
+    logger.warn(
+      {
+        node_id: body.node_id,
+        admin_node_id: body.admin_node_id,
+        error: errorMessage,
+      },
+      'Revocation rejected by identity registry',
+    );
+    res.status(400).json({
+      status: 'error',
+      node_id: body.node_id,
+      code: 'REVOCATION_REJECTED',
+      message: errorMessage,
+    });
+    return;
+  }
+
+  telemetryStore.delete(body.node_id);
+  const presenceRemoved = ralphiePresenceByNode.delete(body.node_id);
+  senderPublicKeysById.delete(body.node_id);
+  replayStateBySenderId.delete(body.node_id);
+  operatorPresenceById.delete(body.node_id);
+
+  const sockets = socketsByOperatorId.get(body.node_id);
+  if (sockets) {
+    sockets.forEach((socket) => {
+      sendGatewayError(socket, 'IDENTITY_REVOKED', 'Identity revoked by admin action');
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close(4003, 'identity_revoked');
+      }
+    });
+    socketsByOperatorId.delete(body.node_id);
+  }
+
+  const revokedAtMs =
+    typeof rpc.data.timestamp_ms === 'number' && Number.isFinite(rpc.data.timestamp_ms)
+      ? Math.trunc(rpc.data.timestamp_ms)
+      : Date.now();
+
+  broadcast({
+    type: 'REVOCATION_EVENT',
+    node_id: body.node_id,
+    reason: body.reason,
+    revoked_at_ms: revokedAtMs,
+    revoked_by: body.admin_node_id,
+  });
+
+  if (presenceRemoved) {
+    broadcast({
+      type: 'RALPHIE_PRESENCE_EXPIRED',
+      node_id: body.node_id,
+      expired_at: revokedAtMs,
+    });
+  }
+
+  broadcast({
+    type: 'RALPHIE_PRESENCE_SNAPSHOT',
+    nodes: Array.from(ralphiePresenceByNode.values()),
+  });
+
+  logger.warn(
+    {
+      node_id: body.node_id,
+      admin_node_id: body.admin_node_id,
+      reason: body.reason,
+      revoked_at_ms: revokedAtMs,
+    },
+    'Node identity revoked through admin API',
+  );
+
+  res.status(200).json({
+    status: 'ok',
+    node_id: body.node_id,
+    revoked_at_ms: revokedAtMs,
+  });
+});
+
+app.get('/api/admin/fleet-attestation', (req, res) => {
+  const now = Date.now();
+  const nodes = mergeFleetAttestationState(now);
+  res.status(200).json({
+    status: 'ok',
+    nodes,
+    timestamp: now,
+  });
 });
 
 app.post('/ralphie/presence', (req, res) => {
@@ -473,6 +974,123 @@ function extractRecipientId(payload: unknown): string | null {
   }
   const value = (payload as { recipientId?: unknown }).recipientId;
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function isChatEnvelopeType(type: MessageEnvelope['type']): boolean {
+  return type === 'chat';
+}
+
+function streamIdForSender(senderId: string): string {
+  return `message-stream:${senderId}`;
+}
+
+async function anchorEnvelopeInMerkleVine(envelope: MessageEnvelope): Promise<MessageEnvelope> {
+  const current = merkleVineHeadBySender.get(envelope.from);
+  const parentHash = current?.lastLeafHash ?? undefined;
+  const leafIndex = current?.nextLeafIndex ?? 0;
+  const streamId = current?.streamId ?? streamIdForSender(envelope.from);
+
+  const leafPreimage = stableStringify({
+    schema_version: envelope.schema_version,
+    message_id: envelope.message_id,
+    timestamp: envelope.timestamp,
+    type: envelope.type,
+    from: envelope.from,
+    payload: envelope.payload,
+    nonce: envelope.nonce,
+    sequence: envelope.sequence,
+    previous_message_id: envelope.previous_message_id,
+    transport: envelope.transport,
+    signature: envelope.signature,
+    parent_hash: parentHash,
+    stream_id: streamId,
+    leaf_index: leafIndex,
+  });
+  const leafHash = await blake3(leafPreimage);
+  const anchoredAtMs = Date.now();
+
+  const anchoredEnvelope: MessageEnvelope = {
+    ...envelope,
+    vine: {
+      stream_id: streamId,
+      leaf_hash: leafHash,
+      parent_hash: parentHash,
+      leaf_index: leafIndex,
+      anchored_at_ms: anchoredAtMs,
+    },
+  };
+
+  merkleVineHeadBySender.set(envelope.from, {
+    streamId,
+    lastLeafHash: leafHash,
+    nextLeafIndex: leafIndex + 1,
+  });
+
+  return anchoredEnvelope;
+}
+
+function queueStoreForwardMessage(recipientId: string, envelope: MessageEnvelope): void {
+  const now = Date.now();
+  const currentQueue = storeForwardQueueByRecipient.get(recipientId) ?? [];
+  const filtered = currentQueue.filter((entry) => entry.expires_at_ms > now);
+
+  if (filtered.length >= STORE_FORWARD_MAX_PER_RECIPIENT) {
+    filtered.shift();
+  }
+
+  filtered.push({
+    // Preserve sender-signed envelope bytes; store-forward metadata stays server-side only.
+    envelope,
+    queued_at_ms: now,
+    expires_at_ms: now + STORE_FORWARD_TTL_MS,
+  });
+
+  storeForwardQueueByRecipient.set(recipientId, filtered);
+}
+
+function flushStoreForwardQueue(recipientId: string): number {
+  const queue = storeForwardQueueByRecipient.get(recipientId);
+  if (!queue || queue.length === 0) {
+    return 0;
+  }
+
+  const recipientSockets = socketsByOperatorId.get(recipientId);
+  if (!recipientSockets || recipientSockets.size === 0) {
+    return 0;
+  }
+
+  const now = Date.now();
+  const pending: StoreForwardEntry[] = [];
+  let delivered = 0;
+
+  for (const entry of queue) {
+    if (entry.expires_at_ms <= now) {
+      continue;
+    }
+
+    let sent = false;
+    recipientSockets.forEach((socket) => {
+      if (!sent && socket.readyState === WebSocket.OPEN) {
+        sendWsJson(socket, entry.envelope);
+        sent = true;
+      }
+    });
+
+    if (sent) {
+      delivered += 1;
+      continue;
+    }
+
+    pending.push(entry);
+  }
+
+  if (pending.length > 0) {
+    storeForwardQueueByRecipient.set(recipientId, pending);
+  } else {
+    storeForwardQueueByRecipient.delete(recipientId);
+  }
+
+  return delivered;
 }
 
 function normalizePresenceStatus(status: unknown): OperatorPresenceStatus {
@@ -606,6 +1224,7 @@ function verifyEnvelopeSignature(envelope: MessageEnvelope): EnvelopeVerificatio
       nonce: envelope.nonce,
       sequence: envelope.sequence,
       previous_message_id: envelope.previous_message_id,
+      transport: envelope.transport,
     });
     const data = Buffer.from(canonicalPayload, 'utf-8');
     const signatureBytes = Buffer.from(signatureHex, 'hex');
@@ -879,6 +1498,17 @@ function bindOperatorSession(ws: WebSocket, operatorId: string): void {
     session.clientId = operatorId;
     session.lastSeen = Date.now();
   }
+
+  const deliveredBuffered = flushStoreForwardQueue(operatorId);
+  if (deliveredBuffered > 0) {
+    logger.info(
+      {
+        node_id: operatorId,
+        delivered_count: deliveredBuffered,
+      },
+      'Delivered buffered store-forward messages to reconnected operator',
+    );
+  }
 }
 
 function buildAckEnvelope(
@@ -979,7 +1609,7 @@ function handleOperatorPresenceEnvelope(ws: WebSocket, envelope: MessageEnvelope
   broadcast(outboundPresence);
 }
 
-function routeEnvelopeByRecipient(ws: WebSocket, envelope: MessageEnvelope): void {
+async function routeEnvelopeByRecipient(ws: WebSocket, envelope: MessageEnvelope): Promise<void> {
   const session = operatorSessionBySocket.get(ws);
   if (!session?.clientId) {
     sendGatewayError(ws, 'AUTH_REQUIRED', 'Presence handshake required before sending messages');
@@ -1015,7 +1645,7 @@ function routeEnvelopeByRecipient(ws: WebSocket, envelope: MessageEnvelope): voi
     return;
   }
 
-  const routedEnvelope: MessageEnvelope = { ...envelope };
+  const routedEnvelope = await anchorEnvelopeInMerkleVine(envelope);
   setEnvelopeVerificationStatus(routedEnvelope, 'VERIFIED');
 
   const recipientSockets = socketsByOperatorId.get(recipientId);
@@ -1032,21 +1662,105 @@ function routeEnvelopeByRecipient(ws: WebSocket, envelope: MessageEnvelope): voi
   if (delivered) {
     sendWsJson(ws, buildAckEnvelope(recipientId, envelope.message_id, true));
   } else {
+    if (isChatEnvelopeType(envelope.type)) {
+      queueStoreForwardMessage(recipientId, routedEnvelope);
+      sendWsJson(ws, buildAckEnvelope(recipientId, envelope.message_id, false, 'recipient_offline_buffered'));
+      return;
+    }
     sendWsJson(ws, buildAckEnvelope(recipientId, envelope.message_id, false, 'recipient_offline'));
   }
 }
 
-function handleC2Envelope(ws: WebSocket, envelope: MessageEnvelope): void {
+async function routeEnvelopeViaGossip(ws: WebSocket, envelope: MessageEnvelope): Promise<void> {
+  const session = operatorSessionBySocket.get(ws);
+  if (!session?.clientId) {
+    sendGatewayError(ws, 'AUTH_REQUIRED', 'Presence handshake required before sending messages');
+    return;
+  }
+
+  if (envelope.from !== session.clientId) {
+    sendGatewayError(ws, 'AUTH_MISMATCH', 'Envelope sender does not match authenticated operator');
+    return;
+  }
+
+  const revocationCheck = verifySenderNotRevoked(envelope.from);
+  if (!revocationCheck.ok) {
+    sendGatewayError(ws, revocationCheck.code, revocationCheck.message, revocationCheck.details);
+    return;
+  }
+
+  const signatureCheck = verifyEnvelopeSignature(envelope);
+  if (!signatureCheck.ok) {
+    sendGatewayError(ws, signatureCheck.code, signatureCheck.message, signatureCheck.details);
+    return;
+  }
+
+  const replayCheck = verifyAndTrackReplay(envelope);
+  if (!replayCheck.ok) {
+    sendGatewayError(ws, replayCheck.code, replayCheck.message, replayCheck.details);
+    return;
+  }
+
+  const recipientId = extractRecipientId(envelope.payload);
+  if (!recipientId) {
+    sendGatewayError(ws, 'INVALID_PAYLOAD', 'recipientId is required');
+    return;
+  }
+
+  const ttlMs = envelope.transport?.ttl_ms ?? 15_000;
+  if (ttlMs > GOSSIP_MAX_TTL_MS) {
+    sendGatewayError(ws, 'INVALID_TRANSPORT', `gossip ttl exceeds ${GOSSIP_MAX_TTL_MS}ms`);
+    return;
+  }
+
+  const gossipEnvelope = await anchorEnvelopeInMerkleVine(envelope);
+  setEnvelopeVerificationStatus(gossipEnvelope, 'VERIFIED');
+
+  let recipientDelivered = false;
+  for (const [socket, client] of operatorSessionBySocket.entries()) {
+    if (!client.clientId) {
+      continue;
+    }
+    if (socket.readyState !== WebSocket.OPEN || socket === ws) {
+      continue;
+    }
+    sendWsJson(socket, gossipEnvelope);
+    if (client.clientId === recipientId) {
+      recipientDelivered = true;
+    }
+  }
+
+  if (recipientDelivered) {
+    sendWsJson(ws, buildAckEnvelope(recipientId, envelope.message_id, true));
+    return;
+  }
+
+  if (isChatEnvelopeType(envelope.type)) {
+    queueStoreForwardMessage(recipientId, gossipEnvelope);
+    sendWsJson(ws, buildAckEnvelope(recipientId, envelope.message_id, false, 'recipient_offline_buffered'));
+    return;
+  }
+
+  sendWsJson(ws, buildAckEnvelope(recipientId, envelope.message_id, false, 'recipient_offline_gossip'));
+}
+
+async function handleC2Envelope(ws: WebSocket, envelope: MessageEnvelope): Promise<void> {
   switch (envelope.type) {
     case 'presence':
       handleOperatorPresenceEnvelope(ws, envelope);
       break;
     case 'chat':
+      if (envelope.transport?.mode === 'gossip') {
+        await routeEnvelopeViaGossip(ws, envelope);
+      } else {
+        await routeEnvelopeByRecipient(ws, envelope);
+      }
+      break;
     case 'call_invite':
     case 'call_accept':
     case 'call_reject':
     case 'call_end':
-      routeEnvelopeByRecipient(ws, envelope);
+      await routeEnvelopeViaGossip(ws, envelope);
       break;
     case 'heartbeat': {
       const heartbeat = createMessageEnvelope('heartbeat', 'gateway', {
@@ -1133,7 +1847,13 @@ wss.on('connection', (ws: WebSocket) => {
       }
 
       const envelope = parseMessageEnvelope(raw);
-      handleC2Envelope(ws, envelope);
+      void handleC2Envelope(ws, envelope).catch((error) => {
+        logger.error(
+          { error: error instanceof Error ? error.message : String(error) },
+          'Failed to handle authenticated C2 envelope',
+        );
+        sendGatewayError(ws, 'ROUTING_ERROR', 'Failed to route envelope');
+      });
     } catch (e) {
       logger.error({ error: e instanceof Error ? e.message : String(e) }, 'Message parse error');
       sendGatewayError(ws, 'PARSE_ERROR', 'Invalid JSON format');

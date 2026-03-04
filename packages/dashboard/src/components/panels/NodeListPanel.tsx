@@ -12,7 +12,9 @@ import React, { useState, useMemo } from 'react';
 import { Search, Filter, ShieldX, AlertTriangle, Shield } from 'lucide-react';
 import { GlassPanel } from '../hud/GlassPanel';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useCommStore } from '../../store/useCommStore';
 import { IdentityClient, type RevocationCertificate } from '../../services/identity/identityClient';
+import { createSigningClient } from '../../services/identity';
 
 export const NodeListPanel: React.FC = () => {
   const nodes = useTacticalStore((s) => s.nodes) || new Map();
@@ -20,6 +22,7 @@ export const NodeListPanel: React.FC = () => {
   const selectNode = useTacticalStore((s) => s.selectNode);
   const markNodeAsRevoked = useTacticalStore((s) => s.markNodeAsRevoked);
   const recordRevocation = useTacticalStore((s) => s.recordRevocation);
+  const currentOperatorId = useCommStore((s) => s.currentOperator?.id);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'degraded' | 'compromised' | 'revoked'>('all');
@@ -109,8 +112,31 @@ export const NodeListPanel: React.FC = () => {
     try {
       console.log(`[GOSPEL] Initiating sovereign revocation for node: ${nodeId}`);
 
+      const adminNodeId = currentOperatorId || useTacticalStore.getState().selectedNodeId;
+      if (!adminNodeId) {
+        throw new Error('No admin identity is active in this session');
+      }
+
+      const timestampMs = Date.now();
+      const canonicalPayload = `${nodeId}${reason.trim()}${timestampMs}`;
+      const signingClient = createSigningClient();
+      let signatureHex = '';
+      try {
+        const signature = await signingClient.signMessage(
+          adminNodeId,
+          new TextEncoder().encode(canonicalPayload),
+        );
+        signatureHex = signature.signature_hex;
+      } finally {
+        signingClient.close();
+      }
+
       // Step 1: Request hardware-signed revocation certificate
-      const revoked = await IdentityClient.revokeNodeIdentity(nodeId, reason.trim());
+      const revoked = await IdentityClient.revokeNodeIdentity(nodeId, reason.trim(), {
+        adminNodeId,
+        timestampMs,
+        authoritySignatureHex: signatureHex,
+      });
 
       if (!revoked) {
         throw new Error('Revocation failed');
@@ -121,8 +147,8 @@ export const NodeListPanel: React.FC = () => {
         node_id: nodeId,
         revoked_at_ms: Date.now(),
         revocation_reason: reason.trim(),
-        revoking_authority: 'local-operator',
-        signature: `revocation-sig-${nodeId.substring(0, 8)}`,
+        revoking_authority: adminNodeId,
+        signature: signatureHex,
         timestamp_ms: Date.now(),
       };
 

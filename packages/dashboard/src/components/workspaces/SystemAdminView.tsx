@@ -31,6 +31,7 @@ import {
 } from '../../api/tauri-commands';
 import { IdentityClient } from '../../services/identity/identityClient';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useCommStore } from '../../store/useCommStore';
 import { NodeListPanel } from '../panels/NodeListPanel';
 import { AuditLogViewer } from '../compliance/AuditLogViewer';
 
@@ -40,6 +41,7 @@ export const SystemAdminView: React.FC = () => {
   const [bundle, setBundle] = useState<SupportBundleSummary | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [hasAdminPrivileges, setHasAdminPrivileges] = useState(false);
+  const currentOperatorId = useCommStore((s) => s.currentOperator?.id);
 
   const fleetAttestationState = useTacticalStore((s) => s.fleetAttestationState);
   const lastAttestationUpdate = useTacticalStore((s) => s.lastAttestationUpdate);
@@ -59,11 +61,21 @@ export const SystemAdminView: React.FC = () => {
   // Check admin privileges
   useEffect(() => {
     (async () => {
-      const currentNodeId = useTacticalStore.getState().selectedNodeId || 'unknown';
-      const authorized = await IdentityClient.hasAdminPrivileges(currentNodeId);
-      setHasAdminPrivileges(authorized);
+      const candidateNodeId = currentOperatorId || useTacticalStore.getState().selectedNodeId || '';
+      if (!candidateNodeId) {
+        setHasAdminPrivileges(false);
+        return;
+      }
+
+      try {
+        const authorized = await IdentityClient.hasAdminPrivileges(candidateNodeId);
+        setHasAdminPrivileges(authorized);
+      } catch (error) {
+        console.error('[ADMIN] Failed to evaluate admin privileges:', error);
+        setHasAdminPrivileges(false);
+      }
     })();
-  }, []);
+  }, [currentOperatorId]);
 
   // Fetch fleet attestation state every 5 seconds
   useEffect(() => {
