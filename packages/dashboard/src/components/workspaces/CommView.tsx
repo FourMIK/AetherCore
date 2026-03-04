@@ -2,6 +2,11 @@
  * CommView
  * Secure console-to-console communications workspace
  * Supports text messaging and video calls between verified operators
+ * 
+ * PHASE 5: Workspace Integration
+ * - Integrates MessagePanel from Phase 4
+ * - Tracks active conversation for notification clearing
+ * - Auto-clears unread counts when viewing conversations
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -19,6 +24,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useCommStore } from '../../store/useCommStore';
+import { MessagingPanel } from '../messaging/MessagingPanel';
 
 export const CommView: React.FC = () => {
   const {
@@ -26,14 +32,20 @@ export const CommView: React.FC = () => {
     operators,
     conversations,
     activeCall,
+    incomingCall,
     sendMessage,
     initiateCall,
+    acceptCall,
+    rejectCall,
     endCall,
     getConversation,
+    setActiveConversation,
   } = useCommStore();
 
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState('');
+  // Note: viewMode could be controlled by UI toggle in future enhancement
+  const viewMode: 'messages' | 'video' = 'messages';
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const operatorList = Array.from(operators.values()).filter(
@@ -41,6 +53,18 @@ export const CommView: React.FC = () => {
   );
   const selectedOperator = selectedOperatorId ? operators.get(selectedOperatorId) : null;
   const conversation = selectedOperatorId ? getConversation(selectedOperatorId) : [];
+
+  // PHASE 5: Track active conversation for notification clearing
+  useEffect(() => {
+    if (selectedOperatorId) {
+      setActiveConversation(selectedOperatorId);
+    }
+    
+    return () => {
+      // Clear active conversation on unmount or selection change
+      setActiveConversation(null);
+    };
+  }, [selectedOperatorId, setActiveConversation]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -79,7 +103,12 @@ export const CommView: React.FC = () => {
 
   return (
     <div className="h-full overflow-hidden">
-      <div className="h-full flex">
+      {/* PHASE 5: Use MessagingPanel from Phase 4 for enhanced messaging */}
+      {viewMode === 'messages' ? (
+        <MessagingPanel />
+      ) : (
+        // Original video call UI
+        <div className="h-full flex">
         {/* Operator Roster */}
         <div className="w-80 flex-shrink-0 border-r border-tungsten/10 flex flex-col">
           <div className="p-4 border-b border-tungsten/10 flex-shrink-0">
@@ -182,7 +211,7 @@ export const CommView: React.FC = () => {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => initiateCall(selectedOperator.id)}
+                    onClick={() => initiateCall(selectedOperator.id, { video: true, audio: true })}
                     disabled={!!activeCall}
                     className="p-2 rounded-lg bg-overmatch/10 hover:bg-overmatch/20 text-overmatch transition-colors disabled:opacity-50"
                     title="Start video call"
@@ -190,7 +219,7 @@ export const CommView: React.FC = () => {
                     <Video size={20} />
                   </button>
                   <button
-                    onClick={() => initiateCall(selectedOperator.id)}
+                    onClick={() => initiateCall(selectedOperator.id, { video: false, audio: true })}
                     disabled={!!activeCall}
                     className="p-2 rounded-lg bg-verified-green/10 hover:bg-verified-green/20 text-verified-green transition-colors disabled:opacity-50"
                     title="Start voice call"
@@ -199,6 +228,36 @@ export const CommView: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {incomingCall && (
+                <div className="p-4 border-b border-jamming/30 bg-jamming/10 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle size={18} className="text-jamming" />
+                    <div>
+                      <div className="text-sm text-tungsten font-semibold">
+                        Incoming call from {operators.get(incomingCall.initiator)?.name || incomingCall.initiator}
+                      </div>
+                      <div className="text-xs text-tungsten/50">
+                        {incomingCall.media?.video ? 'Video + Audio' : 'Audio only'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => acceptCall(incomingCall.id)}
+                      className="px-3 py-2 rounded-lg bg-verified-green/20 text-verified-green hover:bg-verified-green/30 transition-colors"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => rejectCall(incomingCall.id)}
+                      className="px-3 py-2 rounded-lg bg-jamming/20 text-jamming hover:bg-jamming/30 transition-colors"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Messages */}
               <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
@@ -283,6 +342,7 @@ export const CommView: React.FC = () => {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 };

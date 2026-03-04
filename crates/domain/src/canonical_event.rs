@@ -17,6 +17,7 @@ pub enum EventType {
     TELEMETRY,
     SYSTEM,
     CUSTOM,
+    MESSAGE,
 }
 
 /// Ed25519 signature as hex-encoded bytes
@@ -177,6 +178,24 @@ pub enum EventPayload {
         acknowledged: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
         metadata: Option<BTreeMap<String, serde_json::Value>>,
+    },
+
+    /// Secure messaging payload (Merkle Vine-linked)
+    Message {
+        text: String,
+        conversation_id: String,
+        recipient_ids: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reply_to: Option<String>,
+    },
+
+    /// Video frame hash event (Mission Guardian)
+    VideoFrame {
+        session_id: String,
+        frame_sequence: u64,
+        frame_hash: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_keyframe: Option<bool>,
     },
 }
 

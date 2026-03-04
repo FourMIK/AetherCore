@@ -10,7 +10,7 @@
  * Security: Follows 4MIK Zero Trust principles - no node is trusted by default.
  */
 
-import { test, expect, testDevices } from '../fixtures';
+import { test, expect, testDevices } from './fixtures';
 
 test.describe('Trust Mesh UI Flows', () => {
   test.beforeEach(async ({ page, waitForAppReady }) => {

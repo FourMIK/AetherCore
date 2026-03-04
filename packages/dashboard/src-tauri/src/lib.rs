@@ -36,7 +36,7 @@ impl SentinelHardwareBackend {
 }
 
 fn sentinel_hardware_backend() -> SentinelHardwareBackend {
-    if cfg!(target_os = "macos") {
+    if cfg!(any(target_os = "macos", target_os = "ios")) {
         SentinelHardwareBackend::SecureEnclave
     } else {
         SentinelHardwareBackend::Tpm
@@ -218,8 +218,8 @@ fn sentinel_boot() -> Result<(), String> {
                             "HARDWARE LOCKOUT",
                             "Secure Enclave is unavailable or inaccessible.",
                             "STEP 1: Restart the device and unlock the login keychain.\n\
-                             STEP 2: Verify this Mac supports Secure Enclave and is not restricted by policy.\n\
-                             STEP 3: Ensure macOS is up to date.\n\
+                             STEP 2: Verify this device supports Secure Enclave and is not restricted by policy.\n\
+                             STEP 3: Ensure the OS is up to date.\n\
                              STEP 4: Retry startup and capture logs if it fails again.",
                         )
                     } else if error_msg.contains("quote verification failed")
@@ -273,11 +273,21 @@ enum SentinelBootPolicy {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StartupProbe {
+    pub policy_mode: String,
+    pub selected_backend: String,
+    pub security_level: String,
+    pub status: String,
+    pub failure_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SentinelTrustStatus {
     pub trust_level: String,
     pub reduced_trust: bool,
     pub headline: String,
     pub detail: String,
+    pub startup_probe: Option<StartupProbe>,
 }
 
 impl Default for SentinelTrustStatus {
@@ -287,6 +297,7 @@ impl Default for SentinelTrustStatus {
             reduced_trust: false,
             headline: "Hardware trust attested".to_string(),
             detail: "Hardware attestation verified at startup.".to_string(),
+            startup_probe: None,
         }
     }
 }
@@ -346,7 +357,8 @@ fn evaluate_sentinel_startup(
 }
 
 fn should_skip_sentinel_boot(policy: SentinelBootPolicy) -> bool {
-    if !cfg!(target_os = "macos") {
+    // On Apple platforms (macOS/iOS), allow skipping Sentinel boot when not required
+    if !cfg!(any(target_os = "macos", target_os = "ios")) {
         return false;
     }
 
@@ -410,7 +422,10 @@ pub fn run() {
                 })
             } else {
                 let sentinel_result = if should_skip_sentinel_boot(sentinel_policy) {
-                    Err("Secure Enclave startup attestation skipped on macOS in non-required mode".to_string())
+                    Err(
+                        "Secure Enclave startup attestation skipped on macOS in non-required mode"
+                            .to_string(),
+                    )
                 } else {
                     sentinel_boot()
                 };

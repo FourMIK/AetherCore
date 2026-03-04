@@ -20,3 +20,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "atak-trust-overlay"
+
+

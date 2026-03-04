@@ -19,5 +19,8 @@ public class CotServiceRemote {
 
     public void addCotEventListener(CotEventListener listener) {}
     public void removeCotEventListener(CotEventListener listener) {}
+    
+    // Added for Tactical Glass plugin compatibility
+    public void setCotEventListener(CotEventListener listener) {}
 }
 

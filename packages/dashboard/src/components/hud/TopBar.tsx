@@ -19,8 +19,8 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({
   systemStatus = 'operational',
-  verifiedNodes = 0,
-  totalNodes = 0,
+  verifiedNodes: _verifiedNodes = 0,
+  totalNodes: _totalNodes = 0,
   className = '',
 }) => {
   const [utcTime, setUtcTime] = useState('');
@@ -28,7 +28,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   const backendCoreStatus = useCommStore((state) => state.backendCoreStatus);
   const meshNodes = useTacticalStore((state) => state.nodes) || new Map();
 
-  const liveMeshNodeCount = Array.from(meshNodes.values()).filter((node) => {
+  // Calculate real node counts from the store
+  const nodeArray = Array.from(meshNodes.values());
+  const totalNodes = nodeArray.length;
+  const verifiedNodes = nodeArray.filter((node) => node.verified).length;
+
+  const liveMeshNodeCount = nodeArray.filter((node) => {
     const ageMs = Date.now() - new Date(node.lastSeen).getTime();
     return node.status !== 'offline' && ageMs < 120000;
   }).length;

@@ -1,10 +1,12 @@
-package gov.tak.api.plugin
+package gov.tak.api.plugin;
+
+import android.content.Context;
 
 /**
  * Stub for ATAK IServiceController
  */
-interface IServiceController {
-    fun getContext(): android.content.Context?
-    fun getMapView(): Any?
+public interface IServiceController {
+    Context getContext();
+    Object getMapView();
 }
 

@@ -92,7 +92,7 @@ dist/atak/
 # Android Build Artifacts
 .gradle/
 .cxx/
-local.properties
+# local.properties  <-- Commented out to allow creation
 *.apk
 *.ap_
 *.aab
