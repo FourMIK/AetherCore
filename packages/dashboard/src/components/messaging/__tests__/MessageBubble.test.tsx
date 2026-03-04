@@ -7,8 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
-import { MessageBubble } from '../MessageBubble';
-import type { CanonicalEvent, MessagePayload } from '@aethercore/canonical-schema';
+import { MessageBubble, type CanonicalEvent, type MessagePayload } from '../MessageBubble';
 
 describe('MessageBubble', () => {
   let container: HTMLDivElement;

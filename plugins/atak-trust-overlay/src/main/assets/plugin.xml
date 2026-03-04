@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<plugin id="com.aethercore.atak.trustoverlay" version="1.0.0">
-    <name>AetherCore Trust Overlay</name>
-    <provider>AetherCore</provider>
-    <description>Displays trust CoT overlays, detail panels, and trust feed health in ATAK.</description>
-    <atak-api min="5.2" target="5.2" />
-    <entry-point>com.aethercore.atak.trustoverlay.core.TrustOverlayLifecycle</entry-point>
-</plugin>
+<plugins>
+    <plugin id="com.aethercore.atak.trustoverlay" version="1.0.0">
+        <name>AetherCore Trust Overlay</name>
+        <provider>AetherCore</provider>
+        <description>Displays trust CoT overlays, detail panels, and trust feed health in ATAK.</description>
+        <atak-api min="5.2" target="5.2" />
+        <extensions>
+            <extension
+                type="gov.tak.api.plugin.IPlugin"
+                impl="com.aethercore.atak.trustoverlay.core.TrustOverlayPlugin"
+                singleton="true" />
+        </extensions>
+    </plugin>
+</plugins>

@@ -144,52 +144,8 @@ interface TacticalStore {
 
 export const useTacticalStore = create<TacticalStore>()(
   persist(
-    (set, get) => ({
-      // Initial UI State
-      theme: 'dark',
-      viewMode: '3d-local',
-      mapProvider: 'three',
-      workspaceMode: 'commander',
-      sidebarOpen: true,
-      rightPanelWidth: 400,
-
-      // Initial Operational Data
-      nodes: new Map(),
-      tracks: [],
-      events: [],
-      selectedNodeId: null,
-      byzantineAlert: null,
-      verificationFailure: null,
-
-      // Fleet Attestation State (Admin Module)
-      fleetAttestationState: [],
-      lastAttestationUpdate: 0,
-      revocationHistory: [],
-
-      // UI Actions
-      setTheme: (theme) => set({ theme }),
-      setViewMode: (viewMode) => set({ viewMode }),
-      setMapProvider: (mapProvider) => set({ mapProvider }),
-      setWorkspaceMode: (workspaceMode) => set({ workspaceMode }),
-      setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
-      setRightPanelWidth: (rightPanelWidth) => set({ rightPanelWidth }),
-
-      // Node Actions
-      addNode: (node) =>
-        set((state) => {
-          const nodes = new Map(state.nodes);
-          nodes.set(node.id, node);
-          return { nodes };
-        }),
-
-      updateNode: (id, updates) =>
-        set((state) => {
-          const nodes = new Map(state.nodes);
-          const node = nodes.get(id);
-          if (node) {
-            nodes.set(id, { ...node, ...updates });
     (set, get) => {
-      // Initialize with mock FLIR node
+      // Initialize with mock FLIR nodes
       const initialNodes = new Map<string, TacticalNode>();
       initialNodes.set('flir-alpha-01', {
         id: 'flir-alpha-01',
@@ -255,6 +211,11 @@ export const useTacticalStore = create<TacticalStore>()(
         selectedNodeId: 'thermal-demo-03',
         byzantineAlert: null,
         verificationFailure: null,
+
+        // Fleet Attestation State (Admin Module)
+        fleetAttestationState: [],
+        lastAttestationUpdate: 0,
+        revocationHistory: [],
 
         // UI Actions
         setTheme: (theme) => set({ theme }),
@@ -330,6 +291,98 @@ export const useTacticalStore = create<TacticalStore>()(
         triggerVerificationFailure: (verificationFailure) => set({ verificationFailure }),
         clearVerificationFailure: () => set({ verificationFailure: null }),
 
+        // Fleet Attestation & Revocation Actions (Admin)
+        updateFleetAttestationState: (fleetAttestationState) => {
+          set({
+            fleetAttestationState,
+            lastAttestationUpdate: Date.now(),
+          });
+
+          // Sync attestation state to nodes map
+          const nodes = new Map(get().nodes);
+          fleetAttestationState.forEach((attestation) => {
+            const node = nodes.get(attestation.node_id);
+            if (node) {
+              nodes.set(attestation.node_id, {
+                ...node,
+                tpmAttestationValid: attestation.tpm_attestation_valid,
+                trustScore: attestation.trust_score,
+                verified: attestation.hardware_backed && attestation.tpm_attestation_valid,
+                integrityCompromised: !attestation.merkle_vine_synced,
+                byzantineDetected: attestation.byzantine_detected,
+                revoked: attestation.revoked,
+                revocationReason: attestation.revocation_reason,
+                status: attestation.revoked
+                  ? 'revoked'
+                  : attestation.byzantine_detected
+                  ? 'compromised'
+                  : node.status,
+              });
+            }
+          });
+
+          set({ nodes });
+        },
+
+        recordRevocation: (certificate) =>
+          set((state) => ({
+            revocationHistory: [certificate, ...state.revocationHistory],
+          })),
+
+        markNodeAsRevoked: (nodeId, reason) => {
+          const nodes = new Map(get().nodes);
+          const node = nodes.get(nodeId);
+          if (node) {
+            nodes.set(nodeId, {
+              ...node,
+              revoked: true,
+              revocationReason: reason,
+              status: 'revoked',
+              trustScore: 0,
+            });
+            set({ nodes });
+
+            // Add security event
+            get().addEvent({
+              id: `revoke-${nodeId}-${Date.now()}`,
+              nodeId,
+              type: 'verification_failed',
+              timestamp: new Date(),
+              details: `Node revoked: ${reason}`,
+            });
+          }
+        },
+
+        markNodeAsCompromised: (nodeId, reason) => {
+          const nodes = new Map(get().nodes);
+          const node = nodes.get(nodeId);
+          if (node) {
+            nodes.set(nodeId, {
+              ...node,
+              byzantineDetected: true,
+              integrityCompromised: true,
+              status: 'compromised',
+            });
+            set({ nodes });
+
+            // Trigger Byzantine alert
+            get().triggerByzantineAlert({
+              nodeId,
+              reason,
+              timestamp: Date.now(),
+            });
+
+            // Add security event
+            get().addEvent({
+              id: `byzantine-${nodeId}-${Date.now()}`,
+              nodeId,
+              type: 'byzantine_detected',
+              timestamp: new Date(),
+              details: reason,
+            });
+          }
+        },
+
         // Tauri Bridge Actions
         // PRODUCTION: Connect to authenticated C2 mesh with hardware-rooted trust
         // This replaces the previous testnet connection with production-grade
@@ -356,160 +409,29 @@ export const useTacticalStore = create<TacticalStore>()(
             console.error('Failed to generate genesis bundle:', error);
             return { bundleHash: '', timestamp: 0 };
           }
-          return { nodes };
-        }),
+        },
 
-      // Track Actions
-      addTrack: (track) =>
-        set((state) => ({
-          tracks: [...state.tracks, track],
-        })),
-
-      clearTracks: () => set({ tracks: [] }),
-
-      // Event Actions
-      addEvent: (event) =>
-        set((state) => ({
-          events: [...state.events, event],
-        })),
-
-      clearEvents: () => set({ events: [] }),
-
-      // Security Actions
-      triggerByzantineAlert: (byzantineAlert) => set({ byzantineAlert }),
-      clearByzantineAlert: () => set({ byzantineAlert: null }),
-      triggerVerificationFailure: (verificationFailure) => set({ verificationFailure }),
-      clearVerificationFailure: () => set({ verificationFailure: null }),
-
-      // Fleet Attestation & Revocation Actions (Admin)
-      updateFleetAttestationState: (fleetAttestationState) => {
-        set({
-          fleetAttestationState,
-          lastAttestationUpdate: Date.now(),
-        });
-
-        // Sync attestation state to nodes map
-        const nodes = new Map(get().nodes);
-        fleetAttestationState.forEach((attestation) => {
-          const node = nodes.get(attestation.node_id);
-          if (node) {
-            nodes.set(attestation.node_id, {
-              ...node,
-              tpmAttestationValid: attestation.tpm_attestation_valid,
-              trustScore: attestation.trust_score,
-              verified: attestation.hardware_backed && attestation.tpm_attestation_valid,
-              integrityCompromised: !attestation.merkle_vine_synced,
-              byzantineDetected: attestation.byzantine_detected,
-              revoked: attestation.revoked,
-              revocationReason: attestation.revocation_reason,
-              status: attestation.revoked
-                ? 'revoked'
-                : attestation.byzantine_detected
-                ? 'compromised'
-                : node.status,
-            });
-          }
-        });
-
-        set({ nodes });
-      },
-
-      recordRevocation: (certificate) =>
-        set((state) => ({
-          revocationHistory: [certificate, ...state.revocationHistory],
-        })),
-
-      markNodeAsRevoked: (nodeId, reason) => {
-        const nodes = new Map(get().nodes);
-        const node = nodes.get(nodeId);
-        if (node) {
-          nodes.set(nodeId, {
-            ...node,
-            revoked: true,
-            revocationReason: reason,
-            status: 'revoked',
-            trustScore: 0,
-          });
-          set({ nodes });
-
-          // Add security event
-          get().addEvent({
-            id: `revoke-${nodeId}-${Date.now()}`,
-            nodeId,
-            type: 'verification_failed',
-            timestamp: new Date(),
-            details: `Node revoked: ${reason}`,
-          });
-        }
-      },
-
-      markNodeAsCompromised: (nodeId, reason) => {
-        const nodes = new Map(get().nodes);
-        const node = nodes.get(nodeId);
-        if (node) {
-          nodes.set(nodeId, {
-            ...node,
-            byzantineDetected: true,
-            integrityCompromised: true,
-            status: 'compromised',
-          });
-          set({ nodes });
-
-          // Trigger Byzantine alert
-          get().triggerByzantineAlert({
-            nodeId,
-            reason,
-            timestamp: Date.now(),
-          });
-
-          // Add security event
-          get().addEvent({
-            id: `byzantine-${nodeId}-${Date.now()}`,
-            nodeId,
-            type: 'byzantine_detected',
-            timestamp: new Date(),
-            details: reason,
-          });
-        }
-      },
-
-      // Tauri Bridge Actions
-      // PRODUCTION: Connect to authenticated C2 mesh with hardware-rooted trust
-      // This replaces the previous testnet connection with production-grade
-      // WebSocket connection using TLS 1.3 and mutual TPM attestation.
-      connectToMesh: async () => {
-        try {
-          const { wsUrl } = getRuntimeConfig();
-          const result = await invoke<string>('connect_to_mesh', { endpoint: wsUrl });
-          return { success: true, nodeId: result };
-        } catch (error) {
-          console.error('Failed to connect to C2 mesh:', error);
-          return { success: false, nodeId: '' };
-        }
-      },
-
-      generateGenesisBundle: async () => {
-        try {
-          const result = await invoke<any>('generate_genesis_bundle', {
-            userIdentity: 'operator',
-            squadId: 'alpha',
-          });
-          return { bundleHash: result.signature, timestamp: result.timestamp };
-        } catch (error) {
-          console.error('Failed to generate genesis bundle:', error);
-          return { bundleHash: '', timestamp: 0 };
-        }
-      },
-
-      verifyTelemetrySignature: async (payload: TelemetryPayload) => {
-        try {
-          const verified = await invoke<boolean>('verify_telemetry_signature', { payload });
-          if (!verified) {
-            // Trigger verification failure
+        verifyTelemetrySignature: async (payload: TelemetryPayload) => {
+          try {
+            const verified = await invoke<boolean>('verify_telemetry_signature', { payload });
+            if (!verified) {
+              // Trigger verification failure
+              set({
+                verificationFailure: {
+                  nodeId: payload.nodeId,
+                  reason: `Verification failed for node ${payload.nodeId}`,
+                  timestamp: Date.now(),
+                },
+              });
+              return false;
+            }
+            return true;
+          } catch (error) {
+            console.error('Failed to verify telemetry signature:', error);
             set({
               verificationFailure: {
                 nodeId: payload.nodeId,
-                reason: `Verification error: ${error}`,
+                reason: `Verification error: ${error instanceof Error ? error.message : String(error)}`,
                 timestamp: Date.now(),
               },
             });

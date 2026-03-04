@@ -607,6 +607,7 @@ export const useCommStore = create<CommState>((set, get) => ({
 
   // C2 Client Management
   initC2Client: (endpoint, clientId) => {
+    const knownRalphiePresenceNodeIds = new Set<string>();
     const isLocalEndpoint = (() => {
       try {
         const url = new URL(endpoint);
@@ -789,6 +790,7 @@ export const useCommStore = create<CommState>((set, get) => ({
       },
       onRalphiePresence: (frame) => {
         console.log('[C2] Ralphie presence:', frame.identity.device_id, frame.reason);
+        knownRalphiePresenceNodeIds.add(frame.identity.device_id);
         upsertRalphieNode(frame);
         const existing = get().operators.get(frame.identity.device_id);
         const fallbackName = frame.identity.device_id.replace(/^ralphie-/, 'Ralphie ');
@@ -804,6 +806,22 @@ export const useCommStore = create<CommState>((set, get) => ({
         });
       },
       onRalphiePresenceSnapshot: (nodes) => {
+        const nextIds = new Set(nodes.map((frame) => frame.identity.device_id));
+        const tacticalStore = useTacticalStore.getState();
+        knownRalphiePresenceNodeIds.forEach((nodeId) => {
+          if (!nextIds.has(nodeId)) {
+            tacticalStore.removeNode(nodeId);
+            const existing = get().operators.get(nodeId);
+            if (existing) {
+              get().upsertOperator({
+                ...existing,
+                status: 'offline',
+                lastSeen: new Date(),
+              });
+            }
+          }
+        });
+
         nodes.forEach((frame) => {
           upsertRalphieNode(frame);
           const existing = get().operators.get(frame.identity.device_id);
@@ -819,6 +837,9 @@ export const useCommStore = create<CommState>((set, get) => ({
             lastSeen: new Date(frame.received_at ?? frame.timestamp ?? Date.now()),
           });
         });
+
+        knownRalphiePresenceNodeIds.clear();
+        nextIds.forEach((nodeId) => knownRalphiePresenceNodeIds.add(nodeId));
       },
       onError: (error) => {
         console.error('[C2] Error:', error);

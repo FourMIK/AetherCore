@@ -15,6 +15,7 @@ val localProperties = Properties().apply {
 val atakApiMinVersion = "5.2"
 val atakApiTargetVersion = "5.2"
 val atakCompatibleVersion = providers.gradleProperty("atak.compatible.version").orElse(atakApiMinVersion)
+val aethercoreGatewayUrl = providers.gradleProperty("aethercore.gateway.url").orElse("http://10.0.0.22:3000")
 
 val defaultAethercoreJniDir = rootProject.file("../../external/aethercore-jni")
 val aethercoreJniDir = localProperties.getProperty("aethercore.jni.dir")?.let(::file) ?: defaultAethercoreJniDir
@@ -177,6 +178,7 @@ android {
         }
 
         buildConfigField("String", "ATAK_COMPATIBLE_VERSION", "\"${atakCompatibleVersion.get()}\"")
+        buildConfigField("String", "AETHERCORE_GATEWAY_URL", "\"${aethercoreGatewayUrl.get()}\"")
     }
 
     signingConfigs {

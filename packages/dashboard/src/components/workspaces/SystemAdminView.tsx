@@ -59,7 +59,8 @@ export const SystemAdminView: React.FC = () => {
   // Check admin privileges
   useEffect(() => {
     (async () => {
-      const authorized = await IdentityClient.hasAdminPrivileges();
+      const currentNodeId = useTacticalStore.getState().selectedNodeId || 'unknown';
+      const authorized = await IdentityClient.hasAdminPrivileges(currentNodeId);
       setHasAdminPrivileges(authorized);
     })();
   }, []);
@@ -68,8 +69,8 @@ export const SystemAdminView: React.FC = () => {
   useEffect(() => {
     const fetchAttestation = async () => {
       try {
-        const report = await IdentityClient.getFleetAttestationState();
-        updateFleetAttestationState(report.nodes);
+        const attestations = await IdentityClient.getFleetAttestationState();
+        updateFleetAttestationState(attestations);
       } catch (error) {
         console.error('[ADMIN] Failed to fetch fleet attestation:', error);
       }
@@ -381,10 +382,10 @@ export const SystemAdminView: React.FC = () => {
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-mono text-tungsten">{cert.node_id}</span>
                       <span className="text-tungsten/50">
-                        {new Date(cert.timestamp).toLocaleString()}
+                        {new Date(cert.timestamp_ms).toLocaleString()}
                       </span>
                     </div>
-                    <div className="text-tungsten/70">{cert.reason}</div>
+                    <div className="text-tungsten/70">{cert.revocation_reason}</div>
                     <div className="text-tungsten/50 mt-1">
                       Signature: {cert.signature.substring(0, 16)}...
                     </div>

@@ -236,17 +236,45 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// In-memory telemetry storage (last 30 seconds of data per node)
-const telemetryStore = new Map<string, { data: any; timestamp: number }>();
-const TELEMETRY_TTL_MS = 30000; // 30 seconds
+type TelemetryStoreEntry = {
+  data: any;
+  timestamp: number;
+  ttl_ms: number;
+};
+
+// In-memory telemetry storage with platform-aware TTL.
+const telemetryStore = new Map<string, TelemetryStoreEntry>();
+const TELEMETRY_TTL_DEFAULT_MS = 30000; // 30 seconds
+const TELEMETRY_TTL_IOS_OVERLAY_MS = 300000; // 5 minutes
+const PRESENCE_TTL_IOS_OVERLAY_MS = 300000; // 5 minutes
+const PRESENCE_STALE_SCAN_INTERVAL_MS = 15000;
+
+function normalizePlatformHint(value: unknown): string {
+  if (Array.isArray(value) && value.length > 0) {
+    return normalizePlatformHint(value[0]);
+  }
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function telemetryTtlMsForIngress(telemetry: any, platformHeader: unknown, overlayHeader: unknown): number {
+  const overlay = normalizePlatformHint(overlayHeader);
+  const payloadOverlay = normalizePlatformHint(telemetry?.overlay);
+  const platform = normalizePlatformHint(platformHeader) || normalizePlatformHint(telemetry?.platform);
+  const explicitlyOverlay =
+    overlay === 'ios' || overlay === 'ios-overlay' || payloadOverlay === 'ios' || payloadOverlay === 'ios-overlay';
+  if (platform === 'ios' && explicitlyOverlay) {
+    return TELEMETRY_TTL_IOS_OVERLAY_MS;
+  }
+  return TELEMETRY_TTL_DEFAULT_MS;
+}
 
 // Clean up old telemetry periodically
 setInterval(() => {
   const now = Date.now();
   for (const [nodeId, entry] of telemetryStore.entries()) {
-    if (now - entry.timestamp > TELEMETRY_TTL_MS) {
+    if (now - entry.timestamp > entry.ttl_ms) {
       telemetryStore.delete(nodeId);
-      logger.debug({ node_id: nodeId }, 'Telemetry expired');
+      logger.debug({ node_id: nodeId, ttl_ms: entry.ttl_ms }, 'Telemetry expired');
     }
   }
 }, 10000); // Clean every 10 seconds
@@ -283,11 +311,17 @@ app.post('/api/telemetry', (req, res) => {
   try {
     const telemetry = req.body;
     const nodeId = req.headers['x-node-id'] || telemetry.node_id || 'unknown';
+    const ttlMs = telemetryTtlMsForIngress(
+      telemetry,
+      req.headers['x-platform'],
+      req.headers['x-aethercore-overlay'],
+    );
 
     // Store telemetry
     telemetryStore.set(nodeId, {
       data: telemetry,
       timestamp: Date.now(),
+      ttl_ms: ttlMs,
     });
 
     logger.info({
@@ -297,6 +331,7 @@ app.post('/api/telemetry', (req, res) => {
       timestamp: telemetry.timestamp,
       trust_score: telemetry.trust?.self_score,
       hardware: telemetry.hardware?.model,
+      ttl_ms: ttlMs,
     }, 'Telemetry received from edge node');
 
     // Broadcast to WebSocket clients if any
@@ -387,6 +422,45 @@ function sendWsJson(ws: WebSocket, payload: unknown): void {
     return;
   }
   ws.send(JSON.stringify(payload));
+}
+
+function isIosOverlayPresence(record: RalphiePresenceRecord): boolean {
+  const role = normalizePlatformHint(record.telemetry?.device?.role);
+  const endpoint = normalizePlatformHint(record.endpoint);
+  return role === 'ios-overlay' || endpoint.includes('ios-overlay');
+}
+
+function pruneStaleRalphiePresence(now: number): void {
+  let changed = false;
+  for (const [nodeId, record] of ralphiePresenceByNode.entries()) {
+    if (!isIosOverlayPresence(record)) {
+      continue;
+    }
+    const ageMs = now - record.received_at;
+    if (ageMs <= PRESENCE_TTL_IOS_OVERLAY_MS) {
+      continue;
+    }
+    ralphiePresenceByNode.delete(nodeId);
+    senderPublicKeysById.delete(nodeId);
+    replayStateBySenderId.delete(nodeId);
+    changed = true;
+    logger.info(
+      {
+        node_id: nodeId,
+        age_ms: ageMs,
+        ttl_ms: PRESENCE_TTL_IOS_OVERLAY_MS,
+      },
+      'Expired stale iOS overlay RALPHIE_PRESENCE record',
+    );
+    broadcast({ type: 'RALPHIE_PRESENCE_EXPIRED', node_id: nodeId, expired_at: now });
+  }
+
+  if (changed) {
+    broadcast({
+      type: 'RALPHIE_PRESENCE_SNAPSHOT',
+      nodes: Array.from(ralphiePresenceByNode.values()),
+    });
+  }
 }
 
 function sendGatewayError(ws: WebSocket, code: string, message: string, details?: unknown): void {
@@ -1117,6 +1191,10 @@ setInterval(() => {
     }
   });
 }, 5000);
+
+setInterval(() => {
+  pruneStaleRalphiePresence(Date.now());
+}, PRESENCE_STALE_SCAN_INTERVAL_MS);
 
 function broadcast(data: unknown) {
   const msg = JSON.stringify(data);

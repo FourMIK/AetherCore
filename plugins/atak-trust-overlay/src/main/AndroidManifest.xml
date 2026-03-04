@@ -2,13 +2,37 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aethercore.atak.trustoverlay">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:allowBackup="false"
-        android:label="AetherCore Trust Monitor"
+        android:label="@string/trust_overlay_name"
         android:icon="@android:drawable/ic_dialog_info"
         android:supportsRtl="true">
 
-        <!-- Standalone launcher activity - makes app visible in app drawer -->
+        <!-- ATAK component registration activity (matches ATAK plugin discovery contract). -->
+        <activity
+            android:name=".core.TrustOverlayPluginComponentActivity"
+            android:label="@string/trust_overlay_name"
+            android:enabled="true"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="com.atakmap.app.component" />
+            </intent-filter>
+            <meta-data
+                android:name="plugin-api"
+                android:value="com.atakmap.app.ILifecycle" />
+            <meta-data
+                android:name="plugin-execute"
+                android:value="com.aethercore.atak.trustoverlay.core.TrustOverlayPlugin" />
+            <meta-data
+                android:name="app_desc"
+                android:value="@string/trust_overlay_description" />
+        </activity>
+
+        <!-- Standalone launcher activity for direct field deployment without ATAK plugin loading. -->
         <activity
             android:name=".TrustMonitorActivity"
             android:label="AetherCore Trust Monitor"
@@ -19,10 +43,21 @@
             </intent-filter>
         </activity>
 
-        <!-- ATAK plugin meta-data (for ATAK-MIL or certified versions) -->
+        <service
+            android:name=".TelemetryService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!-- ATAK plugin metadata retained for legacy loaders. -->
         <meta-data
             android:name="com.atakmap.android.plugin"
             android:resource="@xml/trust_overlay_plugin" />
+        <meta-data
+            android:name="plugin-api"
+            android:value="com.atakmap.app.ILifecycle" />
+        <meta-data
+            android:name="app_desc"
+            android:value="@string/trust_overlay_description" />
     </application>
 
 </manifest>

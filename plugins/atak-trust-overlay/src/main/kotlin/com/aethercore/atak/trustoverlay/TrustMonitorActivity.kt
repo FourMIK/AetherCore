@@ -13,6 +13,7 @@ import android.os.Looper
 import android.widget.Button
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 
 /**
  * Standalone launcher activity for AetherCore Trust Monitor
@@ -23,6 +24,7 @@ class TrustMonitorActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var backendStatusText: TextView
     private lateinit var telemetryStatusText: TextView
+    private val gatewayBaseUrl: String by lazy { GatewayConfig.resolveGatewayBaseUrl(this) }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -83,7 +85,7 @@ class TrustMonitorActivity : Activity() {
         }
         layout.addView(telemetryStatusText)
         
-        layout.addView(createStatusRow("Gateway URL:", "http://10.0.0.22:3000"))
+        layout.addView(createStatusRow("Gateway URL:", gatewayBaseUrl))
         layout.addView(createStatusRow("Heartbeat:", "Every 5 seconds"))
         
         // Test button
@@ -197,7 +199,7 @@ class TrustMonitorActivity : Activity() {
     private fun testBackendConnection() {
         Thread {
             try {
-                val url = URL("http://10.0.0.22:3000/health")
+                val url = URL("${gatewayBaseUrl.trimEnd('/')}/health")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.connectTimeout = 2000
                 connection.readTimeout = 2000
@@ -249,8 +251,9 @@ class TrustMonitorActivity : Activity() {
     
     private fun checkAtakInstalled(): String {
         return try {
-            packageManager.getPackageInfo("com.atakmap.app.civ", 0)
-            "✓ v${packageManager.getPackageInfo("com.atakmap.app.civ", 0).versionName}"
+            val packageInfo = packageManager.getPackageInfo("com.atakmap.app.civ", 0)
+            val version = packageInfo.versionName ?: "unknown"
+            String.format(Locale.US, "✓ v%s", version)
         } catch (e: Exception) {
             "✗ Not installed"
         }

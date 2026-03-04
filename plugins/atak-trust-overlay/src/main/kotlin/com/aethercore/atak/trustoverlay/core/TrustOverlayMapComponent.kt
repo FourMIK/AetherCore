@@ -21,6 +21,8 @@ class TrustOverlayMapComponent : AtakMapComponent {
     private var mapArtifacts: UiArtifactCache? = null
     private var widgetArtifacts: UiArtifactCache? = null
     private var configuredTtlSeconds: Long = TrustStateStore.DEFAULT_TTL_SECONDS
+    private val lastKnownStaleByUid: MutableMap<String, Boolean> = linkedMapOf()
+    private var lastStaleSweepEpochMs: Long = 0L
 
     override fun onCreate(context: PluginContext) {
         context.logger.d("TrustOverlayMapComponent.onCreate")
@@ -57,16 +59,13 @@ class TrustOverlayMapComponent : AtakMapComponent {
                 val store = stateStore ?: return@start
                 store.record(trustEvent)
                 val resolvedState = store.resolve(trustEvent.uid)
+                lastKnownStaleByUid[resolvedState.uid] = resolvedState.stale
 
                 markerRenderer?.render(resolvedState)
                 detailPanel?.onTrustEvent(markerId, resolvedState)
                 widgetController?.onTrustEvent(trustEvent)
 
-                for (state in store.allResolved()) {
-                    if (state.stale) {
-                        markerRenderer?.render(state)
-                    }
-                }
+                maybeSweepStaleStates(store)
 
                 widgetController?.onFeedStatus(
                     status = store.feedStatus(),
@@ -101,9 +100,28 @@ class TrustOverlayMapComponent : AtakMapComponent {
         stateStore = null
         mapArtifacts = null
         widgetArtifacts = null
+        lastKnownStaleByUid.clear()
+        lastStaleSweepEpochMs = 0L
+    }
+
+    private fun maybeSweepStaleStates(store: TrustStateStore) {
+        val nowEpochMs = System.currentTimeMillis()
+        if (nowEpochMs - lastStaleSweepEpochMs < STALE_SWEEP_INTERVAL_MS) {
+            return
+        }
+        lastStaleSweepEpochMs = nowEpochMs
+
+        for (state in store.allResolved()) {
+            val previousStale = lastKnownStaleByUid[state.uid]
+            if (previousStale == null || previousStale != state.stale) {
+                markerRenderer?.render(state)
+                lastKnownStaleByUid[state.uid] = state.stale
+            }
+        }
     }
 
     companion object {
         const val SETTINGS_TTL_SECONDS = "trust.state.ttl.seconds"
+        private const val STALE_SWEEP_INTERVAL_MS = 30_000L
     }
 }

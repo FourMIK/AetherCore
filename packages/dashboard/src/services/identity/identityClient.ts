@@ -95,6 +95,33 @@ export interface VerifySignatureResponse {
 }
 
 /**
+ * Node Attestation State - TPM and Merkle Vine verification status
+ */
+export interface NodeAttestationState {
+  node_id: string;
+  hardware_backed: boolean;
+  tpm_attestation_valid: boolean;
+  merkle_vine_synced: boolean;
+  byzantine_detected: boolean;
+  revoked: boolean;
+  revocation_reason?: string;
+  trust_score: number;
+  timestamp_ms: number;
+}
+
+/**
+ * Revocation Certificate - The Great Gospel ledger entry
+ */
+export interface RevocationCertificate {
+  node_id: string;
+  revoked_at_ms: number;
+  revocation_reason: string;
+  revoking_authority: string;
+  signature: string;
+  timestamp_ms: number;
+}
+
+/**
  * Identity Registry Client Error
  */
 export class IdentityClientError extends Error {
@@ -374,6 +401,32 @@ export class IdentityClient {
     if (this.config.enableLogging) {
       console.log('[IdentityClient] Closed');
     }
+  }
+
+  /**
+   * Static method: Check if node has admin privileges
+   */
+  static async hasAdminPrivileges(nodeId: string): Promise<boolean> {
+    // In production, this would check the identity registry
+    // For now, return false (no admin privs by default)
+    return false;
+  }
+
+  /**
+   * Static method: Revoke node identity
+   */
+  static async revokeNodeIdentity(nodeId: string, reason: string): Promise<boolean> {
+    // In production, this would call the identity registry gRPC service
+    console.log(`[IdentityClient] Revoking node ${nodeId}: ${reason}`);
+    return true;
+  }
+
+  /**
+   * Static method: Get fleet attestation state
+   */
+  static async getFleetAttestationState(): Promise<NodeAttestationState[]> {
+    // In production, this would fetch from the identity registry
+    return [];
   }
 }
 
