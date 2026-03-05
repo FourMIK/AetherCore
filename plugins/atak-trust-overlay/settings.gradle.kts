@@ -21,4 +21,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "atak-trust-overlay"
 
+include(":android-keymanager")
+project(":android-keymanager").projectDir = file("../../packages/android-keymanager")
+
 

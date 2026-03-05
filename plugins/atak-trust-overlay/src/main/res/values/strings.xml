@@ -2,4 +2,5 @@
 <resources>
     <string name="trust_overlay_name">AetherCore Trust Overlay</string>
     <string name="trust_overlay_description">Trust CoT overlays for AetherCore operations.</string>
+    <string name="atak_app_name">ATAK / AetherCore</string>
 </resources>

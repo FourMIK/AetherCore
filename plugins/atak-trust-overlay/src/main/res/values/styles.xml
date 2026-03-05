@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.AetherCore.ATAK" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/aether_overmatch</item>
+        <item name="colorPrimaryVariant">@color/aether_carbon</item>
+        <item name="colorSecondary">@color/aether_verified</item>
+        <item name="colorOnPrimary">@color/aether_carbon</item>
+        <item name="colorOnSecondary">@color/aether_carbon</item>
+        <item name="android:windowBackground">@color/aether_carbon</item>
+        <item name="android:textColor">@color/atak_text_primary</item>
+        <item name="android:statusBarColor">@color/aether_carbon</item>
+        <item name="android:navigationBarColor">@color/aether_carbon</item>
+    </style>
+</resources>
