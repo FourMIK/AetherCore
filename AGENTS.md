@@ -71,7 +71,7 @@ From `SECURITY.md`:
 ### 3. Toolchain Requirements (STRICT)
 
 From `CONTRIBUTING.md` preinstall hook:
-- **Node.js 20.x** (enforced)
+- **Node.js 22.x** (enforced)
 - **pnpm 9.15.0** (enforced via `scripts/verify-toolchain.js`)
 - **Rust 1.75+** (stable, see `rust-toolchain.toml`)
 

@@ -1,9 +1,9 @@
-# syntax=docker/dockerfile:1.7
+﻿# syntax=docker/dockerfile:1.7
 
 ############################
 # 1) Build the dashboard   #
 ############################
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Use a dedicated work directory inside the build container.
 WORKDIR /app

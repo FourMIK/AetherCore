@@ -21,6 +21,33 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+// Locate adb - check multiple locations
+function findAdb() {
+  // Windows SDK location
+  if (process.platform === 'win32') {
+    const androidSdk = path.join(
+      process.env.LOCALAPPDATA || process.env.APPDATA,
+      'Android',
+      'Sdk',
+      'platform-tools',
+      'adb.exe'
+    );
+    if (fs.existsSync(androidSdk)) return androidSdk;
+  }
+  // Unix/Mac locations
+  const possiblePaths = [
+    '/usr/local/bin/adb',
+    '/usr/bin/adb',
+    path.join(process.env.HOME || process.env.USERPROFILE, 'Library', 'Android', 'sdk', 'platform-tools', 'adb'),
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  // Fallback to PATH
+  return 'adb';
+}
+
+const ADB = findAdb();
 const PLUGIN_JAR = path.join(__dirname, '..', 'dist', 'atak', 'main.jar');
 const ATAK_PLUGINS_DIR = '/sdcard/atak/plugins';
 const REMOTE_JAR_PATH = `${ATAK_PLUGINS_DIR}/main.jar`;
@@ -64,7 +91,7 @@ function runCommand(command, args, description) {
 
 function adbCommand(args, description, optional = false) {
   try {
-    const result = execSync(`adb ${args.join(' ')}`, {
+    const result = execSync(`"${ADB}" ${args.join(' ')}`, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -75,7 +102,7 @@ function adbCommand(args, description, optional = false) {
   } catch (error) {
     if (!optional) {
       print(`❌ ERROR: ${description || 'adb command failed'}`, 'red');
-      print(`Command: adb ${args.join(' ')}`, 'red');
+      print(`Command: "${ADB}" ${args.join(' ')}`, 'red');
       return null;
     }
     return null;
@@ -94,12 +121,11 @@ function checkPrerequisites() {
   print(`✅ Found main.jar (${Math.round(fs.statSync(PLUGIN_JAR).size / 1024)} KB)`);
 
   // Check for adb
-  const adbVersion = adbCommand(['--version'], null, true);
-  if (!adbVersion) {
+  if (!fs.existsSync(ADB) && ADB === 'adb') {
     print('❌ ERROR: adb not found. Please install Android SDK tools.', 'red');
     return false;
   }
-  print(`✅ adb available: ${adbVersion.split('\n')[0]}`);
+  print(`✅ adb available: ${ADB}`);
 
   // Check for connected devices
   const devices = adbCommand(['devices'], null, true);
@@ -162,19 +188,17 @@ function selectDevice(devices, targetSerial) {
 function deployPlugin(device) {
   printHeader('Deploying Plugin');
 
-  const deviceArg = `-s ${device.serial}`;
-
   // Create plugins directory on device
   print('Creating ATAK plugins directory...');
   adbCommand(
-    [deviceArg, 'shell', 'mkdir', '-p', ATAK_PLUGINS_DIR],
+    ['-s', device.serial, 'shell', 'mkdir', '-p', ATAK_PLUGINS_DIR],
     null,
     true
   );
 
   // Push JAR to device
   print(`Pushing main.jar to ${REMOTE_JAR_PATH}...`, 'cyan');
-  const pushResult = spawnSync('adb', [deviceArg, 'push', PLUGIN_JAR, REMOTE_JAR_PATH], {
+  const pushResult = spawnSync(ADB, ['-s', device.serial, 'push', PLUGIN_JAR, REMOTE_JAR_PATH], {
     stdio: 'inherit',
   });
 
@@ -190,11 +214,9 @@ function deployPlugin(device) {
 function verifyDeployment(device) {
   printHeader('Verifying Deployment');
 
-  const deviceArg = `-s ${device.serial}`;
-
   // Check if file exists on device
   const output = adbCommand(
-    [deviceArg, 'shell', 'ls', '-lh', REMOTE_JAR_PATH],
+    ['-s', device.serial, 'shell', 'ls', '-lh', REMOTE_JAR_PATH],
     null,
     true
   );
@@ -213,12 +235,11 @@ function verifyDeployment(device) {
 function reloadPlugins(device) {
   printHeader('Reloading ATAK Plugins');
 
-  const deviceArg = `-s ${device.serial}`;
-
   // Send reload broadcast
   print('Sending plugin reload broadcast...', 'cyan');
-  const result = spawnSync('adb', [
-    deviceArg,
+  const result = spawnSync(ADB, [
+    '-s',
+    device.serial,
     'shell',
     'am',
     'broadcast',
@@ -241,10 +262,8 @@ function reloadPlugins(device) {
 function checkLogs(device) {
   printHeader('Checking Plugin Logs');
 
-  const deviceArg = `-s ${device.serial}`;
-
   // Clear logcat
-  adbCommand([deviceArg, 'logcat', '-c'], null, true);
+  adbCommand(['-s', device.serial, 'logcat', '-c'], null, true);
   print('Cleared logcat');
 
   // Wait for user to interact
@@ -253,7 +272,7 @@ function checkLogs(device) {
   console.log('');
 
   // Stream logs
-  spawnSync('adb', [deviceArg, 'logcat', '|', 'grep', '-i', 'aethercore|trustoverlay|plugin'],
+  spawnSync(ADB, ['-s', device.serial, 'logcat', '|', 'grep', '-i', 'aethercore|trustoverlay|plugin'],
     {
       stdio: 'inherit',
       shell: true,

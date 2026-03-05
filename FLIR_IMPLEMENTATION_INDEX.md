@@ -278,7 +278,7 @@ Verification Badge
 
 ### Prerequisites
 - [ ] Docker installed and running
-- [ ] Node.js 20.x installed
+- [ ] Node.js 22.x installed
 - [ ] pnpm 9.15.0 installed
 - [ ] Rust 1.75+ toolchain available
 

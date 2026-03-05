@@ -153,12 +153,12 @@ This creates:
 ## ⚙️ Environment Setup
 
 ### Required Node.js Version
-- Configured for Node.js 20.x
-- Currently running: Node.js v20.x (required)
+- Configured for Node.js 22.x
+- Currently running: Node.js v22.x (required)
 - pnpm: v9.15.0
 
 ### Toolchain Check
-The preinstall toolchain check expects Node.js 20.x and pnpm 9.15.0 by default.
+The preinstall toolchain check expects Node.js 22.x and pnpm 9.15.0 by default.
 
 Use `SKIP_TOOLCHAIN_CHECK=1` only for constrained environments such as isolated Docker install stages.
 
@@ -192,7 +192,7 @@ All changes maintain AetherCore's design principles:
 ## 📞 Support
 
 If you encounter any issues:
-1. Verify Node.js version: `node --version` (should be 20+)
+1. Verify Node.js version: `node --version` (should be 22.x)
 2. Verify pnpm version: `pnpm --version` (should be 9.15.0)
 3. Clear dependencies and reinstall: `pnpm clean && pnpm install`
 4. Check for TypeScript errors: `pnpm run build`

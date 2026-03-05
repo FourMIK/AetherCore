@@ -94,7 +94,7 @@ Turn any node into a transport-agnostic provenance appliance: any inbound signal
 - Raspberry Pi 4 or newer
 - TPM 2.0 module (e.g., Infineon SLB9670)
 - Raspberry Pi OS (64-bit recommended)
-- Node.js 18+ installed
+- Node.js 22.x installed
 
 ### Quick Start
 

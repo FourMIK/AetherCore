@@ -81,7 +81,7 @@ Download from: https://github.com/FourMIK/AetherCore/releases/tag/v0.2.0
 ### Building from Source
 
 ```bash
-# Prerequisites: Node.js 20+, Rust 1.75+, pnpm
+# Prerequisites: Node.js 22.x, Rust 1.75+, pnpm
 git clone https://github.com/FourMIK/AetherCore.git
 cd AetherCore
 git checkout v0.2.0

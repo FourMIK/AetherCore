@@ -26,7 +26,7 @@ if (!(docker compose version 2>$null)) {
 # Check Node.js
 if (!(Get-Command node -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Node.js is not installed or not in PATH" -ForegroundColor Red
-    Write-Host "Please install Node.js 20+ from https://nodejs.org/" -ForegroundColor Red
+    Write-Host "Please install Node.js 22.x from https://nodejs.org/" -ForegroundColor Red
     exit 1
 }
 

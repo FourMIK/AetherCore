@@ -23,7 +23,7 @@ This playbook provides step-by-step procedures for deploying the AetherCore mesh
 ### Software Requirements
 
 - **Rust**: 1.70+ with `cargo`
-- **Node.js**: 18+ with `npm` 9+
+- **Node.js**: 22.x with `npm` 9+
 - **OpenSSL**: 3.0+ (for TLS 1.3)
 - **NTP**: Configured and synchronized (≤ 1s drift)
 

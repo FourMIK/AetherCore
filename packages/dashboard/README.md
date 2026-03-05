@@ -32,7 +32,7 @@ Generate cryptographically signed Genesis Bundles for IoT device provisioning:
 
 ### Prerequisites
 
-- Node.js >= 18.0.0
+- Node.js 22.x
 - Rust >= 1.77.2
 - System dependencies (Linux only):
   ```bash

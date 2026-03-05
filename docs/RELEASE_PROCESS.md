@@ -39,7 +39,7 @@ Following 4MIK architectural invariants:
    # Rust toolchain
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    
-   # Node.js 18+ and npm
+   # Node.js 22.x and npm
    # Download from https://nodejs.org/
    
    # Supply chain tools (optional for local testing)

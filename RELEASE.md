@@ -136,7 +136,7 @@ Update:
 ### Prerequisites
 
 - **Rust:** 1.75+ (stable)
-- **Node.js:** 20.x LTS
+- **Node.js:** 22.x LTS
 - **pnpm:** Latest
 - **System:**
   - macOS: Xcode Command Line Tools

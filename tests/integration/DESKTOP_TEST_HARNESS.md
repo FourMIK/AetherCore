@@ -284,7 +284,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '22'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run TypeScript tests

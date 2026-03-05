@@ -47,7 +47,7 @@ See the [Installation Guide](INSTALLATION.md) and follow the **Commander Edition
 ### Build and Run from Source (Engineering)
 
 **Prerequisites:**
-* Node.js 20+
+* Node.js 22.x
 * Rust 1.75+ (Stable)
 * pnpm
 
@@ -148,7 +148,7 @@ If you cannot deploy nodes:
 
 ### Dashboard Production Docker Image (Engineering)
 
-A production-ready dashboard container is available via a multi-stage build (`node:20-alpine` builder + `nginx:alpine` runtime) with runtime environment injection.
+A production-ready dashboard container is available via a multi-stage build (`node:22-alpine` builder + `nginx:alpine` runtime) with runtime environment injection.
 
 ### Build
 

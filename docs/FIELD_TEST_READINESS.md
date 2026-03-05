@@ -56,7 +56,7 @@ This will:
 # On operator workstation:
 cd /workspaces/AetherCore/packages/dashboard
 
-# Build and run (requires Node.js 20+, pnpm)
+# Build and run (requires Node.js 22.x, pnpm)
 pnpm install --frozen-lockfile
 pnpm run build
 pnpm run tauri dev

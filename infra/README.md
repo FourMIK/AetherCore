@@ -31,7 +31,7 @@ infra/
 - **AWS CLI** configured with appropriate credentials
 - **Docker** for building container images
 - **Terraform** >= 1.5.0
-- **Node.js** >= 18 and **npm** >= 9 (for building TypeScript services)
+- **Node.js** 22.x and **npm** >= 9 (for building TypeScript services)
 - **Rust** >= 1.70 (for building Rust crates)
 
 ## Quick Start

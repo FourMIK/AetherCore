@@ -1,4 +1,4 @@
-name: AetherCore MonoRepo CI
+﻿name: AetherCore MonoRepo CI
 
 on:
   push:
@@ -148,7 +148,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Enable Corepack
@@ -388,7 +388,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Install dependencies (Ubuntu)

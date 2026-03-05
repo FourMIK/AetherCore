@@ -16,7 +16,7 @@ This document describes the build and integration process for the **AetherCore A
 
 - **Java Development Kit (JDK):** 17 or higher
 - **Gradle:** 7.0+ (or use system Gradle)
-- **Node.js:** 20.x (for build script)
+- **Node.js:** 22.x (for build script)
 - **pnpm:** 9.15.0 (for monorepo integration)
 
 ### Build Commands
@@ -337,7 +337,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       
       - name: Setup Java
         uses: actions/setup-java@v4

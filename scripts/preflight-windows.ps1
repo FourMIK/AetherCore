@@ -148,7 +148,7 @@ if ($script:Errors -gt 0) {
     Write-Host
     Write-Host "Required steps to fix errors:"
     Write-Host "1. Install Rust toolchain from https://rustup.rs/"
-    Write-Host "2. Install Node.js 20.x from https://nodejs.org/"
+    Write-Host "2. Install Node.js 22.x from https://nodejs.org/"
     Write-Host "3. Enable pnpm with: corepack enable"
     Write-Host "4. Install Git from https://git-scm.com/download/win"
     Write-Host "5. Install Visual Studio Build Tools with C++ workload"

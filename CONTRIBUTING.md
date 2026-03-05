@@ -21,7 +21,7 @@ Be respectful, collaborative, and professional in all interactions.
 ### Prerequisites
 
 - **Rust** 1.70 or higher
-- **Node.js** 20 or higher
+- **Node.js** 22.x
 - **pnpm** 9.15.0
 - Git
 
@@ -58,7 +58,7 @@ Key points:
 
 AetherCore enforces a strict JavaScript toolchain for local development and CI installs:
 
-- Node.js **20.x**
+- Node.js **22.x**
 - pnpm **9.15.0**
 
 This is verified by the root `preinstall` hook (`scripts/verify-toolchain.js`).

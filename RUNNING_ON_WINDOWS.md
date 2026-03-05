@@ -30,7 +30,7 @@
   - Install via [rustup.rs](https://rustup.rs/)
   - Ensure `cargo` is in PATH
 
-- **Node.js:** 18 or later
+- **Node.js:** 22.x
   - Install via [nodejs.org](https://nodejs.org/)
   - Ensure `npm` version 9+
 
@@ -264,7 +264,7 @@ Edit configuration file before launch:
 2. **Node.js Version Mismatch**
    ```powershell
    # Check Node version
-   node --version  # Should be 18+
+   node --version  # Should be 22.x
    npm --version   # Should be 9+
    ```
 

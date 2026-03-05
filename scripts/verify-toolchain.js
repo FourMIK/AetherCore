@@ -3,11 +3,11 @@
 /**
  * verify-toolchain.js
  * 
- * Enforces Node 20.x and pnpm 9.15.0 for the AetherCore monorepo.
+ * Enforces Node 22.x and pnpm 9.15.0 for the AetherCore monorepo.
  * This script is run as a preinstall hook to ensure consistent tooling across all environments.
  * 
  * Requirements:
- * - Node.js 20.x
+ * - Node.js 22.x
  * - pnpm 9.15.0
  * 
  * Exit codes:
@@ -32,20 +32,20 @@ function checkNodeVersion() {
     exitWithError(
       'Unable to parse Node.js version.\n' +
       `Current version: ${currentVersion}\n` +
-      'Required: Node.js 20.x'
+      'Required: Node.js 22.x'
     );
   }
   
   const majorVersion = parseInt(match[1], 10);
   
-  if (majorVersion !== 20) {
+  if (majorVersion !== 22) {
     exitWithError(
       'Incorrect Node.js version detected.\n\n' +
       `Current version: ${currentVersion}\n` +
-      'Required: Node.js 20.x\n\n' +
-      'Please install Node.js 20.x:\n' +
-      '  - Using nvm: nvm install 20 && nvm use 20\n' +
-      '  - Using n: n 20\n' +
+      'Required: Node.js 22.x\n\n' +
+      'Please install Node.js 22.x:\n' +
+      '  - Using nvm: nvm install 22 && nvm use 22\n' +
+      '  - Using n: n 22\n' +
       '  - Download from: https://nodejs.org/'
     );
   }

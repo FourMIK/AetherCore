@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+﻿FROM node:22-alpine AS builder
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -13,7 +13,7 @@ COPY packages/shared ./packages/shared
 RUN pnpm --filter @aethercore/shared run build
 RUN pnpm --filter @aethercore/operator run build
 
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 WORKDIR /app
 
 RUN apk add --no-cache dumb-init wget \

@@ -93,7 +93,7 @@ if [ $ERRORS -gt 0 ]; then
   echo "Required steps to fix errors:"
   echo "1. Install Xcode Command Line Tools if missing"
   echo "2. Install Rust toolchain from https://rustup.rs/"
-  echo "3. Install Node.js 20.x from https://nodejs.org/"
+  echo "3. Install Node.js 22.x from https://nodejs.org/"
   echo "4. Enable pnpm with: corepack enable"
   echo ""
   exit 1

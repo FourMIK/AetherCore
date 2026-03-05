@@ -20,14 +20,14 @@
 ### Stage 1: Prepare Environment
 
 **Prerequisites:**
-- Node.js 20.x
+- Node.js 22.x
 - pnpm 9.15.0
 - Java Development Kit (JDK) 17+
 - (Optional) Android SDK with adb for device deployment
 
 **Check Environment:**
 ```bash
-node --version     # v20.x.x
+node --version     # v22.x.x
 pnpm --version     # 9.15.0
 java -version      # 17+
 # Optional:

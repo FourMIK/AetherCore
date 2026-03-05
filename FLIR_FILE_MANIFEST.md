@@ -353,7 +353,7 @@ AgnosticVideoPlayer
 ### Prerequisites
 - [x] Docker services running (Gateway, Auth, C2, etc.)
 - [x] pnpm workspace configured
-- [x] Node.js 20.x available
+- [x] Node.js 22.x available
 - [x] Rust 1.75+ toolchain available
 
 ### Pre-Flight Checklist

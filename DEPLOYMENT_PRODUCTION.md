@@ -44,7 +44,7 @@ This guide documents the deployment of AetherCore platform and CodeRalphie edge 
 - Docker 24.0+
 - Docker Compose 2.20+
 - Rust 1.75+ (for building CodeRalphie)
-- Node.js 20+ (for building Tactical Glass)
+- Node.js 22.x (for building Tactical Glass)
 
 ## Phase 1: AetherCore Bunker Deployment
 

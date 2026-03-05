@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+﻿FROM node:22-alpine AS build
 WORKDIR /workspace
 
 ENV PNPM_HOME="/pnpm"
@@ -17,7 +17,7 @@ RUN pnpm --filter @aethercore/shared build
 RUN pnpm --filter @aethercore/collaboration build
 RUN pnpm --filter @aethercore/collaboration deploy --prod /app
 
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080

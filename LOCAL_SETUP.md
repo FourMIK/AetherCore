@@ -10,7 +10,7 @@ Before starting, ensure you have the following installed:
   - Download: https://www.docker.com/products/docker-desktop
   - Required for backend services (PostgreSQL, Redis, Gateway, Auth, Collaboration)
   
-- **Node.js 20+**
+- **Node.js 22.x**
   - Download: https://nodejs.org/
   - Check version: `node --version`
   
