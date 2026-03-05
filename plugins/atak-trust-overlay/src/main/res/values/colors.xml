@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="aether_carbon">#0A0B0E</color>
+    <color name="aether_tungsten">#E1E2E6</color>
+    <color name="aether_overmatch">#00D4FF</color>
+    <color name="aether_jamming">#FF2A2A</color>
+    <color name="aether_ghost">#FFAE00</color>
+    <color name="aether_verified">#39FF14</color>
+
+    <color name="atak_panel_bg">#B30A0B0E</color>
+    <color name="atak_panel_stroke">#1AFFFFFF</color>
+    <color name="atak_toolbar_bg">#CC0A0B0E</color>
+    <color name="atak_status_ok">#39FF14</color>
+    <color name="atak_status_warn">#FFAE00</color>
+    <color name="atak_status_critical">#FF2A2A</color>
+    <color name="atak_text_primary">#E1E2E6</color>
+    <color name="atak_text_muted">#9CA3AF</color>
+    <color name="atak_map_dim">#14000000</color>
+</resources>

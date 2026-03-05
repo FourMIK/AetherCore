@@ -6,14 +6,16 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.IBinder
-import android.provider.Settings
 import android.util.Log
-import com.aethercore.security.AndroidEnrollmentKeyManager
+import android.Manifest
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationManager
+import androidx.core.content.ContextCompat
+import com.aethercore.atak.trustoverlay.identity.DeviceIdentityManager
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.security.MessageDigest
-import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
@@ -30,7 +32,8 @@ class TelemetryService : Service() {
     @Volatile
     private var lastBackendReachable = false
 
-    private val nodeId: String by lazy { resolveStableNodeId() }
+    private val identityManager: DeviceIdentityManager by lazy { DeviceIdentityManager(this) }
+    private val nodeId: String by lazy { identityManager.deviceId() }
     private val gatewayBaseUrl: String by lazy { GatewayConfig.resolveGatewayBaseUrl(this) }
     private val atakInstalled: Boolean by lazy { detectAtakInstalled() }
     private val nativeLoaded: Boolean by lazy { detectNativeLoaded() }
@@ -87,6 +90,13 @@ class TelemetryService : Service() {
 
     private fun buildTelemetryPayload(): JSONObject {
         val networkState = currentNetworkState()
+        val location = resolveLastKnownLocation()
+        val identityError = runCatching { identityManager.hardwareFingerprint() }.exceptionOrNull()
+        val publicKeyResult = runCatching { identityManager.publicKeyPem() }
+        val publicKeyPem = publicKeyResult.getOrNull()
+        if (publicKeyResult.isFailure) {
+            Log.e(TAG, "Failed to load public key", publicKeyResult.exceptionOrNull())
+        }
 
         return JSONObject().apply {
             put("node_id", nodeId)
@@ -110,6 +120,15 @@ class TelemetryService : Service() {
                 put("biometric_available", packageManager.hasSystemFeature("android.hardware.fingerprint"))
             })
 
+            put("identity", JSONObject().apply {
+                put("hardware_id", runCatching { identityManager.hardwareFingerprint() }.getOrNull())
+                put("public_key", publicKeyPem)
+                put("device_id", nodeId)
+                if (identityError != null) {
+                    put("identity_error", identityError.message ?: "hardware identity error")
+                }
+            })
+
             put("trust", JSONObject().apply {
                 put("self_score", if (lastBackendReachable) 100 else 70)
                 put("peers_visible", 0)
@@ -121,6 +140,16 @@ class TelemetryService : Service() {
                 put("wifi_connected", networkState.wifiConnected)
                 put("backend_reachable", lastBackendReachable)
                 put("mesh_discovery_active", false)
+            })
+
+            put("gps", JSONObject().apply {
+                put("lat", location?.latitude)
+                put("lon", location?.longitude)
+                put("alt_m", location?.altitude)
+                put("speed_mps", location?.speed)
+                put("course_deg", location?.bearing)
+                put("timestamp", location?.time)
+                put("source", location?.provider ?: "unknown")
             })
 
             put("atak", JSONObject().apply {
@@ -189,25 +218,23 @@ class TelemetryService : Service() {
         }.getOrDefault(false)
     }
 
-    private fun resolveStableNodeId(): String {
-        val preferences = getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
-        val existing = preferences.getString(PREFERENCE_NODE_ID, null)
-        if (!existing.isNullOrBlank()) {
-            return existing
+    private fun resolveLastKnownLocation(): Location? {
+        val hasFine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!hasFine && !hasCoarse) {
+            return null
         }
 
-        val hardwareFingerprint = runCatching {
-            AndroidEnrollmentKeyManager.create(this).getHardwareFingerprint()
-        }.getOrDefault("fallback-hardware-id")
-        val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown-android-id"
-        val seed = "$hardwareFingerprint|$androidId"
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(seed.toByteArray())
-            .joinToString(separator = "") { byte -> String.format(Locale.US, "%02x", byte) }
-        val stableNodeId = "android-overlay-${digest.take(32)}"
-
-        preferences.edit().putString(PREFERENCE_NODE_ID, stableNodeId).apply()
-        return stableNodeId
+        val manager = getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+        val providers = manager.getProviders(true)
+        var bestLocation: Location? = null
+        for (provider in providers) {
+            val location = runCatching { manager.getLastKnownLocation(provider) }.getOrNull() ?: continue
+            if (bestLocation == null || location.time > bestLocation.time) {
+                bestLocation = location
+            }
+        }
+        return bestLocation
     }
 
     private data class NetworkState(
@@ -219,7 +246,5 @@ class TelemetryService : Service() {
         private const val HEARTBEAT_INTERVAL_MS = 5_000L
         private const val NETWORK_TIMEOUT_MS = 3_000
         private const val ATAK_CIV_PACKAGE = "com.atakmap.app.civ"
-        private const val PREFERENCES_NAME = "atak_trust_overlay"
-        private const val PREFERENCE_NODE_ID = "telemetry.node_id"
     }
 }

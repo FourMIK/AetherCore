@@ -12,5 +12,19 @@ object GatewayConfig {
         val candidate = configuredValue?.trim().takeUnless { it.isNullOrEmpty() } ?: BuildConfig.AETHERCORE_GATEWAY_URL
         return candidate.trimEnd('/')
     }
-}
 
+    fun resolveGatewayWebSocketUrl(context: Context): String {
+        val baseUrl = resolveGatewayBaseUrl(context)
+        return when {
+            baseUrl.startsWith("https://") -> baseUrl.replaceFirst("https://", "wss://")
+            baseUrl.startsWith("http://") -> baseUrl.replaceFirst("http://", "ws://")
+            else -> "ws://$baseUrl"
+        }
+    }
+
+    fun persistGatewayBaseUrl(context: Context, url: String) {
+        val sanitized = url.trim().trimEnd('/')
+        val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        preferences.edit().putString(PREFERENCE_GATEWAY_BASE_URL, sanitized).apply()
+    }
+}

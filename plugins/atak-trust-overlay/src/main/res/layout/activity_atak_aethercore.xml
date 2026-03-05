@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/atakRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/aether_carbon">
+
+    <org.osmdroid.views.MapView
+        android:id="@+id/mapView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:contentDescription="Tactical map"
+        android:background="@color/aether_carbon"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="0dp"
+        android:layout_height="48dp"
+        android:background="@drawable/atak_toolbar_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/titleText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/atak_app_name"
+            android:textColor="@color/atak_text_primary"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:fontFamily="sans-serif-condensed" />
+
+        <TextView
+            android:id="@+id/timeText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:gravity="end"
+            android:text="--:--:--"
+            android:textColor="@color/atak_text_muted"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/gatewayStatusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="Gateway: --"
+            android:textColor="@color/atak_status_warn"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-condensed" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/leftToolbar"
+        android:layout_width="48dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/atak_panel_bg"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="6dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topBar">
+
+        <ImageButton
+            android:id="@+id/btnLocate"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Center on self"
+            android:src="@android:drawable/ic_menu_mylocation"
+            android:tint="@color/aether_overmatch" />
+
+        <ImageButton
+            android:id="@+id/btnSweep"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginTop="8dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Trigger Aetheric Sweep"
+            android:src="@android:drawable/ic_menu_rotate"
+            android:tint="@color/aether_ghost" />
+
+        <ImageButton
+            android:id="@+id/btnSettings"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginTop="8dp"
+            android:background="@android:color/transparent"
+            android:contentDescription="Settings"
+            android:src="@android:drawable/ic_menu_manage"
+            android:tint="@color/aether_overmatch" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/rightPanel"
+        android:layout_width="240dp"
+        android:layout_height="0dp"
+        android:layout_marginEnd="8dp"
+        android:background="@drawable/atak_panel_bg"
+        android:orientation="vertical"
+        android:padding="8dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topBar">
+
+        <TextView
+            android:id="@+id/panelTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="FIELD STATUS"
+            android:textColor="@color/aether_overmatch"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:fontFamily="sans-serif-condensed" />
+
+        <TextView
+            android:id="@+id/identityStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Identity: --"
+            android:textColor="@color/atak_text_muted"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/c2StatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="C2 Link: --"
+            android:textColor="@color/atak_text_muted"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-condensed" />
+
+        <TextView
+            android:id="@+id/nodeCountText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Nodes: 0"
+            android:textColor="@color/atak_text_primary"
+            android:textSize="12sp"
+            android:fontFamily="sans-serif-condensed" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/nodesRecycler"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="6dp"
+            android:layout_weight="1"
+            android:clipToPadding="false" />
+
+        <TextView
+            android:id="@+id/alertsText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Alerts: none"
+            android:textColor="@color/atak_text_muted"
+            android:textSize="11sp"
+            android:fontFamily="monospace" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="0dp"
+        android:layout_height="42dp"
+        android:layout_margin="8dp"
+        android:background="@drawable/atak_panel_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/rightPanel"
+        app:layout_constraintStart_toEndOf="@id/leftToolbar">
+
+        <TextView
+            android:id="@+id/telemetryStatusText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Telemetry: --"
+            android:textColor="@color/atak_text_muted"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/lastSyncText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Sync: --"
+            android:textColor="@color/atak_text_muted"
+            android:textSize="12sp"
+            android:fontFamily="monospace" />
+    </LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

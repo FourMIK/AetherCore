@@ -157,8 +157,8 @@ class TrustMonitorActivity : Activity() {
                 
                 FEATURES:
                 • Hardware-rooted identity (Titan M2)
-                • Ed25519 signing (StrongBox backed)
-                • BLAKE3 hashing
+                • Ed25519 signing (keystore-wrapped)
+                • BLAKE3 hashing (core services)
                 • Real-time telemetry streaming
                 • Byzantine fault detection
                 

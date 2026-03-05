@@ -4,12 +4,15 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:allowBackup="false"
-        android:label="@string/trust_overlay_name"
+        android:label="@string/atak_app_name"
         android:icon="@android:drawable/ic_dialog_info"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true">
 
         <!-- ATAK component registration activity (matches ATAK plugin discovery contract). -->
         <activity
@@ -34,14 +37,21 @@
 
         <!-- Standalone launcher activity for direct field deployment without ATAK plugin loading. -->
         <activity
-            android:name=".TrustMonitorActivity"
-            android:label="AetherCore Trust Monitor"
-            android:exported="true">
+            android:name=".AtakAetherCoreActivity"
+            android:label="@string/atak_app_name"
+            android:exported="true"
+            android:theme="@style/Theme.AetherCore.ATAK">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".TrustMonitorActivity"
+            android:label="AetherCore Trust Monitor"
+            android:exported="true"
+            android:theme="@style/Theme.AetherCore.ATAK" />
 
         <service
             android:name=".TelemetryService"
