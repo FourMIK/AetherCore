@@ -112,7 +112,14 @@ case "$( uname )" in                #(
   NONSTOP* )        nonstop=true ;;
 esac
 
-CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+LOCAL_GRADLE_HOME=$APP_HOME/gradle/gradle-8.7
+if [ -f "$LOCAL_GRADLE_HOME/lib/gradle-launcher-8.7.jar" ]; then
+  CLASSPATH=$LOCAL_GRADLE_HOME/lib/gradle-launcher-8.7.jar
+  GRADLE_MAIN=org.gradle.launcher.GradleMain
+else
+  CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar:$APP_HOME/gradle/wrapper/gradle-wrapper-shared.jar
+  GRADLE_MAIN=org.gradle.wrapper.GradleWrapperMain
+fi
 
 
 # Determine the Java command to use to start the JVM.
@@ -211,7 +218,7 @@ DEFAULT_JVM_OPTS='-Dfile.encoding=UTF-8 "-Xmx64m" "-Xms64m"'
 set -- \
         "-Dorg.gradle.appname=$APP_BASE_NAME" \
         -classpath "$CLASSPATH" \
-        org.gradle.wrapper.GradleWrapperMain \
+        $GRADLE_MAIN \
         "$@"
 
 # Stop when "xargs" is not available.
