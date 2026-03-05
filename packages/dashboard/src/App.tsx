@@ -17,7 +17,6 @@ import {
   BootstrapOnboarding,
   shouldRunBootstrapOnboarding,
 } from './components/onboarding/BootstrapOnboarding';
-import { startTelemetryPolling, simulateATAKDevice } from './services/telemetryService';
 import './index.css';
 
 interface StackStatus {
@@ -49,6 +48,8 @@ export const App: React.FC = () => {
   const [bootstrapCheckComplete, setBootstrapCheckComplete] = React.useState(false);
   const [stackReady, setStackReady] = React.useState(false);
   const [stackCheckComplete, setStackCheckComplete] = React.useState(false);
+  const mountedRef = React.useRef(true);
+  let unsubscribeTelemetry: (() => void) | null = null;
   const [stackError, setStackError] = React.useState<string | null>(null);
   const [sentinelTrustStatus, setSentinelTrustStatus] = React.useState<SentinelTrustStatus | null>(null);
 
@@ -197,27 +198,6 @@ export const App: React.FC = () => {
       };
       tacticalStore.addNode(ralphieNode);
       console.log('[TELEMETRY] ✓ Injected RalphieNode directly (workaround until gateway /api/nodes works)');
-
-      const stopPolling = startTelemetryPolling((nodes) => {
-        // Update nodes in store
-        nodes.forEach((node) => {
-          tacticalStore.addNode(node);
-        });
-
-        console.log(`[TELEMETRY] Updated ${nodes.size} nodes from telemetry`);
-
-        // Set connection status to connected when we have telemetry data
-        const commStore = useCommStore.getState();
-        if (nodes.size > 0 && commStore.connectionStatus === 'disconnected') {
-          commStore.setConnectionStatus('connected');
-          commStore.setConnectionState('connected');
-        }
-      }, 5000); // Poll every 5 seconds
-
-
-      return () => {
-        stopPolling();
-      };
     }, 100);
 
     return () => {
@@ -247,6 +227,14 @@ export const App: React.FC = () => {
           tacticalStore.addNode(node);
         });
         console.log(`[TELEMETRY] Loaded ${nodes.size} nodes from gateway`);
+
+        if (nodes.size > 0) {
+          const commStore = useCommStore.getState();
+          if (commStore.connectionStatus !== 'severed') {
+            commStore.setConnectionStatus('connected');
+            commStore.setConnectionState('connected');
+          }
+        }
       })
       .catch((err) => {
         console.warn('[TELEMETRY] Initial fetch failed:', err);
@@ -254,7 +242,8 @@ export const App: React.FC = () => {
 
     // Subscribe to live telemetry updates (for TeleDyne FLIR feeds)
     try {
-      unsubscribeTelemetry = subscribeToTelemetry((telemetry) => {
+      // subscribeToTelemetry returns a promise, handle it asynchronously
+      void subscribeToTelemetry((telemetry: any) => {
         if (!mounted) return;
 
         // Update existing node or add new one
@@ -282,6 +271,14 @@ export const App: React.FC = () => {
           };
           tacticalStore.addNode(newNode);
         }
+
+        const commStore = useCommStore.getState();
+        if (commStore.connectionStatus !== 'severed') {
+          commStore.setConnectionStatus('connected');
+          commStore.setConnectionState('connected');
+        }
+      }).then((unsub) => {
+        unsubscribeTelemetry = unsub;
       });
       console.log('[TELEMETRY] Subscribed to live telemetry updates');
     } catch (err) {

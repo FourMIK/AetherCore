@@ -328,5 +328,53 @@ export function simulateATAKDevice() {
   console.log('Simulated RalphieNode telemetry:', ralphieNodeTelemetry.node_id);
 }
 
+/**
+ * Subscribe to telemetry updates
+ * This sets up a polling mechanism to fetch telemetry from the gateway
+ * and trigger callbacks for each telemetry update
+ */
+export async function subscribeToTelemetry(onUpdate: (telemetry: TelemetryData) => void): Promise<() => void> {
+  const pollIntervalMs = 2000; // Poll every 2 seconds
+
+  let isSubscribed = true;
+  const seenNodeIds = new Set<string>();
+
+  const poll = async () => {
+    while (isSubscribed) {
+      try {
+        const config = getRuntimeConfig();
+        const response = await fetch(`${config.apiUrl}/api/nodes`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.nodes && Array.isArray(data.nodes)) {
+            // Process each node's telemetry
+            for (const node of data.nodes) {
+              // Call the callback for each telemetry update
+              onUpdate(node);
+              seenNodeIds.add(node.node_id);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching telemetry:', error);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+  };
+
+  // Start polling in the background
+  poll().catch(error => console.error('Telemetry polling failed:', error));
+
+  // Return unsubscribe function
+  return () => {
+    isSubscribed = false;
+  };
+}
+
 
 

@@ -45,13 +45,12 @@ export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ maxEvents = 50 }
       details: event.details,
     })),
     ...revocationHistory.map((cert) => ({
-      id: `revoke-${cert.node_id}-${cert.timestamp}`,
+      id: `revoke-${cert.node_id}-${cert.timestamp_ms}`,
       type: 'revocation' as const,
-      timestamp: new Date(cert.timestamp),
+      timestamp: new Date(cert.timestamp_ms),
       nodeId: cert.node_id,
-      details: cert.reason,
+      details: cert.revocation_reason || 'Node revoked',
       signature: cert.signature,
-      merkleRoot: cert.merkle_root,
     })),
   ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, maxEvents);
 

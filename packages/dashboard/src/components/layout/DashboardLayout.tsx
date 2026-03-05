@@ -42,6 +42,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ sentinelTrustS
   const activeCall = useCommStore((s) => s.activeCall);
   const [showWizard, setShowWizard] = useState(false);
   const [currentView, setCurrentView] = useState<WorkspaceView>('tactical');
+  const [mobileTacticalPane, setMobileTacticalPane] = useState<'nodes' | 'map' | 'details'>('map');
 
   const verifiedCount = Array.from(nodes.values()).filter((n) => n.verified).length;
   const totalCount = nodes.size;
@@ -50,31 +51,95 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ sentinelTrustS
     switch (currentView) {
       case 'tactical':
         return (
-          <div className="h-full flex overflow-hidden">
-            {/* Left Sidebar - Node List */}
-            <div className="w-80 flex-shrink-0 p-4 pr-2">
-              <div className="h-full flex flex-col">
+          <div className="h-full overflow-hidden">
+            {/* Desktop / Large Tablet Tactical Layout */}
+            <div className="hidden h-full lg:flex overflow-hidden">
+              {/* Left Sidebar - Node List */}
+              <div className="w-72 xl:w-80 flex-shrink-0 p-4 pr-2">
+                <div className="h-full flex flex-col">
+                  <button
+                    onClick={() => setShowWizard(true)}
+                    className="btn-primary w-full mb-3 flex items-center justify-center gap-2 flex-shrink-0"
+                  >
+                    <Plus size={16} />
+                    Add Node
+                  </button>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <NodeListPanel />
+                  </div>
+                </div>
+              </div>
+
+              {/* Center - Map */}
+              <div className="flex-1 min-w-0 p-4 py-2">
+                <TacticalMap />
+              </div>
+
+              {/* Right Sidebar - Node Details */}
+              <div className="w-80 xl:w-96 flex-shrink-0 p-4 pl-2">
+                <NodeDetailPanel />
+              </div>
+            </div>
+
+            {/* Mobile Tactical Layout */}
+            <div className="h-full flex flex-col overflow-hidden lg:hidden">
+              <div className="px-4 pt-3 flex-shrink-0">
                 <button
                   onClick={() => setShowWizard(true)}
-                  className="btn-primary w-full mb-3 flex items-center justify-center gap-2 flex-shrink-0"
+                  className="btn-primary w-full mb-3 flex items-center justify-center gap-2"
                 >
                   <Plus size={16} />
                   Add Node
                 </button>
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <NodeListPanel />
+                <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="Tactical panes">
+                  <button
+                    onClick={() => setMobileTacticalPane('nodes')}
+                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                      mobileTacticalPane === 'nodes'
+                        ? 'bg-overmatch/20 text-overmatch border border-overmatch/40'
+                        : 'bg-carbon/50 text-tungsten/70 border border-tungsten/20 hover:bg-tungsten/10'
+                    }`}
+                    role="tab"
+                    aria-selected={mobileTacticalPane === 'nodes'}
+                  >
+                    Nodes
+                  </button>
+                  <button
+                    onClick={() => setMobileTacticalPane('map')}
+                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                      mobileTacticalPane === 'map'
+                        ? 'bg-overmatch/20 text-overmatch border border-overmatch/40'
+                        : 'bg-carbon/50 text-tungsten/70 border border-tungsten/20 hover:bg-tungsten/10'
+                    }`}
+                    role="tab"
+                    aria-selected={mobileTacticalPane === 'map'}
+                  >
+                    Map
+                  </button>
+                  <button
+                    onClick={() => setMobileTacticalPane('details')}
+                    className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                      mobileTacticalPane === 'details'
+                        ? 'bg-overmatch/20 text-overmatch border border-overmatch/40'
+                        : 'bg-carbon/50 text-tungsten/70 border border-tungsten/20 hover:bg-tungsten/10'
+                    }`}
+                    role="tab"
+                    aria-selected={mobileTacticalPane === 'details'}
+                  >
+                    Details
+                  </button>
                 </div>
               </div>
-            </div>
 
-            {/* Center - Map */}
-            <div className="flex-1 min-w-0 p-4 py-2">
-              <TacticalMap />
-            </div>
-
-            {/* Right Sidebar - Node Details */}
-            <div className="w-96 flex-shrink-0 p-4 pl-2">
-              <NodeDetailPanel />
+              <div className="flex-1 min-h-0 p-4 pt-3">
+                {mobileTacticalPane === 'nodes' && <NodeListPanel />}
+                {mobileTacticalPane === 'map' && (
+                  <div className="h-full min-h-[18rem]">
+                    <TacticalMap />
+                  </div>
+                )}
+                {mobileTacticalPane === 'details' && <NodeDetailPanel />}
+              </div>
             </div>
           </div>
         );
@@ -112,16 +177,20 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ sentinelTrustS
           <SentinelTrustBanner status={sentinelTrustStatus} />
         )}
         {/* TopBar - Fixed Height */}
-        <div className="flex items-center gap-4 p-4 pb-2 flex-shrink-0">
-          <NavigationMenu currentView={currentView} onViewChange={setCurrentView} />
-          <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-3 p-4 pb-2 flex-shrink-0">
+          <div className="flex-shrink-0">
+            <NavigationMenu currentView={currentView} onViewChange={setCurrentView} />
+          </div>
+          <div className="order-3 w-full min-w-0 xl:order-none xl:w-auto xl:flex-1">
             <TopBar
               systemStatus="operational"
               verifiedNodes={verifiedCount}
               totalNodes={totalCount}
             />
           </div>
-          <ConnectionStatusIndicator />
+          <div className="ml-auto flex-shrink-0 xl:ml-0">
+            <ConnectionStatusIndicator />
+          </div>
         </div>
 
         {/* Main Content - Dynamic Workspace with proper flex */}

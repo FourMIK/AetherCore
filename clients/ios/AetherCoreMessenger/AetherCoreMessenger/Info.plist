@@ -35,6 +35,8 @@
 	<array>
 		<string>arm64</string>
 	</array>
+	<key>AETHERCORE_GATEWAY_URL</key>
+	<string>https://gateway.aethercore.mil</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

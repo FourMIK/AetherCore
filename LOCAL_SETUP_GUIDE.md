@@ -13,9 +13,6 @@ Everything is set up and functioning locally! All audits passed:
 ### Development Mode (Hot Reload)
 
 ```powershell
-# Set environment to skip toolchain check (for Node.js 22)
-$env:SKIP_TOOLCHAIN_CHECK='1'
-
 # Navigate to dashboard
 cd packages/dashboard
 
@@ -157,20 +154,13 @@ This creates:
 
 ### Required Node.js Version
 - Configured for Node.js 20.x
-- Currently running: Node.js v22.19.0 (compatible)
+- Currently running: Node.js v20.x (required)
 - pnpm: v9.15.0
 
-### Skip Toolchain Check
-Since you're on Node.js 22, you'll need to set:
-```powershell
-$env:SKIP_TOOLCHAIN_CHECK='1'
-```
+### Toolchain Check
+The preinstall toolchain check expects Node.js 20.x and pnpm 9.15.0 by default.
 
-Add this to your PowerShell profile to make it permanent:
-```powershell
-# In $PROFILE
-$env:SKIP_TOOLCHAIN_CHECK = '1'
-```
+Use `SKIP_TOOLCHAIN_CHECK=1` only for constrained environments such as isolated Docker install stages.
 
 ## 📝 Audit Reports
 

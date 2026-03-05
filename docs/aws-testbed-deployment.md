@@ -168,6 +168,11 @@ aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$BUNKER_SERVIC
 
 Use these after deployment completes:
 
+- **External readiness gate (required):** HTTPS/443 public availability only.
+  - Required checks for release readiness: ALB `/api/health` and Dashboard CloudFront root.
+- **Internal dependency checks (informational):** failures on collaboration/auth/ingest/observability paths are warnings in this gate.
+- **Port policy for this environment:** external readiness does **not** require direct access to `50051` or `8080`; those are internal service ports and non-blocking for this release gate.
+
 - AetherCore liveness: `https://UNSPECIFIED_CORE_HOST/health`
 - AetherCore readiness: `https://UNSPECIFIED_CORE_HOST/ready`
 - AetherCore API health: `https://UNSPECIFIED_CORE_HOST/api/health`
@@ -278,4 +283,3 @@ infra/scripts/destroy-aws-testbed.sh \
   --target aws_ecs_service.auth \
   --auto-approve
 ```
-

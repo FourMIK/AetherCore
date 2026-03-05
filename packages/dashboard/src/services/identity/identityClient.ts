@@ -15,6 +15,8 @@
  * CRITICAL: This replaces all MockIdentityRegistry usage in the codebase.
  */
 
+import { getRuntimeConfig } from '../../config/runtime';
+
 /**
  * NodeID type (64-character hex string - BLAKE3 hash of public key)
  */
@@ -95,6 +97,39 @@ export interface VerifySignatureResponse {
 }
 
 /**
+ * Node Attestation State - TPM and Merkle Vine verification status
+ */
+export interface NodeAttestationState {
+  node_id: string;
+  hardware_backed: boolean;
+  tpm_attestation_valid: boolean;
+  merkle_vine_synced: boolean;
+  byzantine_detected: boolean;
+  revoked: boolean;
+  revocation_reason?: string;
+  trust_score: number;
+  timestamp_ms: number;
+}
+
+/**
+ * Revocation Certificate - The Great Gospel ledger entry
+ */
+export interface RevocationCertificate {
+  node_id: string;
+  revoked_at_ms: number;
+  revocation_reason: string;
+  revoking_authority: string;
+  signature: string;
+  timestamp_ms: number;
+}
+
+export interface RevokeNodeIdentityOptions {
+  adminNodeId: string;
+  timestampMs: number;
+  authoritySignatureHex: string;
+}
+
+/**
  * Identity Registry Client Error
  */
 export class IdentityClientError extends Error {
@@ -106,6 +141,29 @@ export class IdentityClientError extends Error {
     super(message);
     this.name = 'IdentityClientError';
   }
+}
+
+function resolveGatewayBaseUrl(): string {
+  try {
+    const runtime = getRuntimeConfig();
+    if (runtime.apiUrl && typeof runtime.apiUrl === 'string') {
+      return runtime.apiUrl.replace(/\/$/, '');
+    }
+  } catch {
+    // Fall through to env/default fallback.
+  }
+
+  const envUrl =
+    typeof import.meta !== 'undefined' &&
+    import.meta.env &&
+    typeof import.meta.env.VITE_API_URL === 'string'
+      ? import.meta.env.VITE_API_URL
+      : '';
+  if (envUrl.trim().length > 0) {
+    return envUrl.trim().replace(/\/$/, '');
+  }
+
+  return 'http://localhost:3000';
 }
 
 /**
@@ -374,6 +432,135 @@ export class IdentityClient {
     if (this.config.enableLogging) {
       console.log('[IdentityClient] Closed');
     }
+  }
+
+  /**
+   * Static method: Check if node has admin privileges
+   */
+  static async hasAdminPrivileges(nodeId: string): Promise<boolean> {
+    if (!nodeId || typeof nodeId !== 'string') {
+      return false;
+    }
+
+    const baseUrl = resolveGatewayBaseUrl();
+    const response = await fetch(
+      `${baseUrl}/api/admin/privileges/${encodeURIComponent(nodeId.trim())}`,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new IdentityClientError(
+        `Admin privilege lookup failed (${response.status})`,
+        'ADMIN_PRIVILEGE_LOOKUP_FAILED',
+        { nodeId, status: response.status },
+      );
+    }
+
+    const payload = (await response.json()) as { authorized?: unknown };
+    return payload.authorized === true;
+  }
+
+  /**
+   * Static method: Revoke node identity
+   */
+  static async revokeNodeIdentity(
+    nodeId: string,
+    reason: string,
+    options: RevokeNodeIdentityOptions,
+  ): Promise<boolean> {
+    if (!nodeId || typeof nodeId !== 'string') {
+      throw new IdentityClientError('Invalid node id', 'INVALID_NODE_ID', { nodeId });
+    }
+    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+      throw new IdentityClientError('Revocation reason required', 'INVALID_REASON', { reason });
+    }
+    if (!options?.adminNodeId || options.adminNodeId.trim().length === 0) {
+      throw new IdentityClientError('Admin node id required', 'INVALID_ADMIN_NODE_ID');
+    }
+    if (
+      !options.authoritySignatureHex ||
+      !/^[0-9a-fA-F]{128}$/.test(options.authoritySignatureHex)
+    ) {
+      throw new IdentityClientError(
+        'Invalid authority signature format',
+        'INVALID_AUTHORITY_SIGNATURE',
+      );
+    }
+
+    const baseUrl = resolveGatewayBaseUrl();
+    const response = await fetch(`${baseUrl}/api/admin/revoke`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        admin_node_id: options.adminNodeId.trim(),
+        node_id: nodeId.trim(),
+        reason: reason.trim(),
+        timestamp_ms: options.timestampMs,
+        authority_signature_hex: options.authoritySignatureHex,
+      }),
+    });
+
+    const payload = (await response.json()) as {
+      status?: unknown;
+      code?: unknown;
+      message?: unknown;
+    };
+
+    if (!response.ok || payload.status !== 'ok') {
+      throw new IdentityClientError(
+        typeof payload.message === 'string' ? payload.message : 'Revocation request failed',
+        typeof payload.code === 'string' ? payload.code : 'REVOCATION_FAILED',
+        {
+          nodeId,
+          adminNodeId: options.adminNodeId,
+          status: response.status,
+        },
+      );
+    }
+
+    return true;
+  }
+
+  /**
+   * Static method: Get fleet attestation state
+   */
+  static async getFleetAttestationState(): Promise<NodeAttestationState[]> {
+    const baseUrl = resolveGatewayBaseUrl();
+    const response = await fetch(`${baseUrl}/api/admin/fleet-attestation`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new IdentityClientError(
+        `Fleet attestation lookup failed (${response.status})`,
+        'FLEET_ATTESTATION_LOOKUP_FAILED',
+        { status: response.status },
+      );
+    }
+
+    const payload = (await response.json()) as {
+      status?: unknown;
+      nodes?: unknown;
+    };
+    if (payload.status !== 'ok' || !Array.isArray(payload.nodes)) {
+      throw new IdentityClientError(
+        'Invalid fleet attestation response shape',
+        'INVALID_FLEET_ATTESTATION_RESPONSE',
+      );
+    }
+
+    return payload.nodes as NodeAttestationState[];
   }
 }
 

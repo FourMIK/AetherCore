@@ -31,6 +31,7 @@ import {
 } from '../../api/tauri-commands';
 import { IdentityClient } from '../../services/identity/identityClient';
 import { useTacticalStore } from '../../store/useTacticalStore';
+import { useCommStore } from '../../store/useCommStore';
 import { NodeListPanel } from '../panels/NodeListPanel';
 import { AuditLogViewer } from '../compliance/AuditLogViewer';
 
@@ -40,6 +41,7 @@ export const SystemAdminView: React.FC = () => {
   const [bundle, setBundle] = useState<SupportBundleSummary | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [hasAdminPrivileges, setHasAdminPrivileges] = useState(false);
+  const currentOperatorId = useCommStore((s) => s.currentOperator?.id);
 
   const fleetAttestationState = useTacticalStore((s) => s.fleetAttestationState);
   const lastAttestationUpdate = useTacticalStore((s) => s.lastAttestationUpdate);
@@ -59,17 +61,28 @@ export const SystemAdminView: React.FC = () => {
   // Check admin privileges
   useEffect(() => {
     (async () => {
-      const authorized = await IdentityClient.hasAdminPrivileges();
-      setHasAdminPrivileges(authorized);
+      const candidateNodeId = currentOperatorId || useTacticalStore.getState().selectedNodeId || '';
+      if (!candidateNodeId) {
+        setHasAdminPrivileges(false);
+        return;
+      }
+
+      try {
+        const authorized = await IdentityClient.hasAdminPrivileges(candidateNodeId);
+        setHasAdminPrivileges(authorized);
+      } catch (error) {
+        console.error('[ADMIN] Failed to evaluate admin privileges:', error);
+        setHasAdminPrivileges(false);
+      }
     })();
-  }, []);
+  }, [currentOperatorId]);
 
   // Fetch fleet attestation state every 5 seconds
   useEffect(() => {
     const fetchAttestation = async () => {
       try {
-        const report = await IdentityClient.getFleetAttestationState();
-        updateFleetAttestationState(report.nodes);
+        const attestations = await IdentityClient.getFleetAttestationState();
+        updateFleetAttestationState(attestations);
       } catch (error) {
         console.error('[ADMIN] Failed to fetch fleet attestation:', error);
       }
@@ -381,10 +394,10 @@ export const SystemAdminView: React.FC = () => {
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-mono text-tungsten">{cert.node_id}</span>
                       <span className="text-tungsten/50">
-                        {new Date(cert.timestamp).toLocaleString()}
+                        {new Date(cert.timestamp_ms).toLocaleString()}
                       </span>
                     </div>
-                    <div className="text-tungsten/70">{cert.reason}</div>
+                    <div className="text-tungsten/70">{cert.revocation_reason}</div>
                     <div className="text-tungsten/50 mt-1">
                       Signature: {cert.signature.substring(0, 16)}...
                     </div>

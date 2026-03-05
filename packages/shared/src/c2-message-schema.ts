@@ -39,6 +39,14 @@ export const ChatPayloadSchema = z.object({
   keyAgreement: z.string().optional(),
   cipher: z.string().optional(),
   keyEpoch: z.number().int().positive().optional(),
+  sms_fallback: z
+    .object({
+      segment_count: z.number().int().positive(),
+      segment_index: z.number().int().nonnegative().default(0),
+      encoding: z.enum(['gsm-7', 'utf-8']).default('utf-8'),
+      max_chars_per_segment: z.number().int().positive().default(160),
+    })
+    .optional(),
 });
 
 // Call invitation payload
@@ -65,6 +73,26 @@ export const ControlPayloadSchema = z.object({
   command: z.string(),
   parameters: z.record(z.unknown()).optional(),
 });
+
+export const MessageTransportSchema = z.object({
+  mode: z.enum(['direct', 'gossip', 'store_forward_sms']),
+  ttl_ms: z.number().int().positive().max(24 * 60 * 60 * 1000).default(60_000),
+  hop_count: z.number().int().nonnegative().default(0),
+  qos: z.enum(['best_effort', 'at_least_once']).default('best_effort'),
+  topic: z.string().min(1).max(128).optional(),
+});
+
+export type MessageTransport = z.infer<typeof MessageTransportSchema>;
+
+export const MerkleVineLeafSchema = z.object({
+  stream_id: z.string().min(1),
+  leaf_hash: z.string().regex(/^[0-9a-fA-F]{64}$/),
+  parent_hash: z.string().regex(/^[0-9a-fA-F]{64}$/).optional(),
+  leaf_index: z.number().int().nonnegative(),
+  anchored_at_ms: z.number().int().positive(),
+});
+
+export type MerkleVineLeaf = z.infer<typeof MerkleVineLeafSchema>;
 
 // Message envelope (top-level structure)
 export const MessageEnvelopeSchema = z.object({
@@ -102,6 +130,12 @@ export const MessageEnvelopeSchema = z.object({
   // Trust status (set by receiver after verification)
   trust_status: MessageTrustStatusSchema.optional(),
   verification_status: VerificationStatusSchema.optional(),
+
+  // Routing/mesh transport metadata
+  transport: MessageTransportSchema.optional(),
+
+  // Gateway-derived MerkleVine leaf metadata
+  vine: MerkleVineLeafSchema.optional(),
 });
 
 export type MessageEnvelope = z.infer<typeof MessageEnvelopeSchema>;
@@ -226,6 +260,55 @@ function generateNonceHex(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+export interface SmsFallbackMetadata {
+  segment_count: number;
+  segment_index: number;
+  encoding: 'gsm-7' | 'utf-8';
+  max_chars_per_segment: number;
+}
+
+export function estimateSmsSegments(content: string): SmsFallbackMetadata {
+  const normalized = typeof content === 'string' ? content : '';
+  const hasNonAscii = /[^\x20-\x7E]/.test(normalized);
+  const maxCharsPerSegment = hasNonAscii ? 70 : 160;
+  const segmentCount = Math.max(1, Math.ceil(normalized.length / maxCharsPerSegment));
+  return {
+    segment_count: segmentCount,
+    segment_index: 0,
+    encoding: hasNonAscii ? 'utf-8' : 'gsm-7',
+    max_chars_per_segment: maxCharsPerSegment,
+  };
+}
+
+export function defaultTransportForType(type: MessageType): MessageTransport {
+  if (type === 'call_invite' || type === 'call_accept' || type === 'call_reject' || type === 'call_end') {
+    return {
+      mode: 'gossip',
+      ttl_ms: 15_000,
+      hop_count: 0,
+      qos: 'at_least_once',
+      topic: 'guardian.call',
+    };
+  }
+
+  if (type === 'chat') {
+    return {
+      mode: 'direct',
+      ttl_ms: 4 * 60 * 60 * 1000,
+      hop_count: 0,
+      qos: 'at_least_once',
+      topic: 'guardian.chat',
+    };
+  }
+
+  return {
+    mode: 'direct',
+    ttl_ms: 60_000,
+    hop_count: 0,
+    qos: 'best_effort',
+  };
+}
+
 // Typed message envelopes for specific message types
 export interface ChatMessage extends MessageEnvelope {
   type: 'chat';
@@ -276,6 +359,20 @@ function validateEnvelopeInvariants(envelope: MessageEnvelope): {
     throw new Error('Message envelope verified/spoofed status requires signature');
   }
 
+  if (envelope.transport) {
+    if (envelope.transport.mode === 'store_forward_sms' && envelope.type !== 'chat') {
+      throw new Error('Message envelope store_forward_sms transport is only valid for chat');
+    }
+
+    if (envelope.transport.mode === 'gossip' && envelope.transport.ttl_ms > 300000) {
+      throw new Error('Message envelope gossip ttl_ms exceeds maximum 300000ms');
+    }
+  }
+
+  if (envelope.vine && envelope.vine.anchored_at_ms < envelope.timestamp) {
+    throw new Error('Message envelope vine.anchored_at_ms cannot precede message timestamp');
+  }
+
   return normalizedVerification;
 }
 
@@ -300,6 +397,17 @@ export function createMessageEnvelope(
   payload: unknown,
   signature?: string
 ): MessageEnvelope {
+  let normalizedPayload = payload;
+  if (type === 'chat' && payload && typeof payload === 'object') {
+    const chatPayload = payload as Record<string, unknown>;
+    if (typeof chatPayload.content === 'string' && !chatPayload.sms_fallback) {
+      normalizedPayload = {
+        ...chatPayload,
+        sms_fallback: estimateSmsSegments(chatPayload.content),
+      };
+    }
+  }
+
   const previousMessageId = senderLastMessageTracker.get(from);
   const messageId = generateMessageId();
   const sequence = nextSequenceForSender(from);
@@ -311,11 +419,12 @@ export function createMessageEnvelope(
     timestamp: Date.now(),
     type,
     from,
-    payload,
+    payload: normalizedPayload,
     nonce: generateNonceHex(),
     sequence,
     previous_message_id: previousMessageId,
     signature,
+    transport: defaultTransportForType(type),
   };
 }
 
@@ -334,5 +443,6 @@ export function serializeForSigning(envelope: UnsignedMessageEnvelope): string {
     nonce: envelope.nonce,
     sequence: envelope.sequence,
     previous_message_id: envelope.previous_message_id,
+    transport: envelope.transport,
   });
 }

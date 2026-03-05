@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { VideoStream, TacticalNode } from '../../types';
+import type { VideoStream, TacticalNode } from '../types';
 
 describe('VideoStream Types', () => {
   it('should create a valid VideoStream object', () => {

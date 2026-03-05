@@ -19,9 +19,40 @@
 
 import React, { useState, useRef } from 'react';
 import { Send, Shield, Loader2 } from 'lucide-react';
-import type { CanonicalEvent, MessagePayload, EventType } from '@aethercore/canonical-schema';
 import { SigningClient } from '../../services/identity/signingClient';
 import { hash as blake3Hash } from 'blake3';
+
+/**
+ * Canonical Event type for messages
+ */
+export interface CanonicalEvent {
+  id?: string;
+  event_id?: string;
+  timestamp: number;
+  event_type: string;
+  sender_id?: string;
+  device_id?: string;
+  node_id?: string;
+  payload: any;
+  prev_hash?: string;
+  signature?: string;
+  chain_height?: number;
+  sequence?: number;
+  hash?: string;
+  public_key?: string;
+  metadata?: any;
+}
+
+/**
+ * Message Payload type
+ */
+export interface MessagePayload {
+  text: string;
+  conversation_id: string;
+  recipient_ids: string[];
+}
+
+export type EventType = 'MESSAGE' | 'COMMAND' | 'TELEMETRY' | string;
 
 /**
  * Message constraints
@@ -150,11 +181,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 
       // Step 5: Sign with TPM-backed key via SigningClient
       try {
-        const signResponse = await signingClient.signMessage({
-          node_id: currentNodeId,
-          message: new TextEncoder().encode(hash),
-          timestamp_ms: Date.now(),
-        });
+        const signResponse = await signingClient.signMessage(
+          currentNodeId,
+          new TextEncoder().encode(hash)
+        );
 
         if (!signResponse.success) {
           throw new Error(signResponse.error_message || 'Signing failed');

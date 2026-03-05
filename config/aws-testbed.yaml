@@ -1,0 +1,179 @@
+# AetherCore AWS Testbed Configuration
+# Classification: OPERATIONAL - TRL-8 Field Test State
+#
+# This configuration connects to the AWS-hosted AetherCore network testbed.
+# Endpoint: https://aethercore-aws-testbed-alb-1408772759.us-east-1.elb.amazonaws.com/
+#
+# Philosophy: "Fail-Visible" - Cryptographic certainty required for all operations
+
+# =============================================================================
+# AWS ENDPOINT CONFIGURATION
+# =============================================================================
+aws:
+  # AWS ALB endpoint (Application Load Balancer)
+  alb_endpoint: "https://aethercore-aws-testbed-alb-1408772759.us-east-1.elb.amazonaws.com"
+  
+  # Region
+  region: "us-east-1"
+  
+  # Environment classification
+  environment: "testbed"
+
+# =============================================================================
+# MESH NETWORK CONFIGURATION
+# =============================================================================
+mesh:
+  # Primary gateway URL (HTTP/HTTPS REST API)
+  gateway_api_endpoint: "https://aethercore-aws-testbed-alb-1408772759.us-east-1.elb.amazonaws.com/api"
+  
+  # WebSocket endpoint for Aetheric Link (mesh gossip, telemetry streaming)
+  mesh_endpoint: "wss://aethercore-aws-testbed-alb-1408772759.us-east-1.elb.amazonaws.com"
+  
+  # C2 Router gRPC endpoint (command & control)
+  c2_router_endpoint: "aethercore-aws-testbed-alb-1408772759.us-east-1.elb.amazonaws.com:50051"
+  
+  # Auth service endpoint
+  auth_endpoint: "https://aethercore-aws-testbed-alb-1408772759.us-east-1.elb.amazonaws.com/auth"
+  
+  # Collaboration WebSocket endpoint
+  collaboration_endpoint: "wss://aethercore-aws-testbed-alb-1408772759.us-east-1.elb.amazonaws.com:8080"
+
+# =============================================================================
+# CODERALPHIE EDGE NODE CONFIGURATION (Testbed Mode)
+# =============================================================================
+ralphie:
+  # Bootstrap Configuration
+  bootstrap:
+    # TPM Configuration - May be simulated in testbed
+    tpm:
+      # mode: "hardware" for production, "simulated" for testbed
+      mode: "simulated"
+      
+      # device: TPM device path
+      device: "/dev/tpm0"
+      
+      # timeout_ms: Timeout for TPM operations
+      timeout_ms: 5000
+      
+      # pcr_selection: Platform Configuration Registers
+      pcr_selection: [0, 1, 2, 3, 4, 7, 8, 14]
+    
+    # Secure Boot Configuration
+    secureBoot:
+      # strictMode: false for testbed compatibility
+      strictMode: false
+      
+      # verifyKernelSignature: Skip in testbed
+      verifyKernelSignature: false
+      
+      # allowDebugKeys: Allow debug keys in testbed
+      allowDebugKeys: true
+
+  # Security Configuration
+  security:
+    # fail_visible_mode: Must be true - unverified data is rejected
+    fail_visible_mode: true
+    
+    # reject_unverified: Reject any unverifiable data
+    reject_unverified: true
+    
+    # tls_version: Must be 1.3
+    tls_version: "1.3"
+    
+    # certificate_pinning: Enable TLS certificate validation
+    certificate_pinning: false  # May be relaxed in testbed
+    
+    # allow_self_signed: Allow self-signed certs in testbed
+    allow_self_signed: true
+
+# =============================================================================
+# MERKLE VINE STREAMING
+# =============================================================================
+merkle_vine:
+  # All telemetry must flow through Merkle Vine
+  enabled: true
+  
+  # Hashing algorithm (BLAKE3 mandatory)
+  hash_algorithm: "blake3"
+  
+  # Ancestor chaining enforcement
+  enforce_ancestor_chain: true
+
+# =============================================================================
+# TRUST MESH & BYZANTINE DETECTION
+# =============================================================================
+trust_mesh:
+  # Aetheric Sweep protocol enabled
+  byzantine_detection: true
+  
+  # Slashing enabled for misbehaving nodes
+  slashing_enabled: true
+  
+  # Auto-quarantine Byzantine nodes
+  auto_quarantine: true
+
+# =============================================================================
+# LOGGING & OBSERVABILITY
+# =============================================================================
+logging:
+  # Log level: trace, debug, info, warn, error
+  level: "info"
+  
+  # Structured logging format
+  format: "json"
+  
+  # Log all crypto operations (Fail-Visible)
+  log_crypto: true
+  
+  # Log all rejections
+  log_rejections: true
+
+# =============================================================================
+# NETWORK RESILIENCE
+# =============================================================================
+network:
+  # Connection retry policy
+  connection_retry:
+    max_retries: 10
+    initial_delay_ms: 1000
+    max_delay_ms: 30000
+    backoff_multiplier: 2.0
+  
+  # Timeout for network operations
+  timeout_ms: 10000
+  
+  # Keep-alive heartbeat interval
+  heartbeat_interval_ms: 30000
+
+# =============================================================================
+# TELEMETRY & VAULT
+# =============================================================================
+telemetry:
+  # Enable telemetry collection
+  enabled: true
+  
+  # Buffering strategy for contested networks
+  buffering: "adaptive"
+  
+  # Merkle Vine vault (historical anchor for telemetry)
+  vault_enabled: true
+
+# =============================================================================
+# DEPLOYMENT METADATA
+# =============================================================================
+deployment:
+  # Version
+  version: "0.2.0"
+  
+  # Edition
+  edition: "commander-edition"
+  
+  # Profile
+  profile: "aws-testbed"
+  
+  # Organization/Team
+  organization: "aethercore"
+  
+  # Last Updated
+  last_updated: "2026-03-03"
+
