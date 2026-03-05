@@ -68,11 +68,18 @@ goto fail
 :execute
 @rem Setup the command line
 
-set CLASSPATH=%APP_HOME%\gradle\wrapper\gradle-wrapper.jar
+set LOCAL_GRADLE_HOME=%APP_HOME%\gradle\gradle-8.7
+if exist "%LOCAL_GRADLE_HOME%\\lib\\gradle-launcher-8.7.jar" (
+    set CLASSPATH=%LOCAL_GRADLE_HOME%\\lib\\gradle-launcher-8.7.jar
+    set GRADLE_MAIN=org.gradle.launcher.GradleMain
+) else (
+    set CLASSPATH=%APP_HOME%\gradle\wrapper\gradle-wrapper.jar;%APP_HOME%\gradle\wrapper\gradle-wrapper-shared.jar
+    set GRADLE_MAIN=org.gradle.wrapper.GradleWrapperMain
+)
 
 
 @rem Execute Gradle
-"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -classpath "%CLASSPATH%" org.gradle.wrapper.GradleWrapperMain %*
+"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -classpath "%CLASSPATH%" %GRADLE_MAIN% %*
 
 :end
 @rem End local scope for the variables with windows NT shell

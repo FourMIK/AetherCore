@@ -5,6 +5,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Ensure produced jars use the expected name for deploy/verify tooling
+tasks.withType<Jar>().configureEach {
+    archiveBaseName.set("main")
+}
+
 val localProperties = Properties().apply {
     val localPropertiesFile = rootProject.file("local.properties")
     if (localPropertiesFile.exists()) {
@@ -254,6 +259,13 @@ val packageStubs by tasks.registering(Jar::class) {
     archiveFileName.set("main.jar")
     destinationDirectory.set(project.layout.projectDirectory.dir("libs"))
     from(compileStubs.map { it.destinationDirectory })
+}
+
+// Provide the assembleMainJar target expected by build/deploy scripts
+val assembleMainJar by tasks.registering(Copy::class) {
+    dependsOn(packageStubs)
+    from(project.layout.projectDirectory.file("libs/main.jar"))
+    into(project.layout.buildDirectory.dir("outputs"))
 }
 
 tasks.named("verifyAtakSdkPrerequisites") {

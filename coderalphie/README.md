@@ -12,6 +12,7 @@ CodeRalphie transforms a raw Raspberry Pi into a trusted edge node in the Aether
 
 - **Zero-Touch Enrollment**: Fully autonomous device provisioning
 - **TPM-Backed Keys**: Private keys never in system memory
+- **Signal-Agnostic Hashing**: BLAKE3 chain + skip-links + Ed25519, independent of transport or media type
 - **Fail-Visible Design**: LED indicators for operational state
 - **Auto-Recovery**: Resilient systemd service with automatic restart
 - **Security Hardening**: Firewall, SSH keys only, strict permissions
@@ -57,6 +58,34 @@ CodeRalphie transforms a raw Raspberry Pi into a trusted edge node in the Aether
 │  - Mesh coordination                    │
 └─────────────────────────────────────────┘
 ```
+
+## Signal-Agnostic Hashing Node (AetherCore Interop)
+
+Turn any node into a transport-agnostic provenance appliance: any inbound signal (RF/IQ capture, serial, BLE, CAN, RTMP, file tail, etc.) is chunked, hashed, signed, and streamed to AetherCore with deterministic provenance.
+
+**Data-path contract**
+- Hash: `BLAKE3` over each chunk (default 1 KiB; configurable) producing `hash`.
+- Continuity: `prev_hash` (hash of prior chunk) plus optional `skip_links` (exponential back-links) for fast verification.
+- Signature: `Ed25519` (or configured algo) over `{hash, prev_hash, skip_links, timestamp, stream_id}`.
+- Envelope expected by AetherCore: `stream_id`, `seq`, `timestamp`, `hash`, `prev_hash`, `skip_links[]`, `sig_alg`, `signature`, `key_id`.
+
+**Workflow**
+1. Normalize input to byte chunks (leave compression/codec untouched).
+2. Compute `hash = blake3(chunk)`.
+3. Set `prev_hash` to previous chunk’s hash (or zeros for the first packet).
+4. Emit `skip_links` every 2ⁿ chunks (n=0..5) for rapid catch-up verification.
+5. Sign with the node’s identity key (TPM-backed when available) and send to C2 over the existing WSS channel.
+
+**Configuration knobs (env or config)**
+- `HASH_ALGO` (default `blake3`) – only change for non-critical fallback.
+- `SIG_ALGO` (default `ed25519`) – aligns with AetherCore verifier.
+- `CHUNK_BYTES` (default `1024`) – payload chunk size per hash.
+- `SKIPLINK_FANOUT` (default `6`) – number of exponential skip-links to emit.
+
+**Trust posture**
+- Production: TPM-required, Ed25519 keys resident in TPM handle `0x81000001`.
+- Field test: TPM optional; software keys allowed with warnings.
+- All packets carry `sig_alg` and `key_id` to stay device-/transport-agnostic.
 
 ## Deployment
 
