@@ -12,19 +12,28 @@ Normalizes local runtime config files to Commander-local defaults:
 
 ### `scripts/ops/configure-pi-c2.sh`
 Configures CodeRalphie systemd override on Pi:
-- `C2_WS_URL=ws://<MAC_IP>:3000`
-- `AETHERCORE_PRODUCTION=<0|1>` (default `0` for local/home flow)
+- `C2_WS_URL=<ws://...|wss://...>` (default `ws://<MAC_IP>:3000` in `dev-local` profile)
+- `AETHERCORE_PRODUCTION=<0|1>` with explicit mode/profile validation
+- profile support:
+  - `PI_ENDPOINT_PROFILE=dev-local` (default)
+  - `PI_ENDPOINT_PROFILE=prod-aws-testbed` (defaults C2 + enrollment URL to AWS testbed ALB)
 - optional production enrollment wiring:
   - `ENROLLMENT_URL=<https://.../api/enrollment>`
   - `ENROLLMENT_CA_CERT_PATH=<pi path>` (default `/etc/coderalphie/ca/enrollment-ca.pem`)
   - set `PI_ENROLLMENT_CA_CERT_LOCAL_PATH=<local pem path>` to copy CA cert to Pi
 - reloads and restarts `coderalphie`
+- validates live process env contains expected `C2_WS_URL` + `AETHERCORE_PRODUCTION`
 
 ### `scripts/ops/check-mac-mesh.sh`
 Checks local listeners/processes and probes gateway websocket.
 
 ### `scripts/ops/check-pi-mesh.sh`
 Runs remote Pi checks for `coderalphie` env/journal/connectivity.
+- optional expected env validation:
+  - `EXPECT_C2_WS_URL=<ws://...|wss://...>`
+  - `EXPECT_AETHERCORE_PRODUCTION=<0|1>`
+- optional C2 reachability target:
+  - third arg `<c2-ws-url>` or `TARGET_C2_WS_URL=<...>`
 
 ### `scripts/ops/check-pi-chat.sh`
 End-to-end Pi chat path validation against local gateway:
@@ -64,12 +73,15 @@ One-command Heltech V4 onboarding:
 ### `scripts/ops/bringup-all-nodes.sh`
 One-command full node bring-up (Heltech + Pi + validations):
 - starts local app + Heltech bridge
-- configures Pi `C2_WS_URL` to your current Mac IP
+- configures Pi `C2_WS_URL` + `AETHERCORE_PRODUCTION` with explicit mode/profile
 - forces one Pi presence POST
 - validates Heltech telemetry stream
 - runs Mac + Pi mesh checks
 - supports Heltech over USB (`--heltech-port`) or Wi-Fi (`--heltech-host`, `--heltech-tcp-port`)
-- supports profile presets (currently `--profile home`)
+- supports profile presets (`--profile home`, `--profile aws-testbed`)
+- supports explicit Pi controls:
+  - `--pi-mode dev|prod`
+  - `--c2-ws-url ws://...|wss://...`
 
 ### `scripts/ops/deploy-pi-chat-app.sh`
 Deploys installable Pi-side chat app binary:
@@ -173,6 +185,11 @@ PI_ENROLLMENT_URL="https://c2.aethercore.local:3000/api/enrollment" \
 PI_ENROLLMENT_CA_CERT_LOCAL_PATH="$HOME/certs/enrollment-ca.pem" \
 ./scripts/ops/configure-pi-c2.sh duskone@192.168.1.125 192.168.1.51
 
+# 2c) AWS testbed production profile wiring (Pi -> AWS ALB)
+PI_ENDPOINT_PROFILE=prod-aws-testbed \
+PI_ENROLLMENT_CA_CERT_LOCAL_PATH="$HOME/certs/enrollment-ca.pem" \
+./scripts/ops/configure-pi-c2.sh duskone@192.168.1.125 192.168.1.51
+
 # 3) Validate both ends
 ./scripts/ops/run-mesh-diagnostics.sh duskone@192.168.1.125 192.168.1.51
 
@@ -201,6 +218,9 @@ PI_ENROLLMENT_CA_CERT_LOCAL_PATH="$HOME/certs/enrollment-ca.pem" \
 
 # 4c) Home preset shortcut (your saved LAN defaults)
 ./scripts/ops/bringup-all-nodes.sh --profile home
+
+# 4d) AWS testbed preset for Pi production endpoint wiring
+./scripts/ops/bringup-all-nodes.sh --profile aws-testbed
 
 # 5) Relaunch Commander cleanly
 ./scripts/ops/clean-restart-app.sh
