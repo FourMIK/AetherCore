@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { loadUnifiedRuntimeConfig, getRuntimeConfig, setRuntimeConfig } from '../../config/runtime';
+import {
+  isDemoMode,
+  isTauriRuntime,
+  loadUnifiedRuntimeConfig,
+  getRuntimeConfig,
+  setRuntimeConfig,
+} from '../../config/runtime';
+import { TauriCommands, type DeploymentStatus, type ConnectivityCheck } from '../../api/tauri-commands';
 
 type StepState = 'pending' | 'running' | 'success' | 'error';
 
@@ -12,37 +18,16 @@ interface BootstrapStep {
   attempts: number;
 }
 
-interface ServiceStatus {
-  name: string;
-  required: boolean;
-  healthy: boolean;
-  health_endpoint: string;
-  port: number;
-  remediation_hint: string;
-  startup_order: number;
-  running: boolean;
-}
-
-interface ConnectivityCheck {
-  api_healthy: boolean;
-  websocket_reachable: boolean;
-  details: string[];
-}
-
 interface StackStatus {
   ready: boolean;
   required_services: number;
   healthy_required_services: number;
-  services: ServiceStatus[];
-  readiness: Array<{ name: string; healthy: boolean; remediation_hint: string; last_error?: string | null }>;
-}
-
-interface DeploymentStatus {
-  node_id: string;
-  pid: number;
-  port: number;
-  started_at: number;
-  status: string;
+  services: {
+    name: string;
+    required: boolean;
+    healthy: boolean;
+    remediation_hint: string;
+  }[];
 }
 
 const RETRY_LIMIT = 3;
@@ -50,28 +35,39 @@ const RETRY_DELAY_MS = 1000;
 const DEFAULT_TIMEOUT_BUDGET_MS = 30000;
 const STACK_BOOT_TIMEOUT_MS = 120000;
 
+const DEMO_NODE_ID = 'demo-node-01';
+const DEMO_DEPLOY_LISTEN_PORT = 9000;
+const DEMO_DEPLOY_DATA_DIR = './data/demo-node';
+const DEMO_LOG_LEVEL = 'info';
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function isTauriRuntime(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
+const buildSteps = (includeDemoNode: boolean): BootstrapStep[] => {
+  const base = [
+    { id: 'environment', label: 'Device check', state: 'pending' as StepState, attempts: 0 },
+    { id: 'stack', label: 'Local stack boot', state: 'pending' as StepState, attempts: 0 },
+    { id: 'mesh', label: 'Mesh connect', state: 'pending' as StepState, attempts: 0 },
+  ];
 
-export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?: string | null }> = ({ onReady, externalError }) => {
-  const [steps, setSteps] = useState<BootstrapStep[]>([
-    { id: 'environment', label: 'Device check', state: 'pending', attempts: 0 },
-    { id: 'stack', label: 'Local stack boot', state: 'pending', attempts: 0 },
-    { id: 'mesh', label: 'Mesh connect', state: 'pending', attempts: 0 },
-    { id: 'node', label: 'First node deploy', state: 'pending', attempts: 0 },
-  ]);
+  if (includeDemoNode) {
+    base.push({ id: 'node', label: 'Demo node deploy', state: 'pending' as StepState, attempts: 0 });
+  }
+
+  return base;
+};
+
+export const BootstrapOnboarding: React.FC<{
+  onReady: () => void;
+  externalError?: string | null;
+}> = ({ onReady, externalError }) => {
+  const demoModeEnabled = isDemoMode();
+  const [steps, setSteps] = useState<BootstrapStep[]>(() => buildSteps(demoModeEnabled));
   const [errorSummary, setErrorSummary] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [flowComplete, setFlowComplete] = useState(false);
-  const [latestServiceStatus, setLatestServiceStatus] = useState<ServiceStatus[]>([]);
+  const [latestServiceStatus, setLatestServiceStatus] = useState<StackStatus['services']>([]);
+  const [latestConnectivityDetails, setLatestConnectivityDetails] = useState<string[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
-
-  const recommendedProfile = 'commander-edition';
-  const recommendedMeshEndpoint = 'ws://127.0.0.1:3000';
-  const firstNodeId = 'first-node';
 
   const updateStep = useCallback((id: string, patch: Partial<BootstrapStep>) => {
     setSteps((prev) => prev.map((step) => (step.id === id ? { ...step, ...patch } : step)));
@@ -84,12 +80,16 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
   ) => {
     let lastError = 'unknown error';
     for (let attempt = 1; attempt <= RETRY_LIMIT; attempt += 1) {
-      updateStep(stepId, { state: 'running', attempts: attempt, detail: `Attempt ${attempt}/${RETRY_LIMIT}` });
+      updateStep(stepId, {
+        state: 'running',
+        attempts: attempt,
+        detail: `Attempt ${attempt}/${RETRY_LIMIT}`,
+      });
       try {
         return await Promise.race([
           action(),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Timeout exceeded (${timeoutMs}ms)`)), timeoutMs)
+            setTimeout(() => reject(new Error(`Timeout exceeded (${timeoutMs}ms)`)), timeoutMs),
           ),
         ]);
       } catch (error) {
@@ -101,6 +101,15 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
       }
     }
     throw new Error(lastError);
+  }, [updateStep]);
+
+  const ensureSuccess = useCallback(async <T,>(stepId: string, action: () => Promise<{ success: true; data: T } | { success: false; error: string }>): Promise<T> => {
+    const result = await action();
+    if (!result.success) {
+      updateStep(stepId, { state: 'error', detail: result.error });
+      throw new Error(result.error);
+    }
+    return result.data;
   }, [updateStep]);
 
   const executeFlow = useCallback(async () => {
@@ -120,15 +129,20 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
         onReady();
         return;
       }
-      const dirs = await runWithRetry('environment', async () => invoke<string[]>('initialize_local_data_dirs'));
-      updateStep('environment', { state: 'success', detail: `Environment ready (${dirs.length} local directories prepared)` });
+
+      const dirs = await runWithRetry('environment', async () => {
+        const result = await TauriCommands.initializeLocalDataDirs();
+        return ensureSuccess('environment', () => Promise.resolve(result));
+      });
+      updateStep('environment', {
+        state: 'success',
+        detail: `Environment ready (${dirs.length} local directories prepared)`,
+      });
 
       const stackStatus = await runWithRetry('stack', async () => {
-        const status = await invoke<StackStatus>('start_stack');
-        updateStep('stack', {
-          detail: `Required services healthy ${status.healthy_required_services}/${status.required_services}`
-        });
-        return invoke<StackStatus>('stack_status');
+        await ensureSuccess('stack', () => TauriCommands.startStack());
+        const statusResult = await TauriCommands.getStackStatus();
+        return ensureSuccess('stack', () => Promise.resolve(statusResult));
       }, STACK_BOOT_TIMEOUT_MS);
       const serviceStatuses = stackStatus.services;
       setLatestServiceStatus(serviceStatuses);
@@ -144,47 +158,58 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
 
       const runtime = getRuntimeConfig();
       const apiHealth = `${runtime.apiUrl || 'http://127.0.0.1:3000'}/health`;
-      const wsEndpoint = runtime.wsUrl || recommendedMeshEndpoint;
-      const connectivity = await runWithRetry('mesh', () =>
-        invoke<ConnectivityCheck>('verify_dashboard_connectivity', {
-          apiHealthEndpoint: apiHealth,
-          websocketEndpoint: wsEndpoint,
-        })
+      const wsEndpoint = runtime.wsUrl || 'ws://127.0.0.1:3000';
+
+      const connectivity = await runWithRetry(
+        'mesh',
+        async () => {
+          const result = await TauriCommands.verifyDashboardConnectivity(apiHealth, wsEndpoint);
+          return ensureSuccess('mesh', () => Promise.resolve(result));
+        },
+        DEFAULT_TIMEOUT_BUDGET_MS,
       );
 
+      setLatestConnectivityDetails(connectivity.details);
       if (!connectivity.api_healthy || !connectivity.websocket_reachable) {
         throw new Error(connectivity.details.join(' | '));
       }
-
       updateStep('mesh', { state: 'success', detail: 'Dashboard API and mesh WebSocket are reachable' });
 
-      const existingDeployments = await invoke<DeploymentStatus[]>('get_deployment_status').catch(() => []);
-      const alreadyRunning = existingDeployments.find((deployment) => deployment.node_id === firstNodeId);
-
-      if (alreadyRunning) {
-        updateStep('node', {
-          state: 'success',
-          detail: `Node ${firstNodeId} already running (pid ${alreadyRunning.pid})`,
-        });
-      } else {
-        const nodeDeployment = await runWithRetry('node', () =>
-          invoke<DeploymentStatus>('deploy_node', {
-            config: {
-              node_id: firstNodeId,
-              mesh_endpoint: wsEndpoint,
-              listen_port: 9000,
-              data_dir: './data/first-node',
-              log_level: 'info',
-            },
-          })
+      if (demoModeEnabled) {
+        const deploymentsResult = await TauriCommands.getDeploymentStatus();
+        const deployments = await ensureSuccess('node', () => Promise.resolve(deploymentsResult));
+        const alreadyRunning = deployments.find(
+          (deployment: DeploymentStatus) => deployment.node_id === DEMO_NODE_ID,
         );
-        updateStep('node', {
-          state: 'success',
-          detail: `Node ${nodeDeployment.node_id} deployed and running on port ${nodeDeployment.port}`,
-        });
+
+        if (alreadyRunning) {
+          updateStep('node', {
+            state: 'success',
+            detail: `Demo node ${DEMO_NODE_ID} already running (pid ${alreadyRunning.pid})`,
+          });
+        } else {
+          const nodeDeployment = await runWithRetry(
+            'node',
+            async () => {
+              const result = await TauriCommands.deployNode({
+                node_id: DEMO_NODE_ID,
+                mesh_endpoint: wsEndpoint,
+                listen_port: DEMO_DEPLOY_LISTEN_PORT,
+                data_dir: DEMO_DEPLOY_DATA_DIR,
+                log_level: DEMO_LOG_LEVEL,
+              });
+              return ensureSuccess('node', () => Promise.resolve(result));
+            },
+            DEFAULT_TIMEOUT_BUDGET_MS,
+          );
+          updateStep('node', {
+            state: 'success',
+            detail: `Demo node ${nodeDeployment.node_id} deployed on port ${nodeDeployment.port}`,
+          });
+        }
       }
 
-      await invoke<string>('set_bootstrap_state', { completed: true });
+      await TauriCommands.setBootstrapState(true);
       localStorage.setItem('bootstrap.onboarding.completed', 'true');
       setFlowComplete(true);
     } catch (error) {
@@ -192,20 +217,23 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
       setErrorSummary(message);
       setSteps((prev) =>
         prev.map((step) =>
-          step.state === 'running' ? { ...step, state: 'error', detail: message } : step
-        )
+          step.state === 'running' ? { ...step, state: 'error', detail: message } : step,
+        ),
       );
     } finally {
       setIsRunning(false);
     }
-  }, [onReady, runWithRetry, updateStep]);
+  }, [demoModeEnabled, ensureSuccess, onReady, runWithRetry, updateStep]);
 
   const convertErrorToPlainLanguage = useCallback((message: string) => {
     const normalized = message.toLowerCase();
     const portMatch = message.match(/(?:port\s*|:)(\d{2,5})/i);
     const blockedPort = portMatch?.[1];
 
-    if ((normalized.includes('refused') || normalized.includes('timed out') || normalized.includes('unreachable')) && blockedPort) {
+    if (
+      (normalized.includes('refused') || normalized.includes('timed out') || normalized.includes('unreachable')) &&
+      blockedPort
+    ) {
       return {
         title: `Connection blocked by firewall on port ${blockedPort}.`,
         instructions: [
@@ -246,12 +274,23 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
       };
     }
 
+    if (normalized.includes('deploy demo node') || normalized.includes('node_id')) {
+      return {
+        title: 'Demo deployment did not complete.',
+        instructions: [
+          'Run Repair deployment to restart local services.',
+          'If you are not in demo mode, this step is intentionally skipped.',
+          'Review service logs from the Admin workspace for deeper diagnostics.',
+        ],
+      };
+    }
+
     if (normalized.includes('failed to locate node binary')) {
       return {
-        title: 'Node runtime is missing, so first node deployment cannot complete.',
+        title: 'Node runtime is missing, so demo deployment could not complete.',
         instructions: [
           'Reinstall or repair the desktop package so the node binary is bundled.',
-          'Engineering appendix users can set NODE_BINARY_PATH to the aethercore-node binary.',
+          'If your operator profile is service-only, disable DEMO mode and rerun bootstrap.',
         ],
       };
     }
@@ -274,38 +313,45 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
     setIsRunning(true);
 
     try {
-      const stackStatus = await invoke<StackStatus>('stack_status');
-      const serviceStatuses = stackStatus.services;
-      const requiredUnhealthy = serviceStatuses.filter((svc) => svc.required && !svc.healthy);
+      const stackStatusResult = await TauriCommands.getStackStatus();
+      const stackStatus = await ensureSuccess('stack', () => Promise.resolve(stackStatusResult));
+
+      const requiredUnhealthy = stackStatus.services.filter((svc) => svc.required && !svc.healthy);
       if (requiredUnhealthy.length > 0) {
         throw new Error(`Required services unhealthy: ${requiredUnhealthy.map((svc) => svc.name).join(', ')}`);
       }
 
       const runtime = getRuntimeConfig();
-      const connectivity = await invoke<ConnectivityCheck>('verify_dashboard_connectivity', {
-        apiHealthEndpoint: `${runtime.apiUrl || 'http://127.0.0.1:3000'}/health`,
-        websocketEndpoint: runtime.wsUrl || recommendedMeshEndpoint,
-      });
+      const connectivityResult = await TauriCommands.verifyDashboardConnectivity(
+        `${runtime.apiUrl || 'http://127.0.0.1:3000'}/health`,
+        runtime.wsUrl || 'ws://127.0.0.1:3000',
+      );
+      const connectivity = await ensureSuccess('mesh', () => Promise.resolve(connectivityResult));
 
       if (!connectivity.api_healthy || !connectivity.websocket_reachable) {
         throw new Error(connectivity.details.join(' | '));
       }
 
-      const deployments = await invoke<DeploymentStatus[]>('get_deployment_status');
-      const nodeReady = deployments.some((deployment) => deployment.node_id === firstNodeId && deployment.status === 'Running');
-
-      if (!nodeReady) {
-        throw new Error(`First node not running: ${firstNodeId}`);
+      if (demoModeEnabled) {
+        const deploymentStatusResult = await TauriCommands.getDeploymentStatus();
+        const deployments = await ensureSuccess('node', () => Promise.resolve(deploymentStatusResult));
+        const nodeReady = deployments.some(
+          (deployment: DeploymentStatus) =>
+            deployment.node_id === DEMO_NODE_ID && deployment.status === 'Running',
+        );
+        if (!nodeReady) {
+          throw new Error(`Demo node not running: ${DEMO_NODE_ID}`);
+        }
       }
 
-      setErrorSummary('Quick self-test passed: dashboard, mesh, and node deployment are healthy.');
+      setErrorSummary('Quick self-test passed: dashboard and mesh connectivity are healthy.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setErrorSummary(message);
     } finally {
       setIsRunning(false);
     }
-  }, []);
+  }, [demoModeEnabled, ensureSuccess]);
 
   const repairDeployment = useCallback(async () => {
     if (!isTauriRuntime()) {
@@ -315,7 +361,8 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
     setErrorSummary(null);
     setIsRunning(true);
     try {
-      await invoke<StackStatus>('repair_stack');
+      const repaired = await TauriCommands.repairStack();
+      await ensureSuccess('stack', () => Promise.resolve(repaired));
       await executeFlow();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -323,7 +370,7 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
     } finally {
       setIsRunning(false);
     }
-  }, [executeFlow]);
+  }, [executeFlow, ensureSuccess]);
 
   useEffect(() => {
     if (externalError) {
@@ -342,19 +389,22 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
 
   const plainLanguageError = errorSummary ? convertErrorToPlainLanguage(errorSummary) : null;
 
+  const runtime = getRuntimeConfig();
+  const recommendedMeshEndpoint = runtime.wsUrl || 'ws://127.0.0.1:3000';
+
   return (
     <div className="min-h-screen bg-carbon text-tungsten p-8">
       <div className="mx-auto max-w-3xl rounded-lg border border-overmatch/40 bg-carbon-2 p-6">
         <h1 className="text-2xl font-display mb-2">Commander Edition Setup</h1>
         <p className="text-sm text-tungsten/80 mb-4">
-          Tactical Glass follows a single supported first-run path: Commander Edition bootstrap.
+          Tactical Glass follows a deterministic bootstrap path with service-backed checks.
         </p>
 
         <div className="mb-4 rounded border border-overmatch/30 bg-carbon p-3 text-xs">
-          <p className="font-semibold">Commander Edition defaults (auto-applied)</p>
-          <p>Profile: <span className="font-mono">{recommendedProfile}</span></p>
+          <p className="font-semibold">Bootstrap defaults</p>
+          <p>Profile: <span className="font-mono">commander_edition</span></p>
           <p>Mesh endpoint: <span className="font-mono">{recommendedMeshEndpoint}</span></p>
-          <p className="text-tungsten/70 mt-1">Advanced options are hidden during first run for a deterministic setup path.</p>
+          <p className="text-tungsten/70 mt-1">Advanced options are hidden during first run for deterministic setup.</p>
           <button
             type="button"
             onClick={() => setShowAdvanced((prev) => !prev)}
@@ -364,9 +414,9 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
           </button>
           {showAdvanced && (
             <div className="mt-2 rounded border border-overmatch/20 bg-carbon-2 p-2 text-[11px] space-y-1">
-              <p>Endpoint (internal): <span className="font-mono">{recommendedMeshEndpoint}</span></p>
-              <p>Log level (internal): <span className="font-mono">info</span></p>
-              <p>Profile internals: <span className="font-mono">{recommendedProfile}</span> / deterministic bootstrap policy</p>
+              <p>Demo mode enabled: <span className="font-mono">{String(demoModeEnabled)}</span></p>
+              <p>Demo node: <span className="font-mono">{DEMO_NODE_ID}</span></p>
+              <p>Endpoint: <span className="font-mono">{recommendedMeshEndpoint}</span></p>
             </div>
           )}
         </div>
@@ -408,6 +458,13 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
                 ))}
               </ul>
             )}
+            {latestConnectivityDetails.length > 0 && (
+              <ul className="mt-3 space-y-1 text-xs">
+                {latestConnectivityDetails.map((detail) => (
+                  <li key={detail}>{detail}</li>
+                ))}
+              </ul>
+            )}
             <p className="mt-2 text-xs">Last error: {errorSummary}</p>
             <button
               type="button"
@@ -427,9 +484,10 @@ export const BootstrapOnboarding: React.FC<{ onReady: () => void; externalError?
             <ul className="mt-3 space-y-1 text-sm">
               <li>✅ Dashboard service reachable</li>
               <li>✅ Mesh link established</li>
-              <li>✅ Deployment pipeline active</li>
+              {demoModeEnabled && <li>✅ Demo node deployment active</li>}
+              {!demoModeEnabled && <li>✅ Demo deployment skipped (service-backed mode active)</li>}
             </ul>
-            <p className="text-xs mt-2 text-tungsten/80">Acceptance criteria: a non-technical user can complete first deployment from this guided flow without terminal usage.</p>
+            <p className="text-xs mt-2 text-tungsten/80">Acceptance criteria: one deterministic readiness path that never injects synthetic service state.</p>
             <div className="mt-3 flex gap-3">
               <button
                 type="button"
@@ -482,9 +540,16 @@ export async function shouldRunBootstrapOnboarding(): Promise<boolean> {
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('bootstrap') === '1';
 
-  const forcedByCli = await invoke<boolean>('installer_bootstrap_requested').catch(() => false);
+  const forcedByCli = await TauriCommands.installerBootstrapRequested()
+    .then((result) => {
+      if (!result.success) {
+        return false;
+      }
+      return result.data;
+    })
+    .catch(() => false);
 
-  if (forcedByInstaller || forcedByCli) {
+  if (forcedByInstaller) {
     return true;
   }
 
@@ -493,8 +558,11 @@ export async function shouldRunBootstrapOnboarding(): Promise<boolean> {
   }
 
   try {
-    const state = await invoke<{ completed: boolean }>('get_bootstrap_state');
-    return !state.completed;
+    const stateResult = await TauriCommands.getBootstrapState();
+    if (!stateResult.success) {
+      return true;
+    }
+    return !stateResult.data.completed;
   } catch {
     return true;
   }

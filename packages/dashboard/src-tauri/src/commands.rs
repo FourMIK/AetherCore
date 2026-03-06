@@ -92,6 +92,12 @@ pub struct GenesisBundle {
     pub public_key: String,
     pub signature: String,
     pub timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature_alg: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature_encoding: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_key_format: Option<String>,
 }
 
 /// Application state for managing connections
@@ -101,6 +107,7 @@ pub struct AppState {
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub process_manager: Arc<Mutex<NodeProcessManager>>,
     pub tpm_manager: Arc<Mutex<aethercore_identity::TpmManager>>,
+    pub heartbeat_device_id: Arc<Mutex<Option<String>>>,
 }
 
 impl Default for AppState {
@@ -111,6 +118,7 @@ impl Default for AppState {
             identity_manager: Arc::new(Mutex::new(IdentityManager::default())),
             process_manager: Arc::new(Mutex::new(NodeProcessManager::default())),
             tpm_manager: Arc::new(Mutex::new(aethercore_identity::TpmManager::new(false))),
+            heartbeat_device_id: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -185,7 +193,7 @@ pub async fn connect_to_mesh(
         );
 
         Ok(format!(
-            "Connected to C2 mesh at {} (validation successful, TPM attestation pending)",
+            "Mesh endpoint validated and stored: {} (no session established)",
             resolved_endpoint
         ))
     }
@@ -263,7 +271,7 @@ pub async fn connect_to_testnet(
         log::info!("Testnet endpoint validated and stored: {}", endpoint);
 
         Ok(format!(
-            "Connected to testnet at {} (validation successful)",
+            "Testnet endpoint validated and stored: {} (no session established)",
             endpoint
         ))
     }
@@ -281,8 +289,15 @@ pub async fn connect_to_testnet(
 pub async fn generate_genesis_bundle(
     user_identity: String,
     squad_id: String,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<GenesisBundle, String> {
-    async fn inner(user_identity: String, squad_id: String) -> Result<GenesisBundle> {
+    async fn inner(
+        user_identity: String,
+        squad_id: String,
+        app_handle: tauri::AppHandle,
+        state: tauri::State<'_, Arc<Mutex<AppState>>>,
+    ) -> Result<GenesisBundle> {
         // Validate inputs
         validation::require_non_empty(&user_identity, "user_identity")?;
         validation::require_non_empty(&squad_id, "squad_id")?;
@@ -295,10 +310,71 @@ pub async fn generate_genesis_bundle(
             squad_id
         );
 
-        // Generate ephemeral Ed25519 keypair for this bundle
-        // In production, this should use TPM-backed keys (CodeRalphie)
-        let (public_key, signature) = generate_signature(&user_identity, &squad_id)
-            .map_err(|e| AppError::Crypto(format!("Failed to generate signature: {}", e)))?;
+        let config = ConfigManager::new(&app_handle)?.load()?;
+        let enforce_hardware = config.tpm_policy.enforce_hardware;
+
+        let message = format!("{}:{}", user_identity, squad_id);
+        let message_hash = blake3::hash(message.as_bytes());
+
+        let (public_key, signature, signature_alg, public_key_format) = if enforce_hardware {
+            if cfg!(target_os = "macos") {
+                let attestor = SecureEnclaveAttestor::new("com.4mik.aethercore.genesis");
+                let quote = attestor.sign_nonce(message_hash.as_bytes()).map_err(|e| {
+                    AppError::Hardware(format!("Secure Enclave genesis signing failed: {}", e))
+                })?;
+
+                let verified =
+                    SecureEnclaveAttestor::verify_quote(&quote).map_err(|e| {
+                        AppError::Crypto(format!(
+                            "Secure Enclave genesis signature verification error: {}",
+                            e
+                        ))
+                    })?;
+                if !verified {
+                    return Err(AppError::Crypto(
+                        "Secure Enclave genesis signature verification failed".to_string(),
+                    ));
+                }
+
+                (
+                    BASE64.encode(&quote.public_key_sec1),
+                    BASE64.encode(&quote.signature_der),
+                    "ecdsa_p256".to_string(),
+                    "sec1".to_string(),
+                )
+            } else {
+                let (pubkey_bytes, signature_bytes) = {
+                    let app_state = state.lock().await;
+                    let mut tpm = app_state.tpm_manager.lock().await;
+                    let genesis_key_id = "dashboard-genesis";
+                    let ak = tpm.generate_attestation_key(genesis_key_id.to_string()).map_err(
+                        |e| AppError::Hardware(format!("TPM genesis identity unavailable: {}", e)),
+                    )?;
+                    let sig = tpm
+                        .sign_with_attestation_key(genesis_key_id, message_hash.as_bytes())
+                        .map_err(|e| AppError::Hardware(format!("TPM genesis signing failed: {}", e)))?;
+                    (ak.public_key, sig)
+                };
+
+                (
+                    BASE64.encode(&pubkey_bytes),
+                    BASE64.encode(&signature_bytes),
+                    "ecdsa_p256".to_string(),
+                    "sec1".to_string(),
+                )
+            }
+        } else {
+            let seed_path = genesis_signing_seed_path(&app_handle)?;
+            let seed = load_or_create_ed25519_seed(&seed_path)?;
+            let (public_key, signature) =
+                sign_genesis_message_ed25519(seed, &user_identity, &squad_id)?;
+            (
+                public_key,
+                signature,
+                "ed25519".to_string(),
+                "ed25519_raw".to_string(),
+            )
+        };
 
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -311,13 +387,16 @@ pub async fn generate_genesis_bundle(
             public_key,
             signature,
             timestamp,
+            signature_alg: Some(signature_alg),
+            signature_encoding: Some("base64".to_string()),
+            public_key_format: Some(public_key_format),
         };
 
         log::info!("Genesis Bundle generated successfully");
         Ok(bundle)
     }
 
-    inner(user_identity, squad_id)
+    inner(user_identity, squad_id, app_handle, state)
         .await
         .map_err(|e| e.to_string())
 }
@@ -457,31 +536,89 @@ pub async fn verify_telemetry_signature(
 ///
 /// Uses TPM-backed Ed25519 signing (CodeRalphie) in production.
 /// This is a simplified version for the initial implementation.
-fn generate_signature(user_identity: &str, squad_id: &str) -> Result<(String, String)> {
-    use base64::{engine::general_purpose, Engine as _};
+fn genesis_signing_seed_path(app_handle: &tauri::AppHandle) -> Result<PathBuf> {
+    let app_data_dir = app_handle.path().resolve(".", BaseDirectory::AppData).map_err(|e| {
+        AppError::Generic(format!("Failed to resolve app data directory: {}", e))
+    })?;
+
+    Ok(app_data_dir
+        .join("signing-keys")
+        .join("genesis-ed25519-seed.b64"))
+}
+
+fn load_or_create_ed25519_seed(seed_path: &Path) -> Result<[u8; 32]> {
+    use rand::RngCore;
+
+    if seed_path.exists() {
+        let content = std::fs::read_to_string(seed_path).map_err(|e| {
+            AppError::Generic(format!(
+                "Failed to read genesis signing seed at {}: {}",
+                seed_path.display(),
+                e
+            ))
+        })?;
+        let decoded = BASE64.decode(content.trim().as_bytes()).map_err(|e| {
+            AppError::Crypto(format!(
+                "Failed to decode genesis signing seed (base64) at {}: {}",
+                seed_path.display(),
+                e
+            ))
+        })?;
+        if decoded.len() != 32 {
+            return Err(AppError::Validation(format!(
+                "Genesis signing seed must be 32 bytes, got {} bytes at {}",
+                decoded.len(),
+                seed_path.display()
+            )));
+        }
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&decoded);
+        return Ok(seed);
+    }
+
+    if let Some(parent) = seed_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            AppError::Generic(format!(
+                "Failed to create genesis signing key directory {}: {}",
+                parent.display(),
+                e
+            ))
+        })?;
+    }
+
+    let mut seed = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut seed);
+
+    std::fs::write(seed_path, BASE64.encode(seed)).map_err(|e| {
+        AppError::Generic(format!(
+            "Failed to write genesis signing seed at {}: {}",
+            seed_path.display(),
+            e
+        ))
+    })?;
+
+    Ok(seed)
+}
+
+fn sign_genesis_message_ed25519(
+    seed: [u8; 32],
+    user_identity: &str,
+    squad_id: &str,
+) -> Result<(String, String)> {
     use ed25519_dalek::{Signer, SigningKey as EdSigningKey};
 
-    // Generate ephemeral keypair
-    // TODO: Replace with TPM-backed key generation in production (CodeRalphie)
-    let mut csprng = rand::thread_rng();
-    let signing_key = EdSigningKey::from_bytes(&rand::Rng::gen::<[u8; 32]>(&mut csprng));
+    let signing_key = EdSigningKey::from_bytes(&seed);
 
-    // Create message to sign using BLAKE3
     let message = format!("{}:{}", user_identity, squad_id);
     let message_hash = blake3::hash(message.as_bytes());
 
-    // Get public key
     let verifying_key = signing_key.verifying_key();
-    let public_key_bytes = verifying_key.to_bytes();
-
-    // Sign the message
     let signature = signing_key.sign(message_hash.as_bytes());
 
-    // Encode to base64 for transport
-    let public_key_b64 = general_purpose::STANDARD.encode(&public_key_bytes);
-    let signature_b64 = general_purpose::STANDARD.encode(&signature.to_bytes());
-
-    Ok((public_key_b64, signature_b64))
+    Ok((
+        BASE64.encode(verifying_key.to_bytes()),
+        BASE64.encode(signature.to_bytes()),
+    ))
 }
 
 /// Create Node in Mesh
@@ -691,75 +828,457 @@ pub struct LicenseInventory {
 ///
 /// This command powers the Compliance HUD in the System Admin View.
 #[tauri::command]
-pub async fn get_license_inventory() -> Result<LicenseInventory, String> {
-    log::info!("Fetching license inventory for compliance HUD");
+pub async fn get_license_inventory(app_handle: tauri::AppHandle) -> Result<LicenseInventory, String> {
+    async fn inner(app_handle: tauri::AppHandle) -> Result<LicenseInventory> {
+        use std::collections::{HashMap, HashSet};
 
-    // In a full implementation, this would:
-    // 1. Read sbom-artifacts/tauri-sbom.json and frontend-sbom.json
-    // 2. Parse LICENSE_MANIFEST.txt for license hashes
-    // 3. Compare against cargo-deny whitelist in deny.toml
-    // 4. Return aggregated compliance status
-    //
-    // For now, return a placeholder that demonstrates the structure
+        log::info!("Fetching license inventory for compliance HUD");
 
-    let mut entries = Vec::new();
+        // Fail-visible: no placeholders. If SBOM artifacts are missing, return an explicit error.
+        let mut checked_paths: Vec<String> = Vec::new();
 
-    // Example approved entry
-    entries.push(LicenseInventoryEntry {
-        package_name: "tokio".to_string(),
-        version: "1.0.0".to_string(),
-        license: "MIT".to_string(),
-        license_hash: Some("blake3:abc123...".to_string()),
-        ecosystem: "rust".to_string(),
-        compliance_status: "APPROVED".to_string(),
-    });
+        let sbom_dir = if let Ok(override_dir) = std::env::var("AETHERCORE_SBOM_DIR") {
+            let path = PathBuf::from(override_dir);
+            checked_paths.push(format!("AETHERCORE_SBOM_DIR={}", path.display()));
+            if path.exists() {
+                path
+            } else {
+                return Err(AppError::Generic(format!(
+                    "AETHERCORE_SBOM_DIR points to a missing path: {}",
+                    path.display()
+                )));
+            }
+        } else {
+            let mut candidates: Vec<PathBuf> = Vec::new();
 
-    // Example flagged entry (for demonstration)
-    entries.push(LicenseInventoryEntry {
-        package_name: "example-gpl-crate".to_string(),
-        version: "0.1.0".to_string(),
-        license: "GPL-3.0".to_string(),
-        license_hash: None,
-        ecosystem: "rust".to_string(),
-        compliance_status: "FLAGGED".to_string(),
-    });
+            // 1) Current working directory (dev)
+            if let Ok(cwd) = std::env::current_dir() {
+                candidates.push(cwd.join("sbom-artifacts"));
 
-    let approved_count = entries
-        .iter()
-        .filter(|e| e.compliance_status == "APPROVED")
-        .count() as u64;
-    let flagged_count = entries
-        .iter()
-        .filter(|e| e.compliance_status == "FLAGGED")
-        .count() as u64;
-    let unknown_count = entries
-        .iter()
-        .filter(|e| e.compliance_status == "UNKNOWN")
-        .count() as u64;
+                // 2) Walk up (dev) looking for sbom-artifacts
+                let mut cursor = cwd.as_path();
+                for _ in 0..8 {
+                    if let Some(parent) = cursor.parent() {
+                        candidates.push(parent.join("sbom-artifacts"));
+                        cursor = parent;
+                    } else {
+                        break;
+                    }
+                }
+            }
 
-    let inventory = LicenseInventory {
-        total_dependencies: entries.len() as u64,
-        approved_count,
-        flagged_count,
-        unknown_count,
-        entries,
-        manifest_hash: Some("blake3:placeholder".to_string()),
-        last_verification: Some(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|e| format!("System time error: {}", e))?
-                .as_millis() as u64,
-        ),
-    };
+            // 3) Bundled resources (packaged)
+            if let Ok(resolved) = app_handle
+                .path()
+                .resolve("sbom-artifacts", BaseDirectory::Resource)
+            {
+                candidates.push(resolved);
+            }
 
-    log::info!(
-        "License inventory: {} total, {} approved, {} flagged",
-        inventory.total_dependencies,
-        inventory.approved_count,
-        inventory.flagged_count
-    );
+            // 4) AppData (operator-provisioned)
+            if let Ok(app_data_dir) = app_handle.path().resolve(".", BaseDirectory::AppData) {
+                candidates.push(app_data_dir.join("sbom-artifacts"));
+            }
 
-    Ok(inventory)
+            let mut found: Option<PathBuf> = None;
+            for candidate in candidates {
+                checked_paths.push(candidate.display().to_string());
+                if candidate.exists() {
+                    found = Some(candidate);
+                    break;
+                }
+            }
+
+            found.ok_or_else(|| {
+                AppError::Generic(format!(
+                    "SBOM artifacts directory not found. Checked: {}. \
+                    Generate artifacts via ./scripts/generate-sbom.sh and/or set AETHERCORE_SBOM_DIR.",
+                    checked_paths.join(" | ")
+                ))
+            })?
+        };
+
+        let tauri_sbom_path = sbom_dir.join("tauri-sbom.json");
+        let frontend_sbom_path = sbom_dir.join("frontend-sbom.json");
+        let license_manifest_path = sbom_dir.join("LICENSE_MANIFEST.txt");
+
+        for required in [&tauri_sbom_path, &frontend_sbom_path, &license_manifest_path] {
+            if !required.exists() {
+                return Err(AppError::Generic(format!(
+                    "Missing compliance artifact: {} (expected under {})",
+                    required.display(),
+                    sbom_dir.display()
+                )));
+            }
+        }
+
+        let deny_toml_path = sbom_dir
+            .parent()
+            .map(|p| p.join("deny.toml"))
+            .unwrap_or_else(|| sbom_dir.join("deny.toml"));
+
+        let mut allow: HashSet<String> = HashSet::new();
+        let mut deny: HashSet<String> = HashSet::new();
+        let mut clarify: HashMap<String, HashSet<String>> = HashMap::new();
+
+        if deny_toml_path.exists() {
+            let content = std::fs::read_to_string(&deny_toml_path).map_err(|e| {
+                AppError::Generic(format!("Failed to read deny.toml at {}: {}", deny_toml_path.display(), e))
+            })?;
+            let doc: toml::Value = content.parse().map_err(|e| {
+                AppError::Generic(format!("Failed to parse deny.toml at {}: {}", deny_toml_path.display(), e))
+            })?;
+
+            if let Some(licenses) = doc.get("licenses").and_then(|v| v.as_table()) {
+                if let Some(arr) = licenses.get("allow").and_then(|v| v.as_array()) {
+                    for item in arr {
+                        if let Some(s) = item.as_str() {
+                            allow.insert(s.to_string());
+                        }
+                    }
+                }
+                if let Some(arr) = licenses.get("deny").and_then(|v| v.as_array()) {
+                    for item in arr {
+                        if let Some(s) = item.as_str() {
+                            deny.insert(s.to_string());
+                        }
+                    }
+                }
+                if let Some(arr) = licenses.get("clarify").and_then(|v| v.as_array()) {
+                    for item in arr {
+                        let table = match item.as_table() {
+                            Some(t) => t,
+                            None => continue,
+                        };
+                        let name = table.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let expr = table.get("expression").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        if !name.is_empty() && !expr.is_empty() {
+                            clarify.entry(name).or_default().insert(expr);
+                        }
+                    }
+                }
+            }
+        } else {
+            // Packaged builds may not ship deny.toml; fall back to the known permissive policy.
+            for item in [
+                "MIT",
+                "Apache-2.0",
+                "Apache-2.0 WITH LLVM-exception",
+                "BSD-3-Clause",
+                "BSD-2-Clause",
+                "ISC",
+                "0BSD",
+                "Zlib",
+                "Unicode-DFS-2016",
+            ] {
+                allow.insert(item.to_string());
+            }
+            for item in [
+                "GPL-2.0",
+                "GPL-3.0",
+                "AGPL-3.0",
+                "LGPL-2.1",
+                "LGPL-3.0",
+                "MPL-2.0",
+                "EPL-1.0",
+                "EPL-2.0",
+                "CDDL-1.0",
+                "EUPL-1.2",
+            ] {
+                deny.insert(item.to_string());
+            }
+        }
+
+        fn extract_license_expression(component: &serde_json::Value) -> String {
+            let mut parts: Vec<String> = Vec::new();
+            let licenses = match component.get("licenses").and_then(|v| v.as_array()) {
+                Some(arr) => arr,
+                None => return String::new(),
+            };
+
+            for lic in licenses {
+                if let Some(expr) = lic.get("expression").and_then(|v| v.as_str()) {
+                    if !expr.trim().is_empty() {
+                        parts.push(expr.trim().to_string());
+                    }
+                    continue;
+                }
+                if let Some(license_obj) = lic.get("license") {
+                    if let Some(id) = license_obj.get("id").and_then(|v| v.as_str()) {
+                        if !id.trim().is_empty() {
+                            parts.push(id.trim().to_string());
+                            continue;
+                        }
+                    }
+                    if let Some(name) = license_obj.get("name").and_then(|v| v.as_str()) {
+                        if !name.trim().is_empty() {
+                            parts.push(name.trim().to_string());
+                        }
+                    }
+                }
+            }
+
+            if parts.is_empty() {
+                return String::new();
+            }
+
+            // De-dupe while preserving order.
+            let mut seen = HashSet::<String>::new();
+            let mut deduped: Vec<String> = Vec::new();
+            for part in parts {
+                if seen.insert(part.clone()) {
+                    deduped.push(part);
+                }
+            }
+
+            if deduped.len() == 1 {
+                return deduped[0].clone();
+            }
+
+            // CycloneDX doesn't always specify boolean semantics; be conservative.
+            deduped.join(" AND ")
+        }
+
+        fn normalize_license_expr(expr: &str) -> String {
+            expr.split_whitespace().collect::<Vec<_>>().join(" ")
+        }
+
+        fn classify_license(
+            package_name: &str,
+            license_expr_raw: &str,
+            allow: &HashSet<String>,
+            deny: &HashSet<String>,
+            clarify: &HashMap<String, HashSet<String>>,
+        ) -> String {
+            let expr = normalize_license_expr(license_expr_raw.trim());
+            if expr.is_empty() {
+                return "UNKNOWN".to_string();
+            }
+
+            if deny.contains(&expr) {
+                return "FLAGGED".to_string();
+            }
+
+            if allow.contains(&expr) {
+                return "APPROVED".to_string();
+            }
+
+            if let Some(allowed_exprs) = clarify.get(package_name) {
+                if allowed_exprs.contains(&expr) {
+                    return "APPROVED".to_string();
+                }
+            }
+
+            // Tokenize SPDX-ish identifiers and enforce default-deny.
+            let tokens: Vec<String> = expr
+                .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '+'))
+                .filter(|t| !t.is_empty())
+                .map(|t| t.to_string())
+                .collect();
+
+            let mut ids: Vec<String> = Vec::new();
+            for token in tokens {
+                let upper = token.to_ascii_uppercase();
+                if upper == "AND" || upper == "OR" || upper == "WITH" {
+                    continue;
+                }
+                ids.push(token);
+            }
+
+            if ids.iter().any(|id| deny.contains(id)) {
+                return "FLAGGED".to_string();
+            }
+
+            if !ids.is_empty() && ids.iter().all(|id| allow.contains(id)) {
+                return "APPROVED".to_string();
+            }
+
+            "FLAGGED".to_string()
+        }
+
+        fn sbom_entries(
+            sbom_path: &Path,
+            ecosystem: &str,
+            allow: &HashSet<String>,
+            deny: &HashSet<String>,
+            clarify: &HashMap<String, HashSet<String>>,
+        ) -> Result<Vec<LicenseInventoryEntry>> {
+            let content = std::fs::read_to_string(sbom_path).map_err(|e| {
+                AppError::Generic(format!("Failed to read SBOM at {}: {}", sbom_path.display(), e))
+            })?;
+            let doc: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
+                AppError::Generic(format!("Failed to parse SBOM JSON at {}: {}", sbom_path.display(), e))
+            })?;
+
+            let components = doc
+                .get("components")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| {
+                    AppError::Generic(format!(
+                        "SBOM missing .components array at {}",
+                        sbom_path.display()
+                    ))
+                })?;
+
+            let mut out = Vec::new();
+            for component in components {
+                let name = component
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                if name.is_empty() {
+                    continue;
+                }
+
+                let version = component
+                    .get("version")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+
+                let license_expr = extract_license_expression(component);
+                let status = classify_license(&name, &license_expr, allow, deny, clarify);
+                let license_hash = if license_expr.trim().is_empty() {
+                    None
+                } else {
+                    Some(format!("blake3:{}", blake3::hash(license_expr.as_bytes()).to_hex()))
+                };
+
+                out.push(LicenseInventoryEntry {
+                    package_name: name,
+                    version,
+                    license: if license_expr.trim().is_empty() {
+                        "UNKNOWN".to_string()
+                    } else {
+                        license_expr
+                    },
+                    license_hash,
+                    ecosystem: ecosystem.to_string(),
+                    compliance_status: status,
+                });
+            }
+
+            Ok(out)
+        }
+
+        let mut entries = Vec::new();
+        entries.extend(sbom_entries(
+            &tauri_sbom_path,
+            "rust",
+            &allow,
+            &deny,
+            &clarify,
+        )?);
+        entries.extend(sbom_entries(
+            &frontend_sbom_path,
+            "npm",
+            &allow,
+            &deny,
+            &clarify,
+        )?);
+
+        // Stable manifest hash over: policy + artifacts + normalized entries
+        let license_manifest_bytes = std::fs::read(&license_manifest_path).map_err(|e| {
+            AppError::Generic(format!(
+                "Failed to read LICENSE_MANIFEST.txt at {}: {}",
+                license_manifest_path.display(),
+                e
+            ))
+        })?;
+        let tauri_sbom_bytes = std::fs::read(&tauri_sbom_path).map_err(|e| {
+            AppError::Generic(format!(
+                "Failed to read tauri-sbom.json at {}: {}",
+                tauri_sbom_path.display(),
+                e
+            ))
+        })?;
+        let frontend_sbom_bytes = std::fs::read(&frontend_sbom_path).map_err(|e| {
+            AppError::Generic(format!(
+                "Failed to read frontend-sbom.json at {}: {}",
+                frontend_sbom_path.display(),
+                e
+            ))
+        })?;
+
+        entries.sort_by(|a, b| {
+            (a.ecosystem.as_str(), a.package_name.as_str(), a.version.as_str()).cmp(&(
+                b.ecosystem.as_str(),
+                b.package_name.as_str(),
+                b.version.as_str(),
+            ))
+        });
+
+        let license_manifest_hash = blake3::hash(&license_manifest_bytes).to_hex().to_string();
+        let tauri_sbom_hash = blake3::hash(&tauri_sbom_bytes).to_hex().to_string();
+        let frontend_sbom_hash = blake3::hash(&frontend_sbom_bytes).to_hex().to_string();
+
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(b"license-manifest:");
+        hasher.update(license_manifest_hash.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(b"tauri-sbom:");
+        hasher.update(tauri_sbom_hash.as_bytes());
+        hasher.update(b"\n");
+        hasher.update(b"frontend-sbom:");
+        hasher.update(frontend_sbom_hash.as_bytes());
+        hasher.update(b"\n");
+
+        for entry in &entries {
+            hasher.update(entry.ecosystem.as_bytes());
+            hasher.update(b"|");
+            hasher.update(entry.package_name.as_bytes());
+            hasher.update(b"|");
+            hasher.update(entry.version.as_bytes());
+            hasher.update(b"|");
+            hasher.update(entry.license.as_bytes());
+            hasher.update(b"|");
+            hasher.update(entry.compliance_status.as_bytes());
+            hasher.update(b"\n");
+        }
+
+        let approved_count = entries
+            .iter()
+            .filter(|e| e.compliance_status == "APPROVED")
+            .count() as u64;
+        let flagged_count = entries
+            .iter()
+            .filter(|e| e.compliance_status == "FLAGGED")
+            .count() as u64;
+        let unknown_count = entries
+            .iter()
+            .filter(|e| e.compliance_status == "UNKNOWN")
+            .count() as u64;
+
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| AppError::Generic(format!("System time error: {}", e)))?
+            .as_millis() as u64;
+
+        let inventory = LicenseInventory {
+            total_dependencies: entries.len() as u64,
+            approved_count,
+            flagged_count,
+            unknown_count,
+            entries,
+            manifest_hash: Some(format!("blake3:{}", hasher.finalize().to_hex())),
+            last_verification: Some(now_ms),
+        };
+
+        log::info!(
+            "License inventory: {} total, {} approved, {} flagged, {} unknown",
+            inventory.total_dependencies,
+            inventory.approved_count,
+            inventory.flagged_count,
+            inventory.unknown_count
+        );
+
+        Ok(inventory)
+    }
+
+    inner(app_handle).await.map_err(|e| e.to_string())
 }
 
 /// Record License Compliance Proof
@@ -1697,6 +2216,67 @@ pub async fn sign_heartbeat_payload(
     Ok(signature_b64)
 }
 
+/// Derive the stable dashboard heartbeat device identifier.
+///
+/// This value is used as the `deviceId` field in the signed heartbeat payload sent
+/// to the C2 authentication channel. It must be stable for the runtime session and
+/// derived from hardware-backed identity material when available.
+///
+/// Fail-Visible:
+/// - If hardware identity material cannot be accessed, returns an explicit error.
+#[tauri::command]
+pub async fn get_heartbeat_device_id(
+    state: tauri::State<'_, Arc<Mutex<AppState>>>,
+) -> Result<String, String> {
+    async fn inner(state: tauri::State<'_, Arc<Mutex<AppState>>>) -> Result<String> {
+        let (device_id_cache, tpm_manager) = {
+            let app_state = state.lock().await;
+            (
+                app_state.heartbeat_device_id.clone(),
+                app_state.tpm_manager.clone(),
+            )
+        };
+
+        if let Some(cached) = device_id_cache.lock().await.clone() {
+            return Ok(cached);
+        }
+
+        let device_id = if cfg!(target_os = "macos") {
+            let attestor = SecureEnclaveAttestor::new("com.4mik.aethercore.heartbeat");
+            let quote = attestor.sign_nonce(b"aethercore-heartbeat-device-id-v1").map_err(|e| {
+                AppError::Hardware(format!("Secure Enclave identity probe failed: {}", e))
+            })?;
+            let verified = SecureEnclaveAttestor::verify_quote(&quote).map_err(|e| {
+                AppError::Crypto(format!("Secure Enclave quote verification error: {}", e))
+            })?;
+            if !verified {
+                return Err(AppError::Crypto(
+                    "Secure Enclave quote verification failed".to_string(),
+                ));
+            }
+            format!("se-{}", blake3::hash(&quote.public_key_sec1).to_hex())
+        } else {
+            let mut tpm = tpm_manager.lock().await;
+            let heartbeat_key_id = "dashboard-heartbeat";
+            let ak = tpm
+                .generate_attestation_key(heartbeat_key_id.to_string())
+                .map_err(|e| {
+                    AppError::Hardware(format!("TPM heartbeat identity unavailable: {}", e))
+                })?;
+            format!("tpm-{}", blake3::hash(&ak.public_key).to_hex())
+        };
+
+        {
+            let mut guard = device_id_cache.lock().await;
+            *guard = Some(device_id.clone());
+        }
+
+        Ok(device_id)
+    }
+
+    inner(state).await.map_err(|e| e.to_string())
+}
+
 // ============================================================
 // Configuration Management Commands
 // ============================================================
@@ -2518,17 +3098,18 @@ mod tests {
         assert!(node_version < dashboard_version);
     }
 
-    #[tokio::test]
-    async fn test_generate_genesis_bundle() {
-        let result =
-            generate_genesis_bundle("test_user".to_string(), "squad_alpha".to_string()).await;
+    #[test]
+    fn test_sign_genesis_message_ed25519() {
+        let seed = [7u8; 32];
+        let (public_key_1, signature_1) =
+            sign_genesis_message_ed25519(seed, "test_user", "squad_alpha").unwrap();
+        let (public_key_2, signature_2) =
+            sign_genesis_message_ed25519(seed, "test_user", "squad_alpha").unwrap();
 
-        assert!(result.is_ok());
-        let bundle = result.unwrap();
-        assert_eq!(bundle.user_identity, "test_user");
-        assert_eq!(bundle.squad_id, "squad_alpha");
-        assert!(!bundle.public_key.is_empty());
-        assert!(!bundle.signature.is_empty());
+        assert!(!public_key_1.is_empty());
+        assert!(!signature_1.is_empty());
+        assert_eq!(public_key_1, public_key_2);
+        assert_eq!(signature_1, signature_2);
     }
 
     // Note: Tauri command tests require a full Tauri context which is not available in unit tests

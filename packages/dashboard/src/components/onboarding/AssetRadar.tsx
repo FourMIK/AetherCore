@@ -6,10 +6,10 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Usb, Wifi, RefreshCw, Zap, Bluetooth } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { TauriCommands } from '../../api/tauri-commands';
 
 interface CandidateNode {
-  type: string; // "USB" or "NET"
+  type: 'USB' | 'NET';
   id: string;
   label: string;
   transport?: 'usb-serial' | 'usb-mass-storage' | 'network' | 'bluetooth-serial';
@@ -90,7 +90,12 @@ export const AssetRadar: React.FC<AssetRadarProps> = ({
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
     try {
-      const scanPromise = invoke<CandidateNode[]>('scan_for_assets');
+      const scanPromise = TauriCommands.scanForAssets().then((result) => {
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+        return result.data;
+      });
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => {
           reject(

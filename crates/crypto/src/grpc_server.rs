@@ -57,32 +57,26 @@ impl SigningServiceImpl {
             .as_millis() as u64
     }
 
-    /// Get or create a signing service for a node
+    /// Execute an operation against the node-scoped signing service.
     ///
     /// In production with TPM:
-    /// - This would load the TPM-backed key for the node
-    /// - If no key exists, it would fail (not create a new one)
-    /// - Keys are hardware-resident and never leave the TPM
-    fn get_or_create_signing_service(&self, node_id: &str) -> Result<EventSigningService, String> {
+    /// - This should load a TPM-backed key reference for `node_id`
+    /// - If no key exists, it should fail (not silently generate a new key)
+    fn with_signing_service<T>(
+        &self,
+        node_id: &str,
+        op: impl FnOnce(&mut EventSigningService) -> Result<T, String>,
+    ) -> Result<T, String> {
         let mut services = self
             .signing_services
             .lock()
             .map_err(|e| format!("Lock error: {}", e))?;
 
-        if let Some(service) = services.get(node_id) {
-            // Clone the service (this is safe because it contains no mutable state)
-            // In production, this would reference the TPM key, not clone it
-            Ok(EventSigningService::new())
-        } else {
-            // Create a new signing service for this node
-            // In production, this would:
-            // 1. Check if the node has a TPM key enrolled
-            // 2. Load the TPM key reference (not the key itself!)
-            // 3. Return an error if no key exists
-            let service = EventSigningService::new();
-            services.insert(node_id.to_string(), EventSigningService::new());
-            Ok(service)
-        }
+        let service = services
+            .entry(node_id.to_string())
+            .or_insert_with(EventSigningService::new);
+
+        op(service)
     }
 }
 
@@ -98,32 +92,23 @@ impl SigningService for SigningServiceImpl {
         let req = request.into_inner();
         let timestamp_ms = Self::current_timestamp_ms();
 
-        // Get signing service for this node
-        let mut signing_service = match self.get_or_create_signing_service(&req.node_id) {
-            Ok(s) => s,
+        let signature = match self.with_signing_service(&req.node_id, |service| {
+            service
+                .sign_bytes(&req.message)
+                .map_err(|e| format!("Signing failed: {}", e))
+        }) {
+            Ok(sig) => sig,
             Err(e) => {
                 return Ok(Response::new(SignMessageResponse {
                     success: false,
                     signature_hex: String::new(),
                     public_key_id: String::new(),
-                    error_message: format!("Failed to get signing service: {}", e),
+                    error_message: e,
                     timestamp_ms,
                     latency_us: 0,
                 }));
             }
         };
-
-        // Sign the message using ed25519-dalek
-        use ed25519_dalek::Signer;
-        let signature = signing_service
-            .sign_event(&crate::signing::CanonicalEvent {
-                event_type: "raw_message".to_string(),
-                timestamp: timestamp_ms,
-                source_id: req.node_id.clone(),
-                sequence: 0,
-                payload: std::collections::HashMap::new(),
-            })
-            .map_err(|e| Status::internal(format!("Signing failed: {}", e)))?;
 
         let latency_us = start.elapsed().as_micros() as u64;
 
@@ -154,22 +139,21 @@ impl SigningService for SigningServiceImpl {
         let req = request.into_inner();
         let timestamp_ms = Self::current_timestamp_ms();
 
-        // Get signing service for this node
-        let signing_service = match self.get_or_create_signing_service(&req.node_id) {
-            Ok(s) => s,
-            Err(e) => {
-                return Ok(Response::new(GetPublicKeyResponse {
-                    success: false,
-                    public_key_hex: String::new(),
-                    public_key_id: String::new(),
-                    error_message: format!("Failed to get signing service: {}", e),
-                    timestamp_ms,
-                }));
-            }
-        };
-
-        let public_key = signing_service.public_key();
-        let public_key_id = signing_service.public_key_id().to_string();
+        let (public_key, public_key_id) =
+            match self.with_signing_service(&req.node_id, |service| {
+                Ok((service.public_key(), service.public_key_id().to_string()))
+            }) {
+                Ok(result) => result,
+                Err(e) => {
+                    return Ok(Response::new(GetPublicKeyResponse {
+                        success: false,
+                        public_key_hex: String::new(),
+                        public_key_id: String::new(),
+                        error_message: e,
+                        timestamp_ms,
+                    }));
+                }
+            };
 
         Ok(Response::new(GetPublicKeyResponse {
             success: true,
@@ -189,20 +173,6 @@ impl SigningService for SigningServiceImpl {
         let req = request.into_inner();
         let timestamp_ms = req.timestamp_ms;
 
-        // Get signing service for this node
-        let mut signing_service = match self.get_or_create_signing_service(&req.node_id) {
-            Ok(s) => s,
-            Err(e) => {
-                return Ok(Response::new(CreateSignedEnvelopeResponse {
-                    success: false,
-                    envelope_json: String::new(),
-                    error_message: format!("Failed to get signing service: {}", e),
-                    timestamp_ms: Self::current_timestamp_ms(),
-                    latency_us: 0,
-                }));
-            }
-        };
-
         // Generate nonce
         let nonce = hex::encode(rand::random::<[u8; 16]>());
 
@@ -210,19 +180,22 @@ impl SigningService for SigningServiceImpl {
         let payload_str = String::from_utf8(req.payload.to_vec())
             .map_err(|e| Status::invalid_argument(format!("Invalid UTF-8 in payload: {}", e)))?;
 
-        // Sign the payload
-        let payload_bytes = payload_str.as_bytes();
-
-        use ed25519_dalek::Signer;
-        let signature = signing_service
-            .sign_event(&crate::signing::CanonicalEvent {
-                event_type: "envelope".to_string(),
-                timestamp: timestamp_ms,
-                source_id: req.node_id.clone(),
-                sequence: 0,
-                payload: std::collections::HashMap::new(),
-            })
-            .map_err(|e| Status::internal(format!("Signing failed: {}", e)))?;
+        let signature = match self.with_signing_service(&req.node_id, |service| {
+            service
+                .sign_bytes(payload_str.as_bytes())
+                .map_err(|e| format!("Signing failed: {}", e))
+        }) {
+            Ok(sig) => sig,
+            Err(e) => {
+                return Ok(Response::new(CreateSignedEnvelopeResponse {
+                    success: false,
+                    envelope_json: String::new(),
+                    error_message: e,
+                    timestamp_ms: Self::current_timestamp_ms(),
+                    latency_us: 0,
+                }));
+            }
+        };
 
         // Create SignedEnvelope JSON
         let envelope = serde_json::json!({

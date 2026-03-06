@@ -5,9 +5,9 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { invoke } from '@tauri-apps/api/core';
 import { GeoPosition, ViewMode, MapProviderType } from '../map-engine/types';
-import { getRuntimeConfig } from '../config/runtime';
+import { getRuntimeConfig, isDemoMode } from '../config/runtime';
+import { TauriCommands, type TelemetryPayload as TauriTelemetryPayload } from '../api/tauri-commands';
 import type { NodeAttestationState, RevocationCertificate } from '../services/identity/identityClient';
 import { VideoStream } from '../types/VideoStream';
 
@@ -68,12 +68,7 @@ export interface VerificationFailure {
 }
 
 // Telemetry Payload
-export interface TelemetryPayload {
-  nodeId: string;
-  data: any;
-  signature: string;
-  timestamp: number;
-}
+export type TelemetryPayload = TauriTelemetryPayload;
 
 // Workspace Mode
 export type WorkspaceMode = 'commander' | 'operator' | 'admin' | 'fleet';
@@ -145,55 +140,59 @@ interface TacticalStore {
 export const useTacticalStore = create<TacticalStore>()(
   persist(
     (set, get) => {
-      // Initialize with mock FLIR nodes
       const initialNodes = new Map<string, TacticalNode>();
-      initialNodes.set('flir-alpha-01', {
-        id: 'flir-alpha-01',
-        domain: 'sensor',
-        position: {
-          latitude: 40.7128,
-          longitude: -74.0060,
-          altitude: 50,
-        },
-        trustScore: 95,
-        verified: true,
-        attestationHash: 'blake3:flir-alpha-01-genesis',
-        lastSeen: new Date(),
-        status: 'online',
-        firmwareVersion: 'Teledyne Ranger HD v2.1',
-        integrityCompromised: false,
-        videoStream: {
-          url: 'mock://teledyne-flir-alpha-01',
-          format: 'mock-flir' as const,
-          status: 'live' as const,
-          resolution: '1080p',
-          codec: 'H.264',
-        },
-      });
+      if (isDemoMode()) {
+        const demoNodeAlpha: TacticalNode = {
+          id: 'flir-alpha-01',
+          domain: 'sensor',
+          position: {
+            latitude: 40.7128,
+            longitude: -74.006,
+            altitude: 50,
+          },
+          trustScore: 95,
+          verified: true,
+          attestationHash: 'blake3:flir-alpha-01-genesis',
+          lastSeen: new Date(),
+          status: 'online',
+          firmwareVersion: 'Teledyne Ranger HD v2.1',
+          integrityCompromised: false,
+          videoStream: {
+            url: 'mock://teledyne-flir-alpha-01',
+            format: 'mock-flir' as const,
+            status: 'live' as const,
+            resolution: '1080p',
+            codec: 'H.264',
+          },
+        };
 
-      initialNodes.set('thermal-demo-03', {
-        id: 'thermal-demo-03',
-        domain: 'sensor',
-        position: {
-          latitude: 40.7580,
-          longitude: -73.9855,
-          altitude: 65,
-        },
-        trustScore: 90,
-        verified: true,
-        attestationHash: 'blake3:thermal-demo-03-genesis',
-        lastSeen: new Date(),
-        status: 'online',
-        firmwareVersion: 'Teledyne Ranger HD v2.0',
-        integrityCompromised: false,
-        videoStream: {
-          url: 'mock://teledyne-flir-thermal-03',
-          format: 'mock-flir' as const,
-          status: 'live' as const,
-          resolution: '1080p',
-          codec: 'H.264',
-        },
-      });
+        const demoNodeThermal: TacticalNode = {
+          id: 'thermal-demo-03',
+          domain: 'sensor',
+          position: {
+            latitude: 40.758,
+            longitude: -73.9855,
+            altitude: 65,
+          },
+          trustScore: 90,
+          verified: true,
+          attestationHash: 'blake3:thermal-demo-03-genesis',
+          lastSeen: new Date(),
+          status: 'online',
+          firmwareVersion: 'Teledyne Ranger HD v2.0',
+          integrityCompromised: false,
+          videoStream: {
+            url: 'mock://teledyne-flir-thermal-03',
+            format: 'mock-flir' as const,
+            status: 'live' as const,
+            resolution: '1080p',
+            codec: 'H.264',
+          },
+        };
+
+        initialNodes.set(demoNodeAlpha.id, demoNodeAlpha);
+        initialNodes.set(demoNodeThermal.id, demoNodeThermal);
+      }
 
       return {
         // Initial UI State
@@ -208,7 +207,7 @@ export const useTacticalStore = create<TacticalStore>()(
         nodes: initialNodes,
         tracks: [],
         events: [],
-        selectedNodeId: 'thermal-demo-03',
+        selectedNodeId: isDemoMode() ? 'thermal-demo-03' : null,
         byzantineAlert: null,
         verificationFailure: null,
 
@@ -390,36 +389,42 @@ export const useTacticalStore = create<TacticalStore>()(
         connectToMesh: async () => {
           try {
             const { wsUrl } = getRuntimeConfig();
-            const result = await invoke<string>('connect_to_mesh', { endpoint: wsUrl });
-            return { success: true, nodeId: result };
+            const result = await TauriCommands.connectToMesh(wsUrl);
+            if (!result.success) {
+              throw new Error(result.error);
+            }
+            return { success: true, nodeId: result.data };
           } catch (error) {
             console.error('Failed to connect to C2 mesh:', error);
-            return { success: false, nodeId: '' };
+            throw error;
           }
         },
 
         generateGenesisBundle: async () => {
           try {
-            const result = await invoke<any>('generate_genesis_bundle', {
-              userIdentity: 'operator',
-              squadId: 'alpha',
-            });
-            return { bundleHash: result.signature, timestamp: result.timestamp };
+            const result = await TauriCommands.generateGenesisBundle('operator', 'alpha');
+            if (!result.success) {
+              throw new Error(result.error);
+            }
+            return { bundleHash: result.data.signature, timestamp: result.data.timestamp };
           } catch (error) {
             console.error('Failed to generate genesis bundle:', error);
-            return { bundleHash: '', timestamp: 0 };
+            throw error;
           }
         },
 
         verifyTelemetrySignature: async (payload: TelemetryPayload) => {
           try {
-            const verified = await invoke<boolean>('verify_telemetry_signature', { payload });
-            if (!verified) {
+            const result = await TauriCommands.verifyTelemetrySignature(payload);
+            if (!result.success) {
+              throw new Error(result.error);
+            }
+            if (!result.data) {
               // Trigger verification failure
               set({
                 verificationFailure: {
-                  nodeId: payload.nodeId,
-                  reason: `Verification failed for node ${payload.nodeId}`,
+                  nodeId: payload.node_id,
+                  reason: `Verification failed for node ${payload.node_id}`,
                   timestamp: Date.now(),
                 },
               });
@@ -430,12 +435,12 @@ export const useTacticalStore = create<TacticalStore>()(
             console.error('Failed to verify telemetry signature:', error);
             set({
               verificationFailure: {
-                nodeId: payload.nodeId,
+                nodeId: payload.node_id,
                 reason: `Verification error: ${error instanceof Error ? error.message : String(error)}`,
                 timestamp: Date.now(),
               },
             });
-            return false;
+            throw error;
           }
         },
       };

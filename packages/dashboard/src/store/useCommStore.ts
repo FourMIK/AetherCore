@@ -15,6 +15,7 @@ import {
 } from '../services/c2/C2Client';
 import { isEnvelopeVerified, type MessageEnvelope } from '@aethercore/shared';
 import { useTacticalStore } from './useTacticalStore';
+import { isDemoMode } from '../config/runtime';
 
 let activePeerConnection: RTCPeerConnection | null = null;
 
@@ -292,7 +293,9 @@ export const useCommStore = create<CommState>((set, get) => ({
 
   sendMessage: async (to, content) => {
     const state = get();
-    if (!state.currentOperator) return;
+    if (!state.currentOperator) {
+      throw new Error('No local operator identity loaded. Cannot send message.');
+    }
 
     // Use C2Client if available
     if (state.c2Client && state.c2State === 'CONNECTED') {
@@ -325,7 +328,11 @@ export const useCommStore = create<CommState>((set, get) => ({
         throw error;
       }
     } else {
-      // Fallback: local only (for testing)
+      if (!isDemoMode()) {
+        throw new Error('C2 is disconnected. Connect to C2 before sending messages.');
+      }
+
+      // Demo-only: store locally with explicit unverified state.
       const message: Message = {
         id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         from: state.currentOperator.id,
@@ -344,7 +351,7 @@ export const useCommStore = create<CommState>((set, get) => ({
         return { conversations };
       });
 
-      console.warn('[COMM] C2 not connected, message stored locally only');
+      console.warn('[COMM][DEMO] C2 not connected, message stored locally only');
     }
   },
 

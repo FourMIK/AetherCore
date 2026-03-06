@@ -25,6 +25,8 @@ ENV PORT=3000
 
 COPY --from=build /app ./
 
+RUN apk add --no-cache openssl
+
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

@@ -4,27 +4,19 @@
  */
 
 import React, { useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { TauriCommands, SentinelTrustStatus } from './api/tauri-commands';
+import { TauriCommands, SentinelTrustStatus, StackStatus } from './api/tauri-commands';
 import { MapProvider } from './map-engine/MapContext';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { useTacticalStore, type TacticalNode } from './store/useTacticalStore';
 import { useCommStore } from './store/useCommStore';
 import { initializeComms } from './store/initComms';
-import { getRuntimeConfig, loadUnifiedRuntimeConfig, setRuntimeConfig } from './config/runtime';
+import { getRuntimeConfig, isTauriRuntime, loadUnifiedRuntimeConfig, setRuntimeConfig } from './config/runtime';
 import { fetchTelemetry, subscribeToTelemetry } from './services/telemetryService';
 import {
   BootstrapOnboarding,
   shouldRunBootstrapOnboarding,
 } from './components/onboarding/BootstrapOnboarding';
 import './index.css';
-
-interface StackStatus {
-  ready: boolean;
-  required_services: number;
-  healthy_required_services: number;
-  services: Array<{ name: string; required: boolean; healthy: boolean; remediation_hint: string }>;
-}
 
 const BOOTSTRAP_CHECK_TIMEOUT_MS = 10000;
 const STACK_STATUS_TIMEOUT_MS = 10000;
@@ -38,18 +30,12 @@ async function withTimeout<T>(operation: Promise<T>, timeoutMs: number, label: s
   ]);
 }
 
-function isTauriRuntime(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
-
 export const App: React.FC = () => {
   const theme = useTacticalStore((s) => s.theme);
   const [bootstrapReady, setBootstrapReady] = React.useState(false);
   const [bootstrapCheckComplete, setBootstrapCheckComplete] = React.useState(false);
   const [stackReady, setStackReady] = React.useState(false);
   const [stackCheckComplete, setStackCheckComplete] = React.useState(false);
-  const mountedRef = React.useRef(true);
-  let unsubscribeTelemetry: (() => void) | null = null;
   const [stackError, setStackError] = React.useState<string | null>(null);
   const [sentinelTrustStatus, setSentinelTrustStatus] = React.useState<SentinelTrustStatus | null>(null);
 
@@ -89,8 +75,13 @@ export const App: React.FC = () => {
     }
 
     let mounted = true;
-    withTimeout(invoke<StackStatus>('stack_status'), STACK_STATUS_TIMEOUT_MS, 'stack status')
-      .then((status) => {
+    withTimeout(TauriCommands.getStackStatus(), STACK_STATUS_TIMEOUT_MS, 'stack status')
+      .then((statusResult) => {
+        if (!statusResult.success) {
+          throw new Error(statusResult.error);
+        }
+        const status = statusResult.data;
+
         if (!mounted) {
           return;
         }
@@ -178,26 +169,7 @@ export const App: React.FC = () => {
       // Start telemetry polling to fetch real devices
       console.log('[TELEMETRY] Starting telemetry service for node discovery');
 
-      // TEMPORARY WORKAROUND: Inject RalphieNode directly until gateway /api/nodes works
-      const tacticalStore = useTacticalStore.getState();
-      const ralphieNode = {
-        id: 'ralphie-local-desktop',
-        domain: 'ralphie',
-        position: {
-          latitude: 37.7749 + ((Math.random() - 0.5) * 0.01),
-          longitude: -122.4194 + ((Math.random() - 0.5) * 0.01),
-          altitude: 10,
-        },
-        trustScore: 95,
-        verified: false, // False because it's dev mode (no TPM)
-        attestationHash: 'ralphie-local',
-        lastSeen: new Date(),
-        status: 'online' as const,
-        firmwareVersion: 'Desktop v1.0',
-        integrityCompromised: false,
-      };
-      tacticalStore.addNode(ralphieNode);
-      console.log('[TELEMETRY] ✓ Injected RalphieNode directly (workaround until gateway /api/nodes works)');
+      // Node discovery now relies on service telemetry and must fail visibly when unavailable.
     }, 100);
 
     return () => {
@@ -227,14 +199,6 @@ export const App: React.FC = () => {
           tacticalStore.addNode(node);
         });
         console.log(`[TELEMETRY] Loaded ${nodes.size} nodes from gateway`);
-
-        if (nodes.size > 0) {
-          const commStore = useCommStore.getState();
-          if (commStore.connectionStatus !== 'severed') {
-            commStore.setConnectionStatus('connected');
-            commStore.setConnectionState('connected');
-          }
-        }
       })
       .catch((err) => {
         console.warn('[TELEMETRY] Initial fetch failed:', err);
@@ -270,12 +234,6 @@ export const App: React.FC = () => {
             integrityCompromised: !telemetry.trust?.merkle_vine_synced,
           };
           tacticalStore.addNode(newNode);
-        }
-
-        const commStore = useCommStore.getState();
-        if (commStore.connectionStatus !== 'severed') {
-          commStore.setConnectionStatus('connected');
-          commStore.setConnectionState('connected');
         }
       }).then((unsub) => {
         unsubscribeTelemetry = unsub;

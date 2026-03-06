@@ -18,6 +18,7 @@ import * as crypto from 'crypto';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
+import { blake3 } from 'hash-wasm';
 
 const execAsync = promisify(exec);
 const TPM_TCTI = 'device:/dev/tpmrm0';
@@ -34,6 +35,9 @@ const ENROLLMENT_TIMEOUT_MS = 120000;
 // Keep this aligned with install.sh and index.ts paths.
 const IDENTITY_PATH = '/etc/coderalphie/keys/identity.json';
 const IDENTITY_DIR = path.dirname(IDENTITY_PATH);
+const SIGNING_PRIVATE_KEY_PATH =
+  process.env.AETHERCORE_SIGNING_PRIVATE_KEY_PATH?.trim() ||
+  path.join(IDENTITY_DIR, 'signing-key.pem');
 
 // Enrollment server URL (from environment or config)
 const ENROLLMENT_URL = process.env.ENROLLMENT_URL || 'https://c2.aethercore.local:3000/api/enrollment';
@@ -425,7 +429,7 @@ async function getHardwareSerial(): Promise<string> {
     try {
       const { stdout } = await execAsync('tpm2_getekcertificate -o /tmp/ek.crt 2>/dev/null');
       const ekCert = fs.readFileSync('/tmp/ek.crt');
-      const hash = crypto.createHash('blake3' as any).update(ekCert).digest('hex');
+      const hash = await blake3(ekCert);
       fs.unlinkSync('/tmp/ek.crt');
       return hash.substring(0, 32); // Use first 32 chars as serial
     } catch (tpmErr) {
@@ -445,71 +449,64 @@ async function getHardwareSerial(): Promise<string> {
 /**
  * Generate TPM-backed keypair or simulate for dev
  */
-async function generateTPMKeyPair(): Promise<{ publicKey: string; keyHandle: string }> {
+async function detectTpmAvailability(): Promise<boolean> {
+  const hasDeviceNode = fs.existsSync('/dev/tpmrm0') || fs.existsSync('/dev/tpm0');
+  if (!hasDeviceNode) {
+    return false;
+  }
+
+  try {
+    await execTpm(`tpm2_getcap -T ${TPM_TCTI} properties-fixed`);
+    return true;
+  } catch (error) {
+    console.warn('[Onboarding] TPM capability probe failed:', error);
+    return false;
+  }
+}
+
+async function generateTPMKeyPair(): Promise<{ publicKey: string; keyHandle: string; tpmAvailable: boolean }> {
   const isProduction = process.env.AETHERCORE_PRODUCTION === '1' || process.env.AETHERCORE_PRODUCTION === 'true';
+  const tpmAvailable = await detectTpmAvailability();
 
   if (isProduction) {
-    try {
-      // Generate TPM-resident key using tpm2-tools
-      console.log('[Onboarding] Generating TPM-resident Ed25519 key...');
-
-      // If a prior run already persisted this handle, clear it first.
-      // This matches the manual recovery sequence and prevents
-      // tpm2_evictcontrol "handle already occupied" failures.
-      await execAsync(
-        `timeout ${TPM_CMD_TIMEOUT_SECONDS}s tpm2_evictcontrol -T ${TPM_TCTI} -C o -c 0x81000001 || true`
-      );
-      
-      // Create primary key
-      await execTpm(`tpm2_createprimary -T ${TPM_TCTI} -C o -g sha256 -G ecc -c /tmp/primary.ctx`);
-      
-      // Create Ed25519 signing key under primary
-      await execTpm(`tpm2_create -T ${TPM_TCTI} -C /tmp/primary.ctx -g sha256 -G ecc:ecdsa -u /tmp/ralphie.pub -r /tmp/ralphie.priv`);
-      
-      // Load key and get handle
-      await execTpm(`tpm2_load -T ${TPM_TCTI} -C /tmp/primary.ctx -u /tmp/ralphie.pub -r /tmp/ralphie.priv -c /tmp/ralphie.ctx`);
-      
-      // Read public key
-      await execTpm(`tpm2_readpublic -T ${TPM_TCTI} -c /tmp/ralphie.ctx -o /tmp/ralphie_pub.pem -f pem`);
-      const publicKeyPEM = fs.readFileSync('/tmp/ralphie_pub.pem', 'utf-8');
-      
-      // Make persistent handle
-      await execTpm(`tpm2_evictcontrol -T ${TPM_TCTI} -C o -c /tmp/ralphie.ctx 0x81000001`);
-      
-      console.log('[Onboarding] TPM key generated at handle 0x81000001');
-      
-      // Cleanup temp files
-      fs.unlinkSync('/tmp/primary.ctx');
-      fs.unlinkSync('/tmp/ralphie.pub');
-      fs.unlinkSync('/tmp/ralphie.priv');
-      fs.unlinkSync('/tmp/ralphie.ctx');
-      fs.unlinkSync('/tmp/ralphie_pub.pem');
-      
-      return {
-        publicKey: publicKeyPEM,
-        keyHandle: '0x81000001',
-      };
-    } catch (error) {
-      console.error('[Onboarding] TPM key generation failed:', error);
-      throw new Error('PRODUCTION MODE VIOLATION: TPM key generation failed. Device cannot enroll.');
+    if (!tpmAvailable) {
+      throw new Error('PRODUCTION MODE VIOLATION: TPM is required but not available');
     }
+
+    // Production mode: require TPM availability, but use Ed25519 keys for protocol
+    // compatibility (IdentityRegistry expects Ed25519 public keys). Hardware root is
+    // established via TPM attestation (quote/PCRs) at enrollment time.
+    console.log('[Onboarding] Production mode: generating Ed25519 signing key (TPM attestation required)');
   } else {
-    // Development mode: Use software keys with warning
     console.warn('[Onboarding] DEVELOPMENT MODE: Generating software Ed25519 keypair (INSECURE)');
-    
+  }
+
+  // Load or generate a persisted Ed25519 keypair.
+  try {
+    if (!fs.existsSync(IDENTITY_DIR)) {
+      fs.mkdirSync(IDENTITY_DIR, { recursive: true, mode: 0o700 });
+    }
+
+    if (fs.existsSync(SIGNING_PRIVATE_KEY_PATH)) {
+      const privateKeyPem = fs.readFileSync(SIGNING_PRIVATE_KEY_PATH, 'utf-8');
+      const privateKey = crypto.createPrivateKey(privateKeyPem);
+      const publicKeyPem = crypto
+        .createPublicKey(privateKey)
+        .export({ type: 'spki', format: 'pem' })
+        .toString();
+      return { publicKey: publicKeyPem, keyHandle: SIGNING_PRIVATE_KEY_PATH, tpmAvailable };
+    }
+
     const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519', {
       publicKeyEncoding: { type: 'spki', format: 'pem' },
       privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
     });
-    
-    // Store private key temporarily (in production, this is in TPM)
-    const devKeyPath = '/tmp/ralphie_dev.key';
-    fs.writeFileSync(devKeyPath, privateKey, { mode: 0o600 });
-    
-    return {
-      publicKey,
-      keyHandle: devKeyPath,
-    };
+
+    fs.writeFileSync(SIGNING_PRIVATE_KEY_PATH, privateKey, { mode: 0o600 });
+    return { publicKey: publicKey.toString(), keyHandle: SIGNING_PRIVATE_KEY_PATH, tpmAvailable };
+  } catch (error) {
+    console.error('[Onboarding] Signing key provisioning failed:', error);
+    throw new Error('Signing key provisioning failed');
   }
 }
 
@@ -535,10 +532,12 @@ async function createCSR(publicKey: string, hardwareSerial: string, deviceId: st
   };
   
   const csrJson = JSON.stringify(csrData);
-  const csrHash = crypto.createHash('sha256').update(csrJson).digest('base64');
+  const csrHashHex = await blake3(csrJson);
+  const csrHash = Buffer.from(csrHashHex, 'hex').toString('base64');
   
   return Buffer.from(JSON.stringify({
     ...csrData,
+    csr_hash_alg: 'blake3',
     csr_hash: csrHash,
   })).toString('base64');
 }
@@ -832,7 +831,7 @@ export async function startEnrollment(statusIndicator?: StatusIndicator): Promis
     // Phase 2: Generate TPM-backed keypair
     state = EnrollmentState.GENERATING_IDENTITY;
     console.log('[Onboarding] State:', state);
-    const { publicKey, keyHandle } = await generateTPMKeyPair();
+    const { publicKey, keyHandle, tpmAvailable } = await generateTPMKeyPair();
     console.log('[Onboarding] Keypair generated. Handle:', keyHandle);
     
     // Phase 3: Create CSR
@@ -869,7 +868,7 @@ export async function startEnrollment(statusIndicator?: StatusIndicator): Promis
       certificate_serial: issuedCertificate.certificateSerial,
       trust_score: issuedCertificate.trustScore,
       enrolled_at: Date.now(),
-      tpm_backed: productionMode,
+      tpm_backed: productionMode && tpmAvailable,
     };
     
     // Phase 7: Persist identity

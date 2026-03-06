@@ -224,6 +224,19 @@ impl EventSigningService {
         &self.public_key_id
     }
 
+    /// Signs arbitrary bytes and returns the signature and public key ID.
+    ///
+    /// This is used by gRPC signing endpoints that accept raw message bytes.
+    pub fn sign_bytes(&mut self, message: &[u8]) -> Result<SignatureResult, SigningError> {
+        let signature = self.signing_key.sign(message);
+        self.metrics.events_signed_total += 1;
+
+        Ok(SignatureResult {
+            signature: signature.to_bytes().to_vec(),
+            public_key_id: self.public_key_id.clone(),
+        })
+    }
+
     /// Signs a canonical event and returns the signature and public key ID.
     ///
     /// # Arguments

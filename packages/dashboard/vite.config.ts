@@ -8,6 +8,9 @@ const require = createRequire(import.meta.url);
 const cesiumPackagePath = require.resolve('cesium/package.json');
 const cesiumRoot = path.resolve(path.dirname(cesiumPackagePath), 'Build');
 
+const devPortRaw = process.env.VITE_PORT ?? process.env.TAURI_DEV_PORT ?? '1420';
+const devPort = Number.parseInt(devPortRaw, 10);
+
 export default defineConfig({
   plugins: [
     react(),
@@ -24,7 +27,7 @@ export default defineConfig({
   },
   server: {
     host: '127.0.0.1',
-    port: 5173,
+    port: Number.isNaN(devPort) ? 1420 : devPort,
     strictPort: true,
   },
   build: {

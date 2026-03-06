@@ -5,9 +5,11 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Save, AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { TauriCommands, type AppConfig } from '../api/tauri-commands';
-import { setRuntimeConfig } from '../config/runtime';
+import { isTauriRuntime, setRuntimeConfig } from '../config/runtime';
+import { ServiceUnavailablePanel } from './health/ServiceUnavailablePanel';
 
 export function SettingsPanel() {
+  const isDesktop = isTauriRuntime();
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -16,9 +18,13 @@ export function SettingsPanel() {
   const [configPath, setConfigPath] = useState<string>('');
 
   useEffect(() => {
+    if (!isDesktop) {
+      setLoading(false);
+      return;
+    }
     loadConfig();
     loadConfigPath();
-  }, []);
+  }, [isDesktop]);
 
   const loadConfig = async () => {
     try {
@@ -72,8 +78,42 @@ export function SettingsPanel() {
     setConfig(updater(config));
   };
 
-  if (loading || !config) {
+  if (!isDesktop) {
+    return (
+      <div className="h-full p-6">
+        <ServiceUnavailablePanel
+          title="Settings require the desktop app"
+          description="Editing the local runtime configuration is only available in the Tactical Glass desktop runtime."
+          capability="Local config read/write (Tauri)"
+          remediation={[
+            'Open Settings in the Tactical Glass desktop app.',
+            'If you need web configuration, expose an authenticated config endpoint via the gateway and wire it here.',
+          ]}
+        />
+      </div>
+    );
+  }
+
+  if (loading) {
     return <div className="flex items-center justify-center h-full text-cyan-400">Loading configuration...</div>;
+  }
+  if (!config) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-cyan-400 p-6">
+        <div className="mb-4 p-4 bg-red-900/30 border border-red-500/50 rounded flex items-start gap-2 max-w-lg">
+          <AlertCircle className="w-5 h-5 text-red-400" />
+          <div className="text-red-300">
+            {error ?? 'Failed to load configuration.'}
+          </div>
+        </div>
+        <button
+          onClick={loadConfig}
+          className="px-4 py-2 bg-black/50 hover:bg-black/70 border border-cyan-900/50 text-cyan-400 font-semibold rounded"
+        >
+          Retry Load
+        </button>
+      </div>
+    );
   }
 
   return (

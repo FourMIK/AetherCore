@@ -5,12 +5,12 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, AlertTriangle, CheckCircle, Terminal as TerminalIcon } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { Shield, AlertTriangle, Terminal as TerminalIcon } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
+import { TauriCommands } from '../../api/tauri-commands';
 
 interface CandidateNode {
-  type: string;
+  type: 'USB' | 'NET';
   id: string;
   label: string;
   transport?: 'usb-serial' | 'usb-mass-storage' | 'network' | 'bluetooth-serial';
@@ -20,7 +20,8 @@ interface CandidateNode {
 interface GenesisIdentity {
   public_key: string;
   root_hash: string;
-  callsign: string;
+  node_id: string;
+  callsign?: string;
 }
 
 interface ActivationTerminalProps {
@@ -126,56 +127,61 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
         );
         addLog('Flashing Silicon...', 'info');
 
-        const result = await invoke<{ identity: GenesisIdentity }>('provision_target', {
-          target: asset,
-          credentials: null,
-          firmwarePath: manualFirmwareOverride ? firmwarePath : null,
-        });
+        const result = await TauriCommands.provisionTarget(
+          asset,
+          null,
+          manualFirmwareOverride ? firmwarePath : null,
+        );
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+        if (result.data.status !== 'SUCCESS') {
+          throw new Error('Provisioning failed (FAIL-VISIBLE: backend returned FAILURE)');
+        }
 
         addLog('Firmware flashed successfully', 'success');
         addLog('Verifying Trust...', 'info');
-        addLog(`Root Hash: ${result.identity.root_hash}`, 'success');
-        addLog(`Callsign: ${result.identity.callsign}`, 'success');
+        addLog(`Root Hash: ${result.data.identity.root_hash}`, 'success');
+        addLog(`Callsign: ${result.data.identity.callsign ?? result.data.identity.node_id}`, 'success');
         
-        setIdentity(result.identity);
+        setIdentity(result.data.identity);
         setProgress(100);
         setStage('success');
         
         // Trigger success callback after brief delay
-        setTimeout(() => onSuccess(result.identity), 1500);
+        setTimeout(() => onSuccess(result.data.identity), 1500);
       } else {
         // Network Flow
         addLog('Initializing network provisioning...', 'info');
         addLog(`Target: ${asset.label} (${asset.id})`, 'info');
-        addLog('Establishing SSH connection...', 'info');
-        setProgress(20);
+        addLog('Invoking service-backed provisioning command...', 'info');
 
-        const result = await invoke<{ identity: GenesisIdentity }>('provision_target', {
-          target: asset,
-          credentials: {
-            username: 'pi', // Standard for Raspberry Pi
+        const result = await TauriCommands.provisionTarget(
+          asset,
+          {
+            username: 'pi',
             password,
           },
-          firmwarePath: null,
-        });
+          null,
+        );
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+        if (result.data.status !== 'SUCCESS') {
+          throw new Error('Provisioning failed (FAIL-VISIBLE: backend returned FAILURE)');
+        }
 
-        addLog('SSH connection established', 'success');
-        setProgress(40);
-        addLog('Injecting Agent...', 'info');
-        setProgress(60);
-        addLog('Securing Keys...', 'info');
-        setProgress(80);
+        addLog('Provisioning completed', 'success');
         addLog('Verifying Trust...', 'info');
-        setProgress(90);
-        addLog(`Root Hash: ${result.identity.root_hash}`, 'success');
-        addLog(`Callsign: ${result.identity.callsign}`, 'success');
+        addLog(`Root Hash: ${result.data.identity.root_hash}`, 'success');
+        addLog(`Callsign: ${result.data.identity.callsign ?? result.data.identity.node_id}`, 'success');
         
-        setIdentity(result.identity);
+        setIdentity(result.data.identity);
         setProgress(100);
         setStage('success');
         
         // Trigger success callback after brief delay
-        setTimeout(() => onSuccess(result.identity), 1500);
+        setTimeout(() => onSuccess(result.data.identity), 1500);
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -350,8 +356,8 @@ export const ActivationTerminal: React.FC<ActivationTerminalProps> = ({
                 </h4>
                 <div className="p-4 bg-verified-green/10 border border-verified-green/30 rounded-lg">
                   <p className="text-sm text-tungsten/70 mb-2">Node Callsign</p>
-                  <p className="text-lg font-display text-verified-green font-bold tracking-wider">
-                    {identity.callsign}
+                <p className="text-lg font-display text-verified-green font-bold tracking-wider">
+                    {identity.callsign ?? identity.node_id}
                   </p>
                 </div>
               </div>

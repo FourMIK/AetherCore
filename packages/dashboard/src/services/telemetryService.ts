@@ -52,11 +52,6 @@ export interface TelemetryData {
   };
 }
 
-// In-memory cache of telemetry data
-const telemetryCache = new Map<string, TelemetryData>();
-let lastFetchTime = 0;
-const CACHE_DURATION_MS = 3000; // 3 seconds
-
 /**
  * Convert telemetry data to a TacticalNode
  */
@@ -83,17 +78,6 @@ export function telemetryToNode(telemetry: TelemetryData): TacticalNode {
  * Fetch telemetry from multiple sources (Gateway + Teledyne)
  */
 export async function fetchTelemetry(): Promise<Map<string, TacticalNode>> {
-  const now = Date.now();
-
-  // Return cached data if still fresh
-  if (now - lastFetchTime < CACHE_DURATION_MS && telemetryCache.size > 0) {
-    const nodes = new Map<string, TacticalNode>();
-    telemetryCache.forEach((telemetry, nodeId) => {
-      nodes.set(nodeId, telemetryToNode(telemetry));
-    });
-    return nodes;
-  }
-
   const nodes = new Map<string, TacticalNode>();
   const { apiUrl } = getRuntimeConfig();
 
@@ -111,7 +95,6 @@ export async function fetchTelemetry(): Promise<Map<string, TacticalNode>> {
 
       if (data.nodes && Array.isArray(data.nodes)) {
         data.nodes.forEach((telemetry: TelemetryData) => {
-          telemetryCache.set(telemetry.node_id, telemetry);
           nodes.set(telemetry.node_id, telemetryToNode(telemetry));
         });
 
@@ -119,7 +102,6 @@ export async function fetchTelemetry(): Promise<Map<string, TacticalNode>> {
           console.log(`[TELEMETRY] Fetched ${data.nodes.length} nodes from backend`);
         } else {
           console.log('[TELEMETRY] Gateway responded but no nodes available yet');
-          console.log('[TELEMETRY] Waiting for devices to send telemetry to http://localhost:3000/api/telemetry');
         }
       }
     } else if (response.status === 404) {
@@ -128,34 +110,12 @@ export async function fetchTelemetry(): Promise<Map<string, TacticalNode>> {
       console.warn(`[TELEMETRY] Failed to fetch nodes: ${response.status}`);
     }
 
-    lastFetchTime = now;
     return nodes;
   } catch (error) {
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-      console.error('[TELEMETRY] Cannot connect to gateway at', apiUrl);
-      console.error('[TELEMETRY] Ensure gateway is running on port 3000');
-    } else {
-      console.error('[TELEMETRY] Failed to fetch telemetry:', error);
-    }
-
-    // Fall back to cached data if fetch fails
-    telemetryCache.forEach((telemetry, nodeId) => {
-      // Only include if telemetry is recent (within last 30 seconds)
-      if (now - telemetry.timestamp < 30000) {
-        nodes.set(nodeId, telemetryToNode(telemetry));
-      }
-    });
+    console.error('[TELEMETRY] Failed to fetch telemetry:', error);
 
     return nodes;
   }
-}
-
-/**
- * Update telemetry cache with new data
- * This should be called when telemetry is received via WebSocket or polling
- */
-export function updateTelemetryCache(telemetry: TelemetryData) {
-  telemetryCache.set(telemetry.node_id, telemetry);
 }
 
 /**
@@ -193,16 +153,14 @@ export function startTelemetryPolling(
 export function connectTelemetryWebSocket(
   onUpdate: (nodes: Map<string, TacticalNode>) => void
 ): () => void {
-  const { apiUrl } = getRuntimeConfig();
-  const wsUrl = apiUrl.replace('http://', 'ws://').replace('https://', 'wss://');
-  const collaborationUrl = wsUrl.replace(':3000', ':8080'); // Collaboration service on 8080
+  const { telemetryWebsocketUrl } = getRuntimeConfig();
 
   let ws: WebSocket | null = null;
   let reconnectTimeout: NodeJS.Timeout | null = null;
 
   const connect = () => {
     try {
-      ws = new WebSocket(collaborationUrl);
+      ws = new WebSocket(telemetryWebsocketUrl);
 
       ws.onopen = () => {
         console.log('Telemetry WebSocket connected');
@@ -214,8 +172,11 @@ export function connectTelemetryWebSocket(
 
           // Handle telemetry message
           if (data.type === 'telemetry' && data.payload) {
-            updateTelemetryCache(data.payload);
-            fetchTelemetry().then(onUpdate);
+            void fetchTelemetry().then((nodes) => {
+              const payloadNode = telemetryToNode(data.payload as TelemetryData);
+              nodes.set(payloadNode.id, payloadNode);
+              onUpdate(nodes);
+            });
           }
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error);
@@ -250,85 +211,6 @@ export function connectTelemetryWebSocket(
 }
 
 /**
- * Simulate receiving telemetry (for testing)
- */
-export function simulateATAKDevice() {
-  const mockTelemetry: TelemetryData = {
-    node_id: 'google-pixel_9_pro_xl-' + Math.random().toString(36).substring(7),
-    timestamp: Date.now(),
-    node_type: 'tactical_edge',
-    platform: 'android',
-    hardware: {
-      manufacturer: 'Google',
-      model: 'Pixel 9 Pro XL',
-      android_version: '16',
-      api_level: 36,
-      security_patch: '2026-03-01',
-    },
-    security: {
-      keystore_type: 'android_strongbox',
-      hardware_backed: true,
-      attestation_available: true,
-      biometric_available: true,
-    },
-    trust: {
-      self_score: 100,
-      peers_visible: 0,
-      byzantine_detected: 0,
-      merkle_vine_synced: true,
-    },
-    network: {
-      wifi_connected: true,
-      backend_reachable: true,
-      mesh_discovery_active: false,
-    },
-    atak: {
-      installed: true,
-      cot_listener_active: false,
-      cot_messages_processed: 0,
-    },
-    native: {
-      jni_loaded: true,
-      architecture: 'arm64-v8a',
-    },
-  };
-
-  // Add RalphieNode on local network
-  const ralphieNodeTelemetry: TelemetryData = {
-    node_id: 'ralphie-local-desktop',
-    timestamp: Date.now(),
-    node_type: 'ralphie',
-    platform: 'desktop',
-    hardware: {
-      manufacturer: 'Local Network',
-      model: 'Desktop CodeRalphie Node',
-    },
-    security: {
-      keystore_type: 'software_simulated',
-      hardware_backed: false, // Dev mode simulation
-      attestation_available: false,
-      biometric_available: false,
-    },
-    trust: {
-      self_score: 95,
-      peers_visible: 1,
-      byzantine_detected: 0,
-      merkle_vine_synced: true,
-    },
-    network: {
-      wifi_connected: true,
-      backend_reachable: true,
-      mesh_discovery_active: true,
-    },
-  };
-
-  updateTelemetryCache(mockTelemetry);
-  updateTelemetryCache(ralphieNodeTelemetry);
-  console.log('Simulated ATAK device telemetry:', mockTelemetry.node_id);
-  console.log('Simulated RalphieNode telemetry:', ralphieNodeTelemetry.node_id);
-}
-
-/**
  * Subscribe to telemetry updates
  * This sets up a polling mechanism to fetch telemetry from the gateway
  * and trigger callbacks for each telemetry update
@@ -337,7 +219,6 @@ export async function subscribeToTelemetry(onUpdate: (telemetry: TelemetryData) 
   const pollIntervalMs = 2000; // Poll every 2 seconds
 
   let isSubscribed = true;
-  const seenNodeIds = new Set<string>();
 
   const poll = async () => {
     while (isSubscribed) {
@@ -355,7 +236,6 @@ export async function subscribeToTelemetry(onUpdate: (telemetry: TelemetryData) 
             for (const node of data.nodes) {
               // Call the callback for each telemetry update
               onUpdate(node);
-              seenNodeIds.add(node.node_id);
             }
           }
         }

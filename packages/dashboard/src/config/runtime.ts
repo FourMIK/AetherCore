@@ -33,12 +33,30 @@ export interface UnifiedRuntimeConfig {
 interface RuntimeEnv {
   REACT_APP_API_URL?: string;
   REACT_APP_WS_URL?: string;
+  REACT_APP_GATEWAY_WS_URL?: string;
   REACT_APP_TPM_ENABLED?: string;
+  REACT_APP_DEMO_MODE?: string;
+  REACT_APP_TELEMETRY_WS_URL?: string;
 }
 
 const runtimeEnv = (globalThis as unknown as Window & { __ENV__?: RuntimeEnv }).__ENV__ ?? {};
 
 let runtimeConfigCache: UnifiedRuntimeConfig | null = null;
+
+export type RuntimeMode = 'desktop' | 'web';
+
+export interface RuntimeEndpointConfig {
+  apiUrl: string;
+  wsUrl: string;
+  telemetryWebsocketUrl: string;
+}
+
+export type RuntimeModeConfig = {
+  mode: RuntimeMode;
+  isTauri: boolean;
+};
+
+const TELEMETRY_WS_FALLBACK = 'ws://localhost:8080';
 
 export function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined || value === '') return defaultValue;
@@ -59,9 +77,25 @@ export function validateUnifiedRuntimeConfig(input: UnifiedRuntimeConfig): Unifi
   return input;
 }
 
+export function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+export function isDemoModeEnabled(): boolean {
+  const demoFlag =
+    runtimeEnv.REACT_APP_DEMO_MODE ||
+    import.meta.env.VITE_DEMO_MODE ||
+    import.meta.env.VITE_TACTICAL_DASHBOARD_DEMO;
+  return parseBooleanEnv(demoFlag, false);
+}
+
 export function buildEnvFallbackConfig(): UnifiedRuntimeConfig {
   const apiEndpoint = runtimeEnv.REACT_APP_API_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000';
-  const meshEndpoint = runtimeEnv.REACT_APP_WS_URL || import.meta.env.VITE_GATEWAY_URL || 'ws://localhost:3000';
+  const meshEndpoint =
+    runtimeEnv.REACT_APP_WS_URL ||
+    runtimeEnv.REACT_APP_GATEWAY_WS_URL ||
+    import.meta.env.VITE_GATEWAY_URL ||
+    'ws://localhost:3000';
   // TPM fallback policy is optional by default and only enforced when explicitly enabled.
   const enforceHardware = parseBooleanEnv(runtimeEnv.REACT_APP_TPM_ENABLED || import.meta.env.VITE_TPM_ENABLED, false);
 
@@ -93,8 +127,27 @@ export function buildEnvFallbackConfig(): UnifiedRuntimeConfig {
   };
 }
 
-function isTauriRuntime(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+function normalizeWebSocketUrl(rawEndpoint: string): string {
+  const trimmed = rawEndpoint.trim();
+  if (!trimmed) {
+    return TELEMETRY_WS_FALLBACK;
+  }
+
+  const hasProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed);
+  const endpoint = hasProtocol ? trimmed : `ws://${trimmed}`;
+
+  try {
+    const parsed = new URL(endpoint);
+    if (parsed.protocol === 'http:') {
+      parsed.protocol = 'ws:';
+    } else if (parsed.protocol === 'https:') {
+      parsed.protocol = 'wss:';
+    }
+    return parsed.toString();
+  } catch (error) {
+    console.warn('[RUNTIME] Failed to normalize websocket endpoint, using fallback', { endpoint: rawEndpoint, error });
+    return TELEMETRY_WS_FALLBACK;
+  }
 }
 
 export async function loadUnifiedRuntimeConfig(): Promise<UnifiedRuntimeConfig> {
@@ -121,12 +174,46 @@ export function setRuntimeConfig(config: UnifiedRuntimeConfig): void {
 
 export function getRuntimeConfig() {
   const unified = runtimeConfigCache ?? buildEnvFallbackConfig();
+  const wsUrl = normalizeWebSocketUrl(unified.connection.mesh_endpoint);
+  const telemetryWebsocketUrl = normalizeWebSocketUrl(
+    runtimeEnv.REACT_APP_TELEMETRY_WS_URL ||
+      import.meta.env.VITE_TELEMETRY_WS_URL ||
+      wsUrl
+  );
 
   return {
     unified,
     apiUrl: unified.connection.api_endpoint,
-    wsUrl: unified.connection.mesh_endpoint,
+    wsUrl,
+    telemetryWebsocketUrl,
     tpmEnabled: unified.tpm_policy.enforce_hardware,
     devAllowInsecureLocalhost: unified.features.allow_insecure_localhost,
+    demoEnabled: isDemoModeEnabled(),
+    transportMode: (isTauriRuntime() ? 'desktop' : 'web') as RuntimeMode,
+    runtimeEndpoints: {
+      apiUrl: unified.connection.api_endpoint,
+      wsUrl,
+      telemetryWebsocketUrl,
+    } satisfies RuntimeEndpointConfig,
+  };
+}
+
+export function getRuntimeEndpoints(): RuntimeEndpointConfig {
+  return getRuntimeConfig().runtimeEndpoints;
+}
+
+export function getTelemetryWebsocketUrl(): string {
+  return getRuntimeConfig().telemetryWebsocketUrl;
+}
+
+export function isDemoMode(): boolean {
+  return isDemoModeEnabled();
+}
+
+export function getRuntimeMode(): RuntimeModeConfig {
+  const isTauri = isTauriRuntime();
+  return {
+    mode: (isTauri ? 'desktop' : 'web') as RuntimeMode,
+    isTauri,
   };
 }

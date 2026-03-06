@@ -49,6 +49,7 @@ export const MessagingPanel: React.FC = () => {
 
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState('');
+  const [sendError, setSendError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const selectedOperator = selectedOperatorId
@@ -87,11 +88,12 @@ export const MessagingPanel: React.FC = () => {
     if (!messageInput.trim() || !selectedOperatorId) return;
 
     try {
+      setSendError(null);
       await sendMessage(selectedOperatorId, messageInput);
       setMessageInput('');
     } catch (error) {
       console.error('[MessagingPanel] Failed to send message:', error);
-      // TODO: Show error toast
+      setSendError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -373,9 +375,23 @@ export const MessagingPanel: React.FC = () => {
             <div className="p-4 border-t border-tungsten/10">
               <div className="flex items-end gap-3">
                 <div className="flex-1">
+                  {sendError && (
+                    <div className="mb-3 p-3 rounded bg-jamming/10 border border-jamming/30 text-jamming text-xs">
+                      <div className="font-semibold flex items-center gap-2">
+                        <AlertTriangle size={14} />
+                        Send failed (Fail-Visible)
+                      </div>
+                      <div className="text-jamming/80 mt-1 break-words">{sendError}</div>
+                    </div>
+                  )}
                   <textarea
                     value={messageInput}
-                    onChange={(e) => setMessageInput(e.target.value)}
+                    onChange={(e) => {
+                      setMessageInput(e.target.value);
+                      if (sendError) {
+                        setSendError(null);
+                      }
+                    }}
                     onKeyPress={handleKeyPress}
                     placeholder="Type a message..."
                     className="w-full bg-carbon border border-tungsten/20 rounded-lg px-4 py-3 text-tungsten placeholder-tungsten/30 resize-none focus:outline-none focus:border-overmatch/50 transition-colors"

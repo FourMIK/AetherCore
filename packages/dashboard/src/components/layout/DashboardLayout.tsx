@@ -28,6 +28,7 @@ import type { SentinelTrustStatus } from '../../api/tauri-commands';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { useCommStore } from '../../store/useCommStore';
 import { Plus } from 'lucide-react';
+import { getTelemetryWebsocketUrl } from '../../config/runtime';
 
 interface DashboardLayoutProps {
   sentinelTrustStatus?: SentinelTrustStatus | null;
@@ -218,11 +219,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ sentinelTrustS
       {byzantineAlert && (
         <div className="fixed inset-0 z-50">
           <AethericSweep
-            websocketUrl={
-              typeof window !== 'undefined' && '__TAURI__' in window
-                ? `ws://localhost:8080/mesh-health`
-                : '' // Disable WebSocket in web mode
-            }
+            websocketUrl={getTelemetryWebsocketUrl()}
           />
           <button onClick={clearByzantineAlert} className="absolute top-4 right-4 btn-secondary">
             Close

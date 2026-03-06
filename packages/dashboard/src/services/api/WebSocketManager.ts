@@ -19,7 +19,7 @@ import {
 } from '@microsoft/signalr';
 import { TauriCommands } from '../../api/tauri-commands';
 import { useCommStore } from '../../store/useCommStore';
-import { getRuntimeConfig } from '../../config/runtime';
+import { getRuntimeConfig, isTauriRuntime } from '../../config/runtime';
 import { validateWebSocketEndpoint } from '../../utils/endpoint-validation';
 
 export type ConnectionStatus =
@@ -76,7 +76,7 @@ export class WebSocketManager {
     // Log security posture
     if (validation.isLocalhost && validation.protocol === 'ws') {
       console.warn(
-        '[AETHERIC LINK] INSECURE LOCALHOST MODE: Using ws:// for localhost. This is only allowed in development with DEV_ALLOW_INSECURE_LOCALHOST=true'
+        '[AETHERIC LINK] INSECURE LOCALHOST MODE: Using ws:// for localhost. This is only allowed when allow_insecure_localhost is enabled or DEV_ALLOW_INSECURE_LOCALHOST=true.'
       );
     }
   }
@@ -86,12 +86,34 @@ export class WebSocketManager {
 
     this.setConnectionStatus('connecting');
 
+    // Browser runtimes cannot access TPM/Secure Enclave identity primitives via Tauri.
+    // Fail-visible: do not attempt to invoke desktop commands in web mode.
+    if (!isTauriRuntime()) {
+      const reason =
+        'Desktop-only: heartbeat identity requires the Tactical Glass desktop runtime (Tauri).';
+      console.error('[AETHERIC LINK] Heartbeat identity unavailable in web mode:', reason);
+      this.deviceId = null;
+      this.setConnectionStatus('unverified');
+      this.setConnectionState('disconnected');
+      window.dispatchEvent(new CustomEvent('AETHER_LINK_UNVERIFIED', { detail: { reason } }));
+      return;
+    }
+
     try {
       // 1. Get Hardware ID (TPM) before connecting
       // We need this to identify ourselves to the bunker.
-      // Assuming 'get_hardware_id' is a Tauri command you have or will create.
-      // For Alpha, we can derive it from the first signed payload or a specific command.
-      this.deviceId = 'ALPHA-TEST-DEVICE-001'; // TODO: Replace with invoke('get_tpm_id')
+      const identityResult = await TauriCommands.getHeartbeatDeviceId();
+      if (!identityResult.success) {
+        const reason = `FAIL-VISIBLE: Heartbeat identity unavailable. ${identityResult.error}`;
+        console.error('[AETHERIC LINK] Heartbeat identity probe failed:', reason);
+        this.deviceId = null;
+        this.setConnectionStatus('unverified');
+        this.setConnectionState('disconnected');
+        window.dispatchEvent(new CustomEvent('AETHER_LINK_UNVERIFIED', { detail: { reason } }));
+        return;
+      }
+
+      this.deviceId = identityResult.data;
 
       this.connection = new HubConnectionBuilder()
         .withUrl(this.url)

@@ -135,6 +135,7 @@ RestrictNamespaces=true
 Environment="NODE_ENV=production"
 Environment="AETHERCORE_PRODUCTION=1"
 Environment="TPM2TOOLS_TCTI=device:/dev/tpmrm0"
+Environment="AETHERCORE_SIGNING_PRIVATE_KEY_PATH=/etc/coderalphie/keys/signing-key.pem"
 
 # Execution
 ExecStart=/usr/local/bin/coderalphie

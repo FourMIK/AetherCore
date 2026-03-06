@@ -1,17 +1,6 @@
 import React, { useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { TauriCommands } from '../api/tauri-commands';
 import { QRCodeSVG } from 'qrcode.react';
-
-/**
- * Genesis Bundle structure for Zero-Touch Enrollment
- */
-interface GenesisBundle {
-  user_identity: string;
-  squad_id: string;
-  public_key: string;
-  signature: string;
-  timestamp: number;
-}
 
 /**
  * Zero-Touch Enrollment Component
@@ -42,13 +31,18 @@ export const ZeroTouchEnrollment: React.FC = () => {
 
     try {
       // Generate Genesis Bundle via Tauri command
-      const bundle: GenesisBundle = await invoke('generate_genesis_bundle', {
-        userIdentity,
-        squadId,
-      });
+      const bundleResult = await TauriCommands.generateGenesisBundle(userIdentity, squadId);
+      if (!bundleResult.success) {
+        throw new Error(bundleResult.error);
+      }
+      const bundle = bundleResult.data;
 
       // Convert bundle to QR-encodable string
-      const qrString: string = await invoke('bundle_to_qr_data', { bundle });
+      const qrResult = await TauriCommands.bundleToQrData(bundle);
+      if (!qrResult.success) {
+        throw new Error(qrResult.error);
+      }
+      const qrString: string = qrResult.data;
 
       setQrData(qrString);
     } catch (err) {

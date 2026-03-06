@@ -23,7 +23,8 @@ import {
   Shield,
   AlertTriangle,
 } from 'lucide-react';
-import { getRuntimeConfig } from '../../config/runtime';
+import { getRuntimeConfig, isTauriRuntime } from '../../config/runtime';
+import { ServiceUnavailablePanel } from '../health/ServiceUnavailablePanel';
 import {
   DiagnosticsReport,
   SupportBundleSummary,
@@ -37,9 +38,11 @@ import { AuditLogViewer } from '../compliance/AuditLogViewer';
 
 export const SystemAdminView: React.FC = () => {
   const { tpmEnabled } = getRuntimeConfig();
+  const isDesktop = isTauriRuntime();
   const [diagnostics, setDiagnostics] = useState<DiagnosticsReport | null>(null);
   const [bundle, setBundle] = useState<SupportBundleSummary | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [hasAdminPrivileges, setHasAdminPrivileges] = useState(false);
   const currentOperatorId = useCommStore((s) => s.currentOperator?.id);
 
@@ -50,13 +53,16 @@ export const SystemAdminView: React.FC = () => {
 
   // Fetch diagnostics on mount
   useEffect(() => {
+    if (!isDesktop) {
+      return;
+    }
     (async () => {
       const result = await TauriCommands.diagnosticsReport();
       if (result.success) {
         setDiagnostics(result.data);
       }
     })();
-  }, []);
+  }, [isDesktop]);
 
   // Check admin privileges
   useEffect(() => {
@@ -98,13 +104,25 @@ export const SystemAdminView: React.FC = () => {
   }, [updateFleetAttestationState]);
 
   const runAction = async (name: string, action: () => Promise<unknown>) => {
-    setBusyAction(name);
-    await action();
-    const refreshed = await TauriCommands.diagnosticsReport();
-    if (refreshed.success) {
-      setDiagnostics(refreshed.data);
+    if (!isDesktop) {
+      setActionError(`Action "${name}" requires the Tactical Glass desktop runtime.`);
+      return;
     }
-    setBusyAction(null);
+    setBusyAction(name);
+    setActionError(null);
+    try {
+      await action();
+      const refreshed = await TauriCommands.diagnosticsReport();
+      if (refreshed.success) {
+        setDiagnostics(refreshed.data);
+      } else {
+        setActionError(`Failed to refresh diagnostics: ${refreshed.error ?? 'unknown error'}`);
+      }
+    } catch (error) {
+      setActionError(`Failed to run ${name}: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   // Calculate fleet health metrics from attestation state
@@ -127,6 +145,18 @@ export const SystemAdminView: React.FC = () => {
             </div>
           )}
         </div>
+
+        {!isDesktop && (
+          <ServiceUnavailablePanel
+            title="Desktop actions unavailable in browser"
+            description="Local stack repair, support bundle collection, and TPM-backed diagnostics require the Tactical Glass desktop runtime."
+            capability="Local stack management + diagnostics + support bundles"
+            remediation={[
+              'Open System Administration in the desktop application for local actions.',
+              'Web mode can still view fleet state via backend services, but cannot repair local installs.',
+            ]}
+          />
+        )}
 
         {/* System Resources */}
         <div className="grid grid-cols-4 gap-4">
@@ -183,14 +213,14 @@ export const SystemAdminView: React.FC = () => {
               <button
                 className="px-3 py-2 rounded bg-overmatch/20 hover:bg-overmatch/30 text-xs text-tungsten flex items-center gap-2"
                 onClick={() => runAction('repair', () => TauriCommands.repairInstallation())}
-                disabled={busyAction !== null}
+                disabled={!isDesktop || busyAction !== null}
               >
                 <Wrench size={14} /> Repair Installation
               </button>
               <button
                 className="px-3 py-2 rounded bg-ghost/20 hover:bg-ghost/30 text-xs text-tungsten flex items-center gap-2"
                 onClick={() => runAction('reset', () => TauriCommands.resetLocalStack())}
-                disabled={busyAction !== null}
+                disabled={!isDesktop || busyAction !== null}
               >
                 <RotateCcw size={14} /> Reset Local Stack
               </button>
@@ -204,15 +234,21 @@ export const SystemAdminView: React.FC = () => {
                     }
                   })
                 }
-                disabled={busyAction !== null}
+                disabled={!isDesktop || busyAction !== null}
               >
                 <Archive size={14} /> Collect Support Bundle
               </button>
             </div>
           </div>
+          {actionError && (
+            <div className="flex items-start gap-2 text-xs text-red-300 bg-red-900/30 border border-red-400/40 rounded p-2">
+              <AlertTriangle size={14} className="mt-0.5" />
+              <span>{actionError}</span>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
-            {diagnostics?.checks.map((check) => (
+            {(diagnostics?.checks ?? []).map((check) => (
               <div key={check.id} className="border border-tungsten/10 rounded-lg p-3 bg-carbon/30">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-tungsten">{check.label}</span>
@@ -240,7 +276,7 @@ export const SystemAdminView: React.FC = () => {
             </h2>
           </div>
           <div className="grid grid-cols-3 gap-3">
-            {diagnostics?.troubleshooting_cards.map((card) => (
+            {(diagnostics?.troubleshooting_cards ?? []).map((card) => (
               <div key={card.failure_class} className="bg-carbon/50 border border-tungsten/10 rounded-lg p-4">
                 <h3 className="text-sm font-semibold text-tungsten mb-2">{card.title}</h3>
                 <ul className="space-y-1">
@@ -399,7 +435,7 @@ export const SystemAdminView: React.FC = () => {
                     </div>
                     <div className="text-tungsten/70">{cert.revocation_reason}</div>
                     <div className="text-tungsten/50 mt-1">
-                      Signature: {cert.signature.substring(0, 16)}...
+                      Signature: {cert.signature ? `${cert.signature.substring(0, 16)}...` : 'missing'}
                     </div>
                   </div>
                 ))}

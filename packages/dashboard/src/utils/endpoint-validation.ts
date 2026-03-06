@@ -6,7 +6,8 @@
  * 
  * Rules:
  * - Remote endpoints MUST use wss:// or https://
- * - Localhost endpoints MAY use ws:// or http:// ONLY when DEV_ALLOW_INSECURE_LOCALHOST=true
+ * - Localhost endpoints MAY use ws:// or http:// ONLY when allow_insecure_localhost is enabled
+ *   (Settings/runtime config) or when VITE_DEV_ALLOW_INSECURE_LOCALHOST=true in env fallback
  * - All other insecure connections are rejected with actionable errors
  */
 
@@ -32,20 +33,7 @@ function isLocalhostHostname(hostname: string): boolean {
   );
 }
 
-/**
- * Get DEV_ALLOW_INSECURE_LOCALHOST flag from environment
- */
-function isInsecureLocalhostAllowed(): boolean {
-  const env = import.meta.env.VITE_DEV_ALLOW_INSECURE_LOCALHOST;
-  if (!env) return false;
-  const normalized = env.toLowerCase().trim();
-  return normalized === 'true' || normalized === '1' || normalized === 'yes';
-}
-
 function isInsecureLocalhostAllowedAtRuntime(): boolean {
-  if (isInsecureLocalhostAllowed()) {
-    return true;
-  }
   try {
     return Boolean(getRuntimeConfig().devAllowInsecureLocalhost);
   } catch {
@@ -84,7 +72,7 @@ export function validateWebSocketEndpoint(url: string): EndpointValidationResult
       if (!devAllowed) {
         return {
           valid: false,
-          error: 'Insecure localhost WebSocket (ws://) requires DEV_ALLOW_INSECURE_LOCALHOST=true environment variable. Use wss:// or enable dev mode.',
+          error: 'Insecure localhost WebSocket (ws://) requires allow_insecure_localhost or DEV_ALLOW_INSECURE_LOCALHOST=true. Use wss:// or enable dev mode.',
         };
       }
     }
@@ -133,7 +121,7 @@ export function validateHttpEndpoint(url: string): EndpointValidationResult {
       if (!devAllowed) {
         return {
           valid: false,
-          error: 'Insecure localhost HTTP (http://) requires DEV_ALLOW_INSECURE_LOCALHOST=true environment variable. Use https:// or enable dev mode.',
+          error: 'Insecure localhost HTTP (http://) requires allow_insecure_localhost or DEV_ALLOW_INSECURE_LOCALHOST=true. Use https:// or enable dev mode.',
         };
       }
     }
@@ -194,7 +182,7 @@ export function validateGrpcEndpoint(endpoint: string): EndpointValidationResult
     if (!devAllowed) {
       return {
         valid: false,
-        error: 'Localhost gRPC without TLS requires DEV_ALLOW_INSECURE_LOCALHOST=true environment variable.',
+        error: 'Localhost gRPC without TLS requires allow_insecure_localhost or DEV_ALLOW_INSECURE_LOCALHOST=true.',
       };
     }
 

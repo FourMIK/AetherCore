@@ -9,55 +9,82 @@ import { GlassPanel } from '../hud/GlassPanel';
 import { Eye, Camera, Satellite, AlertTriangle, Lock, Zap } from 'lucide-react';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { AgnosticVideoPlayer } from '../media/AgnosticVideoPlayer';
+import { getRuntimeConfig } from '../../config/runtime';
+import { useCommStore } from '../../store/useCommStore';
 
-interface TelemetryData {
-  frameCount: number;
-  uptime: string;
-  bitrate: string;
-  latency: number;
-  trustScore: number;
+type ServiceHealth = 'up' | 'degraded' | 'down' | 'unknown';
+
+function healthPillClasses(status: ServiceHealth): { container: string; dot: string; text: string } {
+  switch (status) {
+    case 'up':
+      return {
+        container: 'bg-emerald-900/20 border-emerald-400/30',
+        dot: 'bg-emerald-400 animate-pulse',
+        text: 'text-emerald-400',
+      };
+    case 'degraded':
+      return {
+        container: 'bg-yellow-900/10 border-yellow-400/30',
+        dot: 'bg-yellow-400 animate-pulse',
+        text: 'text-yellow-400',
+      };
+    case 'down':
+      return {
+        container: 'bg-jamming/10 border-jamming/30',
+        dot: 'bg-jamming animate-pulse',
+        text: 'text-jamming',
+      };
+    case 'unknown':
+    default:
+      return {
+        container: 'bg-tungsten/5 border-tungsten/20',
+        dot: 'bg-tungsten/40',
+        text: 'text-tungsten/50',
+      };
+  }
 }
 
 export const ISRConsoleView: React.FC = () => {
   const selectedNodeId = useTacticalStore((s) => s.selectedNodeId);
   const nodes = useTacticalStore((s) => s.nodes);
+  const connectionStatus = useCommStore((s) => s.connectionStatus);
 
-  // Real-time telemetry state
-  const [telemetry, setTelemetry] = useState<TelemetryData>({
-    frameCount: 1247,
-    uptime: '00:00:00',
-    bitrate: '12.5 Mbps',
-    latency: 48,
-    trustScore: 95,
-  });
+  const [gatewayHealth, setGatewayHealth] = useState<ServiceHealth>('unknown');
+  const [gatewayHealthDetail, setGatewayHealthDetail] = useState<string | null>(null);
 
   const selectedNode = useMemo(() => {
     return selectedNodeId ? nodes.get(selectedNodeId) : null;
   }, [selectedNodeId, nodes]);
 
-  // Update telemetry in real-time
   useEffect(() => {
-    let startTime = Date.now();
-    let frameCount = 1247;
+    const { apiUrl } = getRuntimeConfig();
+    let mounted = true;
 
-    const interval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      const h = Math.floor(elapsed / 3600);
-      const m = Math.floor((elapsed % 3600) / 60);
-      const s = elapsed % 60;
+    const check = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/health`, { method: 'GET' });
+        if (!mounted) return;
+        if (response.ok) {
+          setGatewayHealth('up');
+          setGatewayHealthDetail(null);
+        } else {
+          setGatewayHealth('degraded');
+          setGatewayHealthDetail(`HTTP ${response.status}`);
+        }
+      } catch (error) {
+        if (!mounted) return;
+        setGatewayHealth('down');
+        setGatewayHealthDetail(error instanceof Error ? error.message : String(error));
+      }
+    };
 
-      frameCount++;
+    void check();
+    const interval = setInterval(() => void check(), 15000);
 
-      setTelemetry({
-        frameCount,
-        uptime: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
-        bitrate: '12.5 Mbps',
-        latency: 45 + Math.random() * 10,
-        trustScore: 95 + (Math.random() - 0.5) * 2,
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   // Count active video feeds
@@ -70,6 +97,42 @@ export const ISRConsoleView: React.FC = () => {
     });
     return count;
   }, [nodes]);
+
+  const trustPct = (() => {
+    if (!selectedNode) return null;
+    const raw = selectedNode.trustScore;
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+    const pct = raw <= 1 ? raw * 100 : raw;
+    return Math.max(0, Math.min(100, pct));
+  })();
+
+  const integrityHealth: ServiceHealth = (() => {
+    if (!selectedNode) return 'unknown';
+    if (selectedNode.integrityCompromised === true) return 'down';
+    if (selectedNode.integrityCompromised === false) return 'up';
+    return 'unknown';
+  })();
+
+  const c2Health: ServiceHealth = (() => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'up';
+      case 'connecting':
+      case 'unverified':
+        return 'degraded';
+      case 'severed':
+      case 'disconnected':
+      default:
+        return 'down';
+    }
+  })();
+
+  const videoBitrate =
+    selectedNode?.videoStream?.bitrate ||
+    (typeof selectedNode?.videoStream?.metadata?.bitrate === 'number'
+      ? `${(selectedNode.videoStream.metadata.bitrate / 1_000_000).toFixed(2)} Mbps`
+      : null) ||
+    'Unavailable';
 
   return (
     <div className="h-full overflow-hidden">
@@ -105,25 +168,36 @@ export const ISRConsoleView: React.FC = () => {
               <div className="grid grid-cols-5 gap-4">
                 <div className="flex flex-col justify-between py-2 border-b border-tungsten/10">
                   <span className="text-tungsten/70 text-xs">Frames</span>
-                  <span className="font-mono text-tungsten font-semibold text-lg">{telemetry.frameCount}</span>
+                  <span className="font-mono text-tungsten/70 text-xs">Unavailable</span>
                 </div>
                 <div className="flex flex-col justify-between py-2 border-b border-tungsten/10">
                   <span className="text-tungsten/70 text-xs">Uptime</span>
-                  <span className="font-mono text-tungsten font-semibold text-sm">{telemetry.uptime}</span>
+                  <span className="font-mono text-tungsten/70 text-xs">Unavailable</span>
                 </div>
                 <div className="flex flex-col justify-between py-2 border-b border-tungsten/10">
                   <span className="text-tungsten/70 text-xs">Bitrate</span>
-                  <span className="font-mono text-tungsten/70 text-xs">{telemetry.bitrate}</span>
+                  <span className="font-mono text-tungsten/70 text-xs">{videoBitrate}</span>
                 </div>
                 <div className="flex flex-col justify-between py-2 border-b border-tungsten/10">
                   <span className="text-tungsten/70 text-xs">Latency</span>
-                  <span className="font-mono text-tungsten font-semibold">{telemetry.latency.toFixed(0)}ms</span>
+                  <span className="font-mono text-tungsten/70 text-xs">Unavailable</span>
                 </div>
                 <div className="flex flex-col justify-between py-2">
                   <span className="text-tungsten/70 text-xs">Integrity</span>
-                  <span className="text-emerald-400 font-semibold flex items-center gap-1 text-xs">
-                    <Lock size={12} /> VERIFIED
-                  </span>
+                  {(() => {
+                    const classes = healthPillClasses(integrityHealth);
+                    const label =
+                      integrityHealth === 'up'
+                        ? 'VERIFIED'
+                        : integrityHealth === 'down'
+                        ? 'COMPROMISED'
+                        : 'UNAVAILABLE';
+                    return (
+                      <span className={`${classes.text} font-semibold flex items-center gap-1 text-xs`}>
+                        <Lock size={12} /> {label}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             </GlassPanel>
@@ -178,41 +252,57 @@ export const ISRConsoleView: React.FC = () => {
                 </h3>
               </div>
               <div className="space-y-2 text-xs">
-                <div className="flex items-center justify-between py-1 px-2 bg-emerald-900/20 border border-emerald-400/30 rounded">
-                  <span className="text-tungsten/70">Gateway</span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                    <span className="text-emerald-400">3000</span>
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-1 px-2 bg-emerald-900/20 border border-emerald-400/30 rounded">
-                  <span className="text-tungsten/70">Collab</span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                    <span className="text-emerald-400">8080</span>
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-1 px-2 bg-emerald-900/20 border border-emerald-400/30 rounded">
-                  <span className="text-tungsten/70">C2 Router</span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                    <span className="text-emerald-400">50051</span>
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-1 px-2 bg-emerald-900/20 border border-emerald-400/30 rounded">
-                  <span className="text-tungsten/70">Database</span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                    <span className="text-emerald-400">5432</span>
-                  </span>
-                </div>
-                <div className="flex items-center justify-between py-1 px-2 bg-emerald-900/20 border border-emerald-400/30 rounded">
-                  <span className="text-tungsten/70">Cache</span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                    <span className="text-emerald-400">6379</span>
-                  </span>
-                </div>
+                {(() => {
+                  const gatewayClasses = healthPillClasses(gatewayHealth);
+                  const c2Classes = healthPillClasses(c2Health);
+                  const unknownClasses = healthPillClasses('unknown');
+
+                  return (
+                    <>
+                      <div className={`flex items-center justify-between py-1 px-2 border rounded ${gatewayClasses.container}`}>
+                        <span className="text-tungsten/70">Gateway</span>
+                        <span className="flex items-center gap-1">
+                          <div className={`w-2 h-2 rounded-full ${gatewayClasses.dot}`} />
+                          <span className={gatewayClasses.text}>
+                            {gatewayHealthDetail ? `health (${gatewayHealthDetail})` : 'health'}
+                          </span>
+                        </span>
+                      </div>
+
+                      <div className={`flex items-center justify-between py-1 px-2 border rounded ${c2Classes.container}`}>
+                        <span className="text-tungsten/70">C2 Router</span>
+                        <span className="flex items-center gap-1">
+                          <div className={`w-2 h-2 rounded-full ${c2Classes.dot}`} />
+                          <span className={c2Classes.text}>{connectionStatus}</span>
+                        </span>
+                      </div>
+
+                      <div className={`flex items-center justify-between py-1 px-2 border rounded ${unknownClasses.container}`}>
+                        <span className="text-tungsten/70">Collab</span>
+                        <span className="flex items-center gap-1">
+                          <div className={`w-2 h-2 rounded-full ${unknownClasses.dot}`} />
+                          <span className={unknownClasses.text}>unknown</span>
+                        </span>
+                      </div>
+
+                      <div className={`flex items-center justify-between py-1 px-2 border rounded ${unknownClasses.container}`}>
+                        <span className="text-tungsten/70">Database</span>
+                        <span className="flex items-center gap-1">
+                          <div className={`w-2 h-2 rounded-full ${unknownClasses.dot}`} />
+                          <span className={unknownClasses.text}>unknown</span>
+                        </span>
+                      </div>
+
+                      <div className={`flex items-center justify-between py-1 px-2 border rounded ${unknownClasses.container}`}>
+                        <span className="text-tungsten/70">Cache</span>
+                        <span className="flex items-center gap-1">
+                          <div className={`w-2 h-2 rounded-full ${unknownClasses.dot}`} />
+                          <span className={unknownClasses.text}>unknown</span>
+                        </span>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </GlassPanel>
 
@@ -268,15 +358,23 @@ export const ISRConsoleView: React.FC = () => {
                 <div className="space-y-2 text-xs">
                   <div className="flex justify-between py-2 border-b border-tungsten/10">
                     <span className="text-tungsten/70">Trust Score</span>
-                    <span className="text-emerald-400 font-mono font-bold">{telemetry.trustScore.toFixed(1)}%</span>
+                    <span className="text-emerald-400 font-mono font-bold">{trustPct !== null ? `${trustPct.toFixed(1)}%` : 'Unavailable'}</span>
                   </div>
                   <div className="flex justify-between py-2 border-b border-tungsten/10">
                     <span className="text-tungsten/70">Ed25519</span>
-                    <span className="text-emerald-400 font-semibold">✓ VALID</span>
+                    <span className={`${selectedNode.verified ? 'text-emerald-400' : 'text-yellow-400'} font-semibold`}>
+                      {selectedNode.verified ? '✓ VERIFIED' : 'UNVERIFIED'}
+                    </span>
                   </div>
                   <div className="flex justify-between py-2">
                     <span className="text-tungsten/70">Merkle</span>
-                    <span className="text-emerald-400 font-semibold">✓ VERIFIED</span>
+                    <span className={`${selectedNode.integrityCompromised ? 'text-jamming' : 'text-emerald-400'} font-semibold`}>
+                      {selectedNode.integrityCompromised === true
+                        ? 'BROKEN'
+                        : selectedNode.integrityCompromised === false
+                        ? '✓ VERIFIED'
+                        : 'UNAVAILABLE'}
+                    </span>
                   </div>
                   <div className="mt-3 pt-2 border-t border-tungsten/10">
                     <div className="text-tungsten/50 text-xs mb-1">Attestation Hash</div>

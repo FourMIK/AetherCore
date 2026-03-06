@@ -16,9 +16,11 @@ import { GlassPanel } from '../hud/GlassPanel';
 import { useTacticalStore } from '../../store/useTacticalStore';
 import { AssetRadar } from './AssetRadar';
 import { ActivationTerminal } from './ActivationTerminal';
+import { isTauriRuntime } from '../../config/runtime';
+import { ServiceUnavailablePanel } from '../health/ServiceUnavailablePanel';
 
 interface CandidateNode {
-  type: string;
+  type: 'USB' | 'NET';
   id: string;
   label: string;
   transport?: 'usb-serial' | 'usb-mass-storage' | 'network' | 'bluetooth-serial';
@@ -28,7 +30,8 @@ interface CandidateNode {
 interface GenesisIdentity {
   public_key: string;
   root_hash: string;
-  callsign: string;
+  node_id: string;
+  callsign?: string;
 }
 
 interface AddNodeWizardProps {
@@ -36,6 +39,7 @@ interface AddNodeWizardProps {
 }
 
 export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
+  const isDesktop = isTauriRuntime();
   const [view, setView] = useState<'radar' | 'activation'>('radar');
   const [selectedAsset, setSelectedAsset] = useState<CandidateNode | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -59,22 +63,19 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
   };
 
   const handleSuccess = (identity: GenesisIdentity) => {
-    // Generate a stable, readable node ID and avoid collisions from repeated callsigns
-    const callsignBase = identity.callsign.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    const hashSuffix = identity.root_hash.slice(0, 8).toLowerCase();
-    const nodeId = `${callsignBase || 'ralphienode'}-${hashSuffix}`;
-    
-    // Add the node to the tactical store
+    // Fail-visible: use the node-provided identity key as the stable ID.
+    // Do not synthesize IDs that diverge from service telemetry.
+    const nodeId = identity.node_id;
+
     addNode({
       id: nodeId,
       domain: 'ralphienode',
       position: { latitude: 0, longitude: 0, altitude: 0 }, // Default position
-      trustScore: 100,
-      verified: true,
+      trustScore: 0,
+      verified: false,
       attestationHash: identity.root_hash,
       lastSeen: new Date(),
-      status: 'online',
-      firmwareVersion: '1.0.0',
+      status: 'offline',
       integrityCompromised: false,
     });
 
@@ -152,20 +153,34 @@ export const AddNodeWizard: React.FC<AddNodeWizardProps> = ({ onClose }) => {
 
         {/* Content */}
         <div className="flex-1 min-h-0 overflow-y-auto p-6" data-testid="wizard-content">
-          {view === 'radar' && (
-            <AssetRadar
-              onActivate={handleActivate}
-              scanning={scanning}
-              setScanning={setScanning}
+          {!isDesktop ? (
+            <ServiceUnavailablePanel
+              title="Node provisioning requires the desktop app"
+              description="RalphieNode onboarding uses local hardware access (serial/USB provisioning) and is not available in a browser runtime."
+              capability="Serial/USB provisioning + local flashing"
+              remediation={[
+                'Open Tactical Glass desktop (Tauri runtime) to provision hardware nodes.',
+                'If you only need remote node visibility, use the Fleet/Map workspaces.',
+              ]}
             />
-          )}
+          ) : (
+            <>
+              {view === 'radar' && (
+                <AssetRadar
+                  onActivate={handleActivate}
+                  scanning={scanning}
+                  setScanning={setScanning}
+                />
+              )}
 
-          {view === 'activation' && selectedAsset && (
-            <ActivationTerminal
-              asset={selectedAsset}
-              onSuccess={handleSuccess}
-              onCancel={handleCancel}
-            />
+              {view === 'activation' && selectedAsset && (
+                <ActivationTerminal
+                  asset={selectedAsset}
+                  onSuccess={handleSuccess}
+                  onCancel={handleCancel}
+                />
+              )}
+            </>
           )}
         </div>
 

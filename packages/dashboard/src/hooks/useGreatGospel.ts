@@ -14,6 +14,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useCommStore } from '../store/useCommStore';
 import { RevocationReason } from '../components/animations/AethericSweep';
+import { isDemoMode } from '../config/runtime';
 
 /**
  * Revocation Event from Great Gospel ledger
@@ -51,6 +52,7 @@ export function useGreatGospel(gospelEndpoint?: string) {
   const { revokeNode, isNodeRevoked, activeCall } = useCommStore();
   const [revocationEvents, setRevocationEvents] = useState<RevocationEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const demoEnabled = isDemoMode();
 
   /**
    * Handle revocation event from Gospel ledger
@@ -155,6 +157,11 @@ export function useGreatGospel(gospelEndpoint?: string) {
    * Manually revoke a node (operator override)
    */
   const manualRevoke = useCallback((nodeId: string) => {
+    if (!demoEnabled) {
+      throw new Error(
+        'Manual revocation is demo-only unless backed by a real Great Gospel ledger endpoint.'
+      );
+    }
     const event: RevocationEvent = {
       node_id: nodeId,
       reason: RevocationReason.OperatorOverride,
@@ -165,7 +172,7 @@ export function useGreatGospel(gospelEndpoint?: string) {
     };
 
     handleRevocation(event);
-  }, [handleRevocation]);
+  }, [demoEnabled, handleRevocation]);
 
   return {
     isConnected,
@@ -181,6 +188,9 @@ export function useGreatGospel(gospelEndpoint?: string) {
  * Simulates Byzantine behavior detection and triggers revocation.
  */
 export function simulateRevocation(nodeId: string, reason: RevocationReason): RevocationEvent {
+  if (!isDemoMode()) {
+    throw new Error('simulateRevocation is demo-only. Enable demo mode explicitly to use simulations.');
+  }
   return {
     node_id: nodeId,
     reason,

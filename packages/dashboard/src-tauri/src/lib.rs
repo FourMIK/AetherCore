@@ -340,6 +340,7 @@ fn evaluate_sentinel_startup(
                     "Startup continued without hardware attestation. Reduced-trust posture is active. {}",
                     error_details
                 ),
+                startup_probe: None,
             })
         }
         (SentinelBootPolicy::Disabled, Err(error_details)) => {
@@ -351,6 +352,7 @@ fn evaluate_sentinel_startup(
                     "Hardware verification is disabled by policy. Startup bypassed attestation. {}",
                     error_details
                 ),
+                startup_probe: None,
             })
         }
     }
@@ -419,6 +421,7 @@ pub fn run() {
                     headline: "CI Sentinel Override Active".to_string(),
                     detail: "Sentinel boot attestation skipped for CI bootstrap validation."
                         .to_string(),
+                    startup_probe: None,
                 })
             } else {
                 let sentinel_result = if should_skip_sentinel_boot(sentinel_policy) {
@@ -620,6 +623,7 @@ pub fn run() {
             commands::get_deployment_status,
             commands::get_node_logs,
             commands::sign_heartbeat_payload,
+            commands::get_heartbeat_device_id,
             // Configuration management commands
             commands::get_config,
             commands::update_config,

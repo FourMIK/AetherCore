@@ -12,10 +12,12 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { QRCodeSVG } from 'qrcode.react';
 import { GlassPanel } from './hud/GlassPanel';
+import { TauriCommands, type GenesisMessage, type SerialDeviceInfo } from '../api/tauri-commands';
+import { isTauriRuntime } from '../config/runtime';
+import { ServiceUnavailablePanel } from './health/ServiceUnavailablePanel';
 import { 
   Usb, 
   Upload, 
@@ -32,32 +34,10 @@ import {
 // Type Definitions
 // ============================================================================
 
-interface SerialDevice {
-  port_name: string;
-  port_type: string;
-  manufacturer: string | null;
-  product: string | null;
-  serial_number: string | null;
-}
-
 interface FlashProgress {
   stage: string;
   message: string;
   progress: number;
-}
-
-interface GenesisMessage {
-  type: string;
-  root: string;
-  pub_key: string;
-}
-
-interface GenesisBundle {
-  user_identity: string;
-  squad_id: string;
-  public_key: string;
-  signature: string;
-  timestamp: number;
 }
 
 // ============================================================================
@@ -67,12 +47,13 @@ interface GenesisBundle {
 export const RalphieNodeProvisioning: React.FC = () => {
   // Refs for cleanup
   const stepTransitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isDesktop = isTauriRuntime();
   
   // Workflow state
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   
   // Step 1: Device Selection & Flashing
-  const [devices, setDevices] = useState<SerialDevice[]>([]);
+  const [devices, setDevices] = useState<SerialDeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [firmwarePath, setFirmwarePath] = useState<string>('');
   const [isFlashing, setIsFlashing] = useState(false);
@@ -96,10 +77,17 @@ export const RalphieNodeProvisioning: React.FC = () => {
 
   const scanDevices = async () => {
     try {
-      const result = await invoke<SerialDevice[]>('list_serial_ports');
-      setDevices(result);
-      if (result.length > 0 && !selectedDevice) {
-        setSelectedDevice(result[0].port_name);
+      if (!isDesktop) {
+        setFlashError('Desktop runtime not available. Provisioning requires the Tactical Glass desktop app.');
+        return;
+      }
+      const result = await TauriCommands.listSerialPorts();
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      setDevices(result.data);
+      if (result.data.length > 0 && !selectedDevice) {
+        setSelectedDevice(result.data[0].port_name);
       }
     } catch (err) {
       console.error('Failed to scan devices:', err);
@@ -108,15 +96,21 @@ export const RalphieNodeProvisioning: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!isDesktop) {
+      return;
+    }
     let mounted = true;
     
     const scan = async () => {
       try {
-        const result = await invoke<SerialDevice[]>('list_serial_ports');
+        const result = await TauriCommands.listSerialPorts();
+        if (!result.success) {
+          throw new Error(result.error);
+        }
         if (mounted) {
-          setDevices(result);
-          if (result.length > 0 && !selectedDevice) {
-            setSelectedDevice(result[0].port_name);
+          setDevices(result.data);
+          if (result.data.length > 0 && !selectedDevice) {
+            setSelectedDevice(result.data[0].port_name);
           }
         }
       } catch (err) {
@@ -132,7 +126,7 @@ export const RalphieNodeProvisioning: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [isDesktop]);
 
   // Cleanup effect for timeouts
   useEffect(() => {
@@ -159,10 +153,10 @@ export const RalphieNodeProvisioning: React.FC = () => {
     });
 
     try {
-      await invoke('flash_firmware', {
-        port: selectedDevice,
-        firmwarePath: firmwarePath,
-      });
+      const result = await TauriCommands.flashFirmware(selectedDevice, firmwarePath);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
 
       // Flash successful, move to next step
       // Clear any existing timeout first
@@ -197,11 +191,12 @@ export const RalphieNodeProvisioning: React.FC = () => {
     setGenesisError(null);
 
     try {
-      const result = await invoke<GenesisMessage>('listen_for_genesis', {
-        port: selectedDevice,
-      });
+      const result = await TauriCommands.listenForGenesis(selectedDevice);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
 
-      setGenesisMessage(result);
+      setGenesisMessage(result.data);
       setCurrentStep(3);
     } catch (err) {
       setGenesisError(`Failed to receive GENESIS: ${err}`);
@@ -226,13 +221,17 @@ export const RalphieNodeProvisioning: React.FC = () => {
     }
 
     try {
-      const bundle: GenesisBundle = await invoke('generate_genesis_bundle', {
-        userIdentity,
-        squadId,
-      });
+      const result = await TauriCommands.generateGenesisBundle(userIdentity, squadId);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      const bundle = result.data;
 
-      const qrString: string = await invoke('bundle_to_qr_data', { bundle });
-      setQrData(qrString);
+      const qrResult = await TauriCommands.bundleToQrData(bundle);
+      if (!qrResult.success) {
+        throw new Error(qrResult.error);
+      }
+      setQrData(qrResult.data);
     } catch (err) {
       setEnrollmentError(`Failed to generate enrollment: ${err}`);
     }
@@ -297,6 +296,24 @@ export const RalphieNodeProvisioning: React.FC = () => {
   // ============================================================================
   // Main Render
   // ============================================================================
+
+  if (!isDesktop) {
+    return (
+      <div className="h-full overflow-y-auto">
+        <div className="max-w-5xl mx-auto p-6 space-y-6">
+          <ServiceUnavailablePanel
+            title="Provisioning requires the desktop runtime"
+            description="This workflow depends on serial/USB access (flashing, listening for GENESIS) which is not available in a browser."
+            capability="Serial/USB access + local device flashing"
+            remediation={[
+              'Open this workspace in the Tactical Glass desktop app (Tauri runtime).',
+              'Confirm device drivers are installed and the node appears under “Serial Ports”.',
+            ]}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full overflow-y-auto">

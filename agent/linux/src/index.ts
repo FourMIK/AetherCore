@@ -7,7 +7,6 @@
  * Philosophy: "Trust On Boot" - Hardware-rooted identity or brick.
  */
 
-import { LinuxIdentityAgent } from './identity';
 import { startEnrollment, getDeviceIdentity } from './integration/onboarding';
 import { getStatusIndicator } from './ui/status-indicator';
 import { getConfigManager } from './device-management/configManager';
@@ -54,26 +53,24 @@ async function genesisMode() {
     // Create keys directory with proper permissions
     await fs.mkdir(KEYS_DIR, { recursive: true, mode: 0o700 });
     console.log(`[Genesis] Created keys directory: ${KEYS_DIR}`);
-    
-    // Initialize identity agent
-    const agent = new LinuxIdentityAgent(IDENTITY_FILE);
-    const salt = process.env.AETHERCORE_SALT || 'default-salt';
-    
-    // Generate identity
-    console.log('[Genesis] Generating identity block...');
-    const identity = await agent.createIdentity(salt);
-    
-    // Output IdentityBlock JSON to stdout for dashboard capture
+
+    // Genesis mode now performs enrollment and persists a runtime identity record.
+    // This keeps install.sh and systemd consistent with normal agent operation.
+    console.log('[Genesis] Running enrollment bootstrap...');
+    const identity = await startEnrollment();
+
+    // Output JSON to stdout for dashboard/operator capture (install.sh scrapes this block).
     console.log('');
     console.log('=== IDENTITY_BLOCK_START ===');
     console.log(JSON.stringify(identity, null, 2));
     console.log('=== IDENTITY_BLOCK_END ===');
     console.log('');
-    
-    console.log('[Genesis] ✓ Identity generated successfully');
-    console.log(`[Genesis]   Hardware ID: ${identity.hardware_id}`);
-    console.log(`[Genesis]   Genesis Hash: ${identity.genesis_hash}`);
-    console.log(`[Genesis]   Platform: ${identity.platform_type}`);
+
+    console.log('[Genesis] ✓ Enrollment identity generated successfully');
+    console.log(`[Genesis]   Device ID: ${identity.device_id}`);
+    console.log(`[Genesis]   Certificate Serial: ${identity.certificate_serial}`);
+    console.log(`[Genesis]   Trust Score: ${identity.trust_score}`);
+    console.log(`[Genesis]   TPM Available: ${identity.tpm_backed}`);
     console.log(`[Genesis]   Identity stored: ${IDENTITY_FILE}`);
     
     // Verify permissions

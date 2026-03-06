@@ -8,35 +8,23 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { GlassPanel } from '../hud/GlassPanel';
-
-interface LicenseInventoryEntry {
-  package_name: string;
-  version: string;
-  license: string;
-  license_hash: string | null;
-  ecosystem: string;
-  compliance_status: 'APPROVED' | 'FLAGGED' | 'UNKNOWN';
-}
-
-interface LicenseInventory {
-  total_dependencies: number;
-  approved_count: number;
-  flagged_count: number;
-  unknown_count: number;
-  entries: LicenseInventoryEntry[];
-  manifest_hash: string | null;
-  last_verification: number | null;
-}
+import { TauriCommands, type LicenseInventory } from '../../api/tauri-commands';
+import { isTauriRuntime } from '../../config/runtime';
+import { ServiceUnavailablePanel } from '../health/ServiceUnavailablePanel';
 
 export const ComplianceHUD: React.FC = () => {
+  const isDesktop = isTauriRuntime();
   const [inventory, setInventory] = useState<LicenseInventory | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedPackages, setExpandedPackages] = useState(false);
 
   useEffect(() => {
+    if (!isDesktop) {
+      setLoading(false);
+      return;
+    }
     loadLicenseInventory();
     
     // Refresh every 60 seconds
@@ -45,13 +33,16 @@ export const ComplianceHUD: React.FC = () => {
     }, 60000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [isDesktop]);
 
   const loadLicenseInventory = async () => {
     try {
       setLoading(true);
-      const data = await invoke<LicenseInventory>('get_license_inventory');
-      setInventory(data);
+      const result = await TauriCommands.getLicenseInventory();
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      setInventory(result.data);
       setError(null);
     } catch (err) {
       console.error('Failed to load license inventory:', err);
@@ -84,6 +75,21 @@ export const ComplianceHUD: React.FC = () => {
   };
 
   const compliance = getComplianceStatus();
+
+  if (!isDesktop) {
+    return (
+      <ServiceUnavailablePanel
+        title="Compliance inventory unavailable in browser"
+        description="License inventory and SBOM verification are performed locally by the Tactical Glass desktop runtime."
+        capability="Local SBOM + LICENSE_MANIFEST access"
+        remediation={[
+          'Open this workspace in the Tactical Glass desktop app (Tauri runtime).',
+          'Generate artifacts: ./scripts/generate-sbom.sh (creates sbom-artifacts/*).',
+          'For packaged builds, set AETHERCORE_SBOM_DIR to the sbom-artifacts folder path.',
+        ]}
+      />
+    );
+  }
 
   if (loading && !inventory) {
     return (

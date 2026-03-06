@@ -25,6 +25,7 @@ describe('AddNodeWizard', () => {
     vi.useRealTimers();
     localStorage.clear();
     useTacticalStore.getState().clearNodes();
+    (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
 
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -35,6 +36,7 @@ describe('AddNodeWizard', () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
     vi.useRealTimers();
   });
 
@@ -72,9 +74,13 @@ describe('AddNodeWizard', () => {
       }
       if (command === 'provision_target') {
         return {
+          status: 'SUCCESS',
           identity: {
+            node_id: 'ralphie-node-a',
             public_key: 'pub_key_1',
             root_hash: 'ABCDEF0123456789',
+            timestamp: Math.floor(Date.now() / 1000),
+            device_type: 'NET',
             callsign: 'Ralphie Alpha',
           },
         };
@@ -119,7 +125,7 @@ describe('AddNodeWizard', () => {
     );
     expect(addedNode).toBeDefined();
     expect(addedNode?.domain).toBe('ralphienode');
-    expect(addedNode?.status).toBe('online');
+    expect(addedNode?.status).toBe('offline');
   });
 
   it('surfaces explicit activation failures and allows returning to scan view', async () => {
@@ -185,9 +191,13 @@ describe('AddNodeWizard', () => {
       }
       if (command === 'provision_target') {
         return {
+          status: 'SUCCESS',
           identity: {
+            node_id: 'ralphie-usb-01',
             public_key: 'pub_key_usb',
             root_hash: 'FIRMWAREAUTO1234',
+            timestamp: Math.floor(Date.now() / 1000),
+            device_type: 'USB',
             callsign: 'Ralphie USB',
           },
         };

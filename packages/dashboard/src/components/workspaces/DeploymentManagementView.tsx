@@ -4,19 +4,14 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { GlassPanel } from '../hud/GlassPanel';
 import { Server, StopCircle, RefreshCw, FileText, PlayCircle, X } from 'lucide-react';
-
-interface DeploymentStatus {
-  node_id: string;
-  pid: number;
-  port: number;
-  started_at: number;
-  status: string;
-}
+import { TauriCommands, type DeploymentStatus } from '../../api/tauri-commands';
+import { isTauriRuntime } from '../../config/runtime';
+import { ServiceUnavailablePanel } from '../health/ServiceUnavailablePanel';
 
 export const DeploymentManagementView: React.FC = () => {
+  const isDesktop = isTauriRuntime();
   const [deployments, setDeployments] = useState<DeploymentStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,8 +22,11 @@ export const DeploymentManagementView: React.FC = () => {
 
   const fetchDeployments = React.useCallback(async () => {
     try {
-      const result = await invoke<DeploymentStatus[]>('get_deployment_status');
-      setDeployments(result);
+      const result = await TauriCommands.getDeploymentStatus();
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      setDeployments(result.data);
       setError(null);
     } catch (err) {
       setError(`Failed to fetch deployments: ${err}`);
@@ -40,7 +38,10 @@ export const DeploymentManagementView: React.FC = () => {
 
   const stopNode = async (nodeId: string) => {
     try {
-      await invoke('stop_node', { nodeId });
+      const result = await TauriCommands.stopNode(nodeId);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
       await fetchDeployments();
     } catch (err) {
       setError(`Failed to stop node: ${err}`);
@@ -50,8 +51,11 @@ export const DeploymentManagementView: React.FC = () => {
 
   const viewLogs = async (nodeId: string) => {
     try {
-      const result = await invoke<string[]>('get_node_logs', { nodeId, tail: 500 });
-      setLogs(result);
+      const result = await TauriCommands.getNodeLogs(nodeId, 500);
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      setLogs(result.data);
       setSelectedNodeId(nodeId);
       setShowLogModal(true);
     } catch (err) {
@@ -61,31 +65,35 @@ export const DeploymentManagementView: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!isDesktop) {
+      setLoading(false);
+      return;
+    }
     fetchDeployments();
-  }, []);
+  }, [fetchDeployments, isDesktop]);
 
   // Auto-refresh every 5 seconds
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!isDesktop || !autoRefresh) return;
     
     const interval = setInterval(() => {
       fetchDeployments();
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, fetchDeployments]);
+  }, [autoRefresh, fetchDeployments, isDesktop]);
 
   // Live tail logs if modal is open
   useEffect(() => {
-    if (!showLogModal || !selectedNodeId) return;
+    if (!isDesktop || !showLogModal || !selectedNodeId) return;
 
     const interval = setInterval(async () => {
       try {
-        const result = await invoke<string[]>('get_node_logs', { 
-          nodeId: selectedNodeId, 
-          tail: 500 
-        });
-        setLogs(result);
+        const result = await TauriCommands.getNodeLogs(selectedNodeId, 500);
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+        setLogs(result.data);
       } catch (err) {
         console.error('Error refreshing logs:', err);
         // If error fetching logs, stop the interval
@@ -94,7 +102,7 @@ export const DeploymentManagementView: React.FC = () => {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [showLogModal, selectedNodeId]);
+  }, [showLogModal, selectedNodeId, isDesktop]);
 
   const formatTimestamp = (timestamp: number) => {
     return new Date(timestamp * 1000).toLocaleString();
@@ -129,6 +137,22 @@ export const DeploymentManagementView: React.FC = () => {
         return 'text-tungsten';
     }
   };
+
+  if (!isDesktop) {
+    return (
+      <div className="h-full p-6">
+        <ServiceUnavailablePanel
+          title="Deployment management requires the desktop app"
+          description="This workspace manages locally deployed node processes, which is only available in the Tactical Glass desktop runtime."
+          capability="Local process management + log tailing"
+          remediation={[
+            'Open this workspace in the Tactical Glass desktop app (Tauri runtime).',
+            'Ensure the local stack is installed and healthy (Bootstrap Onboarding).',
+          ]}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full p-6 space-y-6">

@@ -639,7 +639,8 @@ export class MeshClient {
   private initializeSigningMaterial(): { privateKey: crypto.KeyObject; publicKeyPem: string } {
     const configuredPath = process.env.CODERALPHIE_CHAT_SIGNING_KEY_PATH?.trim();
     const fallbackPath = process.env.AETHERCORE_SIGNING_PRIVATE_KEY_PATH?.trim();
-    const keyCandidates = [configuredPath, fallbackPath, '/tmp/ralphie_dev.key'].filter(
+    const defaultPath = '/etc/coderalphie/keys/signing-key.pem';
+    const keyCandidates = [configuredPath, fallbackPath, defaultPath, '/tmp/ralphie_dev.key'].filter(
       (value): value is string => !!value && value.length > 0,
     );
 

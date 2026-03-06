@@ -9,6 +9,7 @@ import pino from 'pino';
 import { blake3 } from 'hash-wasm';
 import { parseTpmEnabled } from './tpm';
 import { createC2RouterClient, dispatchCommand } from './c2-client';
+import { getEnrollmentIssuer, normalizeCertificateSerial, validateEnrollmentCsr } from './enrollment';
 import {
   DistributedRevocationRegistry,
   evaluateRevocationGate,
@@ -103,6 +104,25 @@ const REVOCATION_FAIL_CLOSED = parseBooleanEnv('AETHERCORE_REVOCATION_FAIL_CLOSE
 const IDENTITY_REGISTRY_HTTP_ENDPOINT = process.env.IDENTITY_REGISTRY_HTTP_ENDPOINT?.trim() || '';
 const IDENTITY_REGISTRY_TIMEOUT_MS = parsePositiveIntEnv('IDENTITY_REGISTRY_TIMEOUT_MS', 5000);
 const AETHERCORE_ADMIN_NODE_IDS = parseDelimitedEnvSet(process.env.AETHERCORE_ADMIN_NODE_IDS);
+const ENROLLMENT_TRUST_SCORE = (() => {
+  const raw = process.env.AETHERCORE_ENROLLMENT_TRUST_SCORE;
+  if (!raw) {
+    return 0.93;
+  }
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    logger.warn(
+      { variable: 'AETHERCORE_ENROLLMENT_TRUST_SCORE', value: raw, default_value: 0.93 },
+      'Invalid enrollment trust score override',
+    );
+    return 0.93;
+  }
+  return parsed;
+})();
+const ENROLLMENT_CSR_MAX_SKEW_MS = parsePositiveIntEnv(
+  'AETHERCORE_ENROLLMENT_CSR_MAX_SKEW_MS',
+  10 * 60 * 1000,
+);
 
 function warnOnLocalhostTargetInContainer(target: string, variableName: string): void {
   if (isRunningInContainer() && isLocalhostTarget(target)) {
@@ -147,6 +167,23 @@ const AdminRevocationRequestSchema = z.object({
   timestamp_ms: z.number().int().positive(),
   authority_signature_hex: z.string().regex(/^[0-9a-fA-F]{128}$/),
 });
+
+const EnrollmentRequestSchema = z.object({
+  csr: z.string().min(1),
+  device_id: z.string().min(1),
+  hardware_serial: z.string().min(1),
+  public_key: z.string().min(1),
+});
+
+const RevocationCheckRequestSchema = z
+  .object({
+    certificate_serial: z.string().optional(),
+    certificateSerial: z.string().optional(),
+  })
+  .refine((value) => {
+    const candidate = value.certificate_serial ?? value.certificateSerial ?? '';
+    return typeof candidate === 'string' && candidate.trim().length > 0;
+  }, 'certificate_serial is required');
 
 const RalphieTelemetrySchema = z
   .object({
@@ -547,6 +584,152 @@ setInterval(() => {
 // Health check endpoint for Docker/Kubernetes readiness probes
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
+});
+
+app.post('/api/enrollment', async (req, res) => {
+  const parsed = EnrollmentRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      status: 'error',
+      code: 'INVALID_REQUEST',
+      message: 'Invalid enrollment request payload',
+      details: parsed.error.flatten(),
+    });
+    return;
+  }
+
+  const body = parsed.data;
+  const productionMode = isProductionMode();
+
+  try {
+    await validateEnrollmentCsr({
+      csrBase64: body.csr,
+      deviceId: body.device_id,
+      hardwareSerial: body.hardware_serial,
+      publicKeyPem: body.public_key,
+      productionMode,
+      maxClockSkewMs: ENROLLMENT_CSR_MAX_SKEW_MS,
+    });
+  } catch (error) {
+    res.status(400).json({
+      status: 'error',
+      code: 'CSR_INVALID',
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+
+  let issuer;
+  try {
+    issuer = await getEnrollmentIssuer(logger, productionMode);
+  } catch (error) {
+    logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+        production_mode: productionMode,
+      },
+      'Enrollment issuer unavailable',
+    );
+    res.status(503).json({
+      status: 'error',
+      code: 'ENROLLMENT_UNAVAILABLE',
+      message: 'Enrollment issuer unavailable',
+    });
+    return;
+  }
+
+  try {
+    const { certificatePem, certificateSerial } = await issuer.issueLeafCertificate({
+      publicKeyPem: body.public_key,
+      deviceId: body.device_id,
+      hardwareSerial: body.hardware_serial,
+    });
+
+    res.status(200).json({
+      certificate: certificatePem,
+      certificate_serial: certificateSerial,
+      trust_score: ENROLLMENT_TRUST_SCORE,
+      ca_certificate: issuer.caCertPem,
+      revocation_endpoint: null,
+      device_id: body.device_id,
+      hardware_serial: body.hardware_serial,
+      tpm_attested: null,
+    });
+  } catch (error) {
+    logger.error(
+      {
+        device_id: body.device_id,
+        hardware_serial: body.hardware_serial,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Enrollment certificate issuance failed',
+    );
+    res.status(500).json({
+      status: 'error',
+      code: 'CERT_ISSUANCE_FAILED',
+      message: 'Enrollment certificate issuance failed',
+    });
+  }
+});
+
+app.post(['/api/revocation/check', '/api/revocation/check/:token'], (req, res) => {
+  const parsed = RevocationCheckRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      status: 'error',
+      code: 'INVALID_REQUEST',
+      message: 'Invalid revocation check payload',
+      details: parsed.error.flatten(),
+    });
+    return;
+  }
+
+  const serialRaw = parsed.data.certificate_serial ?? parsed.data.certificateSerial ?? '';
+  const serial = normalizeCertificateSerial(serialRaw);
+  if (!serial) {
+    res.status(400).json({
+      status: 'error',
+      code: 'INVALID_SERIAL',
+      message: 'certificate_serial must contain hex characters',
+    });
+    return;
+  }
+
+  if (!revocationRegistry.isConfigured()) {
+    res.status(200).json({
+      status: 'unknown',
+      detail: 'no distributed revocation source configured',
+      certificate_serial: serial,
+    });
+    return;
+  }
+
+  if (!revocationRegistry.hasSynced()) {
+    res.status(200).json({
+      status: 'unknown',
+      detail: 'revocation source not yet synced',
+      certificate_serial: serial,
+    });
+    return;
+  }
+
+  const lookup = revocationRegistry.checkIdentity('', serial);
+  if (lookup.revoked) {
+    res.status(200).json({
+      status: 'revoked',
+      certificate_serial: serial,
+      revocation_reason: lookup.certificate.revocation_reason ?? null,
+      issuer_id: lookup.certificate.issuer_id ?? null,
+      timestamp_ns: lookup.certificate.timestamp_ns ?? null,
+      matched_by: lookup.matchedBy,
+    });
+    return;
+  }
+
+  res.status(200).json({
+    status: 'active',
+    certificate_serial: serial,
+  });
 });
 
 // GET endpoint to retrieve current nodes

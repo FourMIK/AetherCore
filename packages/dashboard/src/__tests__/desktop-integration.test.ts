@@ -57,7 +57,7 @@ describe("Desktop Integration - Tauri Command Invocations", () => {
   describe("connect_to_testnet command", () => {
     it("should validate and accept valid WebSocket endpoint", async () => {
       const endpoint = "wss://testnet.aethercore.local:8080";
-      const expectedResponse = `Connected to testnet at ${endpoint} (validation successful)`;
+      const expectedResponse = `Testnet endpoint validated and stored: ${endpoint} (no session established)`;
 
       mockInvoke.mockResolvedValue(expectedResponse);
 
