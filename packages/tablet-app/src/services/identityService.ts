@@ -5,6 +5,7 @@
  */
 
 import * as Device from 'expo-device';
+import * as FileSystem from 'expo-file-system';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface DeviceIdentity {
@@ -17,6 +18,39 @@ export interface DeviceIdentity {
 }
 
 let cachedIdentity: DeviceIdentity | null = null;
+const IDENTITY_PATH = FileSystem.documentDirectory
+  ? `${FileSystem.documentDirectory}aethercore_device_identity.json`
+  : null;
+
+async function tryLoadIdentity(): Promise<DeviceIdentity | null> {
+  if (IDENTITY_PATH === null) {
+    return null;
+  }
+
+  const info = await FileSystem.getInfoAsync(IDENTITY_PATH);
+  if (!info.exists) {
+    return null;
+  }
+
+  const raw = await FileSystem.readAsStringAsync(IDENTITY_PATH);
+  const parsed = JSON.parse(raw) as Partial<DeviceIdentity>;
+
+  if (!parsed.deviceId || !parsed.nodeId || !parsed.publicKey) {
+    throw new Error('Persisted identity is missing required fields');
+  }
+
+  return parsed as DeviceIdentity;
+}
+
+async function persistIdentity(identity: DeviceIdentity): Promise<void> {
+  if (IDENTITY_PATH === null) {
+    return;
+  }
+
+  await FileSystem.writeAsStringAsync(IDENTITY_PATH, JSON.stringify(identity), {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
+}
 
 /**
  * Initialize device identity
@@ -29,16 +63,22 @@ export async function initializeIdentity(): Promise<DeviceIdentity> {
   }
 
   try {
+    const persisted = await tryLoadIdentity();
+    if (persisted) {
+      cachedIdentity = persisted;
+      return persisted;
+    }
+
     // Get device info
     const deviceName = Device.deviceName || 'Unknown Device';
-    const deviceId = Device.deviceId || 'device-' + uuidv4();
+    const deviceId = uuidv4();
 
     // Generate a mock node ID and keys
     const nodeId = `node-${deviceId.slice(0, 8)}`;
-    const publicKey = `0x${Math.random().toString(16).slice(2).padEnd(64, '0')}`;
+    const publicKey = `0x${uuidv4().replace(/-/g, '')}${uuidv4().replace(/-/g, '')}`;
 
     // Check if device has hardware security (mock - in reality would check KEYMINTversion, StrongBox, etc.)
-    const isHardwareBacked = Device.brand !== 'unknown';
+    const isHardwareBacked = Device.brand !== null && Device.brand !== 'unknown';
 
     cachedIdentity = {
       deviceId,
@@ -49,6 +89,7 @@ export async function initializeIdentity(): Promise<DeviceIdentity> {
       timestamp: Date.now(),
     };
 
+    await persistIdentity(cachedIdentity);
     console.log('Device identity initialized:', cachedIdentity);
     return cachedIdentity;
   } catch (error) {

@@ -2,6 +2,9 @@
 name = "aethercore-integration-tests"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 publish = false
 
 [dependencies]

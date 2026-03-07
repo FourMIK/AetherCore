@@ -1,3 +1,5 @@
+#![cfg(feature = "android-keystore")]
+
 use aethercore_identity::{
     AndroidSecuritySignals, Attestation, IdentityManager, PlatformIdentity, TrustPolicyTier,
 };

@@ -32,3 +32,5 @@ protoc-bin-vendored = "3"
 tokio = { workspace = true }
 proptest = "1.4"
 rand = { workspace = true }
+aethercore-tak-bridge = { path = "../tak-bridge" }
+aethercore-unit-status = { path = "../unit-status" }

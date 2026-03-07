@@ -24,6 +24,7 @@ pub struct SecureEnclaveQuote {
 /// Secure Enclave nonce-signing attestor.
 #[derive(Debug, Clone)]
 pub struct SecureEnclaveAttestor {
+    #[cfg_attr(not(any(target_os = "macos", target_os = "ios")), allow(dead_code))]
     key_tag: String,
 }
 

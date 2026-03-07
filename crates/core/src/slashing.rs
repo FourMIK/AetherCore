@@ -326,7 +326,7 @@ impl SlashingEngine {
         let history = self
             .node_event_history
             .entry(node_id.to_string())
-            .or_insert_with(HashMap::new);
+            .or_default();
 
         // Extract sequence number from the event
         // NOTE: Using timestamp as proxy for sequence number. In production,

@@ -10,7 +10,7 @@
 //! - The daemon runs on a separate Tokio runtime thread
 
 use jni::objects::{JClass, JString};
-use jni::sys::{jboolean, jstring};
+use jni::sys::jboolean;
 use jni::JNIEnv;
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::runtime::Runtime;
@@ -36,6 +36,11 @@ static DAEMON: OnceLock<Arc<Mutex<Option<AetherCoreDaemon>>>> = OnceLock::new();
 ///
 /// # Returns
 /// `true` if initialization succeeded, `false` otherwise
+///
+/// # Safety
+/// This function is invoked via JNI from the JVM. The caller must ensure `env`
+/// is a valid `JNIEnv` for the current thread and that `storage_path` and
+/// `hardware_id` are valid Java strings for the duration of this call.
 #[no_mangle]
 pub unsafe extern "C" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeInitialize(
     mut env: JNIEnv,
@@ -103,6 +108,11 @@ pub unsafe extern "C" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeD
 }
 
 /// Start the AetherCore daemon
+///
+/// # Safety
+/// This function is invoked via JNI from the JVM. The caller must ensure `env`
+/// is a valid `JNIEnv` for the current thread and the thread remains attached
+/// to the JVM for the duration of this call.
 #[no_mangle]
 pub unsafe extern "C" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeStartDaemon(
     _env: JNIEnv,
@@ -137,6 +147,11 @@ pub unsafe extern "C" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeD
 }
 
 /// Stop the AetherCore daemon
+///
+/// # Safety
+/// This function is invoked via JNI from the JVM. The caller must ensure `env`
+/// is a valid `JNIEnv` for the current thread and the thread remains attached
+/// to the JVM for the duration of this call.
 #[no_mangle]
 pub unsafe extern "C" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeStopDaemon(
     _env: JNIEnv,
@@ -167,6 +182,11 @@ pub unsafe extern "C" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeD
 }
 
 /// Trigger an Aetheric Sweep (Byzantine node quarantine protocol)
+///
+/// # Safety
+/// This function is invoked via JNI from the JVM. The caller must ensure `env`
+/// is a valid `JNIEnv` for the current thread and the thread remains attached
+/// to the JVM for the duration of this call.
 #[no_mangle]
 pub unsafe extern "C" fn Java_com_aethercore_atak_trustoverlay_core_RalphieNodeDaemon_nativeTriggerAethericSweep(
     _env: JNIEnv,

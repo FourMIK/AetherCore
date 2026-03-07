@@ -13,6 +13,7 @@ members = [
     "crates/rf",
     "crates/radio",
     "crates/trust_mesh",
+    "crates/tak-bridge",
     "crates/h2-domain",
     "crates/c2-router",
     "crates/unit-status",

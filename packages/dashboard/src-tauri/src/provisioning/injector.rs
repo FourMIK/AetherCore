@@ -8,13 +8,12 @@
 //! Future enhancement: Use SSH key-based authentication for production.
 
 use crate::commands::resolve_required_component_path;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use ssh2::Session;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
-use tauri::Manager;
 
 /// Genesis message from provisioned remote device
 #[derive(Debug, Clone, Serialize, Deserialize)]

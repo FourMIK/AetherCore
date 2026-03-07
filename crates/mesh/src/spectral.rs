@@ -70,11 +70,7 @@ impl FrequencyHopper {
         self.current_per = per;
 
         // Detect jamming
-        if per > self.per_threshold {
-            self.jamming_detected = true;
-        } else {
-            self.jamming_detected = false;
-        }
+        self.jamming_detected = per > self.per_threshold;
     }
 
     /// Check if it's time to hop to next channel

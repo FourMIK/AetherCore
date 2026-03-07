@@ -406,7 +406,7 @@ pub fn run() {
                     .unwrap_or(false)
                 && std::env::args().any(|arg| arg == "--bootstrap");
 
-            let config_manager = crate::config::ConfigManager::new(&app.handle())?;
+            let config_manager = crate::config::ConfigManager::new(app.handle())?;
             let config_exists_before_boot = config_manager.get_config_path().exists();
             let config = config_manager.load()?;
             let sentinel_policy = sentinel_policy_from_config(&config);
@@ -542,7 +542,7 @@ pub fn run() {
                 log::info!("First launch pinned to Commander Edition bootstrap defaults");
             }
 
-            if let Err(error) = commands::verify_runtime_components_post_install(&app.handle()) {
+            if let Err(error) = commands::verify_runtime_components_post_install(app.handle()) {
                 if cfg!(debug_assertions) {
                     log::warn!(
                         "Skipping strict runtime component verification in dev mode: {}",
@@ -550,7 +550,7 @@ pub fn run() {
                     );
                 } else {
                     commands::show_node_binary_remediation_dialog(
-                        &app.handle(),
+                        app.handle(),
                         "AetherCore Runtime Asset Verification Failed",
                         &error.to_string(),
                     );
@@ -558,7 +558,7 @@ pub fn run() {
                 }
             }
 
-            if let Err(error) = commands::verify_node_runtime_startup(&app.handle()) {
+            if let Err(error) = commands::verify_node_runtime_startup(app.handle()) {
                 if cfg!(debug_assertions) {
                     log::warn!(
                         "Skipping strict runtime startup compatibility in dev mode: {}",
@@ -566,7 +566,7 @@ pub fn run() {
                     );
                 } else {
                     commands::show_node_binary_remediation_dialog(
-                        &app.handle(),
+                        app.handle(),
                         "AetherCore Runtime Compatibility Check Failed",
                         &error.to_string(),
                     );
@@ -586,23 +586,21 @@ pub fn run() {
             // Log sentinel status after logger is initialized
             if ci_bootstrap_override {
                 log::warn!("[SENTINEL] CI override active for bootstrap validation run");
-            } else {
-                if let Some(status) = app.try_state::<Arc<Mutex<SentinelTrustStatus>>>() {
-                    let status = tauri::async_runtime::block_on(async {
-                        let guard = status.lock().await;
-                        guard.clone()
-                    });
+            } else if let Some(status) = app.try_state::<Arc<Mutex<SentinelTrustStatus>>>() {
+                let status = tauri::async_runtime::block_on(async {
+                    let guard = status.lock().await;
+                    guard.clone()
+                });
 
-                    if status.reduced_trust {
-                        log::warn!("[SENTINEL] {} - {}", status.headline, status.detail);
-                    } else {
-                        log::info!(
-                            "[SENTINEL] Boot verification successful - Hardware identity confirmed"
-                        );
-                    }
+                if status.reduced_trust {
+                    log::warn!("[SENTINEL] {} - {}", status.headline, status.detail);
                 } else {
-                    log::warn!("[SENTINEL] trust status state unavailable during bootstrap");
+                    log::info!(
+                        "[SENTINEL] Boot verification successful - Hardware identity confirmed"
+                    );
                 }
+            } else {
+                log::warn!("[SENTINEL] trust status state unavailable during bootstrap");
             }
 
             Ok(())

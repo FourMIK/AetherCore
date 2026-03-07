@@ -7,20 +7,15 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Verification status for fail-visible design
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum VerificationStatus {
     /// Valid cryptographic chain with all hashes matching
     Verified,
     /// Missing hashes or unable to verify
+    #[default]
     StatusUnverified,
     /// Hash mismatch detected - Byzantine behavior
     Spoofed,
-}
-
-impl Default for VerificationStatus {
-    fn default() -> Self {
-        Self::StatusUnverified
-    }
 }
 
 /// Integrity status for a stream

@@ -18,6 +18,15 @@ export function TacticalMapScreen() {
   const [mapZoom, setMapZoom] = useState(1);
   const selectedNode = selectedNodeId ? useTacticalStore((state) => state.getNode(selectedNodeId)) : null;
   const deviceInfo = getDeviceInfo();
+  const selectedNodeStatusStyle = selectedNode
+    ? selectedNode.status === 'healthy'
+      ? styles.statusHealthy
+      : selectedNode.status === 'suspect'
+        ? styles.statusSuspect
+        : selectedNode.status === 'quarantined'
+          ? styles.statusQuarantined
+          : styles.statusUnknown
+    : undefined;
 
   const healthyCount = nodes.filter((n) => n.status === 'healthy').length;
   const suspectCount = nodes.filter((n) => n.status === 'suspect').length;
@@ -83,14 +92,14 @@ export function TacticalMapScreen() {
 
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Trust Score:</Text>
-                <View style={styles.detailValue}>
+                <View style={styles.detailValueContainer}>
                   <TrustScoreIndicator score={selectedNode.trustScore} showLabel={true} />
                 </View>
               </View>
 
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Status:</Text>
-                <Text style={[styles.detailValue, styles[`status${selectedNode.status}`]]}>
+                <Text style={[styles.detailValue, selectedNodeStatusStyle]}>
                   {selectedNode.status.toUpperCase()}
                 </Text>
               </View>
@@ -319,6 +328,11 @@ const styles = StyleSheet.create({
     color: '#00d9ff',
     fontWeight: '600',
   },
+  detailValueContainer: {
+    flex: 1,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
   statusHealthy: {
     color: '#00ff9f',
   },
@@ -327,6 +341,9 @@ const styles = StyleSheet.create({
   },
   statusQuarantined: {
     color: '#ff4444',
+  },
+  statusUnknown: {
+    color: '#aaa',
   },
   divider: {
     height: 1,

@@ -585,11 +585,11 @@ export class StreamAuthenticator {
    * Generate UUIDv4
    */
   private generateUUID(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
+    const cryptoObj = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+    if (!cryptoObj?.randomUUID) {
+      throw new Error('Fail-Visible: crypto.randomUUID unavailable; cannot generate event_id');
+    }
+    return cryptoObj.randomUUID();
   }
 
   /**

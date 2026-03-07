@@ -14,10 +14,47 @@ mod grpc_tests {
     use aethercore_identity::grpc_server::IdentityRegistryService;
     use aethercore_identity::{Attestation, IdentityManager, PlatformIdentity, TpmManager};
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
     use tokio::time::Duration;
     use tonic::transport::Server;
+
+    static TPM_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct TpmEnvRestore {
+        previous: Option<String>,
+    }
+
+    impl Drop for TpmEnvRestore {
+        fn drop(&mut self) {
+            match self.previous.as_deref() {
+                Some(value) => std::env::set_var("TPM_ENABLED", value),
+                None => std::env::remove_var("TPM_ENABLED"),
+            }
+        }
+    }
+
+    fn with_tpm_env_value<T>(value: Option<&str>, f: impl FnOnce() -> T) -> T {
+        let lock = TPM_ENV_LOCK.get_or_init(|| Mutex::new(()));
+        let _guard = lock.lock().expect("TPM env lock poisoned");
+        let restore = TpmEnvRestore {
+            previous: std::env::var("TPM_ENABLED").ok(),
+        };
+
+        match value {
+            Some(value) => std::env::set_var("TPM_ENABLED", value),
+            None => std::env::remove_var("TPM_ENABLED"),
+        }
+
+        let result = f();
+        drop(restore);
+        result
+    }
+
+    fn with_tpm_env_bool<T>(enabled: Option<bool>, f: impl FnOnce() -> T) -> T {
+        let value = enabled.map(|enabled| if enabled { "true" } else { "false" });
+        with_tpm_env_value(value, f)
+    }
 
     fn current_timestamp_ms() -> u64 {
         SystemTime::now()
@@ -30,7 +67,7 @@ mod grpc_tests {
         identity_manager: Arc<Mutex<IdentityManager>>,
         tpm_manager: Arc<Mutex<TpmManager>>,
     ) -> String {
-        start_test_server_with_tpm_mode(identity_manager, tpm_manager, None).await
+        start_test_server_with_tpm_mode(identity_manager, tpm_manager, Some(false)).await
     }
 
     async fn start_test_server_with_tpm_mode(
@@ -38,25 +75,17 @@ mod grpc_tests {
         tpm_manager: Arc<Mutex<TpmManager>>,
         tpm_enabled: Option<bool>,
     ) -> String {
-        // Set TPM_ENABLED if specified (for test isolation)
-        if let Some(enabled) = tpm_enabled {
-            if enabled {
-                std::env::set_var("TPM_ENABLED", "true");
-            } else {
-                std::env::set_var("TPM_ENABLED", "false");
-            }
-        }
-
         let addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
         let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
         let local_addr = listener.local_addr().unwrap();
         let server_url = format!("http://{}", local_addr);
 
-        let service = IdentityRegistryService::new(identity_manager, tpm_manager);
-        let identity_registry_server =
+        let identity_registry_server = with_tpm_env_bool(tpm_enabled, || {
+            let service = IdentityRegistryService::new(identity_manager, tpm_manager);
             aethercore_identity::grpc_server::proto::identity_registry_server::IdentityRegistryServer::new(
                 service,
-            );
+            )
+        });
 
         tokio::spawn(async move {
             Server::builder()
@@ -456,21 +485,19 @@ mod grpc_tests {
         ];
 
         for (value, expected) in test_cases {
-            std::env::set_var("TPM_ENABLED", value);
-            let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
-            let tpm_manager = Arc::new(Mutex::new(TpmManager::new(false)));
+            let parsed = with_tpm_env_value(Some(value), || {
+                let identity_manager = Arc::new(Mutex::new(IdentityManager::new()));
+                let tpm_manager = Arc::new(Mutex::new(TpmManager::new(false)));
 
-            // Create service which will parse TPM_ENABLED
-            let _service = aethercore_identity::grpc_server::IdentityRegistryService::new(
-                identity_manager,
-                tpm_manager,
-            );
+                // Create service which will parse TPM_ENABLED
+                let service = aethercore_identity::grpc_server::IdentityRegistryService::new(
+                    identity_manager,
+                    tpm_manager,
+                );
+                service.tpm_enforcement_enabled()
+            });
 
-            // If we got here without panic, the parsing worked
-            // The actual value is checked in the service constructor logs
+            assert_eq!(parsed, expected, "TPM_ENABLED value '{}' parsed incorrectly", value);
         }
-
-        // Clean up
-        std::env::remove_var("TPM_ENABLED");
     }
 }

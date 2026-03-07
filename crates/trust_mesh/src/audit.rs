@@ -87,11 +87,6 @@ impl StreamAuditor {
         }
     }
 
-    /// Create with default configuration
-    pub fn default() -> Self {
-        Self::new(AuditConfig::default())
-    }
-
     /// Perform self-audit on a stream processor
     ///
     /// Checks if sufficient time has passed since last audit, then verifies
@@ -262,6 +257,12 @@ impl StreamAuditor {
     /// Get number of failed audits
     pub fn failed_audit_count(&self) -> usize {
         self.audit_history.iter().filter(|r| !r.passed).count()
+    }
+}
+
+impl Default for StreamAuditor {
+    fn default() -> Self {
+        Self::new(AuditConfig::default())
     }
 }
 

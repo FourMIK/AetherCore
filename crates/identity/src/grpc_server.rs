@@ -116,6 +116,11 @@ impl IdentityRegistryService {
         }
     }
 
+    /// Returns whether TPM enforcement is enabled for this service instance.
+    pub fn tpm_enforcement_enabled(&self) -> bool {
+        self.tpm_enabled
+    }
+
     /// Get current timestamp in milliseconds
     fn current_timestamp_ms() -> u64 {
         std::time::SystemTime::now()
@@ -266,11 +271,7 @@ impl IdentityRegistry for IdentityRegistryService {
         };
 
         // Verify timestamp (prevent replay attacks - check within 5 minutes)
-        let time_diff = if timestamp_ms > req.timestamp_ms {
-            timestamp_ms - req.timestamp_ms
-        } else {
-            req.timestamp_ms - timestamp_ms
-        };
+        let time_diff = timestamp_ms.abs_diff(req.timestamp_ms);
 
         if time_diff > 5 * 60 * 1000 {
             return Ok(Response::new(VerifySignatureResponse {
@@ -400,7 +401,7 @@ impl IdentityRegistry for IdentityRegistryService {
             // Parse PCRs from the request
             let pcr_values = if !req.pcrs.is_empty() {
                 let chunk_size = 32;
-                let num_pcrs = (req.pcrs.len() + chunk_size - 1) / chunk_size;
+                let num_pcrs = req.pcrs.len().div_ceil(chunk_size);
 
                 (0..num_pcrs.min(24))
                     .map(|i| {

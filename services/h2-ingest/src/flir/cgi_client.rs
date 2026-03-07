@@ -6,12 +6,14 @@ use tracing::{info, error};
 
 const NEXUS_TIMEOUT_SECS: u64 = 10;
 
+type FlirError = Box<dyn Error + Send + Sync>;
+
 /// Authenticate with FLIR camera and retrieve session ID
 pub async fn authenticate(
     flir_ip: &str,
     user: &str,
     pass: &str,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, FlirError> {
     let url = format!(
         "http://{}/Nexus.cgi?action=SERVERAuthInitialize&username={}&password={}",
         flir_ip, user, pass
@@ -45,7 +47,7 @@ pub async fn authenticate(
                 .and_then(|s| s.split('\n').next())
         })
         .map(|s| s.trim().to_string())
-        .ok_or_else(|| "Failed to extract session_id from response".into())?;
+        .ok_or_else(|| -> FlirError { "Failed to extract session_id from response".into() })?;
 
     info!("[FLIR] Session established: {}", session_id);
     Ok(session_id)
@@ -57,7 +59,7 @@ pub async fn bind_udp_telemetry(
     session_id: &str,
     edge_node_ip: &str,
     port: u16,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), FlirError> {
     let url = format!(
         "http://{}/Nexus.cgi?session={}&action=SERVERUDPClientRegister&ip={}&port={}&type=ALL",
         flir_ip, session_id, edge_node_ip, port
@@ -92,7 +94,7 @@ pub async fn bind_udp_telemetry(
 pub async fn deauthenticate(
     flir_ip: &str,
     session_id: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), FlirError> {
     let url = format!(
         "http://{}/Nexus.cgi?session={}&action=SERVERAuthClose",
         flir_ip, session_id

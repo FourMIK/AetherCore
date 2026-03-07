@@ -85,7 +85,7 @@ impl QuorumProof {
     /// Helper to convert node_id string to u16 for error reporting
     fn node_id_to_u16(node_id: &str) -> u16 {
         // Use first byte of node_id as hash for error reporting
-        node_id.as_bytes().get(0).copied().unwrap_or(0) as u16
+        node_id.as_bytes().first().copied().unwrap_or(0) as u16
     }
 
     /// Verify the quorum proof

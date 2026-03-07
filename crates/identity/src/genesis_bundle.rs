@@ -300,7 +300,7 @@ fn certificate_to_pem(cert: &Certificate) -> String {
     let cert_json = serde_json::to_string_pretty(cert).unwrap_or_default();
     format!(
         "-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----\n",
-        base64_encode(&cert_json.as_bytes())
+        base64_encode(cert_json.as_bytes())
     )
 }
 

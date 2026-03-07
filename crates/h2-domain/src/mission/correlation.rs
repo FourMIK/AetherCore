@@ -81,12 +81,12 @@ impl MissionCorrelator {
         // Add to mappings
         self.asset_to_missions
             .entry(asset_id.clone())
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(mission_id.clone());
 
         self.mission_to_assets
             .entry(mission_id.clone())
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(asset_id.clone());
 
         // Add detailed correlation

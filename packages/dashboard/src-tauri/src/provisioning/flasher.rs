@@ -169,7 +169,7 @@ async fn flash_firmware(
     );
 
     // Resolve bundled esptool from Tauri resources (no PATH dependency)
-    let esptool_cmd = resolve_required_component_path(&window.app_handle(), "esptool")
+    let esptool_cmd = resolve_required_component_path(window.app_handle(), "esptool")
         .map_err(|e| format!("FAIL-VISIBLE: Bundled esptool missing/corrupt: {e}"))?;
 
     log::info!("Using esptool at: {:?}", esptool_cmd);
@@ -225,43 +225,39 @@ async fn flash_firmware(
     // Spawn thread to read stdout and emit progress
     let stdout_handle = thread::spawn(move || {
         let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            if let Ok(line) = line {
-                log::debug!("esptool: {}", line);
+        for line in reader.lines().map_while(std::result::Result::ok) {
+            log::debug!("esptool: {}", line);
 
-                // Parse progress from esptool output
-                let progress = if line.contains("Connecting") {
-                    0.3
-                } else if line.contains("Writing") || line.contains("Wrote") {
-                    0.7
-                } else if line.contains("Leaving") {
-                    0.9
-                } else if line.contains("Hash of data verified") {
-                    1.0
-                } else {
-                    0.5
-                };
+            // Parse progress from esptool output
+            let progress = if line.contains("Connecting") {
+                0.3
+            } else if line.contains("Writing") || line.contains("Wrote") {
+                0.7
+            } else if line.contains("Leaving") {
+                0.9
+            } else if line.contains("Hash of data verified") {
+                1.0
+            } else {
+                0.5
+            };
 
-                let _ = window_clone.emit(
-                    "flash_progress",
-                    FlashProgress {
-                        stage: "flashing".to_string(),
-                        message: line.clone(),
-                        progress,
-                    },
-                );
-            }
+            let _ = window_clone.emit(
+                "flash_progress",
+                FlashProgress {
+                    stage: "flashing".to_string(),
+                    message: line,
+                    progress,
+                },
+            );
         }
     });
 
     // Capture stderr for error reporting
     let mut stderr_output = Vec::new();
     let stderr_reader = BufReader::new(stderr);
-    for line in stderr_reader.lines() {
-        if let Ok(line) = line {
-            log::warn!("esptool stderr: {}", line);
-            stderr_output.push(line);
-        }
+    for line in stderr_reader.lines().map_while(Result::ok) {
+        log::warn!("esptool stderr: {}", line);
+        stderr_output.push(line);
     }
 
     // Wait for process completion
@@ -486,15 +482,13 @@ fn is_likely_ralphie_serial_port(port: &serialport::SerialPortInfo) -> bool {
 
 /// Listen for GENESIS message from newly flashed device
 async fn listen_for_genesis(port: &str) -> Result<GenesisMessage, String> {
-    use base64::{engine::general_purpose, Engine as _};
-
     log::info!("Listening for GENESIS message on port: {}", port);
 
     // Small delay to allow device to reset after flashing
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Open serial port
-    let mut serial = serialport::new(port, 115200)
+    let serial = serialport::new(port, 115200)
         .timeout(Duration::from_secs(30))
         .open()
         .map_err(|e| {
@@ -624,7 +618,7 @@ async fn perform_attestation(
     // Generate 32-byte cryptographically secure random challenge
     let mut challenge_bytes = [0u8; 32];
     OsRng.fill_bytes(&mut challenge_bytes);
-    let challenge_hex = hex::encode(&challenge_bytes);
+    let challenge_hex = hex::encode(challenge_bytes);
 
     log::info!("Generated challenge: {}...", &challenge_hex[..16]);
 

@@ -107,14 +107,12 @@ impl NodeProcessManager {
             let logs_clone = Arc::clone(&logs);
             thread::spawn(move || {
                 let reader = BufReader::new(stdout);
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        if let Ok(mut log_buffer) = logs_clone.lock() {
-                            if log_buffer.len() >= MAX_LOG_LINES {
-                                log_buffer.pop_front();
-                            }
-                            log_buffer.push_back(format!("[OUT] {}", line));
+                for line in reader.lines().map_while(std::result::Result::ok) {
+                    if let Ok(mut log_buffer) = logs_clone.lock() {
+                        if log_buffer.len() >= MAX_LOG_LINES {
+                            log_buffer.pop_front();
                         }
+                        log_buffer.push_back(format!("[OUT] {}", line));
                     }
                 }
             });
@@ -125,14 +123,12 @@ impl NodeProcessManager {
             let logs_clone = Arc::clone(&logs);
             thread::spawn(move || {
                 let reader = BufReader::new(stderr);
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        if let Ok(mut log_buffer) = logs_clone.lock() {
-                            if log_buffer.len() >= MAX_LOG_LINES {
-                                log_buffer.pop_front();
-                            }
-                            log_buffer.push_back(format!("[ERR] {}", line));
+                for line in reader.lines().map_while(std::result::Result::ok) {
+                    if let Ok(mut log_buffer) = logs_clone.lock() {
+                        if log_buffer.len() >= MAX_LOG_LINES {
+                            log_buffer.pop_front();
                         }
+                        log_buffer.push_back(format!("[ERR] {}", line));
                     }
                 }
             });
@@ -222,6 +218,7 @@ impl NodeProcessManager {
     ///
     /// # Returns
     /// Option containing the NodeProcessInfo if found
+    #[allow(dead_code)]
     pub fn get_status(&self, node_id: &str) -> Result<Option<NodeProcessInfo>> {
         let mut processes = self
             .processes

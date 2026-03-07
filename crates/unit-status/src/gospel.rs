@@ -51,7 +51,7 @@ pub struct RevocationCertificate {
 }
 
 /// Gospel ledger state
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GospelState {
     /// All revoked nodes
     pub revoked_nodes: HashMap<String, RevocationCertificate>,
@@ -61,16 +61,6 @@ pub struct GospelState {
 
     /// Last update timestamp
     pub last_updated_ns: u64,
-}
-
-impl Default for GospelState {
-    fn default() -> Self {
-        Self {
-            revoked_nodes: HashMap::new(),
-            current_root: [0u8; 32],
-            last_updated_ns: 0,
-        }
-    }
 }
 
 /// Gospel ledger errors
@@ -139,11 +129,7 @@ impl GospelLedger {
 
         // Validate timestamp (allow ±5 seconds clock skew)
         let current_time = Self::current_timestamp_ns();
-        let time_diff = if current_time > cert.timestamp_ns {
-            current_time - cert.timestamp_ns
-        } else {
-            cert.timestamp_ns - current_time
-        };
+        let time_diff = current_time.abs_diff(cert.timestamp_ns);
 
         if time_diff > 5_000_000_000 {
             // More than 5 seconds skew

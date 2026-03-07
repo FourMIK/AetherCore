@@ -50,7 +50,7 @@ pub struct RevocationPayload {
     /// Node being revoked.
     pub node_id: String,
     /// Reason for revocation.
-    pub revocation_reason: RevocationReason,
+    pub revocation_reason: SchemaRevocationReason,
     /// Authority issuing revocation.
     pub issuer_id: String,
     /// Timestamp in nanoseconds.
@@ -63,7 +63,7 @@ pub struct RevocationPayload {
 
 /// Revocation reasons.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum RevocationReason {
+pub enum SchemaRevocationReason {
     /// TPM attestation failed.
     AttestationFailure,
     /// Byzantine detection triggered.

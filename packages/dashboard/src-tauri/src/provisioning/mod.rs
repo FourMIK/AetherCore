@@ -21,7 +21,6 @@ pub mod injector;
 pub mod scanner;
 
 use crate::commands::resolve_required_component_path;
-pub use injector::GenesisIdentity;
 pub use scanner::{CandidateNode, Credentials};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -251,18 +250,6 @@ async fn provision_network_device(
         },
     })
 }
-
-// Re-export scanner command for backwards compatibility
-pub use scanner::scan_for_assets;
-
-// Re-export legacy commands for backwards compatibility
-// These will be deprecated in favor of unified provision_target
-pub use crate::provisioning_legacy::{
-    flash_firmware, inject_genesis_bundle, list_serial_ports, listen_for_genesis,
-};
-
-// Also export legacy types that may be used by frontend
-pub use crate::provisioning_legacy::{FlashProgress, GenesisMessage, SerialDeviceInfo};
 
 #[cfg(test)]
 mod tests {

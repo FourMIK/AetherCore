@@ -501,7 +501,7 @@ impl OfflineMateriaBuffer {
         let root = self
             .merkle_vine
             .get_root()
-            .map(|r| r.clone())
+            .cloned()
             .unwrap_or_else(|| vec![0u8; MERKLE_ROOT_SIZE]);
         Ok(root)
     }

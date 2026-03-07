@@ -21,7 +21,7 @@ pub struct TrackUpdate {
 pub async fn start_listening(
     port: u16,
     tx: mpsc::Sender<TrackUpdate>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = format!("0.0.0.0:{}", port);
     let socket = UdpSocket::bind(&addr).await?;
     let socket = Arc::new(socket);
@@ -78,14 +78,16 @@ pub async fn start_listening(
             }
             Err(e) => {
                 error!("[FLIR] UDP socket error: {}", e);
-                break;
+                return Err(format!("[FLIR] UDP socket error: {e}").into());
             }
         }
     }
 }
 
 /// Get UDP socket for custom handling
-pub async fn create_socket(port: u16) -> Result<Arc<UdpSocket>, Box<dyn std::error::Error>> {
+pub async fn create_socket(
+    port: u16,
+) -> Result<Arc<UdpSocket>, Box<dyn std::error::Error + Send + Sync>> {
     let addr = format!("0.0.0.0:{}", port);
     let socket = UdpSocket::bind(&addr).await?;
     info!("[FLIR] UDP socket created on {}", addr);

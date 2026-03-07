@@ -246,6 +246,7 @@ pub struct FixedInstallation {
 
 impl FixedInstallation {
     /// Create a new fixed installation
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         asset_id: String,
         station_name: String,
@@ -338,6 +339,7 @@ pub struct SensorNode {
 
 impl SensorNode {
     /// Create a new sensor node
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         asset_id: String,
         device_serial: String,

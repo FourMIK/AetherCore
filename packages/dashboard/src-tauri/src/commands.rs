@@ -1,7 +1,7 @@
 use crate::config::{AppConfig, ConfigManager};
 use crate::error::{validation, AppError, Result};
 use crate::local_control_plane;
-use crate::process_manager::{NodeProcessInfo, NodeProcessManager, ProcessStatus};
+use crate::process_manager::NodeProcessManager;
 use crate::SentinelTrustStatus;
 use aethercore_identity::{IdentityManager, SecureEnclaveAttestor};
 use aethercore_stream::StreamIntegrityTracker;
@@ -1419,12 +1419,11 @@ pub async fn deploy_node(
     log::info!("Deploying node: {}", config.node_id);
 
     // Validate node_id
-    if config.node_id.is_empty() || config.node_id.len() > 255 {
-        return Err("Invalid node_id: must be 1-255 characters".to_string());
-    }
+    validation::validate_length(&config.node_id, "node_id", 1, 255)
+        .map_err(|error| error.to_string())?;
 
     // Validate port range (1024-65535)
-    if config.listen_port < 1024 || config.listen_port > 65535 {
+    if config.listen_port < 1024 {
         return Err(format!(
             "Invalid port: {} (must be 1024-65535)",
             config.listen_port

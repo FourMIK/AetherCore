@@ -456,12 +456,8 @@ fn write_launcher_scripts(
     platform: &str,
 ) -> Result<(), String> {
     if platform == "windows" {
-        let gateway = format!(
-            "@echo off\r\nset RUNTIME_ROOT=%~dp0..\r\n\"%RUNTIME_ROOT%\\node.exe\" \"%RUNTIME_ROOT%\\services\\gateway\\dist\\index.js\"\r\n"
-        );
-        let collaboration = format!(
-            "@echo off\r\nset RUNTIME_ROOT=%~dp0..\r\n\"%RUNTIME_ROOT%\\node.exe\" \"%RUNTIME_ROOT%\\services\\collaboration\\dist\\index.js\"\r\n"
-        );
+        let gateway = "@echo off\r\nset RUNTIME_ROOT=%~dp0..\r\n\"%RUNTIME_ROOT%\\node.exe\" \"%RUNTIME_ROOT%\\services\\gateway\\dist\\index.js\"\r\n".to_string();
+        let collaboration = "@echo off\r\nset RUNTIME_ROOT=%~dp0..\r\n\"%RUNTIME_ROOT%\\node.exe\" \"%RUNTIME_ROOT%\\services\\collaboration\\dist\\index.js\"\r\n".to_string();
         fs::write(launchers_dir.join("gateway-launcher.cmd"), gateway)
             .map_err(|e| e.to_string())?;
         fs::write(

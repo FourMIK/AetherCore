@@ -211,7 +211,12 @@ impl MeshSecurity {
 
         // Combined trust score
         let trust = (attestation_trust * 0.6 + route_success_rate * 0.4) - signature_penalty;
-        trust.max(0.0).min(1.0)
+        if trust.is_nan() {
+            tracing::error!(trust = trust, "Computed trust score is NaN; forcing to 0.0");
+            0.0
+        } else {
+            trust.clamp(0.0, 1.0)
+        }
     }
 
     /// Get local identity
@@ -281,7 +286,7 @@ fn parse_pcrs(pcrs: &[u8]) -> Result<Vec<Vec<u8>>, String> {
     if pcrs.is_empty() {
         return Err("PCR values are required".to_string());
     }
-    if pcrs.len() % 32 != 0 {
+    if !pcrs.len().is_multiple_of(32) {
         return Err("PCR values must be 32-byte aligned".to_string());
     }
 

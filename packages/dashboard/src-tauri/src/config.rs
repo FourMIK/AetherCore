@@ -132,7 +132,7 @@ fn default_api_port() -> u16 {
 }
 
 fn default_mesh_port() -> u16 {
-    3000
+    8080
 }
 
 fn default_tpm_enforcement() -> bool {
@@ -199,7 +199,7 @@ impl AppConfig {
             profile: ConnectionProfile::CommanderLocal,
             connection: RuntimeConnection {
                 api_endpoint: "http://localhost:3000".to_string(),
-                mesh_endpoint: "ws://localhost:3000".to_string(),
+                mesh_endpoint: "ws://localhost:8080".to_string(),
             },
             tpm_policy: RuntimeTpmPolicy::default(),
             ports: RuntimePorts::default(),

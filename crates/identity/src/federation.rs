@@ -182,10 +182,10 @@ impl FederationRegistry {
     /// Check staleness and degrade trust for stale identities
     pub fn update_staleness(&mut self, current_time_ms: u64) {
         for identity in self.identities.values_mut() {
-            if identity.is_stale(current_time_ms, self.staleness_threshold_ms) {
-                if identity.trust_level != TrustLevel::Spoofed {
-                    identity.trust_level = TrustLevel::FederatedDegraded;
-                }
+            if identity.is_stale(current_time_ms, self.staleness_threshold_ms)
+                && identity.trust_level != TrustLevel::Spoofed
+            {
+                identity.trust_level = TrustLevel::FederatedDegraded;
             }
         }
     }

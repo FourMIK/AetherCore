@@ -103,6 +103,7 @@ impl Drop for LocalControlPlaneRuntime {
     }
 }
 
+#[allow(dead_code)]
 pub fn bootstrap_local_control_plane() -> Result<LocalControlPlaneRuntime, String> {
     let mode = std::env::var("AETHERCORE_MODE").unwrap_or_else(|_| "desktop-local".to_string());
     if mode != "desktop-local" {
@@ -625,6 +626,20 @@ pub fn read_manifest(path: &Path) -> Result<LocalControlPlaneManifest, String> {
         )
     })?;
 
+    if manifest.mode.trim().is_empty() {
+        return Err(format!(
+            "Local control plane manifest {} has empty mode",
+            path.display()
+        ));
+    }
+
+    if manifest.version == 0 {
+        return Err(format!(
+            "Local control plane manifest {} has invalid version 0",
+            path.display()
+        ));
+    }
+
     validate_dependency_graph(&manifest.services)?;
 
     Ok(manifest)
@@ -705,7 +720,7 @@ fn validate_dependency_graph(services: &[ManagedService]) -> Result<(), String> 
     Ok(())
 }
 
-fn ordered_services<'a>(services: &'a [ManagedService]) -> Result<Vec<&'a ManagedService>, String> {
+fn ordered_services(services: &[ManagedService]) -> Result<Vec<&ManagedService>, String> {
     let mut services_by_name = HashMap::new();
     let mut indegree = HashMap::new();
     let mut reverse_edges: HashMap<String, Vec<String>> = HashMap::new();

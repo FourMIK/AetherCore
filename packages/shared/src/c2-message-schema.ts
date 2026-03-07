@@ -217,14 +217,12 @@ function generateMessageId(): string {
     return cryptoObj.randomUUID();
   }
 
-  const bytes = new Uint8Array(16);
-  if (cryptoObj?.getRandomValues) {
-    cryptoObj.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i += 1) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
+  if (!cryptoObj?.getRandomValues) {
+    throw new Error('Fail-Visible: crypto.getRandomValues unavailable; cannot generate message_id');
   }
+
+  const bytes = new Uint8Array(16);
+  cryptoObj.getRandomValues(bytes);
 
   // RFC 4122 version 4 UUID bits.
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
@@ -249,13 +247,11 @@ function generateNonceHex(): string {
     };
   }).crypto;
 
-  if (cryptoObj?.getRandomValues) {
-    cryptoObj.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i += 1) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
+  if (!cryptoObj?.getRandomValues) {
+    throw new Error('Fail-Visible: crypto.getRandomValues unavailable; cannot generate message nonce');
   }
+
+  cryptoObj.getRandomValues(bytes);
 
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }

@@ -25,7 +25,7 @@ pub struct SampleVideoPayload {
 /// Get available sample video streams
 pub async fn get_sample_streams() -> Result<axum::Json<Value>, StatusCode> {
     Ok(axum::Json(json!({
-        "streams": vec![
+        "streams": [
             {
                 "id": "flir-alpha-01",
                 "name": "Teledyne Ranger HD (Mock)",
@@ -69,7 +69,10 @@ pub async fn register_video_stream(
             url: format!("mock://teledyne-{}", payload.camera_id),
             format: "mock-flir".to_string(),
             status: "live".to_string(),
-            resolution: payload.resolution.unwrap_or_else(|| "1080p".to_string()),
+            resolution: payload
+                .resolution
+                .clone()
+                .unwrap_or_else(|| "1080p".to_string()),
             codec: "H.264".to_string(),
         },
         "mjpeg" => VideoStreamConfig {
@@ -77,7 +80,10 @@ pub async fn register_video_stream(
             url: format!("http://localhost:8081/stream?camera={}", payload.camera_id),
             format: "mjpeg".to_string(),
             status: "live".to_string(),
-            resolution: payload.resolution.unwrap_or_else(|| "1080p".to_string()),
+            resolution: payload
+                .resolution
+                .clone()
+                .unwrap_or_else(|| "1080p".to_string()),
             codec: "MJPEG".to_string(),
         },
         _ => {

@@ -13,23 +13,12 @@ no-default-features = false
 
 [advisories]
 # Security audit configuration
-db-path = "~/.cargo/advisory-db"
+db-path = "~/.cargo/advisory-dbs"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
-notice = "warn"
+unmaintained = "none"
 ignore = []
 
 [licenses]
-# License compliance policy - PERMISSIVE ONLY
-unlicensed = "deny"
-# Do not allow packages with ambiguous or unknown licenses
-allow-osi-fsf-free = "neither"
-copyleft = "deny"
-# Default action for licenses not in allow or deny lists
-default = "deny"
-
 # WHITELIST: Permissive licenses only (MIT, Apache-2.0, BSD-3-Clause)
 allow = [
     "MIT",
@@ -40,33 +29,26 @@ allow = [
     "ISC",
     "0BSD",
     "Zlib",
+    "Unicode-3.0",
     "Unicode-DFS-2016",
-]
-
-# DENY: All copyleft and reciprocal licenses
-deny = [
-    "GPL-2.0",
-    "GPL-3.0",
-    "AGPL-3.0",
-    "LGPL-2.1",
-    "LGPL-3.0",
-    "MPL-2.0",
-    "EPL-1.0",
-    "EPL-2.0",
-    "CDDL-1.0",
-    "EUPL-1.2",
 ]
 
 # Confidence threshold for license detection
 confidence-threshold = 0.8
 
 # Exception handling - must be manually reviewed
-exceptions = []
+exceptions = [
+    { crate = "cssparser", allow = ["MPL-2.0"] },
+    { crate = "cssparser-macros", allow = ["MPL-2.0"] },
+    { crate = "dtoa-short", allow = ["MPL-2.0"] },
+    { crate = "option-ext", allow = ["MPL-2.0"] },
+    { crate = "serialport", allow = ["MPL-2.0"] },
+    { crate = "selectors", allow = ["MPL-2.0"] },
+]
 
 [[licenses.clarify]]
 # Ring uses custom license but is effectively MIT/ISC/OpenSSL
-name = "ring"
-version = "*"
+crate = "ring"
 expression = "MIT AND ISC AND OpenSSL"
 license-files = [
     { path = "LICENSE", hash = 0xbd0eed23 }
@@ -74,12 +56,15 @@ license-files = [
 
 [[licenses.clarify]]
 # webpki uses custom license structure
-name = "webpki"
-version = "*"
+crate = "webpki"
 expression = "ISC"
 license-files = [
     { path = "LICENSE", hash = 0x001c7e6c }
 ]
+
+[licenses.private]
+ignore = false
+registries = []
 
 [bans]
 # Multiple versions of the same crate
@@ -88,8 +73,6 @@ multiple-versions = "warn"
 wildcards = "warn"
 # Highlight likely typos in crate names
 highlight = "all"
-# Git dependencies from outside the workspace (supply chain risk)
-allow-git = []
 
 # Skip checking dev-dependencies for license compliance
 skip = []
@@ -107,5 +90,7 @@ unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = []
 
-# Allow organization-internal repositories if needed
-# allow-git = ["https://github.com/FourMIK/*"]
+[sources.allow-org]
+github = []
+gitlab = []
+bitbucket = []

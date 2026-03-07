@@ -54,25 +54,23 @@ export default function App() {
 
   return (
     <>
-      <StatusBar barStyle="light-content" hidden={true} />
+      <StatusBar style="light" hidden />
       <NavigationContainer>
         <RootStack.Navigator
           screenOptions={{
             headerShown: false,
-            animationEnabled: false,
+            animation: 'none',
           }}
         >
           {!isBootstrapped ? (
             <RootStack.Screen
               name="Bootstrap"
               component={BootstrapScreen}
-              options={{ animationEnabled: false }}
             />
           ) : (
             <RootStack.Screen
               name="Tactical"
               component={TacticalNavigator}
-              options={{ animationEnabled: false }}
             />
           )}
         </RootStack.Navigator>

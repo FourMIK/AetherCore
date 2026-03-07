@@ -1,50 +1,36 @@
-# Multi-stage build for AetherCore Gateway Service
-FROM node:18-alpine AS builder
+# Multi-stage build for AetherCore Gateway Service (Docker Compose local stack)
+FROM node:22-alpine AS build
+WORKDIR /workspace
 
-WORKDIR /app
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Copy package files and toolchain scripts required by preinstall
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY scripts ./scripts
-COPY services/gateway/package.json ./services/gateway/
-COPY packages/shared/package.json ./packages/shared/
+COPY packages/shared/package.json packages/shared/tsconfig.json ./packages/shared/
+COPY services/gateway/package.json services/gateway/tsconfig.json ./services/gateway/
+COPY services/gateway/scripts ./services/gateway/scripts
+COPY services/gateway/proto ./services/gateway/proto
+COPY packages/shared/src ./packages/shared/src
+COPY services/gateway/src ./services/gateway/src
 
-# Install dependencies
-RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --filter @aethercore/gateway --filter @aethercore/shared
+RUN SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --filter @aethercore/gateway...
+RUN pnpm --filter @aethercore/shared build
+RUN pnpm --filter @aethercore/gateway build
+RUN pnpm --filter @aethercore/gateway deploy --prod /app
 
-# Copy source code (proto is vendored in services/gateway/proto)
-COPY services/gateway ./services/gateway
-COPY packages/shared ./packages/shared
-
-# Build the service (includes proto validation + generated TS stubs + packaged proto asset copy)
-RUN pnpm --filter @aethercore/gateway run build
-
-# Production stage
-FROM node:18-alpine
-
+FROM node:22-alpine AS runtime
 WORKDIR /app
-
-# Copy built artifacts and dependencies
-COPY --from=builder /app/services/gateway/dist ./dist
-COPY --from=builder /app/services/gateway/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
-
-# Environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Create non-root user
-RUN addgroup -g 1001 nonroot && adduser -D -u 1001 -G nonroot nonroot
+COPY --from=build /app ./
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
+RUN apk add --no-cache openssl
 
-# Expose port
+USER node
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "const http=require('http');http.get({host:'127.0.0.1',port:process.env.PORT||3000,path:'/health'},(res)=>process.exit(res.statusCode===200?0:1)).on('error',()=>process.exit(1));"
 
-# Switch to non-root user
-USER nonroot:nonroot
-
-# Run the service
 CMD ["node", "dist/index.js"]

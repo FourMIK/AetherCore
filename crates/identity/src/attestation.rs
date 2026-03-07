@@ -360,7 +360,13 @@ impl AttestationManager {
         self.record_nonce(counter_challenge.clone())?;
 
         // Sign the incoming challenge
-        let challenge_signature = sign_data(&request.challenge, &self.identity);
+        let challenge_signature = match sign_data(&request.challenge, &self.identity) {
+            Ok(signature) => signature,
+            Err(err) => {
+                self.fail_handshake(&request.identity.id, &format!("Signing failed: {err}"));
+                return Err(err);
+            }
+        };
 
         // Generate TPM quote if using TPM attestation
         let tpm_quote = match &self.identity.attestation {
@@ -507,7 +513,13 @@ impl AttestationManager {
             .insert(response.identity.id.clone(), response.identity.clone());
 
         // Sign the counter-challenge
-        let counter_signature = sign_data(&response.counter_challenge, &self.identity);
+        let counter_signature = match sign_data(&response.counter_challenge, &self.identity) {
+            Ok(signature) => signature,
+            Err(err) => {
+                self.fail_handshake(&response.identity.id, &format!("Signing failed: {err}"));
+                return Err(err);
+            }
+        };
 
         // Record event
         self.record_event(event::AttestationEvent {
@@ -797,37 +809,53 @@ fn generate_nonce(size: usize) -> Vec<u8> {
 }
 
 /// Sign data with platform identity.
-fn sign_data(data: &[u8], identity: &PlatformIdentity) -> Vec<u8> {
-    let private_key = match identity.metadata.get("private_key_hex") {
-        Some(hex_value) => match hex::decode(hex_value) {
-            Ok(bytes) => bytes,
-            Err(_) => return Vec::new(),
-        },
-        None => return Vec::new(),
-    };
+fn sign_data(data: &[u8], identity: &PlatformIdentity) -> crate::Result<Vec<u8>> {
+    let hex_value = identity.metadata.get("private_key_hex").ok_or_else(|| {
+        crate::Error::Identity(format!(
+            "Fail-Visible: missing private_key_hex for identity {}; cannot sign attestation data",
+            identity.id
+        ))
+    })?;
+
+    let private_key = hex::decode(hex_value).map_err(|err| {
+        crate::Error::Identity(format!(
+            "Fail-Visible: invalid private_key_hex for identity {}: {err}",
+            identity.id
+        ))
+    })?;
 
     match resolve_signature_algorithm(identity) {
         SignatureAlgorithm::Ed25519 => {
             if private_key.len() != 32 {
-                return Vec::new();
+                return Err(crate::Error::Identity(format!(
+                    "Fail-Visible: Ed25519 private key length invalid for identity {} (got {})",
+                    identity.id,
+                    private_key.len()
+                )));
             }
             let mut key_bytes = [0u8; 32];
             key_bytes.copy_from_slice(&private_key);
             let signing_key = Ed25519SigningKey::from_bytes(&key_bytes);
             let signature = signing_key.sign(data);
-            signature.to_bytes().to_vec()
+            Ok(signature.to_bytes().to_vec())
         }
         SignatureAlgorithm::P256 => {
             if private_key.len() != 32 {
-                return Vec::new();
+                return Err(crate::Error::Identity(format!(
+                    "Fail-Visible: P-256 private key length invalid for identity {} (got {})",
+                    identity.id,
+                    private_key.len()
+                )));
             }
-            let secret_key = match p256::SecretKey::from_slice(&private_key) {
-                Ok(key) => key,
-                Err(_) => return Vec::new(),
-            };
+            let secret_key = p256::SecretKey::from_slice(&private_key).map_err(|err| {
+                crate::Error::Identity(format!(
+                    "Fail-Visible: invalid P-256 secret key for identity {}: {err}",
+                    identity.id
+                ))
+            })?;
             let signing_key = SigningKey::from(secret_key);
             let signature: Signature = signing_key.sign(data);
-            signature.to_der().as_bytes().to_vec()
+            Ok(signature.to_der().as_bytes().to_vec())
         }
     }
 }
@@ -1249,7 +1277,7 @@ mod tests {
         );
         let data = b"attestation-challenge";
 
-        let signature = sign_data(data, &identity);
+        let signature = sign_data(data, &identity).expect("expected signature to be generated");
         assert!(verify_signature(data, &signature, &identity));
         assert!(!verify_signature(b"tampered", &signature, &identity));
     }

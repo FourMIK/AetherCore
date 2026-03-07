@@ -157,7 +157,10 @@ impl TpmManager {
             .map_err(|_| crate::Error::Identity("Invalid DER Signature".into()))?;
 
         // 3. Verify Signature against Raw Data
-        if let Err(_) = verifying_key.verify(&quote.attestation_data, &signature) {
+        if verifying_key
+            .verify(&quote.attestation_data, &signature)
+            .is_err()
+        {
             error!("TrustGate :: FAIL :: Signature Mismatch");
             return Ok(false);
         }

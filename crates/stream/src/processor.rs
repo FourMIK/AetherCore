@@ -160,7 +160,7 @@ impl MerkleEnforcer {
     fn get_or_create_chain(&mut self, stream_id: &str) -> &mut ChainManager {
         self.vine_map
             .entry(stream_id.to_string())
-            .or_insert_with(ChainManager::new)
+            .or_default()
     }
 
     /// Get metrics

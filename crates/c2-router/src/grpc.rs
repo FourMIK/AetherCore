@@ -30,6 +30,7 @@
 //! The signature is verified against the device's registered public key in the identity registry.
 
 #![warn(missing_docs)]
+#![allow(clippy::result_large_err)]
 
 use crate::command_types::{SwarmCommand, UnitCommand};
 use crate::dispatcher::CommandDispatcher;
@@ -122,6 +123,7 @@ impl C2GrpcServer {
     }
 
     /// Recompute and persist trust score for a device using current integrity metrics.
+    #[allow(clippy::result_large_err)]
     fn recompute_trust_from_health(&self, device_id: &str) -> Result<TrustScore, Status> {
         let health = self.health_computer.get_node_health(device_id);
 
@@ -148,6 +150,7 @@ impl C2GrpcServer {
     }
 
     /// Ingest a root comparison result and refresh trust score for the device.
+    #[allow(clippy::result_large_err)]
     pub fn ingest_integrity_root_comparison(
         &self,
         device_id: &str,
@@ -159,12 +162,14 @@ impl C2GrpcServer {
     }
 
     /// Ingest a chain break event and refresh trust score for the device.
+    #[allow(clippy::result_large_err)]
     pub fn ingest_integrity_chain_break(&self, device_id: &str) -> Result<TrustScore, Status> {
         self.health_computer.record_chain_break(device_id);
         self.recompute_trust_from_health(device_id)
     }
 
     /// Ingest a signature failure event and refresh trust score for the device.
+    #[allow(clippy::result_large_err)]
     pub fn ingest_integrity_signature_failure(
         &self,
         device_id: &str,
@@ -174,6 +179,7 @@ impl C2GrpcServer {
     }
 
     /// Ingest a missing-window event and refresh trust score for the device.
+    #[allow(clippy::result_large_err)]
     pub fn ingest_integrity_missing_window(&self, device_id: &str) -> Result<TrustScore, Status> {
         self.health_computer.record_missing_window(device_id);
         self.recompute_trust_from_health(device_id)

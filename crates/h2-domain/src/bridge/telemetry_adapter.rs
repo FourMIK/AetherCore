@@ -183,6 +183,7 @@ impl H2OSTelemetryAdapter {
     }
 
     /// Transform H2Detect hydrogen detection reading
+    #[allow(clippy::too_many_arguments)]
     pub fn transform_h2detect(
         &self,
         device_id: &str,
@@ -220,6 +221,7 @@ impl H2OSTelemetryAdapter {
     }
 
     /// Transform GPS position update
+    #[allow(clippy::too_many_arguments)]
     pub fn transform_gps(
         &self,
         device_id: &str,

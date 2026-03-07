@@ -9,7 +9,7 @@
 //! - Requires explicit error handling per 4MIK coding standards
 
 use crate::commands::resolve_required_component_path;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader};
@@ -194,7 +194,7 @@ pub async fn flash_firmware(
     );
 
     // Resolve bundled esptool from app resources
-    let esptool_cmd = resolve_required_component_path(&window.app_handle(), "esptool")
+    let esptool_cmd = resolve_required_component_path(window.app_handle(), "esptool")
         .map_err(|e| format!("FAIL-VISIBLE: Bundled esptool missing/corrupt: {e}"))?;
 
     log::info!("Using esptool at: {:?}", esptool_cmd);
@@ -248,43 +248,39 @@ pub async fn flash_firmware(
     // Spawn thread to read stdout and emit progress
     let stdout_handle = thread::spawn(move || {
         let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            if let Ok(line) = line {
-                log::debug!("esptool: {}", line);
+        for line in reader.lines().map_while(Result::ok) {
+            log::debug!("esptool: {}", line);
 
-                // Parse progress from esptool output
-                let progress = if line.contains("Connecting") {
-                    0.3
-                } else if line.contains("Writing") || line.contains("Wrote") {
-                    0.7
-                } else if line.contains("Leaving") {
-                    0.9
-                } else if line.contains("Hash of data verified") {
-                    1.0
-                } else {
-                    0.5
-                };
+            // Parse progress from esptool output
+            let progress = if line.contains("Connecting") {
+                0.3
+            } else if line.contains("Writing") || line.contains("Wrote") {
+                0.7
+            } else if line.contains("Leaving") {
+                0.9
+            } else if line.contains("Hash of data verified") {
+                1.0
+            } else {
+                0.5
+            };
 
-                let _ = window_clone.emit(
-                    "flash_progress",
-                    FlashProgress {
-                        stage: "flashing".to_string(),
-                        message: line.clone(),
-                        progress,
-                    },
-                );
-            }
+            let _ = window_clone.emit(
+                "flash_progress",
+                FlashProgress {
+                    stage: "flashing".to_string(),
+                    message: line,
+                    progress,
+                },
+            );
         }
     });
 
     // Capture stderr for error reporting
     let mut stderr_output = Vec::new();
     let stderr_reader = BufReader::new(stderr);
-    for line in stderr_reader.lines() {
-        if let Ok(line) = line {
-            log::warn!("esptool stderr: {}", line);
-            stderr_output.push(line);
-        }
+    for line in stderr_reader.lines().map_while(Result::ok) {
+        log::warn!("esptool stderr: {}", line);
+        stderr_output.push(line);
     }
 
     // Wait for process completion
@@ -370,7 +366,7 @@ pub async fn listen_for_genesis(port: String) -> Result<GenesisMessage, String> 
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Open serial port
-    let mut serial = serialport::new(&port, 115200)
+    let serial = serialport::new(&port, 115200)
         .timeout(Duration::from_secs(30))
         .open()
         .map_err(|e| {
@@ -461,11 +457,10 @@ pub async fn listen_for_genesis(port: String) -> Result<GenesisMessage, String> 
 
                     // Validate pub_key is valid base64
                     if general_purpose::STANDARD.decode(&genesis.pub_key).is_err() {
-                        let err = format!(
-                            "FAIL-VISIBLE: Invalid GENESIS pub_key format. \
+                        let err = "FAIL-VISIBLE: Invalid GENESIS pub_key format. \
                              Expected base64-encoded Ed25519 key. \
                              This is a CRITICAL failure."
-                        );
+                            .to_string();
                         log::error!("{}", err);
                         return Err(err);
                     }
@@ -541,7 +536,7 @@ pub async fn inject_genesis_bundle(
     // STEP 1: Generate 32-byte cryptographically secure random challenge
     let mut challenge_bytes = [0u8; 32];
     OsRng.fill_bytes(&mut challenge_bytes);
-    let challenge_hex = hex::encode(&challenge_bytes);
+    let challenge_hex = hex::encode(challenge_bytes);
 
     log::info!("Generated challenge: {}...", &challenge_hex[..16]);
 

@@ -1,50 +1,32 @@
-# Multi-stage build for AetherCore Auth Service
-FROM node:18-alpine AS builder
+# Multi-stage build for AetherCore Auth Service (Docker Compose local stack)
+FROM node:22-alpine AS build
+WORKDIR /workspace
 
-WORKDIR /app
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Copy package files and toolchain scripts required by preinstall
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY scripts ./scripts
-COPY services/auth/package.json ./services/auth/
-COPY packages/shared/package.json ./packages/shared/
+COPY packages/shared/package.json packages/shared/tsconfig.json ./packages/shared/
+COPY services/auth/package.json services/auth/tsconfig.json ./services/auth/
+COPY packages/shared/src ./packages/shared/src
+COPY services/auth/src ./services/auth/src
 
-# Install dependencies
-RUN corepack enable && SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --filter @aethercore/auth --filter @aethercore/shared
+RUN SKIP_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile --filter @aethercore/auth...
+RUN pnpm --filter @aethercore/shared build
+RUN pnpm --filter @aethercore/auth build
+RUN pnpm --filter @aethercore/auth deploy --prod /app
 
-# Copy source code
-COPY services/auth ./services/auth
-COPY packages/shared ./packages/shared
-
-# Build the service
-RUN pnpm --filter @aethercore/auth run build
-
-# Production stage
-FROM node:18-alpine
-
+FROM node:22-alpine AS runtime
 WORKDIR /app
-
-# Copy built artifacts and dependencies
-COPY --from=builder /app/services/auth/dist ./dist
-COPY --from=builder /app/services/auth/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
-
-# Environment variables
 ENV NODE_ENV=production
 ENV PORT=3001
 
-# Create non-root user
-RUN addgroup -g 1000 nonroot && adduser -D -u 1000 -G nonroot nonroot
+COPY --from=build /app ./
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
-
-# Expose port
+USER node
 EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "const http=require('http');http.get({host:'127.0.0.1',port:process.env.PORT||3001,path:'/health'},(res)=>process.exit(res.statusCode===200?0:1)).on('error',()=>process.exit(1));"
 
-# Switch to non-root user
-USER nonroot:nonroot
-
-# Run the service
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/server.js"]

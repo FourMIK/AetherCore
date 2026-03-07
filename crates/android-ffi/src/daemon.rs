@@ -50,7 +50,12 @@ impl AetherCoreDaemon {
             return Ok(());
         }
 
-        info!("Starting AetherCore daemon");
+        let hardware_prefix = self.hardware_id.get(..8).unwrap_or(&self.hardware_id);
+        info!(
+            storage_path = %self.storage_path.display(),
+            hardware_id = %hardware_prefix,
+            "Starting AetherCore daemon"
+        );
 
         // TODO: Initialize identity manager with hardware binding
         // TODO: Start Merkle Vine stream processor

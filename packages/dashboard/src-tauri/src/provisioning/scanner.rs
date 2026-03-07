@@ -10,8 +10,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::path::Path;
 
 /// Unified candidate node representation
 /// Represents discovered hardware that may be provisioned
@@ -322,6 +325,7 @@ fn candidate_mount_points() -> Vec<PathBuf> {
     mounts
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn list_directories(root: &Path) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(root) else {
         return Vec::new();

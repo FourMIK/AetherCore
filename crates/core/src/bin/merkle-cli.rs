@@ -99,7 +99,7 @@ fn cmd_build(input: PathBuf, output: Option<PathBuf>, json: bool) -> Result<(), 
         let tree_info = TreeInfo {
             root_hash: root_hash_hex,
             leaf_count: tree.leaf_count(),
-            leaves: sorted_leaves.iter().map(|h| hex::encode(h)).collect(),
+            leaves: sorted_leaves.iter().map(hex::encode).collect(),
         };
 
         let json_str = serde_json::to_string_pretty(&tree_info)
@@ -175,7 +175,7 @@ fn cmd_prove(
             sibling_hashes: proof
                 .sibling_hashes
                 .iter()
-                .map(|h| hex::encode(h))
+                .map(hex::encode)
                 .collect(),
             direction_bits: proof.direction_bits,
         };
