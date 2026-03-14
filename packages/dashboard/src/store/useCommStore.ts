@@ -13,9 +13,10 @@ import {
   type RalphiePresenceFrame,
   type SystemStatusFrame,
 } from '../services/c2/C2Client';
-import { isEnvelopeVerified, type MessageEnvelope } from '@aethercore/shared';
-import { useTacticalStore } from './useTacticalStore';
+import { isEnvelopeVerified, type LatticeInboundEventV1, type MessageEnvelope } from '@aethercore/shared';
+import { useTacticalStore, type TacticalNode } from './useTacticalStore';
 import { isDemoMode } from '../config/runtime';
+import { fetchLatticeEntities } from '../services/lattice/latticeService';
 
 let activePeerConnection: RTCPeerConnection | null = null;
 
@@ -191,6 +192,150 @@ function upsertRalphieNode(frame: RalphiePresenceFrame): void {
   });
 }
 
+function latticeSourceToProvenance(source: string): 'lattice.synthetic' | 'lattice.live' | 'gateway.telemetry' {
+  const normalized = source.toLowerCase();
+  if (normalized.includes('synthetic')) {
+    return 'lattice.synthetic';
+  }
+  if (normalized.includes('lattice')) {
+    return 'lattice.live';
+  }
+  return 'gateway.telemetry';
+}
+
+function latticeSourceBadge(source: string): 'Lattice Synthetic' | 'Lattice Live' | 'Gateway Telemetry' {
+  const provenance = latticeSourceToProvenance(source);
+  if (provenance === 'lattice.synthetic') {
+    return 'Lattice Synthetic';
+  }
+  if (provenance === 'lattice.live') {
+    return 'Lattice Live';
+  }
+  return 'Gateway Telemetry';
+}
+
+function latticeVerificationToStatus(
+  verification: 'VERIFIED' | 'STATUS_UNVERIFIED' | 'SPOOFED' | undefined,
+): 'online' | 'degraded' | 'compromised' {
+  if (verification === 'SPOOFED') {
+    return 'compromised';
+  }
+  if (verification === 'STATUS_UNVERIFIED') {
+    return 'degraded';
+  }
+  return 'online';
+}
+
+function upsertLatticeProjection(
+  projection: Extract<LatticeInboundEventV1['event'], { kind: 'entity' }>['projection'],
+): void {
+  const tacticalStore = useTacticalStore.getState();
+  const raw = projection.raw_entity || {};
+  const location =
+    raw.location && typeof raw.location === 'object' && !Array.isArray(raw.location)
+      ? (raw.location as Record<string, unknown>)
+      : raw;
+  const latitudeCandidate = location.lat ?? location.latitude;
+  const longitudeCandidate = location.lon ?? location.longitude ?? location.lng;
+  const altitudeCandidate = location.altitude_m ?? location.altitude ?? location.alt_m;
+  const latitude = typeof latitudeCandidate === 'number' ? latitudeCandidate : 0;
+  const longitude = typeof longitudeCandidate === 'number' ? longitudeCandidate : 0;
+  const altitude = typeof altitudeCandidate === 'number' ? altitudeCandidate : 0;
+  const provenance = latticeSourceToProvenance(projection.source || 'lattice');
+  const sourceBadge = latticeSourceBadge(projection.source || 'lattice');
+  const trustScore = clampTrustScorePercent(
+    projection.overlay?.trust_score,
+    projection.verification_status === 'VERIFIED' ? 92 : projection.verification_status === 'SPOOFED' ? 1 : 35,
+  );
+  const status = latticeVerificationToStatus(projection.verification_status);
+  const lastSeen = new Date(projection.received_at_ms || Date.now());
+  const existing = tacticalStore.nodes.get(projection.entity_id);
+
+  const nodePatch = {
+    domain: String(raw.domain || raw.type || raw.entity_type || 'lattice'),
+    position: {
+      latitude,
+      longitude,
+      altitude,
+    },
+    trustScore,
+    verified: projection.verification_status === 'VERIFIED',
+    lastSeen,
+    status,
+    sourceBadge,
+    provenance,
+    verificationStatus: projection.verification_status,
+    freshnessMs: Math.max(0, Date.now() - projection.source_update_time_ms),
+    readOnlyExternal: provenance !== 'gateway.telemetry',
+    evidenceObjectIds: projection.overlay?.evidence_object_ids || [],
+  };
+
+  if (existing) {
+    tacticalStore.updateNode(projection.entity_id, nodePatch);
+    return;
+  }
+
+  tacticalStore.addNode({
+    id: projection.entity_id,
+    ...nodePatch,
+  });
+}
+
+function applyLatticeEvent(event: LatticeInboundEventV1): void {
+  if (event.event.kind !== 'entity') {
+    return;
+  }
+  if (event.event.projection.event_type === 'DELETE') {
+    useTacticalStore.getState().removeNode(event.event.projection.entity_id);
+    return;
+  }
+  upsertLatticeProjection(event.event.projection);
+}
+
+async function refreshLatticeSnapshot(): Promise<void> {
+  try {
+    const response = await fetchLatticeEntities(250);
+    response.entities.forEach((entity) => {
+      const provenance: TacticalNode['provenance'] =
+        entity.source_badge === 'Lattice Synthetic'
+          ? 'lattice.synthetic'
+          : entity.source_badge === 'Lattice Live'
+          ? 'lattice.live'
+          : 'gateway.telemetry';
+      const trustScore = clampTrustScorePercent(entity.trust_score, 35);
+      const existing = useTacticalStore.getState().nodes.get(entity.entity_id);
+      const patch = {
+        domain: entity.domain || entity.entity_type || 'lattice',
+        position: {
+          latitude: entity.position?.lat ?? existing?.position.latitude ?? 37.7749,
+          longitude: entity.position?.lon ?? existing?.position.longitude ?? -122.4194,
+          altitude: entity.position?.altitude_m ?? existing?.position.altitude ?? 0,
+        },
+        trustScore,
+        verified: entity.verification_status === 'VERIFIED',
+        lastSeen: new Date(entity.last_update_ms || Date.now()),
+        status: latticeVerificationToStatus(entity.verification_status),
+        sourceBadge: entity.source_badge,
+        provenance,
+        verificationStatus: entity.verification_status,
+        freshnessMs: entity.freshness_ms,
+        readOnlyExternal: provenance !== 'gateway.telemetry',
+        evidenceObjectIds: entity.evidence_object_ids || [],
+      };
+
+      if (existing) {
+        useTacticalStore.getState().updateNode(entity.entity_id, patch);
+      } else {
+        useTacticalStore.getState().addNode({
+          id: entity.entity_id,
+          ...patch,
+        });
+      }
+    });
+  } catch (error) {
+    console.warn('[LATTICE] Failed to refresh lattice entity snapshot:', error);
+  }
+}
 interface CommState {
   currentOperator: Operator | null;
   operators: Map<string, Operator>;
@@ -641,6 +786,7 @@ export const useCommStore = create<CommState>((set, get) => ({
         // Map C2 states to connection status
         if (state === 'CONNECTED') {
           set({ connectionStatus: 'connected' });
+          void refreshLatticeSnapshot();
           const local = get().currentOperator;
           if (local) {
             get().upsertOperator({
@@ -666,6 +812,9 @@ export const useCommStore = create<CommState>((set, get) => ({
             ? 'unreachable'
             : 'unknown';
         set({ backendCoreStatus });
+      },
+      onLatticeEvent: (event) => {
+        applyLatticeEvent(event);
       },
       onMessage: (envelope: MessageEnvelope) => {
         console.log('[C2] Received message:', envelope);
@@ -855,6 +1004,7 @@ export const useCommStore = create<CommState>((set, get) => ({
 
     const client = new C2Client(config);
     set({ c2Client: client, c2State: 'IDLE' });
+    void refreshLatticeSnapshot();
   },
 
   connectC2: async () => {
@@ -1014,3 +1164,4 @@ export const useCommStore = create<CommState>((set, get) => ({
     set({ unverifiedIntercepts: 0 });
   },
 }));
+

@@ -227,6 +227,12 @@ export const NodeListPanel: React.FC = () => {
           filteredNodes.map((node) => {
             const statusBadge = getStatusBadge(node);
             const isCritical = node.byzantineDetected || node.revoked || !node.verified || node.integrityCompromised;
+            const isExternalNode = node.readOnlyExternal === true || node.provenance === 'lattice.synthetic' || node.provenance === 'lattice.live';
+            const canRevokeNode = !node.revoked && !isExternalNode;
+            const freshnessLabel =
+              typeof node.freshnessMs === 'number' && Number.isFinite(node.freshnessMs)
+                ? `${Math.max(0, Math.round(node.freshnessMs / 1000))}s`
+                : null;
 
             return (
               <GlassPanel
@@ -258,6 +264,23 @@ export const NodeListPanel: React.FC = () => {
                 <div className="flex items-center justify-between text-xs mb-2">
                   <span className="text-tungsten/70 truncate mr-2">{node.domain}</span>
                   <div className="flex items-center gap-2 flex-shrink-0">
+                    {node.sourceBadge && (
+                      <span className="px-2 py-0.5 rounded bg-tungsten/15 text-tungsten/80">{node.sourceBadge}</span>
+                    )}
+                    {node.verificationStatus && (
+                      <span
+                        className={`px-2 py-0.5 rounded ${
+                          node.verificationStatus === 'VERIFIED'
+                            ? 'bg-verified-green/20 text-verified-green'
+                            : node.verificationStatus === 'SPOOFED'
+                            ? 'bg-red-500/20 text-red-400'
+                            : 'bg-yellow-400/20 text-yellow-300'
+                        }`}
+                      >
+                        {node.verificationStatus}
+                      </span>
+                    )}
+                    {freshnessLabel && <span className="text-tungsten/60">fresh {freshnessLabel}</span>}
                     {node.tpmAttestationValid === false && (
                       <span className="text-red-400">TPM FAIL</span>
                     )}
@@ -314,8 +337,14 @@ export const NodeListPanel: React.FC = () => {
                   </div>
                 )}
 
+                {isExternalNode && (
+                  <div className="text-xs text-yellow-300 bg-yellow-500/10 border border-yellow-300/25 rounded p-2 mb-2">
+                    External provenance: tactical controls remain read-only for this entity.
+                  </div>
+                )}
+
                 {/* The Great Gospel Kill-Switch */}
-                {!node.revoked && (
+                {canRevokeNode && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -332,6 +361,16 @@ export const NodeListPanel: React.FC = () => {
                         Revoke Identity (Gospel)
                       </>
                     )}
+                  </button>
+                )}
+
+                {!canRevokeNode && !node.revoked && (
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full mt-2 px-3 py-1.5 rounded text-xs font-semibold bg-tungsten/10 text-tungsten/50 border border-tungsten/20 cursor-not-allowed"
+                  >
+                    Revocation Locked (External Provenance)
                   </button>
                 )}
               </GlassPanel>

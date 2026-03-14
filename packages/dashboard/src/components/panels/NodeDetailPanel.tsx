@@ -90,6 +90,44 @@ export const NodeDetailPanel: React.FC = () => {
           </span>
         </div>
 
+        {(node.sourceBadge || node.verificationStatus || typeof node.freshnessMs === 'number') && (
+          <div className="space-y-2">
+            <div>
+              <div className="text-xs text-tungsten/50 mb-1">Provenance</div>
+              <div className="text-sm text-tungsten">{node.sourceBadge || 'Gateway Telemetry'}</div>
+            </div>
+            {node.verificationStatus && (
+              <div>
+                <div className="text-xs text-tungsten/50 mb-1">Verification Posture</div>
+                <span
+                  className={`px-2 py-0.5 rounded text-xs ${
+                    node.verificationStatus === 'VERIFIED'
+                      ? 'bg-verified-green/20 text-verified-green'
+                      : node.verificationStatus === 'SPOOFED'
+                      ? 'bg-red-500/20 text-red-400'
+                      : 'bg-yellow-400/20 text-yellow-300'
+                  }`}
+                >
+                  {node.verificationStatus}
+                </span>
+              </div>
+            )}
+            {typeof node.freshnessMs === 'number' && (
+              <div>
+                <div className="text-xs text-tungsten/50 mb-1">Freshness</div>
+                <div className="text-sm text-tungsten">
+                  {Math.max(0, Math.round(node.freshnessMs / 1000))}s
+                </div>
+              </div>
+            )}
+            {node.readOnlyExternal && (
+              <div className="text-xs text-yellow-300 bg-yellow-500/10 border border-yellow-300/25 rounded p-2">
+                External provenance is read-only. Safety-critical controls are disabled.
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Position */}
         <div>
           <div className="text-xs text-tungsten/50 mb-2 flex items-center gap-1">

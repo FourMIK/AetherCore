@@ -1,0 +1,7 @@
+{
+  "buf_module": "buf.build/anduril/lattice-sdk",
+  "snapshot_ref": "main",
+  "snapshot_digest": "manual-vendored-subset-2026-03-14",
+  "fetched_at": "2026-03-14T00:00:00.000Z",
+  "notes": "Pinned vendored subset for AetherCore lattice-bridge gRPC ingestion (entities/tasks)."
+}

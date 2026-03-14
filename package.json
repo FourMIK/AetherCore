@@ -24,7 +24,9 @@
     "verify:atak": "node scripts/verify-atak-build.js",
     "deploy:atak": "node scripts/deploy-atak-plugin.js",
     "setup:emulator": "node scripts/setup-atak-emulator.js",
-    "start:emulator": "emulator -avd aether-atak-api28 -no-snapshot-load"
+    "start:emulator": "emulator -avd aether-atak-api28 -no-snapshot-load",
+    "demo:lattice:boot": "node scripts/demo-lattice-stealth.js",
+    "demo:lattice:down": "node scripts/demo-lattice-stealth.js --down"
   },
   "devDependencies": {
     "@types/node": "^20.10.6",

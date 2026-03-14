@@ -68,6 +68,9 @@ services:
       AUTH_SERVICE_URL: http://auth:3001
       C2_ADDR: c2-router:50051
       AETHER_BUNKER_ENDPOINT: c2-router:50051
+      LATTICE_BRIDGE_STATUS_URL: http://lattice-bridge:3010/api/lattice/status
+      LATTICE_BRIDGE_MODE_URL: http://lattice-bridge:3010/api/lattice/mode
+      LATTICE_GATEWAY_INTERNAL_TOKEN: ${LATTICE_GATEWAY_INTERNAL_TOKEN:-aethercore_local_lattice_internal_token}
       TPM_ENABLED: ${TPM_ENABLED:-false}
     ports:
       - "${GATEWAY_PORT:-3000}:3000"
@@ -80,6 +83,56 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    networks:
+      - aethercore
+
+  # Lattice Bridge Service
+  lattice-bridge:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.lattice-bridge
+    environment:
+      PORT: 3010
+      NODE_ENV: ${NODE_ENV:-development}
+      LATTICE_BASE_URL: ${LATTICE_BASE_URL:-}
+      LATTICE_CLIENT_ID: ${LATTICE_CLIENT_ID:-}
+      LATTICE_CLIENT_SECRET: ${LATTICE_CLIENT_SECRET:-}
+      LATTICE_AGENT_ID: ${LATTICE_AGENT_ID:-aethercore-agent}
+      LATTICE_INTEGRATION_MODE: ${LATTICE_INTEGRATION_MODE:-stealth_readonly}
+      LATTICE_PROTOCOL_MODE: ${LATTICE_PROTOCOL_MODE:-rest}
+      LATTICE_INPUT_MODE: ${LATTICE_INPUT_MODE:-synthetic}
+      LATTICE_SYNTHETIC_SCENARIO: ${LATTICE_SYNTHETIC_SCENARIO:-sf_bay_maritime_incursion_v1}
+      LATTICE_SYNTHETIC_SEED: ${LATTICE_SYNTHETIC_SEED:-AETHERCORE-STABLE-SEED-001}
+      LATTICE_SYNTHETIC_TIMELINE: ${LATTICE_SYNTHETIC_TIMELINE:-dual}
+      LATTICE_SYNTHETIC_REPLAY_HOURS: ${LATTICE_SYNTHETIC_REPLAY_HOURS:-24}
+      LATTICE_SANDBOX_MODE: ${LATTICE_SANDBOX_MODE:-true}
+      SANDBOXES_TOKEN: ${SANDBOXES_TOKEN:-}
+      LATTICE_GRPC_TARGET: ${LATTICE_GRPC_TARGET:-lattice-grpc:443}
+      LATTICE_GRPC_INSECURE: ${LATTICE_GRPC_INSECURE:-false}
+      LATTICE_GRPC_CA_CERT_PATH: ${LATTICE_GRPC_CA_CERT_PATH:-}
+      LATTICE_GRPC_CLIENT_CERT_PATH: ${LATTICE_GRPC_CLIENT_CERT_PATH:-}
+      LATTICE_GRPC_CLIENT_KEY_PATH: ${LATTICE_GRPC_CLIENT_KEY_PATH:-}
+      LATTICE_GRPC_SERVER_NAME_OVERRIDE: ${LATTICE_GRPC_SERVER_NAME_OVERRIDE:-}
+      LATTICE_GRPC_POLL_WINDOW_MS: ${LATTICE_GRPC_POLL_WINDOW_MS:-1500}
+      LATTICE_GRPC_MAX_EVENTS: ${LATTICE_GRPC_MAX_EVENTS:-256}
+      LATTICE_GATEWAY_INTERNAL_URL: http://gateway:3000/internal/lattice/events
+      LATTICE_GATEWAY_INTERNAL_TOKEN: ${LATTICE_GATEWAY_INTERNAL_TOKEN:-aethercore_local_lattice_internal_token}
+      LATTICE_POLL_INTERVAL_MS: ${LATTICE_POLL_INTERVAL_MS:-15000}
+      LATTICE_BRIDGE_DATA_DIR: /var/lib/lattice-bridge
+      TPM_ENABLED: ${TPM_ENABLED:-false}
+    ports:
+      - "${LATTICE_BRIDGE_PORT:-3010}:3010"
+    volumes:
+      - lattice_bridge_data:/var/lib/lattice-bridge
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3010/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -157,4 +210,6 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  lattice_bridge_data:
     driver: local

@@ -16,6 +16,15 @@ import {
   type RevocationSyncSummary,
 } from './revocation';
 import {
+  type AethercoreVerificationOverlayV1,
+  type LatticeBridgeStatusV1,
+  type LatticeEntityDisplayV1,
+  type LatticeInboundEventV1,
+  type LatticeModeStatusV1,
+  type LatticeObjectRecordV1,
+  type LatticeScenarioControlResponseV1,
+  type LatticeScenarioStatusV1,
+  type LatticeTaskInboxItemV1,
   isRunningInContainer,
   getDefaultC2Endpoint,
   isLocalhostTarget,
@@ -104,6 +113,30 @@ const REVOCATION_FAIL_CLOSED = parseBooleanEnv('AETHERCORE_REVOCATION_FAIL_CLOSE
 const IDENTITY_REGISTRY_HTTP_ENDPOINT = process.env.IDENTITY_REGISTRY_HTTP_ENDPOINT?.trim() || '';
 const IDENTITY_REGISTRY_TIMEOUT_MS = parsePositiveIntEnv('IDENTITY_REGISTRY_TIMEOUT_MS', 5000);
 const AETHERCORE_ADMIN_NODE_IDS = parseDelimitedEnvSet(process.env.AETHERCORE_ADMIN_NODE_IDS);
+const LATTICE_INTERNAL_TOKEN = process.env.LATTICE_GATEWAY_INTERNAL_TOKEN?.trim() || '';
+const LATTICE_BRIDGE_STATUS_URL = process.env.LATTICE_BRIDGE_STATUS_URL?.trim() || '';
+const LATTICE_BRIDGE_BASE_URL = (() => {
+  const explicit = process.env.LATTICE_BRIDGE_BASE_URL?.trim();
+  if (explicit) {
+    return explicit.replace(/\/$/, '');
+  }
+  if (LATTICE_BRIDGE_STATUS_URL) {
+    return LATTICE_BRIDGE_STATUS_URL.replace(/\/api\/lattice\/status\/?$/i, '').replace(/\/$/, '');
+  }
+  return '';
+})();
+const LATTICE_BRIDGE_MODE_URL =
+  process.env.LATTICE_BRIDGE_MODE_URL?.trim() ||
+  (LATTICE_BRIDGE_BASE_URL ? `${LATTICE_BRIDGE_BASE_URL}/api/lattice/mode` : '');
+const LATTICE_BRIDGE_ENTITIES_URL =
+  process.env.LATTICE_BRIDGE_ENTITIES_URL?.trim() ||
+  (LATTICE_BRIDGE_BASE_URL ? `${LATTICE_BRIDGE_BASE_URL}/api/lattice/entities` : '');
+const LATTICE_BRIDGE_SCENARIO_STATUS_URL =
+  process.env.LATTICE_BRIDGE_SCENARIO_STATUS_URL?.trim() ||
+  (LATTICE_BRIDGE_BASE_URL ? `${LATTICE_BRIDGE_BASE_URL}/api/lattice/scenario/status` : '');
+const LATTICE_BRIDGE_SCENARIO_CONTROL_URL =
+  process.env.LATTICE_BRIDGE_SCENARIO_CONTROL_URL?.trim() ||
+  (LATTICE_BRIDGE_BASE_URL ? `${LATTICE_BRIDGE_BASE_URL}/api/lattice/scenario/control` : '');
 const ENROLLMENT_TRUST_SCORE = (() => {
   const raw = process.env.AETHERCORE_ENROLLMENT_TRUST_SCORE;
   if (!raw) {
@@ -141,6 +174,13 @@ logger.info({
   c2_target: C2_GRPC_TARGET,
   bunker_endpoint: AETHER_BUNKER_ENDPOINT,
   identity_registry_http_endpoint: IDENTITY_REGISTRY_HTTP_ENDPOINT || null,
+  lattice_bridge_status_url: LATTICE_BRIDGE_STATUS_URL || null,
+  lattice_bridge_base_url: LATTICE_BRIDGE_BASE_URL || null,
+  lattice_bridge_mode_url: LATTICE_BRIDGE_MODE_URL || null,
+  lattice_bridge_entities_url: LATTICE_BRIDGE_ENTITIES_URL || null,
+  lattice_bridge_scenario_status_url: LATTICE_BRIDGE_SCENARIO_STATUS_URL || null,
+  lattice_bridge_scenario_control_url: LATTICE_BRIDGE_SCENARIO_CONTROL_URL || null,
+  lattice_internal_auth_enabled: !!LATTICE_INTERNAL_TOKEN,
   configured_admin_node_count: AETHERCORE_ADMIN_NODE_IDS.size,
   tpm_enabled: TPM_ENABLED,
 }, 'Gateway service configuration loaded');
@@ -340,6 +380,113 @@ const TELEMETRY_TTL_DEFAULT_MS = 30000; // 30 seconds
 const TELEMETRY_TTL_IOS_OVERLAY_MS = 300000; // 5 minutes
 const PRESENCE_TTL_IOS_OVERLAY_MS = 300000; // 5 minutes
 const PRESENCE_STALE_SCAN_INTERVAL_MS = 15000;
+const LATTICE_EVENT_STALE_THRESHOLD_MS = 120000;
+
+const LatticeVerificationStatusSchema = z.enum(['VERIFIED', 'STATUS_UNVERIFIED', 'SPOOFED']);
+const LatticeOverlaySchema = z.object({
+  schema: z.literal('aethercore.verification.v1'),
+  entity_id: z.string().min(1),
+  verification_status: LatticeVerificationStatusSchema,
+  trust_score: z.number().min(0).max(1),
+  byzantine_faults: z.array(z.string()),
+  merkle_event_hash: z.string().min(1),
+  merkle_prev_hash: z.string().min(1),
+  signature_valid: z.boolean(),
+  evaluated_at_ms: z.number().int().positive(),
+  evidence_object_ids: z.array(z.string()),
+  aethercore_version: z.string().min(1),
+  source: z.literal('aethercore'),
+});
+
+const LatticeTaskSchema = z.object({
+  schema_version: z.literal('lattice.task.inbox.v1'),
+  task_id: z.string().min(1),
+  assigned_agent_id: z.string().min(1),
+  status: z.string().min(1),
+  status_version: z.number().int().nonnegative(),
+  freshness_ms: z.number().int().nonnegative(),
+  trust_posture: z.enum(['trusted', 'degraded', 'unknown']),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  read_only: z.literal(true),
+  raw_task: z.record(z.string(), z.unknown()),
+  received_at_ms: z.number().int().positive(),
+});
+
+const LatticeObjectSchema = z.object({
+  schema_version: z.literal('lattice.object.record.v1'),
+  object_id: z.string().min(1),
+  entity_id: z.string().min(1),
+  object_key: z.string().optional(),
+  media_type: z.string().optional(),
+  ttl_seconds: z.number().int().positive().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  created_at_ms: z.number().int().positive(),
+});
+
+const LatticeInboundEventSchema = z.object({
+  schema_version: z.literal('lattice.inbound.event.v1'),
+  source_protocol: z.enum(['rest', 'grpc']),
+  event_id: z.string().min(1),
+  stream_id: z.string().min(1),
+  received_at_ms: z.number().int().positive(),
+  event: z.union([
+    z.object({
+      kind: z.literal('entity'),
+      projection: z.object({
+        schema_version: z.literal('lattice.entity.projection.v1'),
+        entity_id: z.string().min(1),
+        source: z.string().min(1),
+        source_update_time_ms: z.number().int().positive(),
+        event_type: z.enum(['UPSERT', 'DELETE']),
+        verification_status: LatticeVerificationStatusSchema,
+        received_at_ms: z.number().int().positive(),
+        raw_entity: z.record(z.string(), z.unknown()),
+        overlay: LatticeOverlaySchema.optional(),
+      }),
+    }),
+    z.object({
+      kind: z.literal('task'),
+      task: LatticeTaskSchema,
+    }),
+    z.object({
+      kind: z.literal('object'),
+      object: LatticeObjectSchema,
+    }),
+  ]),
+});
+
+const LatticeModeMutationSchema = z
+  .object({
+    admin_node_id: z.string().trim().min(1),
+    profile: z.enum(['stealth_readonly_synthetic', 'stealth_readonly_live']).optional(),
+    input_mode: z.enum(['synthetic', 'live']).optional(),
+    reason: z.string().trim().min(1).max(256).optional(),
+  })
+  .refine((value) => value.profile !== undefined || value.input_mode !== undefined, {
+    message: 'profile or input_mode is required',
+    path: ['profile'],
+  });
+
+const LatticeScenarioControlMutationSchema = z.object({
+  admin_node_id: z.string().trim().min(1),
+  action: z.enum(['set_phase', 'advance', 'revert', 'reset', 'inject_fault', 'clear_fault']),
+  phase_id: z.string().trim().min(1).optional(),
+  fault_id: z.string().trim().min(1).optional(),
+  reason: z.string().trim().min(1).max(256).optional(),
+});
+
+const latticeTaskInbox = new Map<string, LatticeTaskInboxItemV1>();
+const latticeVerificationOverlayByEntity = new Map<string, AethercoreVerificationOverlayV1>();
+const latticeObjectsByEntity = new Map<string, LatticeObjectRecordV1[]>();
+const latticeEntityDisplayById = new Map<string, LatticeEntityDisplayV1>();
+let latticeBridgeStatusCache: LatticeBridgeStatusV1 | null = null;
+let latticeModeCache: LatticeModeStatusV1 | null = null;
+let latticeScenarioStatusCache: LatticeScenarioStatusV1 | null = null;
+let latticeLastEventAtMs: number | null = null;
+let latticeInvalidEventCount = 0;
+let latticeLastInvalidEventAtMs: number | null = null;
+let latticeLastInvalidEventReason: string | null = null;
 
 function toObjectRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -496,6 +643,13 @@ type IdentityRpcError = {
 
 type IdentityRpcResult<T extends Record<string, unknown>> = IdentityRpcOk<T> | IdentityRpcError;
 
+type AdminPrivilegeEvaluation = {
+  authorized: boolean;
+  reason?: string;
+  evaluatedAt: number;
+  statusCode: number;
+};
+
 async function callIdentityRegistryRpc<TRequest extends Record<string, unknown>, TResponse extends Record<string, unknown>>(
   method: string,
   request: TRequest,
@@ -570,6 +724,299 @@ function telemetryTtlMsForIngress(telemetry: any, platformHeader: unknown, overl
   return TELEMETRY_TTL_DEFAULT_MS;
 }
 
+function readStringCandidate(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function readNumericCandidate(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+}
+
+function sourceBadgeFromSource(source: string): 'Lattice Synthetic' | 'Lattice Live' | 'Gateway Telemetry' {
+  const normalized = source.toLowerCase();
+  if (normalized.includes('synthetic')) {
+    return 'Lattice Synthetic';
+  }
+  if (normalized.includes('lattice')) {
+    return 'Lattice Live';
+  }
+  return 'Gateway Telemetry';
+}
+
+type EntityProjectionType = Extract<LatticeInboundEventV1['event'], { kind: 'entity' }>['projection'];
+
+function trustScoreFromProjection(projection: EntityProjectionType): number {
+  const overlay = projection.overlay;
+  if (overlay && typeof overlay.trust_score === 'number' && Number.isFinite(overlay.trust_score)) {
+    return Math.max(0, Math.min(1, overlay.trust_score));
+  }
+  if (projection.verification_status === 'VERIFIED') {
+    return 0.92;
+  }
+  if (projection.verification_status === 'SPOOFED') {
+    return 0.01;
+  }
+  return 0.35;
+}
+
+function upsertLatticeEntityDisplayFromProjection(projection: EntityProjectionType): void {
+  const raw = projection.raw_entity || {};
+  const rawLocation =
+    raw.location && typeof raw.location === 'object' && !Array.isArray(raw.location)
+      ? (raw.location as Record<string, unknown>)
+      : raw;
+  const lat = readNumericCandidate(rawLocation.lat, rawLocation.latitude);
+  const lon = readNumericCandidate(rawLocation.lon, rawLocation.longitude, rawLocation.lng);
+  const altitude = readNumericCandidate(rawLocation.altitude_m, rawLocation.alt_m, rawLocation.altitude);
+  const evidence = latticeObjectsByEntity.get(projection.entity_id) || [];
+  const evidenceObjectIds =
+    projection.overlay?.evidence_object_ids?.length
+      ? projection.overlay.evidence_object_ids
+      : evidence.map((record) => record.object_id);
+
+  const model: LatticeEntityDisplayV1 = {
+    schema_version: 'lattice.entity.display.v1',
+    entity_id: projection.entity_id,
+    title:
+      readStringCandidate(raw.title, raw.name, raw.callsign, projection.entity_id) || projection.entity_id,
+    domain: readStringCandidate(raw.domain, raw.classification, 'unknown') || 'unknown',
+    entity_type: readStringCandidate(raw.type, raw.entity_type, raw.entityType, 'UNKNOWN') || 'UNKNOWN',
+    source: projection.source,
+    source_badge: sourceBadgeFromSource(projection.source),
+    verification_status: projection.verification_status,
+    trust_score: trustScoreFromProjection(projection),
+    freshness_ms: Math.max(0, Date.now() - projection.source_update_time_ms),
+    last_update_ms: projection.source_update_time_ms,
+    position:
+      typeof lat === 'number' && typeof lon === 'number'
+        ? {
+            lat,
+            lon,
+            altitude_m: altitude,
+          }
+        : undefined,
+    speed_mps: readNumericCandidate(raw.speed_mps, raw.speedMps),
+    heading_deg: readNumericCandidate(raw.heading_deg, raw.headingDeg),
+    status_label: readStringCandidate(raw.status, raw.track_status, raw.trackStatus),
+    read_only_actions: true,
+    overlay: projection.overlay,
+    evidence_object_ids: evidenceObjectIds,
+    raw_entity: raw,
+  };
+
+  latticeEntityDisplayById.set(model.entity_id, model);
+}
+
+function upsertLatticeObjectRecord(record: LatticeObjectRecordV1): void {
+  const existing = latticeObjectsByEntity.get(record.entity_id) || [];
+  const deduped = existing.filter((candidate) => candidate.object_id !== record.object_id);
+  deduped.unshift(record);
+  latticeObjectsByEntity.set(record.entity_id, deduped.slice(0, 128));
+}
+
+async function refreshLatticeBridgeStatus(): Promise<void> {
+  if (!LATTICE_BRIDGE_STATUS_URL) {
+    return;
+  }
+
+  try {
+    const payload = await fetchLatticeBridgeJson<LatticeBridgeStatusV1>(LATTICE_BRIDGE_STATUS_URL, { method: 'GET' });
+    if (payload.schema_version === 'lattice.bridge.status.v1') {
+      latticeBridgeStatusCache = payload;
+    }
+  } catch (error) {
+    logger.warn({ error: String(error) }, 'Failed to refresh lattice bridge status');
+  }
+}
+
+async function evaluateAdminPrivileges(nodeId: string): Promise<AdminPrivilegeEvaluation> {
+  const evaluatedAt = Date.now();
+  const normalizedNodeId = nodeId.trim();
+  if (!normalizedNodeId) {
+    return {
+      authorized: false,
+      reason: 'invalid_node_id',
+      evaluatedAt,
+      statusCode: 400,
+    };
+  }
+
+  if (!AETHERCORE_ADMIN_NODE_IDS.has(normalizedNodeId)) {
+    return {
+      authorized: false,
+      reason: 'not_in_admin_allowlist',
+      evaluatedAt,
+      statusCode: 200,
+    };
+  }
+
+  const revocationCheck = verifySenderNotRevoked(normalizedNodeId);
+  if (!revocationCheck.ok) {
+    return {
+      authorized: false,
+      reason: 'identity_revoked',
+      evaluatedAt,
+      statusCode: 200,
+    };
+  }
+
+  const enrollment = await callIdentityRegistryRpc<
+    { node_id: string },
+    { success?: unknown; is_enrolled?: unknown; error_message?: unknown }
+  >('IsNodeEnrolled', { node_id: normalizedNodeId });
+
+  if (!enrollment.ok) {
+    logger.error(
+      {
+        node_id: normalizedNodeId,
+        code: enrollment.code,
+        message: enrollment.message,
+        details: enrollment.details,
+      },
+      'Failed to evaluate admin privileges against identity registry',
+    );
+    return {
+      authorized: false,
+      reason: 'identity_backend_unavailable',
+      evaluatedAt,
+      statusCode: 503,
+    };
+  }
+
+  const rpcSuccess = enrollment.data.success === true;
+  const enrolled = enrollment.data.is_enrolled === true;
+  if (!rpcSuccess || !enrolled) {
+    return {
+      authorized: false,
+      reason: rpcSuccess ? 'admin_not_enrolled' : 'identity_registry_rejected',
+      evaluatedAt,
+      statusCode: 200,
+    };
+  }
+
+  return {
+    authorized: true,
+    evaluatedAt,
+    statusCode: 200,
+  };
+}
+
+function latticeBridgeHeaders(includeContentType: boolean): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (includeContentType) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (LATTICE_INTERNAL_TOKEN) {
+    headers['x-aethercore-lattice-token'] = LATTICE_INTERNAL_TOKEN;
+  }
+  return headers;
+}
+
+async function fetchLatticeBridgeJson<T>(url: string, init: RequestInit): Promise<T> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      ...latticeBridgeHeaders(Boolean(init.body)),
+      ...(init.headers as Record<string, string> | undefined),
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Bridge request failed (${response.status}): ${body.slice(0, 256)}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+async function refreshLatticeBridgeMode(): Promise<void> {
+  if (!LATTICE_BRIDGE_MODE_URL) {
+    return;
+  }
+
+  try {
+    const payload = await fetchLatticeBridgeJson<LatticeModeStatusV1>(LATTICE_BRIDGE_MODE_URL, { method: 'GET' });
+    if (payload.schema_version === 'lattice.mode.status.v1') {
+      latticeModeCache = payload;
+    }
+  } catch (error) {
+    logger.warn({ error: String(error) }, 'Failed to refresh lattice bridge mode');
+  }
+}
+
+async function refreshLatticeEntitySnapshot(): Promise<void> {
+  if (!LATTICE_BRIDGE_ENTITIES_URL) {
+    return;
+  }
+
+  try {
+    const payload = await fetchLatticeBridgeJson<{ entities?: LatticeEntityDisplayV1[] }>(
+      LATTICE_BRIDGE_ENTITIES_URL,
+      { method: 'GET' },
+    );
+    if (!Array.isArray(payload.entities)) {
+      return;
+    }
+
+    for (const entity of payload.entities) {
+      if (!entity || typeof entity !== 'object' || typeof entity.entity_id !== 'string') {
+        continue;
+      }
+      latticeEntityDisplayById.set(entity.entity_id, entity);
+    }
+  } catch (error) {
+    logger.warn({ error: String(error) }, 'Failed to refresh lattice entity snapshot');
+  }
+}
+
+async function refreshLatticeScenarioStatus(): Promise<void> {
+  if (!LATTICE_BRIDGE_SCENARIO_STATUS_URL) {
+    return;
+  }
+
+  try {
+    const payload = await fetchLatticeBridgeJson<LatticeScenarioStatusV1>(LATTICE_BRIDGE_SCENARIO_STATUS_URL, {
+      method: 'GET',
+    });
+    if (payload.schema_version === 'lattice.scenario.status.v1') {
+      latticeScenarioStatusCache = payload;
+    }
+  } catch (error) {
+    logger.warn({ error: String(error) }, 'Failed to refresh lattice scenario status');
+  }
+}
+
+function listLatticeObjectsCached(entityId?: string, limit = 100): LatticeObjectRecordV1[] {
+  const all = Array.from(latticeObjectsByEntity.values()).flat();
+  const filtered = entityId ? all.filter((record) => record.entity_id === entityId) : all;
+  const deduped = new Map<string, LatticeObjectRecordV1>();
+  for (const record of filtered.sort((a, b) => b.created_at_ms - a.created_at_ms)) {
+    if (!deduped.has(record.object_id)) {
+      deduped.set(record.object_id, record);
+    }
+    if (deduped.size >= limit) {
+      break;
+    }
+  }
+  return Array.from(deduped.values());
+}
+
 // Clean up old telemetry periodically
 setInterval(() => {
   const now = Date.now();
@@ -581,9 +1028,557 @@ setInterval(() => {
   }
 }, 10000); // Clean every 10 seconds
 
+setInterval(() => {
+  void refreshLatticeBridgeStatus();
+  void refreshLatticeBridgeMode();
+  void refreshLatticeEntitySnapshot();
+  void refreshLatticeScenarioStatus();
+}, 10000);
+
 // Health check endpoint for Docker/Kubernetes readiness probes
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
+});
+
+app.get('/api/lattice/status', async (_req, res) => {
+  await refreshLatticeBridgeStatus();
+  await refreshLatticeBridgeMode();
+  await refreshLatticeScenarioStatus();
+  const now = Date.now();
+  const hasRecentEvents =
+    latticeLastEventAtMs !== null && now - latticeLastEventAtMs <= LATTICE_EVENT_STALE_THRESHOLD_MS;
+  const bridgeHealthy = latticeBridgeStatusCache?.healthy ?? false;
+  const integrationMode =
+    latticeBridgeStatusCache?.integration_mode || latticeModeCache?.integration_mode || 'unknown';
+  const inputMode = latticeBridgeStatusCache?.input_mode || latticeModeCache?.input_mode || 'unknown';
+  const effectiveProfile =
+    latticeBridgeStatusCache?.effective_profile || latticeModeCache?.effective_profile || 'unknown';
+  const lastModeChangeAtMs =
+    latticeBridgeStatusCache?.last_mode_change_at_ms ?? latticeModeCache?.last_mode_change_at_ms ?? null;
+  const scenarioId = latticeScenarioStatusCache?.scenario_id || latticeBridgeStatusCache?.scenario_id || null;
+  const phaseId = latticeScenarioStatusCache?.phase_id || latticeBridgeStatusCache?.phase_id || null;
+  const phaseLabel = latticeScenarioStatusCache?.phase_label || latticeBridgeStatusCache?.phase_label || null;
+  const scenarioReady =
+    latticeScenarioStatusCache?.scenario_ready ?? latticeBridgeStatusCache?.scenario_ready ?? false;
+
+  res.status(200).json({
+    status: bridgeHealthy || hasRecentEvents ? 'ok' : 'degraded',
+    integration_mode: integrationMode,
+    input_mode: inputMode,
+    effective_profile: effectiveProfile,
+    last_mode_change_at_ms: lastModeChangeAtMs,
+    scenario_id: scenarioId,
+    phase_id: phaseId,
+    phase_label: phaseLabel,
+    manual_mode: latticeScenarioStatusCache?.manual_mode ?? latticeBridgeStatusCache?.manual_mode ?? true,
+    scenario_ready: scenarioReady,
+    last_event_at_ms: latticeLastEventAtMs,
+    event_age_ms: latticeLastEventAtMs ? now - latticeLastEventAtMs : null,
+    bridge: latticeBridgeStatusCache,
+    mode: latticeModeCache,
+    scenario: latticeScenarioStatusCache,
+    tasks_cached: latticeTaskInbox.size,
+    overlays_cached: latticeVerificationOverlayByEntity.size,
+    objects_cached: Array.from(latticeObjectsByEntity.values()).reduce((total, records) => total + records.length, 0),
+    entities_cached: latticeEntityDisplayById.size,
+    invalid_events_dropped: latticeInvalidEventCount,
+    last_invalid_event_at_ms: latticeLastInvalidEventAtMs,
+    last_invalid_event_reason: latticeLastInvalidEventReason,
+    timestamp: now,
+  });
+});
+
+app.get('/api/lattice/tasks', (req, res) => {
+  const limit = Math.max(1, Math.min(500, Number.parseInt(String(req.query.limit || '100'), 10) || 100));
+  const tasks = Array.from(latticeTaskInbox.values())
+    .sort((a, b) => b.received_at_ms - a.received_at_ms)
+    .slice(0, limit);
+  res.status(200).json({
+    status: 'ok',
+    read_only: true,
+    count: tasks.length,
+    tasks,
+    timestamp: Date.now(),
+  });
+});
+
+app.get('/api/lattice/entities', async (req, res) => {
+  await refreshLatticeEntitySnapshot();
+  const limit = Math.max(1, Math.min(500, Number.parseInt(String(req.query.limit || '250'), 10) || 250));
+  const entities = Array.from(latticeEntityDisplayById.values())
+    .sort((a, b) => b.last_update_ms - a.last_update_ms)
+    .slice(0, limit);
+  res.status(200).json({
+    status: 'ok',
+    count: entities.length,
+    entities,
+    timestamp: Date.now(),
+  });
+});
+
+app.get('/api/lattice/entities/:entityId', async (req, res) => {
+  await refreshLatticeEntitySnapshot();
+  const entityId = typeof req.params.entityId === 'string' ? req.params.entityId.trim() : '';
+  if (!entityId) {
+    res.status(400).json({
+      status: 'error',
+      code: 'INVALID_ENTITY_ID',
+      message: 'entityId path parameter is required',
+    });
+    return;
+  }
+
+  const entity = latticeEntityDisplayById.get(entityId);
+  if (!entity) {
+    res.status(404).json({
+      status: 'not_found',
+      code: 'ENTITY_NOT_FOUND',
+      message: `No cached lattice entity found for ${entityId}`,
+    });
+    return;
+  }
+
+  res.status(200).json({
+    status: 'ok',
+    entity,
+    timestamp: Date.now(),
+  });
+});
+
+app.get('/api/lattice/entities/:entityId/verification', (req, res) => {
+  const entityId = req.params.entityId;
+  const overlay = latticeVerificationOverlayByEntity.get(entityId);
+  if (!overlay) {
+    res.status(404).json({
+      status: 'not_found',
+      message: `No lattice verification overlay cached for entity ${entityId}`,
+      entity_id: entityId,
+    });
+    return;
+  }
+
+  res.status(200).json({
+    status: 'ok',
+    entity_id: entityId,
+    overlay,
+    evidence_objects: latticeObjectsByEntity.get(entityId) || [],
+    timestamp: Date.now(),
+  });
+});
+
+app.get('/api/lattice/objects', (req, res) => {
+  const entityIdQuery = req.query.entity_id ?? req.query.entityId;
+  const entityId =
+    typeof entityIdQuery === 'string' && entityIdQuery.trim().length > 0 ? entityIdQuery.trim() : undefined;
+  const limit = Math.max(1, Math.min(500, Number.parseInt(String(req.query.limit || '100'), 10) || 100));
+  const objects = listLatticeObjectsCached(entityId, limit);
+  res.status(200).json({
+    status: 'ok',
+    source: 'cache',
+    count: objects.length,
+    objects,
+    timestamp: Date.now(),
+  });
+});
+
+app.get('/api/lattice/objects/:objectId', (req, res) => {
+  const objectId = typeof req.params.objectId === 'string' ? req.params.objectId.trim() : '';
+  if (!objectId) {
+    res.status(400).json({
+      status: 'error',
+      code: 'INVALID_OBJECT_ID',
+      message: 'objectId path parameter is required',
+    });
+    return;
+  }
+
+  const object = listLatticeObjectsCached(undefined, 500).find((candidate) => candidate.object_id === objectId);
+  if (!object) {
+    res.status(404).json({
+      status: 'not_found',
+      code: 'OBJECT_NOT_FOUND',
+      message: `No cached lattice object found for ${objectId}`,
+    });
+    return;
+  }
+
+  res.status(200).json({
+    status: 'ok',
+    source: 'cache',
+    object,
+    timestamp: Date.now(),
+  });
+});
+
+app.get('/api/lattice/scenario/status', async (_req, res) => {
+  await refreshLatticeScenarioStatus();
+  if (latticeScenarioStatusCache) {
+    res.status(200).json({
+      status: 'ok',
+      scenario: latticeScenarioStatusCache,
+      timestamp: Date.now(),
+    });
+    return;
+  }
+
+  res.status(503).json({
+    status: 'error',
+    code: 'LATTICE_SCENARIO_UNAVAILABLE',
+    message: 'Lattice scenario status is unavailable',
+  });
+});
+
+app.get('/api/lattice/scenario/preflight', async (_req, res) => {
+  await refreshLatticeScenarioStatus();
+  if (!latticeScenarioStatusCache) {
+    res.status(503).json({
+      status: 'error',
+      code: 'LATTICE_SCENARIO_UNAVAILABLE',
+      message: 'Lattice scenario status is unavailable',
+    });
+    return;
+  }
+
+  const scenario = latticeScenarioStatusCache;
+  res.status(200).json({
+    status: 'ok',
+    scenario_id: scenario.scenario_id,
+    phase_id: scenario.phase_id,
+    phase_label: scenario.phase_label,
+    scenario_ready: scenario.scenario_ready,
+    preflight: scenario.preflight,
+    timestamp: Date.now(),
+  });
+});
+
+app.get('/api/lattice/mode', async (_req, res) => {
+  if (!LATTICE_BRIDGE_MODE_URL) {
+    if (latticeModeCache) {
+      res.status(200).json({
+        status: 'stale',
+        mode: latticeModeCache,
+        warning: 'LATTICE_BRIDGE_MODE_URL not configured; returning cached mode',
+      });
+      return;
+    }
+    res.status(503).json({
+      status: 'error',
+      code: 'LATTICE_BRIDGE_MODE_UNCONFIGURED',
+      message: 'Lattice bridge mode endpoint is not configured',
+    });
+    return;
+  }
+
+  try {
+    const mode = await fetchLatticeBridgeJson<LatticeModeStatusV1>(LATTICE_BRIDGE_MODE_URL, { method: 'GET' });
+    if (mode.schema_version === 'lattice.mode.status.v1') {
+      latticeModeCache = mode;
+    }
+    res.status(200).json({
+      status: 'ok',
+      mode,
+      timestamp: Date.now(),
+    });
+  } catch (error) {
+    if (latticeModeCache) {
+      res.status(200).json({
+        status: 'stale',
+        mode: latticeModeCache,
+        warning: error instanceof Error ? error.message : String(error),
+        timestamp: Date.now(),
+      });
+      return;
+    }
+    res.status(503).json({
+      status: 'error',
+      code: 'LATTICE_MODE_UNAVAILABLE',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+app.post('/api/lattice/mode', async (req, res) => {
+  const parsed = LatticeModeMutationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      status: 'error',
+      code: 'INVALID_MODE_MUTATION',
+      details: parsed.error.flatten(),
+    });
+    return;
+  }
+
+  const payload = parsed.data;
+  const evaluation = await evaluateAdminPrivileges(payload.admin_node_id);
+  if (!evaluation.authorized) {
+    const statusCode =
+      evaluation.statusCode === 503 ? 503 : evaluation.statusCode === 400 ? 400 : 403;
+    res.status(statusCode).json({
+      status: 'error',
+      code: 'ADMIN_UNAUTHORIZED',
+      reason: evaluation.reason,
+      message:
+        statusCode === 503
+          ? 'Admin privilege evaluation backend is unavailable'
+          : 'Admin privileges are required to change lattice input mode',
+      evaluated_at: evaluation.evaluatedAt,
+    });
+    return;
+  }
+
+  if (!LATTICE_BRIDGE_MODE_URL) {
+    res.status(503).json({
+      status: 'error',
+      code: 'LATTICE_BRIDGE_MODE_UNCONFIGURED',
+      message: 'Lattice bridge mode endpoint is not configured',
+    });
+    return;
+  }
+
+  const bridgeBody = {
+    profile: payload.profile,
+    input_mode: payload.input_mode,
+    changed_by_admin_node_id: payload.admin_node_id,
+    reason: payload.reason,
+  };
+
+  try {
+    const bridgeResponse = await fetch(LATTICE_BRIDGE_MODE_URL, {
+      method: 'POST',
+      headers: latticeBridgeHeaders(true),
+      body: JSON.stringify(bridgeBody),
+    });
+    const bridgeText = await bridgeResponse.text();
+    let bridgePayload: Record<string, unknown>;
+    try {
+      bridgePayload = bridgeText ? (JSON.parse(bridgeText) as Record<string, unknown>) : {};
+    } catch {
+      bridgePayload = {};
+    }
+
+    if (!bridgeResponse.ok) {
+      res.status(bridgeResponse.status).json({
+        status: 'error',
+        code: bridgePayload.code || 'LATTICE_MODE_CHANGE_FAILED',
+        message:
+          (typeof bridgePayload.message === 'string' ? bridgePayload.message : null) ||
+          `Bridge mode mutation failed with HTTP ${bridgeResponse.status}`,
+        bridge: bridgePayload,
+      });
+      return;
+    }
+
+    const modeCandidate = bridgePayload.mode;
+    if (
+      modeCandidate &&
+      typeof modeCandidate === 'object' &&
+      (modeCandidate as { schema_version?: string }).schema_version === 'lattice.mode.status.v1'
+    ) {
+      latticeModeCache = modeCandidate as LatticeModeStatusV1;
+    }
+    await refreshLatticeBridgeStatus();
+    res.status(200).json({
+      status: 'ok',
+      bridge: bridgePayload,
+      mode: latticeModeCache,
+      timestamp: Date.now(),
+    });
+  } catch (error) {
+    res.status(502).json({
+      status: 'error',
+      code: 'LATTICE_MODE_PROXY_FAILED',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+app.post('/api/lattice/scenario/control', async (req, res) => {
+  const parsed = LatticeScenarioControlMutationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      status: 'error',
+      code: 'INVALID_SCENARIO_CONTROL_REQUEST',
+      details: parsed.error.flatten(),
+    });
+    return;
+  }
+
+  const payload = parsed.data;
+  const evaluation = await evaluateAdminPrivileges(payload.admin_node_id);
+  if (!evaluation.authorized) {
+    const statusCode =
+      evaluation.statusCode === 503 ? 503 : evaluation.statusCode === 400 ? 400 : 403;
+    res.status(statusCode).json({
+      status: 'error',
+      code: 'ADMIN_UNAUTHORIZED',
+      reason: evaluation.reason,
+      message:
+        statusCode === 503
+          ? 'Admin privilege evaluation backend is unavailable'
+          : 'Admin privileges are required to control lattice scenario state',
+      evaluated_at: evaluation.evaluatedAt,
+    });
+    return;
+  }
+
+  if (!LATTICE_BRIDGE_SCENARIO_CONTROL_URL) {
+    res.status(503).json({
+      status: 'error',
+      code: 'LATTICE_BRIDGE_SCENARIO_CONTROL_UNCONFIGURED',
+      message: 'Lattice bridge scenario control endpoint is not configured',
+    });
+    return;
+  }
+
+  try {
+    const bridgeResponse = await fetch(LATTICE_BRIDGE_SCENARIO_CONTROL_URL, {
+      method: 'POST',
+      headers: latticeBridgeHeaders(true),
+      body: JSON.stringify({
+        schema_version: 'lattice.scenario.control.request.v1',
+        action: payload.action,
+        phase_id: payload.phase_id,
+        fault_id: payload.fault_id,
+        changed_by_admin_node_id: payload.admin_node_id,
+        reason: payload.reason,
+      }),
+    });
+    const bridgeText = await bridgeResponse.text();
+    let bridgePayload: Record<string, unknown>;
+    try {
+      bridgePayload = bridgeText ? (JSON.parse(bridgeText) as Record<string, unknown>) : {};
+    } catch {
+      bridgePayload = {};
+    }
+
+    if (!bridgeResponse.ok) {
+      res.status(bridgeResponse.status).json({
+        status: 'error',
+        code: bridgePayload.code || 'LATTICE_SCENARIO_CONTROL_FAILED',
+        message:
+          (typeof bridgePayload.message === 'string' ? bridgePayload.message : null) ||
+          `Bridge scenario control failed with HTTP ${bridgeResponse.status}`,
+        bridge: bridgePayload,
+      });
+      return;
+    }
+
+    const scenarioCandidate = bridgePayload.scenario;
+    if (
+      scenarioCandidate &&
+      typeof scenarioCandidate === 'object' &&
+      (scenarioCandidate as { schema_version?: string }).schema_version === 'lattice.scenario.status.v1'
+    ) {
+      latticeScenarioStatusCache = scenarioCandidate as LatticeScenarioStatusV1;
+    }
+
+    res.status(200).json({
+      status: 'ok',
+      bridge: bridgePayload as unknown as LatticeScenarioControlResponseV1,
+      scenario: latticeScenarioStatusCache,
+      timestamp: Date.now(),
+    });
+  } catch (error) {
+    res.status(502).json({
+      status: 'error',
+      code: 'LATTICE_SCENARIO_CONTROL_PROXY_FAILED',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+app.post('/internal/lattice/events', (req, res) => {
+  if (LATTICE_INTERNAL_TOKEN) {
+    const presented = req.headers['x-aethercore-lattice-token'];
+    const headerToken = Array.isArray(presented) ? presented[0] : presented;
+    if (headerToken !== LATTICE_INTERNAL_TOKEN) {
+      res.status(401).json({
+        status: 'error',
+        code: 'UNAUTHORIZED',
+        message: 'Invalid lattice internal token',
+      });
+      return;
+    }
+  }
+
+  const parsed = LatticeInboundEventSchema.safeParse(req.body);
+  if (!parsed.success) {
+    latticeInvalidEventCount += 1;
+    latticeLastInvalidEventAtMs = Date.now();
+    latticeLastInvalidEventReason = parsed.error.issues.map((issue) => issue.message).join('; ').slice(0, 512);
+    logger.error(
+      {
+        error_count: latticeInvalidEventCount,
+        reason: latticeLastInvalidEventReason,
+      },
+      'Dropping invalid lattice inbound event (fail-visible)',
+    );
+    res.status(400).json({
+      status: 'error',
+      code: 'INVALID_LATTICE_EVENT',
+      details: parsed.error.flatten(),
+    });
+    return;
+  }
+
+  const event = parsed.data as LatticeInboundEventV1;
+  latticeLastEventAtMs = Date.now();
+
+  if (event.event.kind === 'entity') {
+    if (event.event.projection.event_type === 'DELETE') {
+      latticeVerificationOverlayByEntity.delete(event.event.projection.entity_id);
+      latticeObjectsByEntity.delete(event.event.projection.entity_id);
+      latticeEntityDisplayById.delete(event.event.projection.entity_id);
+    } else {
+    const overlay = event.event.projection.overlay;
+    if (overlay) {
+      latticeVerificationOverlayByEntity.set(event.event.projection.entity_id, overlay);
+    }
+    if (overlay?.evidence_object_ids?.length) {
+      const existing = latticeObjectsByEntity.get(event.event.projection.entity_id) || [];
+      const known = new Set(existing.map((record) => record.object_id));
+      for (const objectId of overlay.evidence_object_ids) {
+        if (known.has(objectId)) {
+          continue;
+        }
+        existing.push({
+          schema_version: 'lattice.object.record.v1',
+          object_id: objectId,
+          entity_id: event.event.projection.entity_id,
+          created_at_ms: event.received_at_ms,
+        });
+      }
+      latticeObjectsByEntity.set(event.event.projection.entity_id, existing.slice(-128));
+    }
+    upsertLatticeEntityDisplayFromProjection(event.event.projection);
+    }
+  } else if (event.event.kind === 'task') {
+    latticeTaskInbox.set(event.event.task.task_id, event.event.task);
+  } else {
+    upsertLatticeObjectRecord(event.event.object);
+    const display = latticeEntityDisplayById.get(event.event.object.entity_id);
+    if (display) {
+      const evidence = new Set(display.evidence_object_ids);
+      evidence.add(event.event.object.object_id);
+      latticeEntityDisplayById.set(event.event.object.entity_id, {
+        ...display,
+        evidence_object_ids: Array.from(evidence),
+      });
+    }
+  }
+
+  broadcast({
+    type: 'LATTICE_EVENT',
+    payload: event,
+    timestamp: Date.now(),
+  });
+
+  res.status(202).json({
+    status: 'accepted',
+    event_id: event.event_id,
+    event_kind: event.event.kind,
+    timestamp: Date.now(),
+  });
 });
 
 app.post('/api/enrollment', async (req, res) => {
@@ -806,75 +1801,12 @@ app.post('/api/telemetry', (req, res) => {
 });
 
 app.get('/api/admin/privileges/:nodeId', async (req, res) => {
-  const evaluatedAt = Date.now();
   const nodeId = typeof req.params.nodeId === 'string' ? req.params.nodeId.trim() : '';
-
-  if (!nodeId) {
-    res.status(400).json({
-      authorized: false,
-      reason: 'invalid_node_id',
-      evaluated_at: evaluatedAt,
-    });
-    return;
-  }
-
-  if (!AETHERCORE_ADMIN_NODE_IDS.has(nodeId)) {
-    res.status(200).json({
-      authorized: false,
-      reason: 'not_in_admin_allowlist',
-      evaluated_at: evaluatedAt,
-    });
-    return;
-  }
-
-  const revocationCheck = verifySenderNotRevoked(nodeId);
-  if (!revocationCheck.ok) {
-    res.status(200).json({
-      authorized: false,
-      reason: 'identity_revoked',
-      evaluated_at: evaluatedAt,
-    });
-    return;
-  }
-
-  const enrollment = await callIdentityRegistryRpc<{ node_id: string }, { success?: unknown; is_enrolled?: unknown; error_message?: unknown }>(
-    'IsNodeEnrolled',
-    { node_id: nodeId },
-  );
-
-  if (!enrollment.ok) {
-    logger.error(
-      {
-        node_id: nodeId,
-        code: enrollment.code,
-        message: enrollment.message,
-        details: enrollment.details,
-      },
-      'Failed to evaluate admin privileges against identity registry',
-    );
-    res.status(503).json({
-      authorized: false,
-      reason: 'identity_backend_unavailable',
-      evaluated_at: evaluatedAt,
-    });
-    return;
-  }
-
-  const rpcSuccess = enrollment.data.success === true;
-  const enrolled = enrollment.data.is_enrolled === true;
-
-  if (!rpcSuccess || !enrolled) {
-    res.status(200).json({
-      authorized: false,
-      reason: rpcSuccess ? 'admin_not_enrolled' : 'identity_registry_rejected',
-      evaluated_at: evaluatedAt,
-    });
-    return;
-  }
-
-  res.status(200).json({
-    authorized: true,
-    evaluated_at: evaluatedAt,
+  const evaluation = await evaluateAdminPrivileges(nodeId);
+  res.status(evaluation.statusCode).json({
+    authorized: evaluation.authorized,
+    reason: evaluation.reason,
+    evaluated_at: evaluation.evaluatedAt,
   });
 });
 
@@ -2205,3 +3137,4 @@ process.on('SIGINT', () => {
 server.listen(PORT, () => {
   logger.info({ port: PORT, c2_core: C2_GRPC_TARGET }, '4MIK Gateway active');
 });
+

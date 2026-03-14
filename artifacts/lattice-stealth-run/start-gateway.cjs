@@ -1,0 +1,11 @@
+const path = require('node:path');
+process.env.PORT = '3100';
+process.env.NODE_ENV = 'test';
+process.env.LOG_LEVEL = 'error';
+process.env.AETHERCORE_PRODUCTION = '0';
+process.env.C2_GRPC_INSECURE = '1';
+process.env.C2_ADDR = '127.0.0.1:65534';
+process.env.AETHER_BUNKER_ENDPOINT = '127.0.0.1:65534';
+process.env.LATTICE_GATEWAY_INTERNAL_TOKEN = 'demo-lattice-token';
+process.env.LATTICE_BRIDGE_STATUS_URL = 'http://127.0.0.1:3110/api/lattice/status';
+require(path.resolve(__dirname, '..', '..', 'services', 'gateway', 'dist', 'index.js'));

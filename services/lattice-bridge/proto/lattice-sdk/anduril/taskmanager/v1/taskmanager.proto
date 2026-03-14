@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package anduril.taskmanager.v1;
+
+// Pinned snapshot subset for AetherCore lattice-bridge.
+// This contract is intentionally scoped to bridge task inbox ingestion.
+
+message ListenAsAgentRequest {
+  string agent_id = 1;
+  string since = 2;
+  int32 max_events = 3;
+}
+
+message Task {
+  string task_id = 1;
+  string assigned_agent_id = 2;
+  string status = 3;
+  int64 status_version = 4;
+  int64 updated_at_ms = 5;
+  string trust_posture = 6;
+  string title = 7;
+  string description = 8;
+  string raw_task_json = 9;
+}
+
+message ListenAsAgentResponse {
+  Task task = 1;
+  string cursor = 2;
+  int64 server_timestamp_ms = 3;
+}
+
+service TaskManagerAPI {
+  rpc ListenAsAgent(ListenAsAgentRequest) returns (stream ListenAsAgentResponse);
+}

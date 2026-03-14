@@ -23,6 +23,30 @@ docker compose down
 docker compose down -v
 ```
 
+## Demo Boot (Stealth Synthetic, SF Bay AO)
+
+Use the one-command demo profile to boot with deterministic synthetic Lattice ingest, REST-only, and fail-visible preflight checks:
+
+```bash
+pnpm run demo:lattice:boot
+```
+
+The command enforces:
+- `LATTICE_INTEGRATION_MODE=stealth_readonly`
+- `LATTICE_PROTOCOL_MODE=rest`
+- `LATTICE_INPUT_MODE=synthetic`
+- `LATTICE_SYNTHETIC_SCENARIO=sf_bay_maritime_incursion_v1`
+
+Preflight validation is performed against:
+- `GET /api/lattice/status`
+- `GET /api/lattice/scenario/preflight`
+
+To stop the stack:
+
+```bash
+pnpm run demo:lattice:down
+```
+
 ## Services
 
 - **c2-router** (port 50051): Mock C2 Router gRPC service
@@ -31,10 +55,14 @@ docker compose down -v
 - **gateway** (port 3000): Gateway API service
 - **auth** (port 3001): Authentication service
 - **collaboration** (port 8080): Collaboration/WebSocket service
+- **lattice-bridge** (port 3010): Lattice entities/tasks/objects bridge service
 
 ## Configuration
 
 All ports are configurable via `.env` file. See `.env.example` for available options.
+Lattice bridge defaults to `LATTICE_INTEGRATION_MODE=stealth_readonly` and `LATTICE_INPUT_MODE=synthetic` with REST-only ingest and outbound writes disabled.
+Bridge-to-gateway and bridge control-plane calls use `LATTICE_GATEWAY_INTERNAL_TOKEN` (default local value in `.env.example`; rotate for shared environments).
+When switching to `LATTICE_INTEGRATION_MODE=standard` and `LATTICE_PROTOCOL_MODE=hybrid|grpc`, set `LATTICE_GRPC_TARGET` and transport vars (`LATTICE_GRPC_INSECURE` or TLS/mTLS cert paths).
 
 ## Documentation
 
@@ -46,6 +74,7 @@ For detailed documentation on:
 - Development workflows
 
 See: [Docker Compose Guide](../../docs/DOCKER_COMPOSE_GUIDE.md)
+Demo runbook: [Lattice Demo Playbook](../../docs/LATTICE_DEMO_PLAYBOOK.md)
 
 ## Production Deployment
 

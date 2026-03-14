@@ -1,0 +1,8 @@
+{
+  "body": {
+    "status": "error",
+    "code": "STEALTH_READ_ONLY",
+    "message": "Stealth read-only mode is active. Outbound Lattice overlay publish is disabled."
+  },
+  "status_code": 403
+}

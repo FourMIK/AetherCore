@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package anduril.entitymanager.v1;
+
+// Pinned snapshot subset for AetherCore lattice-bridge.
+// This contract is intentionally scoped to bridge ingestion requirements.
+
+message StreamEntitiesRequest {
+  string since = 1;
+  int32 max_events = 2;
+  string source = 3;
+}
+
+message Entity {
+  string entity_id = 1;
+  string source = 2;
+  int64 source_update_time_ms = 3;
+  bool deleted = 4;
+  bool signature_valid = 5;
+  string signature = 6;
+  string verification_status = 7;
+  string raw_entity_json = 8;
+  string overlay_json = 9;
+}
+
+message StreamEntitiesResponse {
+  Entity entity = 1;
+  string cursor = 2;
+  int64 server_timestamp_ms = 3;
+}
+
+service EntityManagerAPI {
+  rpc StreamEntities(StreamEntitiesRequest) returns (stream StreamEntitiesResponse);
+}

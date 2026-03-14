@@ -38,3 +38,8 @@ export * from './protocol';
  * C2 Message Schema - Command & Control Message Envelope
  */
 export * from './c2-message-schema';
+
+/**
+ * Lattice integration contracts
+ */
+export * from './lattice-types';

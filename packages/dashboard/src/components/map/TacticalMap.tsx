@@ -14,6 +14,10 @@ import { CoordinatesAdapter } from '../../map-engine/adapters/CoordinatesAdapter
 interface RenderedNode {
   id: string;
   domain: string;
+  sourceBadge?: 'Lattice Synthetic' | 'Lattice Live' | 'Gateway Telemetry';
+  verificationStatus?: 'VERIFIED' | 'STATUS_UNVERIFIED' | 'SPOOFED';
+  freshnessMs?: number;
+  readOnlyExternal?: boolean;
   trustScore: number;
   verified: boolean;
   integrityCompromised?: boolean;
@@ -39,6 +43,7 @@ const NodeMesh: React.FC<NodeMeshProps> = ({ node, selected, onClick }) => {
   const color = useMemo(() => {
     // Fail-Visible: Byzantine/compromised nodes are RED
     if (node.status === 'revoked') return '#808080'; // Ghost gray for revoked
+    if (node.verificationStatus === 'SPOOFED') return '#ff2a2a';
     if (node.status === 'compromised' || node.integrityCompromised) return '#ff2a2a'; // Red for Byzantine
     if (node.status === 'offline') return '#64748b';
     if (node.trustScore >= 80) return '#39ff14';
@@ -114,6 +119,11 @@ const NodeMesh: React.FC<NodeMeshProps> = ({ node, selected, onClick }) => {
           {node.id.length > 16 ? '...' : ''}
         </div>
         <div style={{ opacity: 0.85 }}>Trust {node.trustScore}%</div>
+        {node.sourceBadge && <div style={{ opacity: 0.8 }}>{node.sourceBadge}</div>}
+        {node.verificationStatus && <div style={{ opacity: 0.8 }}>{node.verificationStatus}</div>}
+        {typeof node.freshnessMs === 'number' && (
+          <div style={{ opacity: 0.75 }}>Fresh {Math.max(0, Math.round(node.freshnessMs / 1000))}s</div>
+        )}
       </Html>
     </group>
   );
@@ -330,6 +340,10 @@ export const TacticalMap: React.FC = () => {
     return projected.map(({ node, index, raw }) => ({
       id: node.id,
       domain: node.domain,
+      sourceBadge: node.sourceBadge,
+      verificationStatus: node.verificationStatus,
+      freshnessMs: node.freshnessMs,
+      readOnlyExternal: node.readOnlyExternal,
       trustScore: node.trustScore,
       verified: node.verified,
       integrityCompromised: node.integrityCompromised,

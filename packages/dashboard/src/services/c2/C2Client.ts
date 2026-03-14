@@ -14,6 +14,7 @@ import {
   MessageEnvelope,
   MessageType,
   createMessageEnvelope,
+  type LatticeInboundEventV1,
   parseMessageEnvelope,
   serializeForSigning,
   setEnvelopeVerificationStatus,
@@ -56,6 +57,7 @@ export interface C2ClientConfig {
   onRalphiePresence?: (presence: RalphiePresenceFrame) => void;
   onRalphiePresenceSnapshot?: (nodes: RalphiePresenceFrame[]) => void;
   onSystemStatus?: (status: SystemStatusFrame) => void;
+  onLatticeEvent?: (event: LatticeInboundEventV1) => void;
   onError?: (error: Error) => void;
 }
 
@@ -385,6 +387,16 @@ export class C2Client {
           if (messageType === 'SYSTEM_STATUS' && this.config.onSystemStatus) {
             const status = json as SystemStatusFrame;
             this.config.onSystemStatus(status);
+          }
+          this.lastMessageReceived = new Date();
+          this.setState(this.state, 'MESSAGE_RX');
+          return;
+        }
+
+        if (messageType === 'LATTICE_EVENT') {
+          const frame = json as { payload?: LatticeInboundEventV1 };
+          if (frame.payload && this.config.onLatticeEvent) {
+            this.config.onLatticeEvent(frame.payload);
           }
           this.lastMessageReceived = new Date();
           this.setState(this.state, 'MESSAGE_RX');

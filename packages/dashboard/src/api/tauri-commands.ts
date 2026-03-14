@@ -151,6 +151,16 @@ export interface ConnectivityCheck {
   details: string[];
 }
 
+export interface LatticeBridgeStatus {
+  configured: boolean;
+  healthy: boolean;
+  health_endpoint: string;
+  integration_mode: string;
+  protocol_mode: string;
+  read_only: boolean;
+  details: string[];
+}
+
 export interface DeploymentStatus {
   node_id: string;
   pid: number;
@@ -239,6 +249,10 @@ export const TauriCommands = {
       errorTitle: 'Connectivity Error',
     }
   ),
+  getLatticeBridgeStatus: () => safeInvoke<LatticeBridgeStatus>('get_lattice_bridge_status', undefined, {
+    errorTitle: 'Lattice Bridge Status Error',
+    silent: true,
+  }),
   setBootstrapState: (completed: boolean) => safeInvoke<unknown>('set_bootstrap_state', { completed }, {
     errorTitle: 'Bootstrap State Error',
   }),

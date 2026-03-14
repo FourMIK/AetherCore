@@ -627,6 +627,7 @@ pub fn run() {
             commands::update_config,
             commands::get_config_path,
             commands::check_local_service_status,
+            commands::get_lattice_bridge_status,
             commands::initialize_local_data_dirs,
             commands::start_managed_services,
             commands::stop_managed_services,

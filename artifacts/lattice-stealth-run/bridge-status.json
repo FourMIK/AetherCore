@@ -1,0 +1,21 @@
+{
+  "schema_version": "lattice.bridge.status.v1",
+  "integration_mode": "stealth_readonly",
+  "healthy": true,
+  "protocol_mode": "rest",
+  "rest_healthy": true,
+  "grpc_healthy": false,
+  "grpc_target_configured": false,
+  "sandbox_mode": false,
+  "last_sync_at_ms": 1773517264269,
+  "sync_lag_ms": 211,
+  "token_expires_at_ms": 1773519030059,
+  "metrics": {
+    "stream_reconnects": 0,
+    "token_refresh_success": 1,
+    "token_refresh_failures": 0,
+    "mismatches": 0,
+    "invalid_signatures": 0,
+    "dead_letters": 0
+  }
+}

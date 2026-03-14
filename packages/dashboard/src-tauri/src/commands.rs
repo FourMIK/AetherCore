@@ -2373,6 +2373,17 @@ pub struct ConnectivityCheckResult {
     pub details: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LatticeBridgeStatusResponse {
+    pub configured: bool,
+    pub healthy: bool,
+    pub health_endpoint: String,
+    pub integration_mode: String,
+    pub protocol_mode: String,
+    pub read_only: bool,
+    pub details: Vec<String>,
+}
+
 #[tauri::command]
 pub async fn check_local_service_status() -> Result<Vec<LocalServiceStatusResponse>, String> {
     local_control_plane::check_service_statuses().map(|statuses| {
@@ -2389,6 +2400,49 @@ pub async fn check_local_service_status() -> Result<Vec<LocalServiceStatusRespon
                 running: status.running,
             })
             .collect()
+    })
+}
+
+#[tauri::command]
+pub async fn get_lattice_bridge_status() -> Result<LatticeBridgeStatusResponse, String> {
+    let health_endpoint = std::env::var("LATTICE_BRIDGE_HEALTH_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:3010/health".to_string());
+    let integration_mode = std::env::var("LATTICE_INTEGRATION_MODE")
+        .unwrap_or_else(|_| "stealth_readonly".to_string())
+        .to_lowercase();
+    let protocol_mode = if integration_mode == "stealth_readonly" {
+        "rest".to_string()
+    } else {
+        std::env::var("LATTICE_PROTOCOL_MODE").unwrap_or_else(|_| "hybrid".to_string())
+    };
+    let read_only = integration_mode == "stealth_readonly";
+    let configured = std::env::var("LATTICE_BASE_URL")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+
+    let mut details = Vec::new();
+    let healthy = match local_control_plane::verify_http_endpoint(&health_endpoint, 3010) {
+        Ok(_) => {
+            details.push(format!(
+                "Lattice bridge health endpoint reachable: {}",
+                health_endpoint
+            ));
+            true
+        }
+        Err(error) => {
+            details.push(error);
+            false
+        }
+    };
+
+    Ok(LatticeBridgeStatusResponse {
+        configured,
+        healthy,
+        health_endpoint,
+        integration_mode,
+        protocol_mode,
+        read_only,
+        details,
     })
 }
 

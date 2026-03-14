@@ -1,0 +1,27 @@
+{
+  "status": "ok",
+  "read_only": true,
+  "count": 1,
+  "tasks": [
+    {
+      "schema_version": "lattice.task.inbox.v1",
+      "task_id": "stealth-task-01",
+      "assigned_agent_id": "agent-01",
+      "status": "QUEUED",
+      "status_version": 35,
+      "freshness_ms": 0,
+      "trust_posture": "trusted",
+      "read_only": true,
+      "raw_task": {
+        "task_id": "stealth-task-01",
+        "assigned_agent_id": "agent-01",
+        "status": "QUEUED",
+        "status_version": 35,
+        "updated_at_ms": 1773517264265,
+        "trust_posture": "trusted"
+      },
+      "received_at_ms": 1773517264265
+    }
+  ],
+  "timestamp": 1773517264517
+}

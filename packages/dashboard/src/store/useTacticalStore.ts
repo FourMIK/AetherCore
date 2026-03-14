@@ -9,6 +9,7 @@ import { GeoPosition, ViewMode, MapProviderType } from '../map-engine/types';
 import { getRuntimeConfig, isDemoMode } from '../config/runtime';
 import { TauriCommands, type TelemetryPayload as TauriTelemetryPayload } from '../api/tauri-commands';
 import type { NodeAttestationState, RevocationCertificate } from '../services/identity/identityClient';
+import type { LatticeVerificationStatus } from '@aethercore/shared';
 import { VideoStream } from '../types/VideoStream';
 
 // Node Types
@@ -32,6 +33,12 @@ export interface TacticalNode {
   deploymentStatus?: string; // Deployment status: Running, Stopped, Failed
   deploymentPort?: number; // Listen port if deployed locally
   videoStream?: VideoStream; // Optional video feed from ISR sensors
+  sourceBadge?: 'Lattice Synthetic' | 'Lattice Live' | 'Gateway Telemetry';
+  provenance?: 'lattice.synthetic' | 'lattice.live' | 'gateway.telemetry';
+  verificationStatus?: LatticeVerificationStatus;
+  freshnessMs?: number;
+  readOnlyExternal?: boolean;
+  evidenceObjectIds?: string[];
 }
 
 // Track Types

@@ -8,6 +8,7 @@ Containerized runtime services discovered in this repository tree:
 - Gateway (`services/gateway`) → ALB route `/api/*`
 - Auth (`services/auth`) → ALB route `/auth/*`
 - Collaboration/C2 (`services/collaboration`) → ALB route `/ws/*`
+- Lattice Bridge (`services/lattice-bridge`) → ALB route `/lattice/*` (internal/api utility)
 - H2 ingest (`services/h2-ingest`) → ALB route `/ingest/*`
 - Operator API (`services/operator`) → auxiliary API service
 
@@ -34,6 +35,9 @@ infra/docker/ecs/
 │   ├── .dockerignore
 │   └── Dockerfile
 ├── h2-ingest/
+│   ├── .dockerignore
+│   └── Dockerfile
+├── lattice-bridge/
 │   ├── .dockerignore
 │   └── Dockerfile
 └── operator/
@@ -80,6 +84,8 @@ docker push "$ECR_REGISTRY/aethercore-$SERVICE:$GIT_SHA"
 - `PORT` (default `3000`)
 - `C2_ADDR`
 - `AETHER_BUNKER_ENDPOINT`
+- `LATTICE_BRIDGE_STATUS_URL`
+- `LATTICE_BRIDGE_MODE_URL`
 - `TPM_ENABLED`
 - `LOG_LEVEL`
 
@@ -94,6 +100,33 @@ docker push "$ECR_REGISTRY/aethercore-$SERVICE:$GIT_SHA"
 ### Collaboration
 - `PORT` (default `8080`)
 - `IDENTITY_REGISTRY_ADDRESS`
+
+### Lattice bridge
+- `PORT` (default `3010`)
+- `LATTICE_BASE_URL`
+- `LATTICE_CLIENT_ID`
+- `LATTICE_CLIENT_SECRET`
+- `LATTICE_AGENT_ID`
+- `LATTICE_INTEGRATION_MODE` (`stealth_readonly` default)
+- `LATTICE_PROTOCOL_MODE` (`rest` default in stealth mode; configurable in standard mode)
+- `LATTICE_INPUT_MODE` (`synthetic` default, `live` optional)
+- `LATTICE_SYNTHETIC_SCENARIO` (`sf_bay_maritime_incursion_v1` default)
+- `LATTICE_SYNTHETIC_SEED` (stable deterministic seed)
+- `LATTICE_SYNTHETIC_TIMELINE` (`dual` default)
+- `LATTICE_SYNTHETIC_REPLAY_HOURS` (`24` default)
+- `LATTICE_SANDBOX_MODE` (`true` default)
+- `SANDBOXES_TOKEN` (sandbox mode)
+- `LATTICE_GRPC_TARGET` (required only for `standard` mode with `hybrid`/`grpc` protocol)
+- `LATTICE_GRPC_INSECURE` (`false` default, rejected in production)
+- `LATTICE_GRPC_CA_CERT_PATH`
+- `LATTICE_GRPC_CLIENT_CERT_PATH`
+- `LATTICE_GRPC_CLIENT_KEY_PATH`
+- `LATTICE_GRPC_SERVER_NAME_OVERRIDE`
+- `LATTICE_GRPC_POLL_WINDOW_MS` (default `1500`)
+- `LATTICE_GRPC_MAX_EVENTS` (default `256`)
+- `LATTICE_GATEWAY_INTERNAL_URL`
+- `LATTICE_GATEWAY_INTERNAL_TOKEN`
+- `LATTICE_POLL_INTERVAL_MS` (default `15000` in stealth mode, `5000` otherwise)
 
 ### H2 ingest
 - `PORT` (default `8090`)
@@ -146,6 +179,7 @@ docker push "$ECR_REGISTRY/aethercore-$SERVICE:$GIT_SHA"
 | gateway | 3000 | `/health` | `aethercore-gateway` | `latest`, `<git-sha>` |
 | auth | 3001 | `/health` | `aethercore-auth` | `latest`, `<git-sha>` |
 | collaboration | 8080 | `/health` | `aethercore-collaboration` | `latest`, `<git-sha>` |
+| lattice-bridge | 3010 | `/health` | `aethercore-lattice-bridge` | `latest`, `<git-sha>` |
 | h2-ingest | 8090 | `/health` | `aethercore-h2-ingest` | `latest`, `<git-sha>` |
 | operator | 4001 | `/health` | `aethercore-operator` | `latest`, `<git-sha>` |
 

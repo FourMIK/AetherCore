@@ -11,6 +11,7 @@ SERVICES=(
   "gateway:infra/docker/ecs/gateway/Dockerfile:3000:/health"
   "auth:infra/docker/ecs/auth/Dockerfile:3001:/health"
   "collaboration:infra/docker/ecs/collaboration/Dockerfile:8080:/health"
+  "lattice-bridge:infra/docker/ecs/lattice-bridge/Dockerfile:3010:/health"
   "h2-ingest:infra/docker/ecs/h2-ingest/Dockerfile:8090:/health"
   "operator:infra/docker/ecs/operator/Dockerfile:4001:/health"
 )

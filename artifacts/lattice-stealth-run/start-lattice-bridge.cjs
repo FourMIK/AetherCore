@@ -1,0 +1,17 @@
+const path = require('node:path');
+process.env.PORT = '3110';
+process.env.NODE_ENV = 'test';
+process.env.LOG_LEVEL = 'error';
+process.env.AETHERCORE_PRODUCTION = '0';
+process.env.LATTICE_BASE_URL = 'http://127.0.0.1:4010';
+process.env.LATTICE_CLIENT_ID = 'demo-client-id';
+process.env.LATTICE_CLIENT_SECRET = 'demo-client-secret';
+process.env.LATTICE_AGENT_ID = 'agent-01';
+process.env.LATTICE_INTEGRATION_MODE = 'stealth_readonly';
+process.env.LATTICE_PROTOCOL_MODE = 'hybrid';
+process.env.LATTICE_SANDBOX_MODE = 'false';
+process.env.LATTICE_GATEWAY_INTERNAL_URL = 'http://127.0.0.1:3100/internal/lattice/events';
+process.env.LATTICE_GATEWAY_INTERNAL_TOKEN = 'demo-lattice-token';
+process.env.LATTICE_POLL_INTERVAL_MS = '1000';
+process.env.LATTICE_BRIDGE_DATA_DIR = 'C:\\Users\\Owner\\StudioProjects\\AetherCore\\artifacts\\lattice-stealth-run\\bridge-data';
+require(path.resolve(__dirname, '..', '..', 'services', 'lattice-bridge', 'dist', 'index.js'));
