@@ -114,6 +114,7 @@ docker push "$ECR_REGISTRY/aethercore-$SERVICE:$GIT_SHA"
 - `LATTICE_SYNTHETIC_SEED` (stable deterministic seed)
 - `LATTICE_SYNTHETIC_TIMELINE` (`dual` default)
 - `LATTICE_SYNTHETIC_REPLAY_HOURS` (`24` default)
+- `LATTICE_SYNTHETIC_INGEST_INTERVAL_MS` (default `2000` for accelerated demo ingest pacing)
 - `LATTICE_SANDBOX_MODE` (`true` default)
 - `SANDBOXES_TOKEN` (sandbox mode)
 - `LATTICE_GRPC_TARGET` (required only for `standard` mode with `hybrid`/`grpc` protocol)

@@ -178,6 +178,8 @@ export interface LatticeBridgeStatusV1 {
   grpc_healthy: boolean;
   grpc_transport_mode?: 'insecure' | 'tls' | 'mtls';
   grpc_target_configured?: boolean;
+  synthetic_ingest_interval_ms?: number;
+  effective_sync_interval_ms?: number;
   sandbox_mode: boolean;
   scenario_id?: string;
   phase_id?: string;

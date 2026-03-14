@@ -67,6 +67,7 @@ function buildConfig(baseUrl: string, grpcTarget: string): BridgeConfig {
     syntheticSeed: 'seed',
     syntheticTimeline: 'dual',
     syntheticReplayHours: 24,
+    syntheticIngestIntervalMs: 5000,
     pollIntervalMs: 5000,
     gatewayInternalUrl: 'http://127.0.0.1:65535/internal/lattice/events',
     gatewayInternalToken: undefined,

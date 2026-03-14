@@ -97,6 +97,10 @@ async function main() {
 
   const envFile = readEnvFile(envPath);
   const gatewayPort = envFile.GATEWAY_PORT || '3000';
+  const syntheticIngestIntervalMs =
+    process.env.LATTICE_SYNTHETIC_INGEST_INTERVAL_MS ||
+    envFile.LATTICE_SYNTHETIC_INGEST_INTERVAL_MS ||
+    '2000';
 
   const composeEnv = {
     ...process.env,
@@ -106,6 +110,7 @@ async function main() {
     LATTICE_SYNTHETIC_SCENARIO: 'sf_bay_maritime_incursion_v1',
     LATTICE_SYNTHETIC_TIMELINE: 'dual',
     LATTICE_SYNTHETIC_REPLAY_HOURS: '24',
+    LATTICE_SYNTHETIC_INGEST_INTERVAL_MS: syntheticIngestIntervalMs,
     LATTICE_POLL_INTERVAL_MS: '15000',
     LATTICE_GATEWAY_INTERNAL_TOKEN: 'aethercore_local_lattice_internal_token',
   };
@@ -165,6 +170,9 @@ async function main() {
   console.log('[demo:lattice:boot] Stealth synthetic profile online');
   console.log(
     `[demo:lattice:boot] integration_mode=${String(integrationMode)} input_mode=${String(inputMode)} profile=${String(profile)}`,
+  );
+  console.log(
+    `[demo:lattice:boot] synthetic_ingest_interval_ms=${String(syntheticIngestIntervalMs)} (accelerated demo cadence)`,
   );
   console.log(
     `[demo:lattice:boot] scenario=${String(preflight.scenario_id)} phase=${String(preflight.phase_id)} ready=${String(preflight.scenario_ready)}`,

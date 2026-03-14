@@ -900,6 +900,8 @@ async function bootstrap(): Promise<void> {
     const healthy = lag !== null && lag < config.pollIntervalMs * 6;
     const mode = currentEffectiveMode();
     const scenarioStatus = currentScenarioStatus();
+    const effectiveSyncIntervalMs =
+      mode.inputMode === 'synthetic' ? config.syntheticIngestIntervalMs : config.pollIntervalMs;
     res.status(healthy ? 200 : 503).json({
       status: healthy ? 'ok' : 'degraded',
       service: 'lattice-bridge',
@@ -908,6 +910,8 @@ async function bootstrap(): Promise<void> {
       effective_profile: mode.effectiveProfile,
       last_mode_change_at_ms: mode.changedAtMs,
       protocol_mode: config.protocolMode,
+      synthetic_ingest_interval_ms: config.syntheticIngestIntervalMs,
+      effective_sync_interval_ms: effectiveSyncIntervalMs,
       grpc_transport_mode: currentGrpcTransportMode(),
       grpc_target_configured: currentGrpcTargetConfigured(),
       last_sync_at_ms: lastSyncAtMs,
@@ -927,6 +931,8 @@ async function bootstrap(): Promise<void> {
     const tokenSnapshot = tokenManager.getSnapshot();
     const mode = currentEffectiveMode();
     const scenarioStatus = currentScenarioStatus();
+    const effectiveSyncIntervalMs =
+      mode.inputMode === 'synthetic' ? config.syntheticIngestIntervalMs : config.pollIntervalMs;
     const status: LatticeBridgeStatusV1 = {
       schema_version: 'lattice.bridge.status.v1',
       integration_mode: mode.integrationMode,
@@ -939,6 +945,8 @@ async function bootstrap(): Promise<void> {
       grpc_healthy: currentGrpcHealth().healthy,
       grpc_transport_mode: currentGrpcTransportMode(),
       grpc_target_configured: currentGrpcTargetConfigured(),
+      synthetic_ingest_interval_ms: config.syntheticIngestIntervalMs,
+      effective_sync_interval_ms: effectiveSyncIntervalMs,
       sandbox_mode: config.sandboxMode,
       scenario_id: scenarioStatus.scenario_id,
       phase_id: scenarioStatus.phase_id,
@@ -1583,11 +1591,19 @@ async function bootstrap(): Promise<void> {
     });
   });
 
-  setInterval(() => {
-    void runSyncCycle();
-  }, config.pollIntervalMs);
+  const scheduleSyncLoop = (): void => {
+    const effectiveMode = currentEffectiveMode();
+    const intervalMs =
+      effectiveMode.inputMode === 'synthetic' ? config.syntheticIngestIntervalMs : config.pollIntervalMs;
+    setTimeout(() => {
+      void runSyncCycle().finally(() => {
+        scheduleSyncLoop();
+      });
+    }, intervalMs);
+  };
 
   void runSyncCycle();
+  scheduleSyncLoop();
 
   const dataRoot = path.resolve(config.dataDir);
   const dbPath = path.join(dataRoot, 'lattice-bridge.db');

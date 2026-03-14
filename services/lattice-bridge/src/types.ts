@@ -64,6 +64,7 @@ export interface BridgeConfig {
   syntheticSeed: string;
   syntheticTimeline: 'dual' | 'realtime';
   syntheticReplayHours: number;
+  syntheticIngestIntervalMs: number;
   pollIntervalMs: number;
   gatewayInternalUrl: string;
   gatewayInternalToken?: string;

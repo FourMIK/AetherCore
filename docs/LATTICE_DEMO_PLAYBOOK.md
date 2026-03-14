@@ -6,6 +6,7 @@
 - Protocol: `rest`
 - Input mode: `synthetic`
 - Scenario: `sf_bay_maritime_incursion_v1`
+- Synthetic ingest cadence: `LATTICE_SYNTHETIC_INGEST_INTERVAL_MS` (default `2000` for demo acceleration)
 - Target duration: 12 to 15 minutes
 
 This playbook is operator-paced and uses manual phase controls from System Admin.

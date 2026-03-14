@@ -163,8 +163,29 @@ test('stealth mode defaults to rest protocol and read-only posture', () => {
       assert.equal(config.allowOutboundWrites, false);
       assert.equal(config.protocolMode, 'rest');
       assert.equal(config.pollIntervalMs, 15000);
+      assert.equal(config.syntheticIngestIntervalMs, 15000);
       assert.equal(config.grpcTarget, undefined);
       assert.equal(config.grpcInsecure, false);
+    },
+  );
+});
+
+test('synthetic ingest interval can be accelerated independently of live poll interval', () => {
+  withEnv(
+    {
+      ...BASE_ENV,
+      LATTICE_INTEGRATION_MODE: 'stealth_readonly',
+      LATTICE_INPUT_MODE: 'synthetic',
+      LATTICE_PROTOCOL_MODE: 'rest',
+      LATTICE_POLL_INTERVAL_MS: '15000',
+      LATTICE_SYNTHETIC_INGEST_INTERVAL_MS: '2000',
+      NODE_ENV: 'development',
+      AETHERCORE_PRODUCTION: '0',
+    },
+    () => {
+      const config = loadConfig();
+      assert.equal(config.pollIntervalMs, 15000);
+      assert.equal(config.syntheticIngestIntervalMs, 2000);
     },
   );
 });

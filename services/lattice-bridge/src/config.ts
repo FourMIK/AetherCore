@@ -97,6 +97,14 @@ export function loadConfig(): BridgeConfig {
   const requestedProtocolMode = parseProtocolMode(process.env.LATTICE_PROTOCOL_MODE);
   const protocolMode = integrationMode === 'stealth_readonly' ? 'rest' : requestedProtocolMode;
   const allowOutboundWrites = integrationMode !== 'stealth_readonly';
+  const pollIntervalMs = parsePositiveInt(
+    process.env.LATTICE_POLL_INTERVAL_MS,
+    integrationMode === 'stealth_readonly' ? 15000 : 5000,
+  );
+  const syntheticIngestIntervalMs = Math.max(
+    250,
+    parsePositiveInt(process.env.LATTICE_SYNTHETIC_INGEST_INTERVAL_MS, pollIntervalMs),
+  );
 
   const isProduction =
     process.env.NODE_ENV === 'production' || parseBoolean(process.env.AETHERCORE_PRODUCTION, false);
@@ -194,10 +202,8 @@ export function loadConfig(): BridgeConfig {
         ? 'realtime'
         : 'dual',
     syntheticReplayHours: parsePositiveInt(process.env.LATTICE_SYNTHETIC_REPLAY_HOURS, 24),
-    pollIntervalMs: parsePositiveInt(
-      process.env.LATTICE_POLL_INTERVAL_MS,
-      integrationMode === 'stealth_readonly' ? 15000 : 5000,
-    ),
+    syntheticIngestIntervalMs,
+    pollIntervalMs,
     gatewayInternalUrl:
       process.env.LATTICE_GATEWAY_INTERNAL_URL?.trim() || 'http://gateway:3000/internal/lattice/events',
     gatewayInternalToken: process.env.LATTICE_GATEWAY_INTERNAL_TOKEN?.trim(),
